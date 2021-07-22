@@ -30,3 +30,17 @@
 *.exe
 *.out
 *.app
+
+
+# build
+build/
+# clangd
+.clangd/
+.cache/clangd/
+compile_commands.json
+
+# vim session file
+Session.vim
+# vscode
+*.workspace
+.vscode/
