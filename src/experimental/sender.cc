@@ -81,21 +81,25 @@ int lcore_main(void* args) {
   size_t icmp_req_len = sizeof(icmp_req);
 
   struct rte_mbuf* pkts_burst[kMaxBurstSize];
-  for (auto& m : pkts_burst) {
-    m = rte_pktmbuf_alloc(mbuf_pool);
-    uint8_t* data = rte_pktmbuf_mtod(m, uint8_t*);
-    memcpy(data, icmp_req, icmp_req_len);
-    m->data_len = icmp_req_len;
-    m->pkt_len = icmp_req_len;
-  };
 
-  uint16_t port_id;
-  RTE_ETH_FOREACH_DEV(port_id) {
+  for (int i = 0; i < 10; i++) {
+    for (auto& m : pkts_burst) {
+      m = rte_pktmbuf_alloc(mbuf_pool);
+      uint8_t* data = rte_pktmbuf_mtod(m, uint8_t*);
+      memcpy(data, icmp_req, icmp_req_len);
+      m->data_len = icmp_req_len;
+      m->pkt_len = icmp_req_len;
+    };
+
+    uint16_t port_id = 0;
+    // RTE_ETH_FOREACH_DEV(port_id) {
     uint16_t nb_tx = rte_eth_tx_burst(port_id, 0, pkts_burst, kMaxBurstSize);
-  }
+    // }
 
-  for (auto m : pkts_burst) {
-    rte_pktmbuf_free(m);
+    for (auto m : pkts_burst) {
+      rte_pktmbuf_free(m);
+    }
+    printf("iter = %d\n", i);
   }
 
   return 0;
@@ -118,12 +122,12 @@ int main(int argc, char* argv[]) {
 
   // initialize each port
   LOG(INFO) << "initialize each port";
-  uint16_t port_id;
-  RTE_ETH_FOREACH_DEV(port_id) {
-    int err = init_port(mbuf_pool, port_id);
-    CHECK(err == 0) << "Cannot init port, err: " << err
-                    << ", port_id: " << port_id;
-  }
+  uint16_t port_id = 0;
+  // RTE_ETH_FOREACH_DEV(port_id) {
+  int err = init_port(mbuf_pool, port_id);
+  CHECK(err == 0) << "Cannot init port, err: " << err
+                  << ", port_id: " << port_id;
+  // }
 
   // call lcore_main() on every worker lcore
   rte_eal_mp_remote_launch(lcore_main, mbuf_pool, CALL_MAIN);
