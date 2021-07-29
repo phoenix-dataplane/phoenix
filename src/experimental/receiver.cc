@@ -8,8 +8,6 @@
 #include <stdlib.h>
 
 #include <chrono>
-#include <ctime>
-#include <ratio>
 
 const uint32_t kNumMBufs = 8192;
 const uint32_t kMBufCacheSize = 256;
@@ -61,7 +59,7 @@ int lcore_main(void* args) {
   lcore_id = rte_lcore_id();
   LOG(INFO) << "lcore_main from core " << lcore_id;
 
-  uint16_t total_pkts = 0;
+  size_t total_pkts = 0;
 
   for (;;) {
     std::chrono::high_resolution_clock::time_point start =
@@ -104,7 +102,7 @@ int lcore_main(void* args) {
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
     double receiving_rate = 98 * 8 * nb_rx / time_span.count() / 1e9;
     printf("current receving rate = %lf Gbps\n", receiving_rate);
-    printf("total pkts = %d\n", total_pkts);
+    printf("total pkts = %ld\n", total_pkts);
   }
 
   return 0;
