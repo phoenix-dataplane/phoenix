@@ -44,3 +44,8 @@ Session.vim
 # vscode
 *.workspace
 .vscode/
+
+
+# Added by cargo
+
+/target
