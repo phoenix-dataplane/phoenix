@@ -43,6 +43,7 @@ compile_commands.json
 Session.vim
 # vscode
 *.workspace
+*.code-workspace
 .vscode/
 
 
