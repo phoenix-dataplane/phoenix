@@ -17,7 +17,6 @@ pub struct QueueOpt {
     pub bound: usize,
 }
 
-
 pub fn set_affinity_for_current(cpu_idx: usize) -> io::Result<usize> {
     unsafe {
         let nprocs = libc::sysconf(libc::_SC_NPROCESSORS_ONLN) as usize;

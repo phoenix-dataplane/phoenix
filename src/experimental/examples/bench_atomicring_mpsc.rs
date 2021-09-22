@@ -1,5 +1,5 @@
-use crossbeam::thread;
 use atomicring::AtomicRingQueue;
+use crossbeam::thread;
 use std::time::Instant;
 use structopt::StructOpt;
 

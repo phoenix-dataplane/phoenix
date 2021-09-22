@@ -1,5 +1,5 @@
-use crossbeam::thread;
 use crossbeam::channel;
+use crossbeam::thread;
 use crossbeam::utils::Backoff;
 use std::time::Instant;
 use structopt::StructOpt;

@@ -1,13 +1,14 @@
-#include <atomic>
+#include <immintrin.h>
+
 #include <array>
-#include <vector>
+#include <atomic>
 #include <cassert>
-#include <memory>
-#include <thread>
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <string>
-#include <immintrin.h>
+#include <thread>
+#include <vector>
 
 /*!
  * \brief Lamport's single producer single consumer queue
@@ -30,8 +31,9 @@ class SpscQueue {
   ~SpscQueue() {}
 
   void Push(T new_value) {
-    /// Notice: when dealing with movable data structure, the commented code below
-    /// may cause problems, because once the TryPush fails, the data would be released
+    /// Notice: when dealing with movable data structure, the commented code
+    /// below may cause problems, because once the TryPush fails, the data would
+    /// be released
     // while (!TryPush(std::forward<T>(new_value))) {
     // }
     auto cur_head = head_.load(std::memory_order_relaxed);
@@ -87,13 +89,12 @@ class SpscQueue {
 //#include "threadsafe_queue.h"
 
 using WorkQueue = SpscQueue<int>;
-//using WorkQueue = ThreadsafeQueue<int>;
+// using WorkQueue = ThreadsafeQueue<int>;
 
 using Clock = std::chrono::high_resolution_clock;
 
 void Func1(WorkQueue& work_queue, int total_iters, int warm_iters) {
-  for (int i = 0; i < warm_iters + total_iters; i++)
-    work_queue.Push(i * i);
+  for (int i = 0; i < warm_iters + total_iters; i++) work_queue.Push(i * i);
 }
 
 void Func2(WorkQueue& work_queue, int total_iters, int warm_iters) {
@@ -102,7 +103,7 @@ void Func2(WorkQueue& work_queue, int total_iters, int warm_iters) {
   for (int i = 0; i < warm_iters + total_iters; i++) {
     if (i == warm_iters) start = Clock::now();
     work_queue.WaitAndPop(&j);
-    //printf("%d %d\n", i * i, j);
+    // printf("%d %d\n", i * i, j);
     assert(j == i * i);
   }
   auto end = Clock::now();
@@ -115,8 +116,8 @@ void SetAffinity(std::thread* th, int index) {
   CPU_ZERO(&cpuset);
   CPU_SET(index % num_cpus, &cpuset);
 
-  int rc = pthread_setaffinity_np(th->native_handle(),
-                                  sizeof(cpu_set_t), &cpuset);
+  int rc =
+      pthread_setaffinity_np(th->native_handle(), sizeof(cpu_set_t), &cpuset);
   assert(rc == 0);
 }
 
@@ -124,9 +125,11 @@ int main(int argc, char* argv[]) {
   int total_iters = std::stoi(argv[1]);
   int warm_iters = std::stoi(argv[2]);
   WorkQueue work_queue(17171);
-  //WorkQueue work_queue;
-  auto th1 = std::make_unique<std::thread>(Func1, std::ref(work_queue), total_iters, warm_iters);
-  auto th2 = std::make_unique<std::thread>(Func2, std::ref(work_queue), total_iters, warm_iters);
+  // WorkQueue work_queue;
+  auto th1 = std::make_unique<std::thread>(Func1, std::ref(work_queue),
+                                           total_iters, warm_iters);
+  auto th2 = std::make_unique<std::thread>(Func2, std::ref(work_queue),
+                                           total_iters, warm_iters);
   SetAffinity(th1.get(), 2);
   SetAffinity(th2.get(), 6);
   th1->join();
