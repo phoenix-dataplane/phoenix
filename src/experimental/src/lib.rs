@@ -43,5 +43,7 @@ pub fn check_hyperthread_enabled() -> bool {
 pub fn get_hyperthread_core_pair() -> (usize, usize) {
     assert!(check_hyperthread_enabled());
     let ncpus = num_cpus::get();
-    (0, 0 + ncpus / 2)
+    let left = 0;
+    let right = (left + ncpus / 2) % ncpus;
+    (left, right)
 }
