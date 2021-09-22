@@ -42,6 +42,14 @@ format_changed() {
                  clang-format -i
         fi
     fi
+
+    echo "$(date)" "rustfmt...."
+    if which rustfmt >/dev/null; then
+        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.rs' &>/dev/null; then
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.rs' | xargs -P 5 \
+                 rustfmt --unstable-features
+        fi
+    fi
     echo "$(date)" "done!"
 }
 
