@@ -1,0 +1,5 @@
+[workspace]
+members = ["src/experimental"]
+
+[profile.release]
+debug=true
