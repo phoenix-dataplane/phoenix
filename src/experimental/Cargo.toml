@@ -14,6 +14,8 @@ flume = "0.10.2"
 atomicring = "1.2.7"
 ringbuf = "0.2.3"
 
+[dev-dependencies]
+rand = "0.8.3"
 
 [[example]]
 name = "bench_std_mpsc"
