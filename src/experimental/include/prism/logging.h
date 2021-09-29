@@ -6,6 +6,7 @@
 #ifndef PRISM_LOGGING_H_
 #define PRISM_LOGGING_H_
 #include <errno.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -52,6 +53,7 @@ inline void InitLogging(const char* argv0) { google::InitGoogleLogging(argv0); }
 #else
 // use a light version of glog
 #include <assert.h>
+
 #include <ctime>
 #include <iostream>
 #include <sstream>
@@ -68,27 +70,32 @@ inline void InitLogging(const char* argv0) {
 class LogCheckError {
  public:
   LogCheckError() : str(nullptr) {}
-  explicit LogCheckError(const std::string& str_) : str(new std::string(str_)) {}
-  ~LogCheckError() { if (str != nullptr) delete str; }
-  operator bool() {return str != nullptr; }
+  explicit LogCheckError(const std::string& str_)
+      : str(new std::string(str_)) {}
+  ~LogCheckError() {
+    if (str != nullptr) delete str;
+  }
+  operator bool() { return str != nullptr; }
   std::string* str;
 };
 
-#define DEFINE_CHECK_FUNC(name, op)                               \
-  template <typename X, typename Y>                               \
-  inline LogCheckError LogCheck##name(const X& x, const Y& y) {   \
-    if (x op y) return LogCheckError();                           \
-    std::ostringstream os;                                        \
-    os << " (" << x << " vs. " << y << ") ";  /* CHECK_XX(x, y) requires x and y can be serialized to string. Use CHECK(x OP y) otherwise. NOLINT(*) */ \
-    return LogCheckError(os.str());                               \
-  }                                                               \
-  inline LogCheckError LogCheck##name(int x, int y) {             \
-    return LogCheck##name<int, int>(x, y);                        \
+#define DEFINE_CHECK_FUNC(name, op)                                     \
+  template <typename X, typename Y>                                     \
+  inline LogCheckError LogCheck##name(const X& x, const Y& y) {         \
+    if (x op y) return LogCheckError();                                 \
+    std::ostringstream os;                                              \
+    os << " (" << x << " vs. " << y                                     \
+       << ") "; /* CHECK_XX(x, y) requires x and y can be serialized to \
+                   string. Use CHECK(x OP y) otherwise. NOLINT(*) */    \
+    return LogCheckError(os.str());                                     \
+  }                                                                     \
+  inline LogCheckError LogCheck##name(int x, int y) {                   \
+    return LogCheck##name<int, int>(x, y);                              \
   }
 
-#define CHECK_BINARY_OP(name, op, x, y)                               \
-  if (prism::LogCheckError _check_err = prism::LogCheck##name(x, y))    \
-    prism::LogMessageFatal(__FILE__, __LINE__).stream()                \
+#define CHECK_BINARY_OP(name, op, x, y)                              \
+  if (prism::LogCheckError _check_err = prism::LogCheck##name(x, y)) \
+  prism::LogMessageFatal(__FILE__, __LINE__).stream()                \
       << "Check failed: " << #x " " #op " " #y << *(_check_err.str)
 
 #pragma GCC diagnostic push
@@ -102,9 +109,9 @@ DEFINE_CHECK_FUNC(_NE, !=)
 #pragma GCC diagnostic pop
 
 // Always-on checking
-#define CHECK(x)                                           \
-  if (!(x))                                                \
-    prism::LogMessageFatal(__FILE__, __LINE__).stream()     \
+#define CHECK(x)                                      \
+  if (!(x))                                           \
+  prism::LogMessageFatal(__FILE__, __LINE__).stream() \
       << "Check failed: " #x << ' '
 #define CHECK_LT(x, y) CHECK_BINARY_OP(_LT, <, x, y)
 #define CHECK_GT(x, y) CHECK_BINARY_OP(_GT, >, x, y)
@@ -176,10 +183,10 @@ DEFINE_CHECK_FUNC(_NE, !=)
 // A CHECK() macro that postpends errno if the condition is false. E.g.
 //
 // if (poll(fds, nfds, timeout) == -1) { PCHECK(errno == EINTR); ... }
-#define PCHECK(condition)                               \
-  if (!(condition))                                     \
-    prism::ErrnoLogMessageFatal(__FILE__, __LINE__).stream() \
-        << "Check failed: " #condition << " "
+#define PCHECK(condition)                                  \
+  if (!(condition))                                        \
+  prism::ErrnoLogMessageFatal(__FILE__, __LINE__).stream() \
+      << "Check failed: " #condition << " "
 
 #ifdef NDEBUG
 #define LOG_DFATAL LOG_ERROR
@@ -328,8 +335,7 @@ typedef int LogSeverity;
 // Derived class for PLOG*() above.
 class ErrnoLogMessage : public LogMessage {
  public:
-  ErrnoLogMessage(const char* file, int line)
-      : LogMessage(file, line) {}
+  ErrnoLogMessage(const char* file, int line) : LogMessage(file, line) {}
 
   // Postpends ": strerror(errno) [errno]".
   ~ErrnoLogMessage() {
@@ -370,7 +376,8 @@ inline std::string Demangle(char const* msg_str) {
   return string(msg_str);
 }
 
-inline std::string StackTrace(const size_t stack_size = PRISM_LOG_STACK_TRACE_SIZE) {
+inline std::string StackTrace(
+    const size_t stack_size = PRISM_LOG_STACK_TRACE_SIZE) {
   using std::string;
   std::ostringstream stacktrace_os;
   std::vector<void*> stack(stack_size);
@@ -417,7 +424,8 @@ class LogMessageFatal : public LogMessage {
 
 class ErrnoLogMessageFatal : public ErrnoLogMessage {
  public:
-  ErrnoLogMessageFatal(const char* file, int line) : ErrnoLogMessage(file, line) {}
+  ErrnoLogMessageFatal(const char* file, int line)
+      : ErrnoLogMessage(file, line) {}
   ~ErrnoLogMessageFatal() {
     stream() << ": " << StrError(preserved_errno()) << " [" << preserved_errno()
              << "]";

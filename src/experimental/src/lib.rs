@@ -1,5 +1,8 @@
+#![feature(allocator_api)]
 use std::io;
 use structopt::StructOpt;
+
+pub mod ringbuffer;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]
