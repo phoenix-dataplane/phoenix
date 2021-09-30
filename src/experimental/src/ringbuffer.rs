@@ -1,6 +1,5 @@
 use crossbeam::utils::{Backoff, CachePadded};
 use std::alloc::{Allocator, Global};
-use std::mem::{self, MaybeUninit};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct RingBuffer<T: Sized, A: Allocator = Global> {
@@ -9,7 +8,7 @@ pub struct RingBuffer<T: Sized, A: Allocator = Global> {
     head: CachePadded<AtomicUsize>,
     tail: CachePadded<AtomicUsize>,
     data: *mut T,
-    alloc: A,
+    alloc: Option<A>,
 }
 
 unsafe impl<T, A: Allocator> Send for RingBuffer<T, A> {}
@@ -17,10 +16,7 @@ unsafe impl<T, A: Allocator> Sync for RingBuffer<T, A> {}
 
 impl<T, A: Allocator> Drop for RingBuffer<T, A> {
     fn drop(&mut self) {
-        // safety: Allocator is a ZST zero-sized type, no real drop over it
-        let alloc = mem::replace(&mut self.alloc, unsafe {
-            MaybeUninit::uninit().assume_init()
-        });
+        let alloc = self.alloc.take().unwrap();
         let _ = unsafe { Vec::from_raw_parts_in(self.data, 0, self.cap, alloc) };
     }
 }
@@ -47,7 +43,7 @@ impl<T: Sized, A: Allocator> RingBuffer<T, A> {
             head: CachePadded::new(AtomicUsize::new(0)),
             tail: CachePadded::new(AtomicUsize::new(0)),
             data: ptr,
-            alloc,
+            alloc: Some(alloc),
         }
     }
 
