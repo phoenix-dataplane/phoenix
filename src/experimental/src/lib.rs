@@ -3,6 +3,8 @@ use std::io;
 use structopt::StructOpt;
 
 pub mod ringbuffer;
+pub mod shm;
+pub mod ipc;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]
