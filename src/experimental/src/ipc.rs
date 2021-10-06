@@ -2,7 +2,6 @@ use crate::ringbuffer::RingBuffer;
 use crate::shm::SharedMemory;
 use core::alloc::Allocator;
 
-
 pub enum IpcCommand {
     TestIpc,
 }
@@ -19,17 +18,13 @@ pub type IpcResult<T> = Result<T, IpcError>;
 
 struct SharedRegion(SharedMemory);
 
-pub struct WorkQueue(RingBuffer<IpcCommand>);
-
-pub struct CompletionQueue(RingBuffer<IpcResult<IpcReply>>);
-
-pub struct QueuePair {
-    wq: WorkQueue,
-    cq: CompletionQueue,
+pub struct QueuePair<A: Allocator> {
+    wq: RingBuffer<IpcCommand, A>,
+    cq: RingBuffer<IpcResult<IpcReply>, A>,
 }
 
 pub struct IpcChannel<A: Allocator> {
-    qp: QueuePair,
+    qp: Box<QueuePair<A>, A>,
     shared_region: SharedRegion,
     alloc: A,
 }

@@ -162,6 +162,7 @@ dependencies = [
  "num_cpus",
  "rand",
  "ringbuf",
+ "slabmalloc",
  "spin",
  "structopt",
 ]
@@ -467,6 +468,15 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "slabmalloc"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47c3c80fc5058288346b67f19c9d57677bfabb4930386dcb9eeb23d14d1e10f0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "smallvec"
