@@ -88,19 +88,19 @@ class SpscQueue {
 
 //#include "threadsafe_queue.h"
 
-using WorkQueue = SpscQueue<int>;
+using WorkQueue = SpscQueue<size_t>;
 // using WorkQueue = ThreadsafeQueue<int>;
 
 using Clock = std::chrono::high_resolution_clock;
 
-void Func1(WorkQueue& work_queue, int total_iters, int warm_iters) {
-  for (int i = 0; i < warm_iters + total_iters; i++) work_queue.Push(i * i);
+void Sender(WorkQueue& work_queue, int total_iters, int warm_iters) {
+  for (size_t i = 0; i < warm_iters + total_iters; i++) work_queue.Push(i * i);
 }
 
-void Func2(WorkQueue& work_queue, int total_iters, int warm_iters) {
-  int j;
+void Receiver(WorkQueue& work_queue, int total_iters, int warm_iters) {
+  size_t j;
   auto start = Clock::now();
-  for (int i = 0; i < warm_iters + total_iters; i++) {
+  for (size_t i = 0; i < warm_iters + total_iters; i++) {
     if (i == warm_iters) start = Clock::now();
     work_queue.WaitAndPop(&j);
     // printf("%d %d\n", i * i, j);
@@ -122,13 +122,17 @@ void SetAffinity(std::thread* th, int index) {
 }
 
 int main(int argc, char* argv[]) {
+  if (argc != 3) {
+    printf("Usage: %s <total_iters> <warm_iters>\n", argv[0]);
+    exit(0);
+  }
   int total_iters = std::stoi(argv[1]);
   int warm_iters = std::stoi(argv[2]);
   WorkQueue work_queue(17171);
   // WorkQueue work_queue;
-  auto th1 = std::make_unique<std::thread>(Func1, std::ref(work_queue),
+  auto th1 = std::make_unique<std::thread>(Sender, std::ref(work_queue),
                                            total_iters, warm_iters);
-  auto th2 = std::make_unique<std::thread>(Func2, std::ref(work_queue),
+  auto th2 = std::make_unique<std::thread>(Receiver, std::ref(work_queue),
                                            total_iters, warm_iters);
   SetAffinity(th1.get(), 2);
   SetAffinity(th2.get(), 6);
