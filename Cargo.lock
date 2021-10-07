@@ -157,6 +157,7 @@ dependencies = [
  "atomicring",
  "crossbeam",
  "flume",
+ "lazy_static",
  "libc",
  "nix",
  "num_cpus",
