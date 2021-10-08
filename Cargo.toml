@@ -1,5 +1,5 @@
 [workspace]
-members = ["src/experimental"]
+members = ["src/experimental", "src/ipc"]
 
 [profile.release]
 debug=true
