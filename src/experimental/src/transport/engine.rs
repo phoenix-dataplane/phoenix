@@ -1,10 +1,7 @@
 use ipc;
 use ipc::cmd::{Request, Response};
 
-use crate::{
-    engine::{Engine, Version},
-    SchedulingMode,
-};
+use engine::{Engine, SchedulingMode, Upgradable, Version};
 
 pub struct TransportEngine {
     tx: ipc::Sender<Response>,
@@ -22,7 +19,7 @@ impl TransportEngine {
     }
 }
 
-impl Engine for TransportEngine {
+impl Upgradable for TransportEngine {
     fn version(&self) -> Version {
         unimplemented!();
     }
@@ -31,13 +28,8 @@ impl Engine for TransportEngine {
         unimplemented!();
     }
 
-    fn init(&mut self) {
+    fn suspend(&mut self) {
         unimplemented!();
-    }
-
-    fn run(&mut self) {
-        let _x = self.rx.try_recv().unwrap();
-        // handle request
     }
 
     fn dump(&self) {
@@ -48,7 +40,22 @@ impl Engine for TransportEngine {
         unimplemented!();
     }
 
-    fn destroy(&self) {
+    fn resume(&mut self) {
+        unimplemented!();
+    }
+}
+
+impl Engine for TransportEngine {
+    fn init(&mut self) {
+        unimplemented!();
+    }
+
+    fn run(&mut self) {
+        let _x = self.rx.try_recv().unwrap();
+        // handle request
+    }
+
+    fn shutdown(&mut self) {
         unimplemented!();
     }
 

@@ -9,21 +9,10 @@ extern crate log;
 pub mod ringbuffer;
 pub mod shm;
 // pub mod ipc;
-mod shmalloc;
-mod regmr;
 pub mod module;
-pub mod engine;
-pub mod runtime;
+mod regmr;
+mod shmalloc;
 pub mod transport;
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchedulingMode {
-    Dedicate,
-    Spread,
-    Compact,
-}
-
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

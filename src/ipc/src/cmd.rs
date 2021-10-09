@@ -1,10 +1,11 @@
-/// Control path commands.
-use serde::{Serialize, Deserialize};
+//! Control path commands.
+use serde::{Deserialize, Serialize};
 
+use engine::SchedulingMode;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
-    NewClient,
+    NewClient(SchedulingMode),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

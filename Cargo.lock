@@ -215,6 +215,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "crossbeam",
+ "log",
+ "serde",
+ "spin",
+ "thiserror",
+ "version",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -236,6 +248,7 @@ dependencies = [
  "bincode",
  "chrono",
  "crossbeam",
+ "engine",
  "env_logger",
  "flume",
  "ipc",
@@ -370,6 +383,7 @@ name = "ipc"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "engine",
  "ipc-channel",
  "serde",
  "thiserror",
@@ -954,6 +968,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
+name = "utils"
+version = "0.1.0"
+
+[[package]]
 name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -967,6 +985,12 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
+name = "version"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a449064fee414fcc201356a3e6c1510f6c8829ed28bb06b91c54ebe208ce065"
 
 [[package]]
 name = "version_check"

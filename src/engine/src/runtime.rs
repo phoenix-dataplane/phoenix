@@ -1,12 +1,10 @@
 // use std::thread::{self, JoinHandle};
 
-use spin::Mutex;
 use crossbeam::thread::{self, ScopedJoinHandle};
+use spin::Mutex;
 
-use crate::{
-    engine::Engine,
-    set_affinity_for_current,
-};
+use crate::Engine;
+// use utils::set_affinity_for_current;
 
 pub struct EngineRuntime {
     id: usize,

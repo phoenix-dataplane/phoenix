@@ -8,7 +8,7 @@ use experimental::module::Module;
 use experimental::transport::module::TransportModule;
 
 fn main() -> Result<()> {
-    init_env_log("debug");
+    init_env_log("KOALA_LOG", "debug");
 
     // start transport module
 
@@ -24,11 +24,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_env_log(default_level: &str) {
+fn init_env_log(filter_env: &str, default_level: &str) {
     use chrono::Utc;
     use std::io::Write;
 
-    let env = env_logger::Env::new().filter_or("KOALA_LOG", default_level);
+    let env = env_logger::Env::new().filter_or(filter_env, default_level);
     env_logger::Builder::from_env(env)
         .format(|buf, record| {
             let level_style = buf.default_level_style(record.level());

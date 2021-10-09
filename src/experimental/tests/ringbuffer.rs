@@ -2,11 +2,10 @@
 use crossbeam::thread;
 use experimental::ringbuffer::RingBuffer;
 use rand::prelude::*;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{rngs::StdRng, SeedableRng};
 
 const NUM_ITERS: usize = 100_000;
 const SEED: u64 = 999;
-
 
 #[test]
 fn ringbuffer_correctness() {
@@ -34,7 +33,8 @@ fn ringbuffer_correctness() {
 
         sender.join().unwrap();
         receiver.join().unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 /// Test if server will crash when client is crashed.
@@ -63,15 +63,14 @@ fn ringbuffer_fault_isolation1() {
 
         sender.join().unwrap();
         receiver.join().unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 /// Test if the crash of one app can affect other apps.
 #[test]
-fn ringbuffer_fault_isolation2() {
-}
+fn ringbuffer_fault_isolation2() {}
 
 /// Test if an malicious client can take down the server.
 #[test]
-fn ringbuffer_malicious_client() {
-}
+fn ringbuffer_malicious_client() {}

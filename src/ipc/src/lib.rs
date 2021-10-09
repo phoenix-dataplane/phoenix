@@ -1,12 +1,6 @@
 pub use ipc_channel::ipc::{
-    IpcOneShotServer as OneShotServer,
-    channel,
-    IpcSender as Sender,
-    IpcReceiver as Receiver,
-    IpcReceiverSet as ReceiverSet,
-    IpcSharedMemory,
-    IpcError,
-    IpcSelectionResult,
+    channel, IpcError, IpcOneShotServer as OneShotServer, IpcReceiver as Receiver,
+    IpcReceiverSet as ReceiverSet, IpcSelectionResult, IpcSender as Sender, IpcSharedMemory,
     TryRecvError,
 };
 

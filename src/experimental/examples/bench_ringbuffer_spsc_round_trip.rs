@@ -2,8 +2,8 @@ use crossbeam::thread;
 use std::time::Instant;
 use structopt::StructOpt;
 
-use experimental::*;
 use experimental::ringbuffer::RingBuffer;
+use experimental::*;
 
 fn main() {
     let opts = QueueOpt::from_args();

@@ -11,14 +11,13 @@ use ipc;
 use ipc::cmd::{Request, Response};
 
 use crate::module::Module;
-use crate::SchedulingMode;
 use crate::transport::engine::TransportEngine;
+use engine::SchedulingMode;
 
 // TODO(cjr): make this configurable, see koala.toml
 const KOALA_PATH: &'static str = "/tmp/koala/koala-transport.sock";
 
-pub struct TransportModule {
-}
+pub struct TransportModule {}
 
 impl TransportModule {
     pub fn new() -> Self {
@@ -34,7 +33,7 @@ impl TransportModule {
             .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
         let msg: Request = bincode::deserialize(buf).unwrap();
         match msg {
-            Request::NewClient => self.handle_new_client(sock, client_path),
+            Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode),
         }
     }
 
@@ -42,6 +41,7 @@ impl TransportModule {
         &mut self,
         sock: &UnixDatagram,
         client_path: P,
+        mode: SchedulingMode,
     ) -> Result<()> {
         // 1. create an IPC channel with random name
         let (server, server_name) = ipc::OneShotServer::new()?;
@@ -63,7 +63,7 @@ impl TransportModule {
             server.accept()?;
 
         // 4. the transport module is responsible for initializing and starting the transport engines
-        let engine = TransportEngine::new(tx, rx, SchedulingMode::Dedicate);
+        let engine = TransportEngine::new(tx, rx, mode);
         // engine_load_balancer->submit(engine);
         // TODO(cjr): submit the engine to a runtime
 
