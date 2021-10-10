@@ -11,5 +11,5 @@ pub enum Request {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     /// name of the OneShotServer
-    NewClient(String),
+    NewClient(SchedulingMode, String),
 }

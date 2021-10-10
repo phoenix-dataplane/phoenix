@@ -22,7 +22,7 @@ pub trait Upgradable {
     fn resume(&mut self);
 }
 
-pub trait Engine: Upgradable {
+pub trait Engine: Upgradable + Send {
     fn init(&mut self);
     /// `run()` mush be non-blocking and short.
     fn run(&mut self);
