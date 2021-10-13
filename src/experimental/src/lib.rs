@@ -3,11 +3,16 @@
 use std::io;
 use structopt::StructOpt;
 
+#[macro_use]
+extern crate log;
+
 pub mod ringbuffer;
 pub mod shm;
-pub mod ipc;
-mod shmalloc;
+// pub mod ipc;
+pub mod module;
 mod regmr;
+mod shmalloc;
+pub mod transport;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

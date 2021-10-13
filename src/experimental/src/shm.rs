@@ -2,7 +2,7 @@ use std::os::unix::io::RawFd;
 use std::ptr::{self, NonNull};
 
 use nix::fcntl::OFlag;
-use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap, shm_open};
+use nix::sys::mman::{mmap, munmap, shm_open, MapFlags, ProtFlags};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, ftruncate};
 use nix::NixPath;
