@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 pub use version::{version, Version};
 
 pub mod runtime;
+pub mod manager;
+pub(crate) mod lb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SchedulingMode {

@@ -2,6 +2,6 @@
 
 use crate::Engine;
 
-pub trait EngineBalancer {
+pub(crate) trait EngineBalancer {
     fn submit(&self, engine: Box<dyn Engine>);
 }

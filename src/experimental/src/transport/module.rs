@@ -64,8 +64,8 @@ impl TransportModule {
 
         // 4. the transport module is responsible for initializing and starting the transport engines
         let engine = TransportEngine::new(tx, rx, mode);
-        // engine_load_balancer->submit(engine);
         // TODO(cjr): submit the engine to a runtime
+        // engine_load_balancer->submit(engine);
 
         Ok(())
     }
