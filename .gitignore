@@ -50,3 +50,16 @@ Session.vim
 # Added by cargo
 
 /target
+
+# macOS
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two \r
+Icon
+
+
+# Thumbnails
+._*
