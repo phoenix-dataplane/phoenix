@@ -50,9 +50,32 @@ impl Engine for TransportEngine {
         unimplemented!();
     }
 
-    fn run(&mut self) {
-        let _x = self.rx.try_recv().unwrap();
-        // handle request
+    fn run(&mut self) -> bool {
+        match self.rx.try_recv() {
+            // handle request
+            Ok(req) => {
+                match req {
+                    Request::NewClient(..) => unreachable!(),
+                    Request::Hello(number) => {
+                        self.tx.send(Response::HelloBack(number)).unwrap();
+                    }
+                }
+                true
+            }
+            Err(e) if matches!(e, ipc::TryRecvError::Empty) => {
+                // do nothing
+                false
+            }
+            Err(ipc::TryRecvError::IpcError(e)) => {
+                if matches!(e, ipc::IpcError::Disconnected) {
+                    return true;
+                }
+                panic!("recv error: {:?}", e);
+            }
+            Err(e) => {
+                panic!("recv error: {:?}", e);
+            }
+        }
     }
 
     fn shutdown(&mut self) {

@@ -37,6 +37,7 @@ impl TransportModule {
         let msg: Request = bincode::deserialize(buf).unwrap();
         match msg {
             Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode),
+            Request::Hello(_) => unreachable!(""),
         }
     }
 
@@ -89,7 +90,7 @@ impl Module for TransportModule {
         sock.set_write_timeout(Some(Duration::from_millis(1)))
             .expect("set_write_timeout");
 
-        let mut buf = vec![0u8; 65507];
+        let mut buf = vec![0u8; 65536];
         loop {
             match sock.recv_from(buf.as_mut_slice()) {
                 Ok((size, sender)) => {
