@@ -29,8 +29,7 @@ impl Engine for KoalaTransport {
         true
     }
 
-    fn init() {
-    }
+    fn init() {}
 
     fn run() {
         let wr = input_queue.try_pop();
@@ -74,7 +73,8 @@ impl EngineRuntime {
                 engine.run();
             }
             // steal work from other runtimes
-            self.engines.append(&mut self.pending_engines.lock().unwrap());
+            self.engines
+                .append(&mut self.pending_engines.lock().unwrap());
         }
     }
 }

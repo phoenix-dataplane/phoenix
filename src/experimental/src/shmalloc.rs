@@ -1,11 +1,10 @@
+use crate::shm::SharedMemory;
+use slabmalloc::ZoneAllocator;
+use spin::Mutex;
 use std::alloc::Allocator;
 use std::alloc::Layout;
-use spin::Mutex;
-use slabmalloc::ZoneAllocator;
-use crate::shm::SharedMemory;
 
 pub(crate) struct ShmAlloc<'a>(Mutex<ShmAllocInternal<'a>>);
-
 
 /// To use a ZoneAlloactor we require a lower-level allocator
 /// (not provided by this crate) that can supply the allocator
@@ -16,7 +15,7 @@ struct SharedPager {
     /// the name of the backed shared memory
     prefix: String,
     /// allocated shared memory
-    shms: Vec<SharedMemory>
+    shms: Vec<SharedMemory>,
 }
 
 impl SharedPager {
@@ -41,7 +40,6 @@ impl SharedPager {
         Some(ptr)
     }
 }
-
 
 pub struct ShmAllocInternal<'a> {
     slab: ZoneAllocator<'a>,
