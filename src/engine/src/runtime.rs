@@ -25,7 +25,7 @@ unsafe impl Sync for Runtime {}
 
 pub struct Runtime {
     /// engine id
-    pub(crate) id: usize,
+    pub(crate) _id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<Box<dyn Engine>>>,
@@ -37,7 +37,7 @@ pub struct Runtime {
 impl Runtime {
     pub fn new(id: usize) -> Self {
         Runtime {
-            id,
+            _id: id,
             running: RefCell::new(Vec::new()),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),

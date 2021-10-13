@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UnixDatagram};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -12,16 +13,18 @@ use ipc::cmd::{Request, Response};
 
 use crate::module::Module;
 use crate::transport::engine::TransportEngine;
-use engine::SchedulingMode;
+use engine::{manager::RuntimeManager, SchedulingMode};
 
 // TODO(cjr): make this configurable, see koala.toml
 const KOALA_PATH: &'static str = "/tmp/koala/koala-transport.sock";
 
-pub struct TransportModule {}
+pub struct TransportModule {
+    runtime_manager: Arc<RuntimeManager>,
+}
 
 impl TransportModule {
-    pub fn new() -> Self {
-        TransportModule {}
+    pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
+        TransportModule { runtime_manager }
     }
 
     // pub fn with_config() -> Self {
@@ -64,8 +67,8 @@ impl TransportModule {
 
         // 4. the transport module is responsible for initializing and starting the transport engines
         let engine = TransportEngine::new(tx, rx, mode);
-        // TODO(cjr): submit the engine to a runtime
-        // engine_load_balancer->submit(engine);
+        // submit the engine to a runtime
+        self.runtime_manager.submit(Box::new(engine));
 
         Ok(())
     }

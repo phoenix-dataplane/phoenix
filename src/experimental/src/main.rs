@@ -1,20 +1,25 @@
+use std::sync::Arc;
+
 #[macro_use]
 extern crate log;
 use anyhow::Result;
-
 use crossbeam::thread;
 
 use experimental::module::Module;
 use experimental::transport::module::TransportModule;
 
+use engine::manager::RuntimeManager;
+
 fn main() -> Result<()> {
     init_env_log("KOALA_LOG", "debug");
 
-    // start transport module
+    // create runtime manager
+    let runtime_manager = Arc::new(RuntimeManager::new(1));
 
+    // start transport module
     thread::scope(|s| {
         let handle = s.spawn(|_| {
-            TransportModule::new().bootstrap().unwrap();
+            TransportModule::new(runtime_manager).bootstrap().unwrap();
         });
 
         handle.join().unwrap();
