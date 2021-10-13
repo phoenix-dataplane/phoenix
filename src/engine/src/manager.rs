@@ -2,8 +2,8 @@
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
 use std::io;
-use std::thread::{self, JoinHandle};
 use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 use spin::Mutex;
 
