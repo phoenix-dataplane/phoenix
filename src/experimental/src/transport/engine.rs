@@ -59,6 +59,9 @@ impl Engine for TransportEngine {
                     Request::Hello(number) => {
                         self.tx.send(Response::HelloBack(number)).unwrap();
                     }
+                    Request::CreateEp(ai, pd_handle, qp_init_attr) => {
+                        // do something with this
+                    }
                 }
                 true
             }

@@ -6,42 +6,35 @@ use std::path::Path;
 use thiserror::Error;
 use uuid::Uuid;
 
-// use experimental::command::{Command, ControlMessage};
 use engine::SchedulingMode;
 use ipc::{
     self,
     cmd::{Request, Response},
 };
 
+pub mod cm;
+
 const KOALA_TRANSPORT_PATH: &str = "/tmp/koala/koala-transport.sock";
 const MAX_MSG_LEN: usize = 65536;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    // #[error("Failed to bind: {0}")]
-    // UnixDomainBind(io::Error),
-    // #[error("Failed to connect to the control plane: {0}")]
-    // FailedToConnect(io::Error),
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Bincode error: {0}")]
     Bincode(#[from] bincode::Error),
+    #[error("IPC send error: {0}")]
+    IpcSendError(ipc::Error),
+    #[error("IPC recv error")]
+    IpcRecvError(ipc::IpcError),
+    #[error("Internal error: {0}")]
+    InternalError(#[from] interface::Error),
 }
 
 pub struct Context {
     sock: UnixDatagram,
     tx: ipc::Sender<Request>,
     rx: ipc::Receiver<Response>,
-}
-
-pub struct QpAttrMask(u32);
-pub struct QpAttr {}
-
-pub fn query_qp(attr_mask: QpAttrMask) -> Result<QpAttr, Error> {
-    unimplemented!();
-    // shmwq.push(attr_mask);
-    // let ret = shmcq.wait_and_pop(attr_mask);
-    // ret
 }
 
 pub fn koala_register() -> Result<Context, Error> {
