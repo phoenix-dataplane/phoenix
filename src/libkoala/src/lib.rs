@@ -7,7 +7,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use engine::SchedulingMode;
-use ipc::{self, cmd, dp};
+use ipc::{
+    self,
+    cmd::{Request, Response},
+};
 
 pub mod cm;
 
@@ -30,10 +33,8 @@ pub enum Error {
 
 pub struct Context {
     sock: UnixDatagram,
-    cmd_tx: ipc::Sender<cmd::Request>,
-    cmd_rx: ipc::Receiver<cmd::Response>,
-    dp_tx: ipc::Sender<dp::Request>,
-    dp_rx: ipc::Receiver<dp::Response>,
+    tx: ipc::Sender<Request>,
+    rx: ipc::Receiver<Response>,
 }
 
 pub fn koala_register() -> Result<Context, Error> {
@@ -44,37 +45,31 @@ pub fn koala_register() -> Result<Context, Error> {
     let sock = UnixDatagram::bind(sock_path)?;
     sock.connect(KOALA_TRANSPORT_PATH)?;
 
-    let req = cmd::Request::NewClient(SchedulingMode::Dedicate);
+    let req = Request::NewClient(SchedulingMode::Dedicate);
     let buf = bincode::serialize(&req)?;
     assert!(buf.len() < MAX_MSG_LEN);
     sock.send(&buf)?;
 
     let mut buf = vec![0u8; 128];
     sock.recv(buf.as_mut_slice())?;
-    let res: cmd::Response = bincode::deserialize(&buf)?;
+    let res: Response = bincode::deserialize(&buf)?;
 
-    assert!(matches!(res, cmd::Response::NewClient(..)));
+    assert!(matches!(res, Response::NewClient(..)));
 
     match res {
-        cmd::Response::NewClient(mode, server_name) => {
+        Response::NewClient(mode, server_name) => {
             assert_eq!(mode, SchedulingMode::Dedicate);
-            let (cmd_tx1, cmd_rx1): (ipc::Sender<cmd::Request>, ipc::Receiver<cmd::Request>) =
+            let (tx1, rx1): (ipc::Sender<Request>, ipc::Receiver<Request>) =
                 ipc::channel().unwrap();
-            let (cmd_tx2, cmd_rx2): (ipc::Sender<cmd::Response>, ipc::Receiver<cmd::Response>) =
-                ipc::channel().unwrap();
-            let (dp_tx1, dp_rx1): (ipc::Sender<dp::Request>, ipc::Receiver<dp::Request>) =
-                ipc::channel().unwrap();
-            let (dp_tx2, dp_rx2): (ipc::Sender<dp::Response>, ipc::Receiver<dp::Response>) =
+            let (tx2, rx2): (ipc::Sender<Response>, ipc::Receiver<Response>) =
                 ipc::channel().unwrap();
             let tx0 = ipc::Sender::connect(server_name).unwrap();
-            tx0.send((cmd_tx2, cmd_rx1, dp_tx2, dp_rx1)).unwrap();
+            tx0.send((tx2, rx1)).unwrap();
 
             Ok(Context {
                 sock,
-                cmd_tx: cmd_tx1,
-                cmd_rx: cmd_rx2,
-                dp_tx: dp_tx1,
-                dp_rx: dp_rx2,
+                tx: tx1,
+                rx: rx2,
             })
         }
         _ => panic!("unexpected response: {:?}", res),
@@ -88,11 +83,11 @@ mod tests {
     #[test]
     fn pingpong() {
         let ctx = koala_register().unwrap();
-        ctx.cmd_tx.send(cmd::Request::Hello(42)).unwrap();
-        let res = ctx.cmd_rx.recv().unwrap();
+        ctx.tx.send(Request::Hello(42)).unwrap();
+        let res = ctx.rx.recv().unwrap();
 
         match res {
-            cmd::Response::HelloBack(42) => {}
+            Response::HelloBack(42) => {}
             _ => panic!("wrong response"),
         }
     }

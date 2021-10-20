@@ -61,12 +61,7 @@ impl Engine for TransportEngine {
                     }
                     Request::CreateEp(ai, pd_handle, qp_init_attr) => {
                         // do something with this
-                        eprintln!(
-                            "ai: {:?}, pd_handle: {:?}, qp_init_attr: {:?}",
-                            ai, pd_handle, qp_init_attr
-                        );
                     }
-                    _ => panic!(""),
                 }
                 true
             }
