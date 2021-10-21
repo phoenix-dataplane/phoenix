@@ -2,6 +2,7 @@
 use interface::{QpCapability, QpInitAttr, QpType};
 use libkoala::*;
 
+use libc::{AI_ADDRCONFIG, AI_V4MAPPED};
 use dns_lookup::{AddrInfoHints, SockType};
 
 const SERVER_ADDR: &str = "127.0.0.1";
@@ -10,9 +11,11 @@ const SERVER_PORT: u16 = 5000;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = koala_register().expect("register failed");
 
+    let flags = AI_ADDRCONFIG | AI_V4MAPPED;
     let hints = AddrInfoHints {
+        flags,
         socktype: SockType::Stream.into(),
-        ..AddrInfoHints::default()
+        ..Default::default()
     };
     let ai = dns_lookup::getaddrinfo(
         Some(SERVER_ADDR),

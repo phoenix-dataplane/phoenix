@@ -577,6 +577,7 @@ dependencies = [
  "interface",
  "ipc",
  "ipc-channel",
+ "libc",
  "log",
  "serde",
  "thiserror",
