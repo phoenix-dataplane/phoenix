@@ -15,15 +15,19 @@ pub enum Error {
 #[derive(Serialize, Deserialize)]
 pub struct Handle(pub usize);
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct ProtectionDomain(pub Handle);
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct SharedReceiveQueue(pub Handle);
 

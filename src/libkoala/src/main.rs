@@ -1,4 +1,5 @@
 // use ibverbs::ffi::*;
+use interface::{QpCapability, QpInitAttr, QpType};
 use libkoala::*;
 
 use dns_lookup::{AddrInfoHints, SockType};
@@ -19,7 +20,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(hints),
     )
     .expect("getaddrinfo");
-    let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
+
+    let qp_init_attr = QpInitAttr {
+        qp_context: Some(&3),
+        send_cq: None,
+        recv_cq: None,
+        srq: None,
+        cap: QpCapability {
+            max_send_wr: 1024,
+            max_recv_wr: 128,
+            max_send_sge: 1,
+            max_recv_sge: 1,
+            max_inline_data: 128,
+        },
+        qp_type: QpType::RC,
+        sq_sig_all: false,
+    };
+
+    // let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
+    let ep = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
 
     // ibv_context;
     // let hints = rdma_cm_id {
