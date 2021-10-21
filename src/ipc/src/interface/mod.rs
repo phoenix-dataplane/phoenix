@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use interface::*;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct QpInitAttrOwned {
     // no need to serialize qp_context
