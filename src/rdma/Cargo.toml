@@ -1,0 +1,16 @@
+[package]
+name = "rdma"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+bindgen = "0.59.1"
+cc = "1.0.70"
+
+[dependencies]
+thiserror = "1.0.29"
+log = "0.4.14"
+dns-lookup = "1.0.8"
+libc = "0.2.103"

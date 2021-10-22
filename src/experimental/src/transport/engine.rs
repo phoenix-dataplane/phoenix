@@ -69,7 +69,7 @@ impl Engine for TransportEngine {
                 }
                 true
             }
-            Err(e) if matches!(e, ipc::TryRecvError::Empty) => {
+            Err(ipc::TryRecvError::Empty) => {
                 // do nothing
                 false
             }
@@ -77,9 +77,6 @@ impl Engine for TransportEngine {
                 if matches!(e, ipc::IpcError::Disconnected) {
                     return true;
                 }
-                panic!("recv error: {:?}", e);
-            }
-            Err(e) => {
                 panic!("recv error: {:?}", e);
             }
         }
