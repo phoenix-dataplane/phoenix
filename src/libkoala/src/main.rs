@@ -2,8 +2,8 @@
 use interface::{QpCapability, QpInitAttr, QpType};
 use libkoala::*;
 
-use libc::{AI_ADDRCONFIG, AI_V4MAPPED};
 use dns_lookup::{AddrInfoHints, SockType};
+use libc::{AI_ADDRCONFIG, AI_V4MAPPED};
 
 const SERVER_ADDR: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 5000;
@@ -43,6 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
     let ep = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
 
+    let addr = [1, 2, 3, 4, 5];
+    let mr = cm::koala_reg_msgs(&ctx, &ep, &addr);
+
+    
     // ibv_context;
     // let hints = rdma_cm_id {
     //     ai_port_space: RDMA_PS_TCP,

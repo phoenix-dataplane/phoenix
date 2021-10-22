@@ -15,6 +15,7 @@ pub struct QpInitAttrOwned {
     pub sq_sig_all: bool,
 }
 
+
 impl<'ctx, 'send_cq, 'recv_cq, 'srq> FromBorrow<QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq>>
     for QpInitAttrOwned
 {
