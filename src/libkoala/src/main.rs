@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ep = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
 
     let addr = [1, 2, 3, 4, 5];
-    let mr = cm::koala_reg_msgs(&ctx, &ep, &addr);
+    // let mr = cm::koala_reg_msgs(&ctx, &ep, &addr);
 
     
     // ibv_context;

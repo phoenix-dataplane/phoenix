@@ -2,7 +2,7 @@
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{CmId, ConnParamOwned, QpInitAttrOwned};
+use crate::interface::{ConnParamOwned, QpInitAttrOwned};
 use interface::{CmId, Handle, IbvMr};
 
 #[derive(Serialize, Deserialize)]
@@ -15,9 +15,10 @@ pub enum Request {
         Option<Handle>,
         Option<QpInitAttrOwned>,
     ),
-    RegMsgs(CmId, u64, u64),
-    PostRecv(CmId, u64, u64, u64, IbvMr),
-    Connect(ConnParamOwned),
+    RegMsgs(Handle, u64, u64),
+    PostRecv(Handle, u64, u64, u64, IbvMr),
+    PostSend(Handle, u64, u64, u64, IbvMr, i32),
+    Connect(Handle, Option<ConnParamOwned>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,5 +30,7 @@ pub enum Response {
     // handle of cmid
     CreateEp(Result<Handle, interface::Error>), // TODO(lsh): Handle to CmIdOwned
     RegMsgs(Result<Handle, interface::Error>),
-    PostRecv(Result<Ok, interface::Error>),
+    PostRecv(Result<(), interface::Error>),
+    PostSend(Result<(), interface::Error>),
+    Connect(Result<(), interface::Error>),
 }

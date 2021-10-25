@@ -2,9 +2,9 @@ use std::io;
 
 use dns_lookup::AddrInfoIter;
 
-use interface::{CmId, ProtectionDomain, QpInitAttr};
+use interface::*;
 use ipc::cmd::{Request, Response};
-use ipc::interface::{FromBorrow, IbvMr, QpInitAttrOwned};
+use ipc::interface::*;
 
 use crate::{Context, Error};
 
@@ -34,10 +34,10 @@ pub fn koala_create_ep(
 }
 
 pub fn koala_reg_msgs(ctx: &Context, id: &CmId, addr: u64, len: u64) -> Result<IbvMr, Error> {
-    let req = Request::RegMsgs(id, addr, len);
+    let req = Request::RegMsgs(id.0, addr, len);
     ctx.tx.send(req)?;
     match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::RegMsgs(IbvMr(Ok(handle))) => Ok(IbvMr(handle)),
+        Response::RegMsgs(Ok(handle)) => Ok(IbvMr(handle)),
         Response::RegMsgs(Err(e)) => Err(e.into()),
         _ => {
             panic!("");
@@ -46,16 +46,17 @@ pub fn koala_reg_msgs(ctx: &Context, id: &CmId, addr: u64, len: u64) -> Result<I
 }
 
 pub fn koala_post_recv(
+    ctx: &Context,
     id: &CmId,
     context: u64,
     addr: u64,
     len: u64,
     mr: IbvMr,
-) -> Result<Ok, Error> {
-    let req = Request::PostRecv(id, context, addr, len, mr);
+) -> Result<(), Error> {
+    let req = Request::PostRecv(id.0, context, addr, len, mr);
     ctx.tx.send(req)?;
     match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::PostRecv(Ok) => Ok,
+        Response::PostRecv(Ok(())) => Ok(()),
         Response::PostRecv(Err(e)) => Err(e.into()),
         _ => {
             panic!("");
@@ -63,12 +64,39 @@ pub fn koala_post_recv(
     }
 }
 
-pub fn koala_connect(id: &CmId, conn_param: &ConnParam) -> Result<Ok, Error> {
-    let req = Request::Connect(id, context, addr, len, mr);
+pub fn koala_post_send(
+    ctx: &Context,
+    id: &CmId,
+    context: u64,
+    addr: u64,
+    len: u64,
+    mr: IbvMr,
+    flags: i32,
+) -> Result<(), Error> {
+    let req = Request::PostSend(id.0, context, addr, len, mr, flags);
     ctx.tx.send(req)?;
     match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::PostRecv(Ok) => Ok,
-        Response::PostRecv(Err(e)) => Err(e.into()),
+        Response::PostSend(Ok(())) => Ok(()),
+        Response::PostSend(Err(e)) => Err(e.into()),
+        _ => {
+            panic!("");
+        }
+    }
+}
+
+pub fn koala_connect(
+    ctx: &Context,
+    id: &CmId,
+    conn_param: Option<&ConnParam>,
+) -> Result<(), Error> {
+    let req = Request::Connect(
+        id.0,
+        conn_param.map(|param| ConnParamOwned::from_borrow(param)),
+    );
+    ctx.tx.send(req)?;
+    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
+        Response::Connect(Ok(())) => Ok(()),
+        Response::Connect(Err(e)) => Err(e.into()),
         _ => {
             panic!("");
         }

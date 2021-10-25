@@ -66,6 +66,7 @@ impl Engine for TransportEngine {
                             ai, pd_handle, qp_init_attr
                         );
                     }
+                    _ => panic!(""),
                 }
                 true
             }

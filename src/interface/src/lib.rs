@@ -54,13 +54,13 @@ pub struct QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq> {
 #[derive(Serialize, Deserialize)]
 pub struct IbvMr(pub Handle);
 
-struct ConnParam<'priv_data> {
-    private_data: &'priv_data [u8],
-    responder_resources: u8,
-    initiator_depth: u8,
-    flow_control: u8,
-    retry_count: u8,
-    rnr_retry_count: u8,
-    srq: u8,
-    qp_num: u32,
+pub struct ConnParam<'priv_data> {
+    pub private_data: Option<&'priv_data [u8]>,
+    pub responder_resources: u8,
+    pub initiator_depth: u8,
+    pub flow_control: u8,
+    pub retry_count: u8,
+    pub rnr_retry_count: u8,
+    pub srq: u8,
+    pub qp_num: u32,
 }
