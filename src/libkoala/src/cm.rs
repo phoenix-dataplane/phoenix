@@ -8,6 +8,18 @@ use ipc::interface::*;
 
 use crate::{Context, Error};
 
+macro_rules! rx_recv_impl {
+    ($ctx:expr, $resp:path, $inst:ident, $ok_block:block) => {
+        match $ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
+            $resp(Ok($inst)) => $ok_block,
+            $resp(Err(e)) => Err(e.into()),
+            _ => {
+                panic!("");
+            }
+        }
+    };
+}
+
 /// Creates an identifier that is used to track communication information.
 pub fn koala_create_ep(
     ctx: &Context,
@@ -24,25 +36,18 @@ pub fn koala_create_ep(
         qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
     );
     ctx.tx.send(req)?;
-    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::CreateEp(Ok(handle)) => Ok(CmId(handle)),
-        Response::CreateEp(Err(e)) => Err(e.into()),
-        _ => {
-            panic!("");
-        }
-    }
+    rx_recv_impl!(ctx, Response::CreateEp, handle, { Ok(CmId(handle)) })
 }
 
-pub fn koala_reg_msgs(ctx: &Context, id: &CmId, addr: u64, len: u64) -> Result<IbvMr, Error> {
+pub fn koala_reg_msgs(
+    ctx: &Context,
+    id: &CmId,
+    addr: u64,
+    len: u64,
+) -> Result<MemoryRegion, Error> {
     let req = Request::RegMsgs(id.0, addr, len);
     ctx.tx.send(req)?;
-    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::RegMsgs(Ok(handle)) => Ok(IbvMr(handle)),
-        Response::RegMsgs(Err(e)) => Err(e.into()),
-        _ => {
-            panic!("");
-        }
-    }
+    rx_recv_impl!(ctx, Response::RegMsgs, handle, { Ok(MemoryRegion(handle)) })
 }
 
 pub fn koala_post_recv(
@@ -51,17 +56,11 @@ pub fn koala_post_recv(
     context: u64,
     addr: u64,
     len: u64,
-    mr: IbvMr,
+    mr: MemoryRegion,
 ) -> Result<(), Error> {
     let req = Request::PostRecv(id.0, context, addr, len, mr);
     ctx.tx.send(req)?;
-    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::PostRecv(Ok(())) => Ok(()),
-        Response::PostRecv(Err(e)) => Err(e.into()),
-        _ => {
-            panic!("");
-        }
-    }
+    rx_recv_impl!(ctx, Response::PostRecv, x, { Ok(x) })
 }
 
 pub fn koala_post_send(
@@ -70,18 +69,12 @@ pub fn koala_post_send(
     context: u64,
     addr: u64,
     len: u64,
-    mr: IbvMr,
+    mr: MemoryRegion,
     flags: i32,
 ) -> Result<(), Error> {
     let req = Request::PostSend(id.0, context, addr, len, mr, flags);
     ctx.tx.send(req)?;
-    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::PostSend(Ok(())) => Ok(()),
-        Response::PostSend(Err(e)) => Err(e.into()),
-        _ => {
-            panic!("");
-        }
-    }
+    rx_recv_impl!(ctx, Response::PostSend, x, { Ok(x) })
 }
 
 pub fn koala_connect(
@@ -94,11 +87,17 @@ pub fn koala_connect(
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
     ctx.tx.send(req)?;
-    match ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::Connect(Ok(())) => Ok(()),
-        Response::Connect(Err(e)) => Err(e.into()),
-        _ => {
-            panic!("");
-        }
-    }
+    rx_recv_impl!(ctx, Response::Connect, x, { Ok(x) })
+}
+
+pub fn koala_get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
+    let req = Request::GetSendComp(id.0);
+    ctx.tx.send(req)?;
+    rx_recv_impl!(ctx, Response::GetSendComp, wc, { Ok(wc) })
+}
+
+pub fn koala_get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
+    let req = Request::GetRecvComp(id.0);
+    ctx.tx.send(req)?;
+    rx_recv_impl!(ctx, Response::GetRecvComp, wc, { Ok(wc) })
 }

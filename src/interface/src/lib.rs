@@ -52,7 +52,7 @@ pub struct QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq> {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct IbvMr(pub Handle);
+pub struct MemoryRegion(pub Handle);
 
 pub struct ConnParam<'priv_data> {
     pub private_data: Option<&'priv_data [u8]>,
@@ -63,4 +63,53 @@ pub struct ConnParam<'priv_data> {
     pub rnr_retry_count: u8,
     pub srq: u8,
     pub qp_num: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WCStatus {
+    WC_SUCCESS,
+    WC_LOC_LEN_ERR,
+    WC_LOC_QP_OP_ERR,
+    WC_LOC_EEC_OP_ERR,
+    WC_LOC_PROT_ERR,
+    WC_WR_FLUSH_ERR,
+    WC_MW_BIND_ERR,
+    WC_BAD_RESP_ERR,
+    WC_LOC_ACCESS_ERR,
+    WC_REM_INV_REQ_ERR,
+    WC_REM_ACCESS_ERR,
+    WC_REM_OP_ERR,
+    WC_RETRY_EXC_ERR,
+    WC_RNR_RETRY_EXC_ERR,
+    WC_LOC_RDD_VIOL_ERR,
+    WC_REM_INV_RD_REQ_ERR,
+    WC_REM_ABORT_ERR,
+    WC_INV_EECN_ERR,
+    WC_INV_EEC_STATE_ERR,
+    WC_FATAL_ERR,
+    WC_RESP_TIMEOUT_ERR,
+    WC_GENERAL_ERR,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WCOpcode {
+    WC_SEND,
+    WC_RDMA_WRITE,
+    WC_RDMA_READ,
+    WC_COMP_SWAP,
+    WC_FETCH_ADD,
+    WC_BIND_MW,
+    WC_LOCAL_INV,
+    WC_TSO,
+    WC_RECV,
+    WC_RECV_RDMA_WITH_IMM,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkCompletion {
+    pub wr_id: u64,
+    pub status: WCStatus,
+    pub opcode: WCOpcode,
+    pub vendor_err: i32,
+    pub byte_len: i32,
 }
