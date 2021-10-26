@@ -17,5 +17,7 @@
 	--constified-enum-module ibv_wc_opcode \
 	--constified-enum-module ibv_wr_opcode \
 	--constified-enum-module ibv_wc_status \
-	src/rdma_verbs_wrapper.h
+	--constified-enum-module rdma_port_space \
+	--constified-enum-module rdma_cm_event_type \
+	src/rdma_verbs_wrapper.h -- -I/usr/include
 ```

@@ -1,15 +1,36 @@
+use std::ffi::CStr;
+use std::fmt;
 use std::io;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
+use std::os::raw::c_void;
 use std::ptr;
 
 use libc::{AI_ADDRCONFIG, AI_PASSIVE, AI_V4MAPPED};
 use log::{debug, error, info, trace, warn};
 
 use crate::ffi;
+use crate::ibv;
 
 #[derive(Debug)]
 pub struct CmEvent(*mut ffi::rdma_cm_event);
+
+/// All events which are allocated by rdma_get_cm_event must be released, there
+/// should be a one-to-one correspondence  between  successful  gets  and  acks.
+/// This call frees the event structure and any memory that it references.
+impl Drop for CmEvent {
+    fn drop(&mut self) {
+        // ignore the error
+        let _ = unsafe { ffi::rdma_ack_cm_event(self.0) };
+    }
+}
+
+impl fmt::Display for CmEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg = unsafe { CStr::from_ptr(ffi::rdma_event_str((*self.0).event)) };
+        write!(f, "{}", msg.to_string_lossy())
+    }
+}
 
 #[derive(Debug)]
 pub struct EventChannel(*mut ffi::rdma_event_channel);
@@ -60,11 +81,14 @@ impl Drop for CmId {
 }
 
 impl CmId {
-    pub fn create_id() -> io::Result<CmId> {
-        let channel = ptr::null_mut();
+    pub fn create_id(
+        channel: Option<EventChannel>,
+        context: usize,
+        ps: ffi::rdma_port_space::Type,
+    ) -> io::Result<CmId> {
+        let channel = channel.map_or(ptr::null_mut(), |c| c.0);
         let mut cm_id: *mut ffi::rdma_cm_id = ptr::null_mut();
-        let context = ptr::null_mut();
-        let ps = ffi::rdma_port_space_RDMA_PS_TCP;
+        let context = context as *mut c_void;
 
         let rc = unsafe { ffi::rdma_create_id(channel, &mut cm_id as *mut _, context, ps) };
         if rc != 0 {
@@ -89,9 +113,8 @@ impl CmId {
         Ok(())
     }
 
-    pub fn listen(&self) -> io::Result<()> {
+    pub fn listen(&self, backlog: i32) -> io::Result<()> {
         let id = self.0;
-        let backlog = 512;
         let rc = unsafe { ffi::rdma_listen(id, backlog) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
@@ -143,9 +166,8 @@ impl CmId {
         Ok(())
     }
 
-    pub fn resolve_route(&self) -> io::Result<()> {
+    pub fn resolve_route(&self, timeout_ms: i32) -> io::Result<()> {
         let id = self.0;
-        let timeout_ms = 1500;
         let rc = unsafe { ffi::rdma_resolve_route(id, timeout_ms) };
         if rc != 0 {
             return Err(io::Error::last_os_error());

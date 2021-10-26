@@ -31,6 +31,8 @@ fn main() {
         .constified_enum_module("ibv_wc_opcode")
         .constified_enum_module("ibv_wr_opcode")
         .constified_enum_module("ibv_wc_status")
+        .constified_enum_module("rdma_port_space")
+        .constified_enum_module("rdma_cm_event_type")
         .derive_default(true)
         .derive_debug(true)
         .generate()
