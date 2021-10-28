@@ -81,3 +81,7 @@ pub mod ibv;
 /// rdmacm API.
 #[allow(missing_docs)]
 pub mod rdmacm;
+
+/// convert types from and to koala interface.
+#[allow(missing_docs)]
+pub mod convert;

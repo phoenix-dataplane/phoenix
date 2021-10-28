@@ -1,16 +1,107 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::io;
+use std::mem;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::os::raw::c_void;
 use std::ptr;
 
-use libc::{AI_ADDRCONFIG, AI_PASSIVE, AI_V4MAPPED};
-use log::{debug, error, info, trace, warn};
+use log::warn;
 
 use crate::ffi;
-use crate::ibv;
+
+#[derive(Debug, Clone)]
+pub struct AddrInfoHints {
+    pub(crate) flags: i32,
+    pub(crate) family: i32,
+    pub(crate) qp_type: i32,
+    pub(crate) port_space: i32,
+}
+impl AddrInfoHints {
+    pub fn new(
+        flags: Option<i32>,
+        family: Option<i32>,
+        qp_type: Option<i32>,
+        port_space: Option<i32>,
+    ) -> Self {
+        AddrInfoHints {
+            flags: flags.unwrap_or(0),
+            family: family.unwrap_or(0),
+            qp_type: qp_type.unwrap_or(0),
+            port_space: port_space.unwrap_or(0),
+        }
+    }
+
+    pub fn as_addrinfo(&self) -> ffi::rdma_addrinfo {
+        let mut ai: ffi::rdma_addrinfo = unsafe { mem::zeroed() };
+        ai.ai_flags = self.flags;
+        ai.ai_family = self.family;
+        ai.ai_qp_type = self.qp_type;
+        ai.ai_port_space = self.port_space;
+        ai
+    }
+}
+
+#[derive(Debug)]
+pub struct AddrInfo(pub(crate) *mut ffi::rdma_addrinfo);
+
+#[derive(Debug)]
+pub struct AddrInfoIter {
+    orig: *mut ffi::rdma_addrinfo,
+    cur: *mut ffi::rdma_addrinfo,
+}
+
+impl Drop for AddrInfoIter {
+    fn drop(&mut self) {
+        unsafe { ffi::rdma_freeaddrinfo(self.orig) }
+    }
+}
+
+impl Iterator for AddrInfoIter {
+    type Item = AddrInfo;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cur.is_null() {
+            None
+        } else {
+            let ret = AddrInfo(self.cur);
+            self.cur = unsafe { self.cur.as_ref() }?.ai_next;
+            Some(ret)
+        }
+    }
+}
+
+impl AddrInfoIter {
+    pub fn getaddrinfo(
+        node: Option<&str>,
+        service: Option<&str>,
+        hints: Option<&AddrInfoHints>,
+    ) -> io::Result<AddrInfoIter> {
+        let node = node.map_or(ptr::null(), |s| {
+            CString::new(s.to_owned().into_bytes())
+                .unwrap()
+                .as_bytes_with_nul()
+                .as_ptr()
+        });
+        let service = service.map_or(ptr::null(), |s| {
+            CString::new(s.to_owned().into_bytes())
+                .unwrap()
+                .as_bytes_with_nul()
+                .as_ptr()
+        });
+        let hints = hints.map_or(ptr::null(), |h| &h.as_addrinfo() as *const _);
+        let mut res = ptr::null_mut();
+        let rc = unsafe { ffi::rdma_getaddrinfo(node as _, service as _, hints, &mut res) };
+        match rc {
+            0 => Ok(AddrInfoIter {
+                orig: res,
+                cur: res,
+            }),
+            -1 => Err(io::Error::last_os_error()),
+            _ => Err(io::Error::from_raw_os_error(rc)),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct CmEvent(*mut ffi::rdma_cm_event);
@@ -47,7 +138,7 @@ impl EventChannel {
 
     pub fn get_cm_event(&self) -> io::Result<CmEvent> {
         let mut event = ptr::null_mut();
-        let rc = unsafe { ffi::rdma_get_cm_event(self.0, &mut event as *mut _) };
+        let rc = unsafe { ffi::rdma_get_cm_event(self.0, &mut event) };
         if rc != 0 {
             Err(io::Error::last_os_error())
         } else {
@@ -90,7 +181,7 @@ impl CmId {
         let mut cm_id: *mut ffi::rdma_cm_id = ptr::null_mut();
         let context = context as *mut c_void;
 
-        let rc = unsafe { ffi::rdma_create_id(channel, &mut cm_id as *mut _, context, ps) };
+        let rc = unsafe { ffi::rdma_create_id(channel, &mut cm_id, context, ps) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -126,7 +217,7 @@ impl CmId {
     pub fn get_request(&self) -> io::Result<CmId> {
         let id = self.0;
         let mut new_id: *mut ffi::rdma_cm_id = ptr::null_mut();
-        let rc = unsafe { ffi::rdma_get_request(id, &mut new_id as *mut _) };
+        let rc = unsafe { ffi::rdma_get_request(id, &mut new_id) };
         if rc != 0 || new_id.is_null() {
             return Err(io::Error::last_os_error());
         }
@@ -142,7 +233,7 @@ impl CmId {
             rnr_retry_count: 0,
             ..Default::default()
         };
-        let rc = unsafe { ffi::rdma_accept(id, conn_param as *mut ffi::rdma_conn_param) };
+        let rc = unsafe { ffi::rdma_accept(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -193,7 +284,7 @@ impl CmId {
             sq_sig_all: 0,
             ..Default::default()
         };
-        let rc = unsafe { ffi::rdma_create_qp(id, pd, qp_init_attr as *mut ffi::ibv_qp_init_attr) };
+        let rc = unsafe { ffi::rdma_create_qp(id, pd, qp_init_attr) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -207,7 +298,7 @@ impl CmId {
             rnr_retry_count: 0,
             ..Default::default()
         };
-        let rc = unsafe { ffi::rdma_connect(id, conn_param as *mut ffi::rdma_conn_param) };
+        let rc = unsafe { ffi::rdma_connect(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }

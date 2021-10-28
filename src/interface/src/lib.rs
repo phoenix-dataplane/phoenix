@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod addrinfo;
-pub use addrinfo::AddrInfo;
 
 #[derive(Debug, Error, Serialize, Deserialize)]
 pub enum Error {
     #[error("rdmacm internal error: {0}")]
     RdmaCm(i32),
+    #[error("getaddrinfo error: {0}")]
+    GetAddrInfo(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,9 +32,12 @@ pub struct ProtectionDomain(pub Handle);
 #[derive(Serialize, Deserialize)]
 pub struct SharedReceiveQueue(pub Handle);
 
+/// The type of QP used for communciation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QpType {
+    // reliable connection
     RC,
+    // unreliable datagram
     UD,
 }
 

@@ -14,3 +14,9 @@ thiserror = "1.0.29"
 log = "0.4.14"
 dns-lookup = "1.0.8"
 libc = "0.2.103"
+interface = { path = "../interface", optional = true }
+static_assertions = "1.1.0"
+socket2 = { version = "0.4.2", optional = true }
+
+[features]
+convert = ["interface", "socket2"]

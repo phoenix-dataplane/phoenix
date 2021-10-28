@@ -1,9 +1,8 @@
-// use ibverbs::ffi::*;
-use interface::{QpCapability, QpInitAttr, QpType};
-use libkoala::*;
-
-use libc::{AI_ADDRCONFIG, AI_V4MAPPED};
-use dns_lookup::{AddrInfoHints, SockType};
+use interface::{
+    addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace},
+    QpCapability, QpInitAttr, QpType,
+};
+use libkoala::{cm, koala_register};
 
 const SERVER_ADDR: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 5000;
@@ -11,16 +10,18 @@ const SERVER_PORT: u16 = 5000;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = koala_register().expect("register failed");
 
-    let flags = AI_ADDRCONFIG | AI_V4MAPPED;
-    let hints = AddrInfoHints {
-        flags,
-        socktype: SockType::Stream.into(),
-        ..Default::default()
-    };
-    let ai = dns_lookup::getaddrinfo(
-        Some(SERVER_ADDR),
+    let hints = AddrInfoHints::new(
+        AddrInfoFlags::default(),
+        Some(AddrFamily::Inet),
+        QpType::RC,
+        PortSpace::TCP,
+    );
+
+    let ai = cm::getaddrinfo(
+        &ctx,
+        Some(&SERVER_ADDR),
         Some(&SERVER_PORT.to_string()),
-        Some(hints),
+        Some(&hints),
     )
     .expect("getaddrinfo");
 
@@ -41,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
-    let ep = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
+    let ep = cm::koala_create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
 
     // ibv_context;
     // let hints = rdma_cm_id {
