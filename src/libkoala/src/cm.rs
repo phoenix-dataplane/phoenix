@@ -3,8 +3,8 @@ use std::io;
 use dns_lookup::AddrInfoIter;
 
 use interface::*;
-use ipc::cmd::{Request, Response};
 use ipc::interface::*;
+use ipc::{cmd, dp};
 
 use crate::{Context, Error};
 
@@ -30,13 +30,13 @@ pub fn koala_create_ep(
     let ai_vec = ai
         .map(|a| a.map(interface::AddrInfo::from))
         .collect::<io::Result<Vec<_>>>()?;
-    let req = Request::CreateEp(
+    let req = cmd::Request::CreateEp(
         ai_vec,
         pd.map(|pd| pd.0),
         qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
     );
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::CreateEp, handle, { Ok(CmId(handle)) })
+    rx_recv_impl!(ctx, cmd::Response::CreateEp, handle, { Ok(CmId(handle)) })
 }
 
 pub fn koala_reg_msgs(
@@ -45,9 +45,9 @@ pub fn koala_reg_msgs(
     addr: u64,
     len: u64,
 ) -> Result<MemoryRegion, Error> {
-    let req = Request::RegMsgs(id.0, addr, len);
+    let req = cmd::Request::RegMsgs(id.0, addr, len);
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::RegMsgs, handle, { Ok(MemoryRegion(handle)) })
+    rx_recv_impl!(ctx, cmd::Response::RegMsgs, handle, { Ok(MemoryRegion(handle)) })
 }
 
 pub fn koala_post_recv(
@@ -58,9 +58,9 @@ pub fn koala_post_recv(
     len: u64,
     mr: MemoryRegion,
 ) -> Result<(), Error> {
-    let req = Request::PostRecv(id.0, context, addr, len, mr);
+    let req = dp::Request::PostRecv(id.0, context, addr, len, mr);
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::PostRecv, x, { Ok(x) })
+    rx_recv_impl!(ctx, dp::Response::PostRecv, x, { Ok(x) })
 }
 
 pub fn koala_post_send(
@@ -72,9 +72,9 @@ pub fn koala_post_send(
     mr: MemoryRegion,
     flags: i32,
 ) -> Result<(), Error> {
-    let req = Request::PostSend(id.0, context, addr, len, mr, flags);
+    let req = dp::Request::PostSend(id.0, context, addr, len, mr, flags);
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::PostSend, x, { Ok(x) })
+    rx_recv_impl!(ctx, dp::Response::PostSend, x, { Ok(x) })
 }
 
 pub fn koala_connect(
@@ -82,22 +82,22 @@ pub fn koala_connect(
     id: &CmId,
     conn_param: Option<&ConnParam>,
 ) -> Result<(), Error> {
-    let req = Request::Connect(
+    let req = dp::Request::Connect(
         id.0,
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::Connect, x, { Ok(x) })
+    rx_recv_impl!(ctx, dp::Response::Connect, x, { Ok(x) })
 }
 
 pub fn koala_get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = Request::GetSendComp(id.0);
+    let req = dp::Request::GetSendComp(id.0);
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::GetSendComp, wc, { Ok(wc) })
+    rx_recv_impl!(ctx, dp::Response::GetSendComp, wc, { Ok(wc) })
 }
 
 pub fn koala_get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = Request::GetRecvComp(id.0);
+    let req = dp::Request::GetRecvComp(id.0);
     ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, Response::GetRecvComp, wc, { Ok(wc) })
+    rx_recv_impl!(ctx, dp::Response::GetRecvComp, wc, { Ok(wc) })
 }
