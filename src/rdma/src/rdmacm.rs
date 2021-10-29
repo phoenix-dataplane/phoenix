@@ -77,21 +77,14 @@ impl AddrInfoIter {
         service: Option<&str>,
         hints: Option<&AddrInfoHints>,
     ) -> io::Result<AddrInfoIter> {
-        let node = node.map_or(ptr::null(), |s| {
-            CString::new(s.to_owned().into_bytes())
-                .unwrap()
-                .as_bytes_with_nul()
-                .as_ptr()
-        });
-        let service = service.map_or(ptr::null(), |s| {
-            CString::new(s.to_owned().into_bytes())
-                .unwrap()
-                .as_bytes_with_nul()
-                .as_ptr()
-        });
-        let hints = hints.map_or(ptr::null(), |h| &h.as_addrinfo() as *const _);
+        let node = node.map(|s| CString::new(s).unwrap());
+        let c_node = node.as_ref().map_or(ptr::null(), |s| s.as_ptr());
+        let service = service.map(|s| CString::new(s).unwrap());
+        let c_service = service.as_ref().map_or(ptr::null(), |s| s.as_ptr());
+        let hints = hints.map(|h| h.as_addrinfo());
+        let c_hints = hints.as_ref().map_or(ptr::null(), |h| h as *const _);
         let mut res = ptr::null_mut();
-        let rc = unsafe { ffi::rdma_getaddrinfo(node as _, service as _, hints, &mut res) };
+        let rc = unsafe { ffi::rdma_getaddrinfo(c_node, c_service, c_hints, &mut res) };
         match rc {
             0 => Ok(AddrInfoIter {
                 orig: res,

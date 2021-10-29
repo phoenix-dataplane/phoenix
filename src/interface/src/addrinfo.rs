@@ -83,11 +83,11 @@ pub struct AddrInfo {
     /// Port space in use.
     pub port_space: PortSpace,
     /// The address for the local device.
-    pub src_addr: SocketAddr,
+    pub src_addr: Option<SocketAddr>,
     /// The canonical for the source.
     pub src_canonname: Option<String>,
     /// The address for the destination device.
-    pub dst_addr: SocketAddr,
+    pub dst_addr: Option<SocketAddr>,
     /// The canonical for the destination.
     pub dst_canonname: Option<String>,
 }

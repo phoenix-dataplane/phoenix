@@ -25,6 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .expect("getaddrinfo");
 
+    println!("ai: {:?}", ai);
+
     let qp_init_attr = QpInitAttr {
         qp_context: Some(&3),
         send_cq: None,

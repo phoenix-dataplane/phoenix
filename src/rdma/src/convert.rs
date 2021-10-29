@@ -127,9 +127,9 @@ impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
             family,
             qp_type,
             port_space,
-            src_addr: construct_socket_from_raw(ai.ai_src_addr, ai.ai_src_len).unwrap(),
+            src_addr: construct_socket_from_raw(ai.ai_src_addr, ai.ai_src_len).ok(),
             src_canonname: from_c_str(ai.ai_src_canonname),
-            dst_addr: construct_socket_from_raw(ai.ai_dst_addr, ai.ai_dst_len).unwrap(),
+            dst_addr: construct_socket_from_raw(ai.ai_dst_addr, ai.ai_dst_len).ok(),
             dst_canonname: from_c_str(ai.ai_dst_canonname),
         }
     }
