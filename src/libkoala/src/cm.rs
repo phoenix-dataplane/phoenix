@@ -9,8 +9,8 @@ use ipc::{cmd, dp};
 use crate::{Context, Error};
 
 macro_rules! rx_recv_impl {
-    ($ctx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $ctx.rx.recv().map_err(|e| Error::IpcRecvError(e))? {
+    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))? {
             $resp(Ok($inst)) => $ok_block,
             $resp(Err(e)) => Err(e.into()),
             _ => {
@@ -36,7 +36,9 @@ pub fn koala_create_ep(
         qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
     );
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx, cmd::Response::CreateEp, handle, { Ok(CmId(handle)) })
+    rx_recv_impl!(ctx.cmd_rx, cmd::Response::CreateEp, handle, {
+        Ok(CmId(handle))
+    })
 }
 
 pub fn koala_reg_msgs(
@@ -47,7 +49,7 @@ pub fn koala_reg_msgs(
 ) -> Result<MemoryRegion, Error> {
     let req = cmd::Request::RegMsgs(id.0, addr, len);
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx, cmd::Response::RegMsgs, handle, {
+    rx_recv_impl!(ctx.cmd_rx, cmd::Response::RegMsgs, handle, {
         Ok(MemoryRegion(handle))
     })
 }
@@ -62,7 +64,7 @@ pub fn koala_post_recv(
 ) -> Result<(), Error> {
     let req = dp::Request::PostRecv(id.0, context, addr, len, mr);
     ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx, dp::Response::PostRecv, x, { Ok(x) })
+    rx_recv_impl!(ctx.dp_rx, dp::Response::PostRecv, x, { Ok(x) })
 }
 
 pub fn koala_post_send(
@@ -76,7 +78,7 @@ pub fn koala_post_send(
 ) -> Result<(), Error> {
     let req = dp::Request::PostSend(id.0, context, addr, len, mr, flags);
     ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx, dp::Response::PostSend, x, { Ok(x) })
+    rx_recv_impl!(ctx.dp_rx, dp::Response::PostSend, x, { Ok(x) })
 }
 
 pub fn koala_connect(
@@ -89,17 +91,17 @@ pub fn koala_connect(
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
     ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx, dp::Response::Connect, x, { Ok(x) })
+    rx_recv_impl!(ctx.dp_rx, dp::Response::Connect, x, { Ok(x) })
 }
 
 pub fn koala_get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
     let req = dp::Request::GetSendComp(id.0);
     ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx, dp::Response::GetSendComp, wc, { Ok(wc) })
+    rx_recv_impl!(ctx.dp_rx, dp::Response::GetSendComp, wc, { Ok(wc) })
 }
 
 pub fn koala_get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
     let req = dp::Request::GetRecvComp(id.0);
     ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx, dp::Response::GetRecvComp, wc, { Ok(wc) })
+    rx_recv_impl!(ctx.dp_rx, dp::Response::GetRecvComp, wc, { Ok(wc) })
 }

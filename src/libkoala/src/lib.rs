@@ -44,19 +44,19 @@ pub fn koala_register() -> Result<Context, Error> {
     let sock = UnixDatagram::bind(sock_path)?;
     sock.connect(KOALA_TRANSPORT_PATH)?;
 
-    let req = Request::NewClient(SchedulingMode::Dedicate);
+    let req = cmd::Request::NewClient(SchedulingMode::Dedicate);
     let buf = bincode::serialize(&req)?;
     assert!(buf.len() < MAX_MSG_LEN);
     sock.send(&buf)?;
 
     let mut buf = vec![0u8; 128];
     sock.recv(buf.as_mut_slice())?;
-    let res: Response = bincode::deserialize(&buf)?;
+    let res: cmd::Response = bincode::deserialize(&buf)?;
 
-    assert!(matches!(res, Response::NewClient(..)));
+    assert!(matches!(res, cmd::Response::NewClient(..)));
 
     match res {
-        Response::NewClient(mode, server_name) => {
+        cmd::Response::NewClient(mode, server_name) => {
             assert_eq!(mode, SchedulingMode::Dedicate);
             let (cmd_tx1, cmd_rx1): (ipc::Sender<cmd::Request>, ipc::Receiver<cmd::Request>) =
                 ipc::channel().unwrap();
@@ -67,7 +67,7 @@ pub fn koala_register() -> Result<Context, Error> {
             let (dp_tx2, dp_rx2): (ipc::Sender<dp::Response>, ipc::Receiver<dp::Response>) =
                 ipc::channel().unwrap();
             let tx0 = ipc::Sender::connect(server_name).unwrap();
-            tx0.send((cmd_tx2, cmd_rx1, dp_tx2, dp_tx1)).unwrap();
+            tx0.send((cmd_tx2, cmd_rx1, dp_tx2, dp_rx1)).unwrap();
 
             Ok(Context {
                 sock,
@@ -88,11 +88,11 @@ mod tests {
     #[test]
     fn pingpong() {
         let ctx = koala_register().unwrap();
-        ctx.tx.send(Request::Hello(42)).unwrap();
-        let res = ctx.rx.recv().unwrap();
+        ctx.cmd_tx.send(cmd::Request::Hello(42)).unwrap();
+        let res = ctx.cmd_rx.recv().unwrap();
 
         match res {
-            Response::HelloBack(42) => {}
+            cmd::Response::HelloBack(42) => {}
             _ => panic!("wrong response"),
         }
     }
