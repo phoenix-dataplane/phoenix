@@ -16,11 +16,6 @@ pub enum Request {
         Option<QpInitAttrOwned>,
     ),
     RegMsgs(Handle, u64, u64),
-    PostRecv(Handle, u64, u64, u64, MemoryRegion),
-    PostSend(Handle, u64, u64, u64, MemoryRegion, i32),
-    Connect(Handle, Option<ConnParamOwned>),
-    GetSendComp(Handle),
-    GetRecvComp(Handle),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,9 +27,4 @@ pub enum Response {
     // handle of cmid
     CreateEp(Result<Handle, interface::Error>), // TODO(lsh): Handle to CmIdOwned
     RegMsgs(Result<Handle, interface::Error>),
-    PostRecv(Result<(), interface::Error>),
-    PostSend(Result<(), interface::Error>),
-    Connect(Result<(), interface::Error>),
-    GetSendComp(Result<WorkCompletion,interface::Error>),
-    GetRecvComp(Result<WorkCompletion,interface::Error>),
 }

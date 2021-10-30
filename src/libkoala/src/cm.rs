@@ -35,7 +35,7 @@ pub fn koala_create_ep(
         pd.map(|pd| pd.0),
         qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
     );
-    ctx.tx.send(req)?;
+    ctx.cmd_tx.send(req)?;
     rx_recv_impl!(ctx, cmd::Response::CreateEp, handle, { Ok(CmId(handle)) })
 }
 
@@ -46,8 +46,10 @@ pub fn koala_reg_msgs(
     len: u64,
 ) -> Result<MemoryRegion, Error> {
     let req = cmd::Request::RegMsgs(id.0, addr, len);
-    ctx.tx.send(req)?;
-    rx_recv_impl!(ctx, cmd::Response::RegMsgs, handle, { Ok(MemoryRegion(handle)) })
+    ctx.cmd_tx.send(req)?;
+    rx_recv_impl!(ctx, cmd::Response::RegMsgs, handle, {
+        Ok(MemoryRegion(handle))
+    })
 }
 
 pub fn koala_post_recv(
@@ -59,7 +61,7 @@ pub fn koala_post_recv(
     mr: MemoryRegion,
 ) -> Result<(), Error> {
     let req = dp::Request::PostRecv(id.0, context, addr, len, mr);
-    ctx.tx.send(req)?;
+    ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx, dp::Response::PostRecv, x, { Ok(x) })
 }
 
@@ -73,7 +75,7 @@ pub fn koala_post_send(
     flags: i32,
 ) -> Result<(), Error> {
     let req = dp::Request::PostSend(id.0, context, addr, len, mr, flags);
-    ctx.tx.send(req)?;
+    ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx, dp::Response::PostSend, x, { Ok(x) })
 }
 
@@ -86,18 +88,18 @@ pub fn koala_connect(
         id.0,
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
-    ctx.tx.send(req)?;
+    ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx, dp::Response::Connect, x, { Ok(x) })
 }
 
 pub fn koala_get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
     let req = dp::Request::GetSendComp(id.0);
-    ctx.tx.send(req)?;
+    ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx, dp::Response::GetSendComp, wc, { Ok(wc) })
 }
 
 pub fn koala_get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
     let req = dp::Request::GetRecvComp(id.0);
-    ctx.tx.send(req)?;
+    ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx, dp::Response::GetRecvComp, wc, { Ok(wc) })
 }

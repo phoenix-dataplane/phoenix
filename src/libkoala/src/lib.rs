@@ -7,10 +7,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use engine::SchedulingMode;
-use ipc::{
-    self,
-    cmd::{Request, Response},
-};
+use ipc::{self, cmd, dp};
 
 pub mod cm;
 
@@ -33,8 +30,10 @@ pub enum Error {
 
 pub struct Context {
     sock: UnixDatagram,
-    tx: ipc::Sender<Request>,
-    rx: ipc::Receiver<Response>,
+    cmd_tx: ipc::Sender<cmd::Request>,
+    cmd_rx: ipc::Receiver<cmd::Response>,
+    dp_tx: ipc::Sender<dp::Request>,
+    dp_rx: ipc::Receiver<dp::Response>,
 }
 
 pub fn koala_register() -> Result<Context, Error> {
@@ -59,17 +58,23 @@ pub fn koala_register() -> Result<Context, Error> {
     match res {
         Response::NewClient(mode, server_name) => {
             assert_eq!(mode, SchedulingMode::Dedicate);
-            let (tx1, rx1): (ipc::Sender<Request>, ipc::Receiver<Request>) =
+            let (cmd_tx1, cmd_rx1): (ipc::Sender<cmd::Request>, ipc::Receiver<cmd::Request>) =
                 ipc::channel().unwrap();
-            let (tx2, rx2): (ipc::Sender<Response>, ipc::Receiver<Response>) =
+            let (cmd_tx2, cmd_rx2): (ipc::Sender<cmd::Response>, ipc::Receiver<cmd::Response>) =
+                ipc::channel().unwrap();
+            let (dp_tx1, dp_rx1): (ipc::Sender<dp::Request>, ipc::Receiver<dp::Request>) =
+                ipc::channel().unwrap();
+            let (dp_tx2, dp_rx2): (ipc::Sender<dp::Response>, ipc::Receiver<dp::Response>) =
                 ipc::channel().unwrap();
             let tx0 = ipc::Sender::connect(server_name).unwrap();
-            tx0.send((tx2, rx1)).unwrap();
+            tx0.send((cmd_tx2, cmd_rx1, dp_tx2, dp_tx1)).unwrap();
 
             Ok(Context {
                 sock,
-                tx: tx1,
-                rx: rx2,
+                cmd_tx: cmd_tx1,
+                cmd_rx: cmd_rx2,
+                dp_tx: dp_tx1,
+                dp_rx: dp_rx2,
             })
         }
         _ => panic!("unexpected response: {:?}", res),
