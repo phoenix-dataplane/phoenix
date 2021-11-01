@@ -37,7 +37,7 @@ impl TransportModule {
         let msg: Request = bincode::deserialize(buf).unwrap();
         match msg {
             Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode),
-            Request::Hello(_) => unreachable!(""),
+            _ => unreachable!(""),
         }
     }
 
