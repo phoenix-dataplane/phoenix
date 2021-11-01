@@ -134,7 +134,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
                             attr.to_ibv_qp_init_attr()
                         });
 
-                        let ret = match CmId::create_ep(ai.into(), pd, qp_init_attr.as_ref()) {
+                        let ret = match CmId::create_ep(&ai.into(), pd, qp_init_attr.as_ref()) {
                             Ok(cmid) => {
                                 let cmid_handle = self.resource.allocate_handle();
                                 self.resource

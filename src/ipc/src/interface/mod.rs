@@ -20,10 +20,10 @@ pub struct QpInitAttrOwned {
     pub sq_sig_all: bool,
 }
 
-impl<'ctx, 'send_cq, 'recv_cq, 'srq> FromBorrow<QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq>>
+impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
     for QpInitAttrOwned
 {
-    fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq>>>(borrow: &T) -> Self {
+    fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
         QpInitAttrOwned {
             send_cq: b.send_cq.map(|x| CompletionQueue(x.0)),

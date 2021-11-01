@@ -5,7 +5,7 @@ use ipc::interface::{FromBorrow, QpInitAttrOwned};
 use crate::{Context, Error};
 
 /// Creates an identifier that is used to track communication information.
-pub fn koala_create_ep(
+pub fn create_ep(
     ctx: &Context,
     ai: &AddrInfo,
     pd: Option<&ProtectionDomain>,

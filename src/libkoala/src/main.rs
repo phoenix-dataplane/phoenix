@@ -43,8 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    // let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
-    let ep = cm::koala_create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
+    // let ep = cm::create_ep(&ctx, ai, None, None)?;
+    let ep = cm::create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
+
+    println!("ep: {:?}", ep);
 
     // ibv_context;
     // let hints = rdma_cm_id {

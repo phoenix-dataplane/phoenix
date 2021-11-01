@@ -74,7 +74,15 @@ unsafe fn sockaddr_from_raw(
         std::ptr::copy_nonoverlapping(addr as *const u8, storage as *mut u8, socklen as usize);
         Ok(())
     })?;
-    Ok(sockaddr)
+
+    if sockaddr.as_socket().is_none() {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Found unknown address family: {}", sockaddr.family()),
+        ))
+    } else {
+        Ok(sockaddr)
+    }
 }
 
 /// Safety: null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
@@ -127,7 +135,7 @@ impl AddrInfo {
         let ai_route =
             slice::from_raw_parts(a.ai_route as *const u8, a.ai_route_len as usize).to_vec();
         let ai_connect =
-            slice::from_raw_parts(a.ai_route as *const u8, a.ai_route_len as usize).to_vec();
+            slice::from_raw_parts(a.ai_connect as *const u8, a.ai_connect_len as usize).to_vec();
         Ok(AddrInfo {
             ai_flags: a.ai_flags,
             ai_family: a.ai_family,
@@ -167,9 +175,17 @@ impl AddrInfo {
             .as_ref()
             .map_or(ptr::null_mut(), |s| s.as_ptr() as _);
         ai.ai_route_len = self.ai_route.len() as _;
-        ai.ai_route = self.ai_route.as_ptr() as _;
+        ai.ai_route = if self.ai_route.is_empty() {
+            ptr::null_mut()
+        } else {
+            self.ai_route.as_ptr() as _
+        };
         ai.ai_connect_len = self.ai_connect.len() as _;
-        ai.ai_connect = self.ai_connect.as_ptr() as _;
+        ai.ai_route = if self.ai_connect.is_empty() {
+            ptr::null_mut()
+        } else {
+            self.ai_connect.as_ptr() as _
+        };
         ai.ai_next = ptr::null_mut();
         AddrInfoTransparent {
             inner: ai,
@@ -205,7 +221,13 @@ pub struct CmEvent(*mut ffi::rdma_cm_event);
 impl Drop for CmEvent {
     fn drop(&mut self) {
         // ignore the error
-        let _ = unsafe { ffi::rdma_ack_cm_event(self.0) };
+        let rc = unsafe { ffi::rdma_ack_cm_event(self.0) };
+        if rc != 0 {
+            warn!(
+                "error occured ack_cm_event: {:?}",
+                io::Error::last_os_error()
+            );
+        }
     }
 }
 
@@ -269,7 +291,7 @@ impl Drop for CmId {
 
 impl CmId {
     pub fn create_ep<'ctx>(
-        ai: AddrInfo,
+        ai: &AddrInfo,
         pd: Option<&ibv::ProtectionDomain<'ctx>>,
         qp_init_attr: Option<&ffi::ibv_qp_init_attr>,
     ) -> io::Result<CmId> {
