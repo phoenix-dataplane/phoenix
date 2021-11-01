@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, ops::Range};
 
 use dns_lookup::AddrInfoIter;
 
@@ -18,6 +18,13 @@ macro_rules! rx_recv_impl {
             }
         }
     };
+}
+
+fn range_ptr_to_u64<T>(range: &Range<*const T>) -> Range<u64> {
+    Range {
+        start: range.start as u64,
+        end: range.end as u64,
+    }
 }
 
 /// Creates an identifier that is used to track communication information.
@@ -41,42 +48,39 @@ pub fn koala_create_ep(
     })
 }
 
-pub fn koala_reg_msgs(
+pub fn koala_reg_msgs<T>(
     ctx: &Context,
     id: &CmId,
-    addr: u64,
-    len: u64,
+    range: &Range<*const T>,
 ) -> Result<MemoryRegion, Error> {
-    let req = cmd::Request::RegMsgs(id.0, addr, len);
+    let req = cmd::Request::RegMsgs(id.0, range_ptr_to_u64(range));
     ctx.cmd_tx.send(req)?;
     rx_recv_impl!(ctx.cmd_rx, cmd::Response::RegMsgs, handle, {
         Ok(MemoryRegion(handle))
     })
 }
 
-pub fn koala_post_recv(
+pub fn koala_post_recv<T>(
     ctx: &Context,
     id: &CmId,
     context: u64,
-    addr: u64,
-    len: u64,
-    mr: MemoryRegion,
+    range: &Range<*const T>,
+    mr: &MemoryRegion,
 ) -> Result<(), Error> {
-    let req = dp::Request::PostRecv(id.0, context, addr, len, mr);
+    let req = dp::Request::PostRecv(id.0, context, range_ptr_to_u64(range), mr.0);
     ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx.dp_rx, dp::Response::PostRecv, x, { Ok(x) })
 }
 
-pub fn koala_post_send(
+pub fn koala_post_send<T>(
     ctx: &Context,
     id: &CmId,
     context: u64,
-    addr: u64,
-    len: u64,
-    mr: MemoryRegion,
+    range: &Range<*const T>,
+    mr: &MemoryRegion,
     flags: i32,
 ) -> Result<(), Error> {
-    let req = dp::Request::PostSend(id.0, context, addr, len, mr, flags);
+    let req = dp::Request::PostSend(id.0, context, range_ptr_to_u64(range), mr.0, flags);
     ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx.dp_rx, dp::Response::PostSend, x, { Ok(x) })
 }

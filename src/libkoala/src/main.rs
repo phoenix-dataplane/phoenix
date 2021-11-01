@@ -1,4 +1,3 @@
-// use ibverbs::ffi::*;
 use interface::{QpCapability, QpInitAttr, QpType};
 use libkoala::*;
 
@@ -9,7 +8,7 @@ const SERVER_ADDR: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = koala_register().expect("register failed");
+    let ctx = koala_register().expect("register failed!");
 
     let flags = AI_ADDRCONFIG | AI_V4MAPPED;
     let hints = AddrInfoHints {
@@ -40,36 +39,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    // let ep = cm::koala_create_ep(&ctx, ai, None, None)?;
-    let ep = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
+    let id = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
 
-    let addr = [1, 2, 3, 4, 5];
-    // let mr = cm::koala_reg_msgs(&ctx, &ep, &addr);
+    let recv_msg = [0; 4096];
+    let mr = cm::koala_reg_msgs(&ctx, &id, &recv_msg.as_ptr_range())
+        .expect("Memory registration failed!");
 
-    
-    // ibv_context;
-    // let hints = rdma_cm_id {
-    //     ai_port_space: RDMA_PS_TCP,
-    // };
-    // let addr = rdma_getaddrinfo(server, port, &hints).expect("getaddrinfo failed");
+    cm::koala_post_recv(&ctx, &id, 0, &recv_msg.as_ptr_range(), &mr).expect("Post recv failed!");
 
-    // let attr = ibv_qp_init_attr::new();
-    // attr.cap.max_send_wr = 1;
-    // attr.cap.max_recv_wr = 1;
-    // attr.cap.max_send_sge = 1;
-    // attr.cap.max_recv_sge = 1;
-    // attr.cap.max_inline_data = 16;
-    // attr.qp_context = id; //???
-    // attr.sq_sig_all = 1;
+    cm::koala_connect(&ctx, &id, None).expect("Connect failed!");
 
-    // let id = rdma_create_ep(addr, None, attr);
-    // let recv_mr = rdma_reg_msgs(id, recv_msg).expect("register memory failed");
-    // let send_mr = rdma_reg_msgs(id, send_msg).expect("register memory failed");
-    // rdma_connect(id, None).expect("rdma connect failed");
-    // let send_flags = i32;
-    // rdma_post_send(id, None, send_msg, send_mr, send_flags).expect("rdma post send failed");
-    // rdma_get_send_comp().expect("rdma get send comp failed");
-    // rdma_get_recv_comp().expect("rdma get recv comp failed");
+    let send_flags = 0;
+    let send_msg = "Hello koala end!";
+    cm::koala_post_send(
+        &ctx,
+        &id,
+        0,
+        &send_msg.as_bytes().as_ptr_range(),
+        &mr,
+        send_flags,
+    )
+    .expect("Connect failed!");
+
+    let wc_send = cm::koala_get_send_comp(&ctx, &id).expect("Get send comp failed!");
+    let wc_recv = cm::koala_get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
 
     Ok(())
 }

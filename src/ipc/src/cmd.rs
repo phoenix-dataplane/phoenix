@@ -1,6 +1,7 @@
 //! Control path commands.
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 use crate::interface::*;
 use interface::*;
@@ -15,7 +16,7 @@ pub enum Request {
         Option<Handle>,
         Option<QpInitAttrOwned>,
     ),
-    RegMsgs(Handle, u64, u64),
+    RegMsgs(Handle, Range<u64>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
