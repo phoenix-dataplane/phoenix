@@ -85,6 +85,29 @@ pub fn koala_post_send<T>(
     rx_recv_impl!(ctx.dp_rx, dp::Response::PostSend, x, { Ok(x) })
 }
 
+pub fn koala_listen(ctx: &Context, id: &CmId, backlog: i32) -> Result<(), Error> {
+    let req = cmd::Request::Listen(id.0, backlog);
+    ctx.cmd_tx.send(req)?;
+    rx_recv_impl!(ctx.cmd_rx, cmd::Response::Listen, x, { Ok(x) })
+}
+
+pub fn koala_get_requst(ctx: &Context, listen: &CmId) -> Result<CmId, Error> {
+    let req = dp::Request::GetRequest(listen.0);
+    ctx.dp_tx.send(req)?;
+    rx_recv_impl!(ctx.dp_rx, dp::Response::GetRequest, handle, {
+        Ok(CmId(handle))
+    })
+}
+
+pub fn koala_accept(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
+    let req = dp::Request::Accept(
+        id.0,
+        conn_param.map(|param| ConnParamOwned::from_borrow(param)),
+    );
+    ctx.dp_tx.send(req)?;
+    rx_recv_impl!(ctx.dp_rx, dp::Response::Accept, x, { Ok(x) })
+}
+
 pub fn koala_connect(
     ctx: &Context,
     id: &CmId,

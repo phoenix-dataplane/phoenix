@@ -17,6 +17,7 @@ pub enum Request {
         Option<QpInitAttrOwned>,
     ),
     RegMsgs(Handle, Range<u64>),
+    Listen(Handle, i32),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,4 +29,5 @@ pub enum Response {
     // handle of cmid
     CreateEp(Result<Handle, interface::Error>), // TODO(lsh): Handle to CmIdOwned
     RegMsgs(Result<Handle, interface::Error>),
+    Listen(Result<(), interface::Error>),
 }

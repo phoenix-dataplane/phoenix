@@ -4,7 +4,7 @@ use libkoala::*;
 use dns_lookup::{AddrInfoHints, SockType};
 use libc::{AI_ADDRCONFIG, AI_V4MAPPED};
 
-const SERVER_ADDR: &str = "127.0.0.1";
+const SERVER_ADDR: &str = "0.0.0.0";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let id = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
+    let listen_id = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
+
+    cm::koala_listen(&ctx, &listen_id, 16).expect("Listen failed!");
+    let id = cm::koala_get_requst(&ctx, &listen_id).expect("Get request failed!");
 
     let recv_msg = [0; 128];
     let mr = cm::koala_reg_msgs(&ctx, &id, &recv_msg.as_ptr_range())
@@ -47,10 +50,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     cm::koala_post_recv(&ctx, &id, 0, &recv_msg.as_ptr_range(), &mr).expect("Post recv failed!");
 
-    cm::koala_connect(&ctx, &id, None).expect("Connect failed!");
+    cm::koala_accept(&ctx, &id, None).expect("Accept failed!");
+
+    let wc_recv = cm::koala_get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
 
     let send_flags = 0;
-    let send_msg = "Hello koala server!";
+    let send_msg = "Hello koala client!";
     cm::koala_post_send(
         &ctx,
         &id,
@@ -62,7 +67,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .expect("Connect failed!");
 
     let wc_send = cm::koala_get_send_comp(&ctx, &id).expect("Get send comp failed!");
-    let wc_recv = cm::koala_get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
 
     println!("{:#?}", recv_msg);
     Ok(())

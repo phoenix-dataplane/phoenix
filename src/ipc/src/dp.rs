@@ -12,6 +12,8 @@ pub enum Request {
     Connect(Handle, Option<ConnParamOwned>),
     GetSendComp(Handle),
     GetRecvComp(Handle),
+    GetRequest(Handle),
+    Accept(Handle, Option<ConnParamOwned>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -21,4 +23,6 @@ pub enum Response {
     Connect(Result<(), interface::Error>),
     GetSendComp(Result<WorkCompletion, interface::Error>),
     GetRecvComp(Result<WorkCompletion, interface::Error>),
+    GetRequest(Result<Handle, interface::Error>),
+    Accept(Result<(), interface::Error>),
 }
