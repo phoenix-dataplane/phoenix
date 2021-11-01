@@ -12,9 +12,11 @@ uuid = "0.8.2"
 ipc-channel = "0.15.0"
 experimental = { path = "../experimental" }
 ipc = { path = "../ipc" }
+engine = { path = "../engine" }
+interface = { path = "../interface" }
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
 log = "0.4.14"
-ibverbs = "0.6.1"
+dns-lookup = "1.0.8"
 
 [features]

@@ -4,4 +4,8 @@ pub use ipc_channel::ipc::{
     TryRecvError,
 };
 
+pub use ipc_channel::Error;
+
 pub mod cmd;
+pub mod dp;
+pub mod interface;
