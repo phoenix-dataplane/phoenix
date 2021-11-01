@@ -19,7 +19,7 @@ pub enum Request {
         Option<addrinfo::AddrInfoHints>,
     ),
     CreateEp(
-        Vec<addrinfo::AddrInfo>,
+        addrinfo::AddrInfo,
         Option<Handle>,
         Option<QpInitAttrOwned>,
     ),
@@ -31,7 +31,7 @@ pub enum Response {
     NewClient(SchedulingMode, String),
     HelloBack(i32),
 
-    GetAddrInfo(Result<Vec<addrinfo::AddrInfo>, interface::Error>),
+    GetAddrInfo(Result<addrinfo::AddrInfo, interface::Error>),
     // handle of cmid
     CreateEp(Result<Handle, interface::Error>),
 }

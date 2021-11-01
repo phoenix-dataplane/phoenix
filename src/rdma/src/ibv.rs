@@ -402,6 +402,53 @@ impl<'a> Drop for CompletionQueue<'a> {
     }
 }
 
+/// QP capabilities.
+#[derive(Debug, Clone, Copy)]
+pub struct QpCapability(pub(crate) ffi::ibv_qp_cap);
+
+/// The type of QP used for communciation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QpType(pub(crate) ibv_qp_type::Type);
+
+/// The attributes to initialize a QP.
+pub struct QpInitAttr<'ctx, 'scq, 'rcq> {
+    /// Associated context of the QP.
+    pub qp_context: usize,
+    /// CQ to be associated with the Send Queue (SQ).
+    pub send_cq: Option<&'scq CompletionQueue<'ctx>>,
+    /// CQ to be associated with the Receive Queue (RQ).
+    pub recv_cq: Option<&'rcq CompletionQueue<'ctx>>,
+    /// QP capabilities.
+    pub cap: QpCapability,
+    /// QP Transport Service Type: IBV_QPT_RC, IBV_QPT_UC, IBV_QPT_UD, IBV_QPT_RAW_PACKET or
+    /// IBV_QPT_DRIVER.
+    pub qp_type: QpType,
+    /// If set, each Work Request (WR) submitted to the SQ generates a completion entry.
+    pub sq_sig_all: bool,
+}
+
+impl<'ctx, 'scq, 'rcq> QpInitAttr<'ctx, 'scq, 'rcq>
+where
+    'ctx: 'scq,
+    'ctx: 'rcq,
+{
+    /// Returns the C type of `ibv_qp_init_attr`.
+    ///
+    /// Warning: It is your responsibility to make sure that the memory referred by the raw
+    /// pointers in this structure is not freed too early.
+    pub fn to_ibv_qp_init_attr(&self) -> ffi::ibv_qp_init_attr {
+        ffi::ibv_qp_init_attr {
+            qp_context: self.qp_context as *mut _,
+            send_cq: self.send_cq.map_or(ptr::null_mut(), |cq| cq.cq),
+            recv_cq: self.recv_cq.map_or(ptr::null_mut(), |cq| cq.cq),
+            srq: ptr::null_mut(),
+            cap: self.cap.0,
+            qp_type: self.qp_type.0,
+            sq_sig_all: self.sq_sig_all as i32,
+        }
+    }
+}
+
 /// An unconfigured `QueuePair`.
 ///
 /// A `QueuePairBuilder` is used to configure a `QueuePair` before it is allocated and initialized.
@@ -954,7 +1001,7 @@ impl<T> Drop for MemoryRegion<T> {
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
     ctx: &'ctx Context,
-    pd: *mut ffi::ibv_pd,
+    pub(crate) pd: *mut ffi::ibv_pd,
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}

@@ -50,10 +50,10 @@ pub struct QpCapability {
     pub max_inline_data: u32,
 }
 
-pub struct QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq> {
+pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     pub qp_context: Option<&'ctx dyn Any>,
-    pub send_cq: Option<&'send_cq CompletionQueue>,
-    pub recv_cq: Option<&'recv_cq CompletionQueue>,
+    pub send_cq: Option<&'scq CompletionQueue>,
+    pub recv_cq: Option<&'rcq CompletionQueue>,
     pub srq: Option<&'srq SharedReceiveQueue>,
     pub cap: QpCapability,
     pub qp_type: QpType,

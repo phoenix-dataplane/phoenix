@@ -2,12 +2,10 @@
 #![cfg(feature = "convert")]
 use socket2::SockAddr;
 use static_assertions::const_assert_eq;
-use std::ffi::CStr;
-use std::io;
-use std::net::SocketAddr;
-use std::os::raw::c_char;
+use std::ffi::CString;
 
 use crate::ffi;
+use crate::ibv;
 use crate::rdmacm;
 
 mod sa {
@@ -69,40 +67,14 @@ impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
     }
 }
 
-fn construct_socket_from_raw(
-    addr: *mut ffi::sockaddr,
-    socklen: ffi::socklen_t,
-) -> io::Result<SocketAddr> {
-    let ((), sockaddr) = unsafe {
-        SockAddr::init(|storage, len| {
-            *len = socklen;
-            std::ptr::copy_nonoverlapping(addr as *const u8, storage as *mut u8, socklen as usize);
-            Ok(())
-        })
-    }?;
-    sockaddr.as_socket().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Found unknown address family: {}", sockaddr.family()),
-        )
-    })
-}
-
-fn from_c_str(cstr: *const c_char) -> Option<String> {
-    unsafe {
-        cstr.as_ref()
-            .map(|s| CStr::from_ptr(s).to_str().unwrap().to_owned())
-    }
-}
-
 impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
-    fn from(ai: rdmacm::AddrInfo) -> Self {
+    fn from(other: rdmacm::AddrInfo) -> Self {
         use interface::addrinfo::AddrFamily;
         use interface::addrinfo::AddrInfoFlags;
         use interface::addrinfo::PortSpace;
         use interface::QpType;
 
-        let ai = unsafe { &*ai.0 };
+        let ai = other;
         let flags = AddrInfoFlags::from_bits(ai.ai_flags as _).unwrap();
         let family = Some(match ai.ai_family as u32 {
             ffi::AF_INET => AddrFamily::Inet,
@@ -122,15 +94,68 @@ impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
             ffi::rdma_port_space::RDMA_PS_IB => PortSpace::IB,
             _ => panic!("ai_port_space: {}", ai.ai_port_space),
         };
+        let mut buffer = Vec::new();
+        bincode::serialize_into(&mut buffer, &(ai.ai_route, ai.ai_connect))
+            .expect("serialize_into");
         interface::addrinfo::AddrInfo {
             flags,
             family,
             qp_type,
             port_space,
-            src_addr: construct_socket_from_raw(ai.ai_src_addr, ai.ai_src_len).ok(),
-            src_canonname: from_c_str(ai.ai_src_canonname),
-            dst_addr: construct_socket_from_raw(ai.ai_dst_addr, ai.ai_dst_len).ok(),
-            dst_canonname: from_c_str(ai.ai_dst_canonname),
+            src_addr: ai.ai_src_addr.map(|s| s.as_socket().unwrap()), // don't fail silently
+            dst_addr: ai.ai_dst_addr.map(|s| s.as_socket().unwrap()),
+            src_canonname: ai.ai_src_canonname.map(|s| s.into_string().unwrap()),
+            dst_canonname: ai.ai_dst_canonname.map(|s| s.into_string().unwrap()),
+            payload: buffer,
         }
+    }
+}
+
+impl From<interface::addrinfo::AddrInfo> for rdmacm::AddrInfo {
+    fn from(other: interface::addrinfo::AddrInfo) -> Self {
+        let hints = interface::addrinfo::AddrInfoHints::new(
+            other.flags,
+            other.family,
+            other.qp_type,
+            other.port_space,
+        );
+        let hints = rdmacm::AddrInfoHints::from(hints);
+        let (route, connect_data) = bincode::deserialize(&other.payload).expect("deserialize_from");
+        rdmacm::AddrInfo {
+            ai_flags: hints.flags,
+            ai_family: hints.family,
+            ai_qp_type: hints.qp_type,
+            ai_port_space: hints.port_space,
+            ai_src_addr: other.src_addr.map(SockAddr::from),
+            ai_dst_addr: other.dst_addr.map(SockAddr::from),
+            ai_src_canonname: other.src_canonname.and_then(|s| CString::new(s).ok()),
+            ai_dst_canonname: other.dst_canonname.and_then(|s| CString::new(s).ok()),
+            ai_route: route,
+            ai_connect: connect_data,
+        }
+    }
+}
+
+impl From<interface::QpCapability> for ibv::QpCapability {
+    fn from(other: interface::QpCapability) -> Self {
+        let inner = ffi::ibv_qp_cap {
+            max_send_wr: other.max_send_wr,
+            max_recv_wr: other.max_recv_wr,
+            max_send_sge: other.max_send_sge,
+            max_recv_sge: other.max_recv_sge,
+            max_inline_data: other.max_inline_data,
+        };
+        ibv::QpCapability(inner)
+    }
+}
+
+impl From<interface::QpType> for ibv::QpType {
+    fn from(other: interface::QpType) -> Self {
+        use interface::QpType::*;
+        let inner = match other {
+            RC => ffi::ibv_qp_type::IBV_QPT_RC,
+            UD => ffi::ibv_qp_type::IBV_QPT_UD,
+        };
+        ibv::QpType(inner)
     }
 }

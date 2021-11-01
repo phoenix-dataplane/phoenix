@@ -1,8 +1,8 @@
 //! Provide transport independ address translation.
-use crate::QpType;
+use std::net::SocketAddr;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use crate::QpType;
 
 /// Port space
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -90,4 +90,6 @@ pub struct AddrInfo {
     pub dst_addr: Option<SocketAddr>,
     /// The canonical for the destination.
     pub dst_canonname: Option<String>,
+    /// Implementation specific payload
+    pub payload: Vec<u8>,
 }

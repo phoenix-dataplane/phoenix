@@ -1,5 +1,5 @@
 use interface::{
-    addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace},
+    addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
     QpCapability, QpInitAttr, QpType,
 };
 use libkoala::{cm, koala_register};

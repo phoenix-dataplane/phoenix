@@ -132,6 +132,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9df67f7bf9ef8498769f994239c45613ef0c5899415fb58e9add412d2c1a538"
 
 [[package]]
+name = "bytes"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "cache-padded"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -533,6 +542,7 @@ name = "interface"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "bytes",
  "dns-lookup",
  "libc",
  "serde",
@@ -991,12 +1001,16 @@ dependencies = [
 name = "rdma"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bindgen 0.59.1",
+ "bytes",
  "cc",
  "dns-lookup",
  "interface",
+ "ipc",
  "libc",
  "log",
+ "serde",
  "socket2",
  "static_assertions",
  "thiserror",

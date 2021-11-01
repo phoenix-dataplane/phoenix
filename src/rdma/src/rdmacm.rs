@@ -1,15 +1,19 @@
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::io;
+use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use std::ptr;
+use std::slice;
 
 use log::warn;
+use socket2::SockAddr;
 
 use crate::ffi;
+use crate::ibv;
 
 #[derive(Debug, Clone)]
 pub struct AddrInfoHints {
@@ -18,6 +22,7 @@ pub struct AddrInfoHints {
     pub(crate) qp_type: i32,
     pub(crate) port_space: i32,
 }
+
 impl AddrInfoHints {
     pub fn new(
         flags: Option<i32>,
@@ -33,7 +38,7 @@ impl AddrInfoHints {
         }
     }
 
-    pub fn as_addrinfo(&self) -> ffi::rdma_addrinfo {
+    pub fn to_addrinfo(&self) -> ffi::rdma_addrinfo {
         let mut ai: ffi::rdma_addrinfo = unsafe { mem::zeroed() };
         ai.ai_flags = self.flags;
         ai.ai_family = self.family;
@@ -44,55 +49,150 @@ impl AddrInfoHints {
 }
 
 #[derive(Debug)]
-pub struct AddrInfo(pub(crate) *mut ffi::rdma_addrinfo);
-
-#[derive(Debug)]
-pub struct AddrInfoIter {
-    orig: *mut ffi::rdma_addrinfo,
-    cur: *mut ffi::rdma_addrinfo,
+pub struct AddrInfo {
+    pub ai_flags: i32,
+    pub ai_family: i32,
+    pub ai_qp_type: i32,
+    pub ai_port_space: i32,
+    pub ai_src_addr: Option<SockAddr>,
+    pub ai_dst_addr: Option<SockAddr>,
+    pub ai_src_canonname: Option<CString>,
+    pub ai_dst_canonname: Option<CString>,
+    pub ai_route: Vec<u8>,
+    pub ai_connect: Vec<u8>,
 }
 
-impl Drop for AddrInfoIter {
-    fn drop(&mut self) {
-        unsafe { ffi::rdma_freeaddrinfo(self.orig) }
-    }
+/// Safety: Caller must ensure that the address family and length match the type of storage
+/// address. For example if storage.ss_family is set to AF_INET the storage must be initialised as
+/// sockaddr_in, setting the content and length appropriately.
+unsafe fn sockaddr_from_raw(
+    addr: *mut ffi::sockaddr,
+    socklen: ffi::socklen_t,
+) -> io::Result<SockAddr> {
+    let ((), sockaddr) = SockAddr::init(|storage, len| {
+        *len = socklen;
+        std::ptr::copy_nonoverlapping(addr as *const u8, storage as *mut u8, socklen as usize);
+        Ok(())
+    })?;
+    Ok(sockaddr)
 }
 
-impl Iterator for AddrInfoIter {
-    type Item = AddrInfo;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cur.is_null() {
-            None
-        } else {
-            let ret = AddrInfo(self.cur);
-            self.cur = unsafe { self.cur.as_ref() }?.ai_next;
-            Some(ret)
-        }
-    }
+/// Safety: null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
+/// Warning: there's no way to know if the input pointer is valid throughout this invocation.
+unsafe fn from_c_str(cstr: *const c_char) -> Option<CString> {
+    cstr.as_ref().map(|s| CStr::from_ptr(s).to_owned())
 }
 
-impl AddrInfoIter {
+impl AddrInfo {
     pub fn getaddrinfo(
         node: Option<&str>,
         service: Option<&str>,
         hints: Option<&AddrInfoHints>,
-    ) -> io::Result<AddrInfoIter> {
+    ) -> io::Result<AddrInfo> {
         let node = node.map(|s| CString::new(s).unwrap());
         let c_node = node.as_ref().map_or(ptr::null(), |s| s.as_ptr());
         let service = service.map(|s| CString::new(s).unwrap());
         let c_service = service.as_ref().map_or(ptr::null(), |s| s.as_ptr());
-        let hints = hints.map(|h| h.as_addrinfo());
+        let hints = hints.map(|h| h.to_addrinfo());
         let c_hints = hints.as_ref().map_or(ptr::null(), |h| h as *const _);
         let mut res = ptr::null_mut();
         let rc = unsafe { ffi::rdma_getaddrinfo(c_node, c_service, c_hints, &mut res) };
         match rc {
-            0 => Ok(AddrInfoIter {
-                orig: res,
-                cur: res,
-            }),
+            0 => {
+                let ret = unsafe { Self::from_ptr(res) };
+                unsafe {
+                    ffi::rdma_freeaddrinfo(res);
+                }
+                ret
+            }
             -1 => Err(io::Error::last_os_error()),
             _ => Err(io::Error::from_raw_os_error(rc)),
         }
+    }
+
+    pub unsafe fn from_ptr(a: *const ffi::rdma_addrinfo) -> io::Result<AddrInfo> {
+        if a.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Supplied pointer is null.",
+            ));
+        }
+        let a = *a;
+        // The underlying API should not returns an addrinfo with non-null ai_next
+        assert!(a.ai_next.is_null());
+        let ai_src_addr = sockaddr_from_raw(a.ai_src_addr, a.ai_src_len).ok();
+        let ai_dst_addr = sockaddr_from_raw(a.ai_dst_addr, a.ai_dst_len).ok();
+        let ai_src_canonname = from_c_str(a.ai_src_canonname);
+        let ai_dst_canonname = from_c_str(a.ai_dst_canonname);
+        let ai_route =
+            slice::from_raw_parts(a.ai_route as *const u8, a.ai_route_len as usize).to_vec();
+        let ai_connect =
+            slice::from_raw_parts(a.ai_route as *const u8, a.ai_route_len as usize).to_vec();
+        Ok(AddrInfo {
+            ai_flags: a.ai_flags,
+            ai_family: a.ai_family,
+            ai_qp_type: a.ai_qp_type,
+            ai_port_space: a.ai_port_space,
+            ai_src_addr,
+            ai_dst_addr,
+            ai_src_canonname,
+            ai_dst_canonname,
+            ai_route,
+            ai_connect,
+        })
+    }
+
+    pub fn as_addrinfo<'a>(&'a self) -> AddrInfoTransparent<'a> {
+        let mut ai: ffi::rdma_addrinfo = unsafe { mem::zeroed() };
+        ai.ai_flags = self.ai_flags;
+        ai.ai_family = self.ai_family;
+        ai.ai_qp_type = self.ai_qp_type;
+        ai.ai_port_space = self.ai_port_space;
+        ai.ai_src_len = self.ai_src_addr.as_ref().map_or(0, |s| s.len());
+        ai.ai_src_addr = self
+            .ai_src_addr
+            .as_ref()
+            .map_or(ptr::null_mut(), |s| s.as_ptr() as _);
+        ai.ai_dst_len = self.ai_dst_addr.as_ref().map_or(0, |s| s.len());
+        ai.ai_dst_addr = self
+            .ai_dst_addr
+            .as_ref()
+            .map_or(ptr::null_mut(), |s| s.as_ptr() as _);
+        ai.ai_src_canonname = self
+            .ai_src_canonname
+            .as_ref()
+            .map_or(ptr::null_mut(), |s| s.as_ptr() as _);
+        ai.ai_dst_canonname = self
+            .ai_dst_canonname
+            .as_ref()
+            .map_or(ptr::null_mut(), |s| s.as_ptr() as _);
+        ai.ai_route_len = self.ai_route.len() as _;
+        ai.ai_route = self.ai_route.as_ptr() as _;
+        ai.ai_connect_len = self.ai_connect.len() as _;
+        ai.ai_connect = self.ai_connect.as_ptr() as _;
+        ai.ai_next = ptr::null_mut();
+        AddrInfoTransparent {
+            inner: ai,
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AddrInfoTransparent<'a> {
+    inner: ffi::rdma_addrinfo,
+    _marker: PhantomData<&'a AddrInfo>,
+}
+
+impl<'a> AsRef<ffi::rdma_addrinfo> for AddrInfoTransparent<'a> {
+    fn as_ref(&self) -> &ffi::rdma_addrinfo {
+        &self.inner
+    }
+}
+
+impl<'a> AsMut<ffi::rdma_addrinfo> for AddrInfoTransparent<'a> {
+    fn as_mut(&mut self) -> &mut ffi::rdma_addrinfo {
+        &mut self.inner
     }
 }
 
@@ -152,6 +252,9 @@ pub struct MemoryRegion(*mut ffi::ibv_mr);
 #[derive(Debug)]
 pub struct CmId(*mut ffi::rdma_cm_id);
 
+unsafe impl Send for CmId {}
+unsafe impl Sync for CmId {}
+
 impl Drop for CmId {
     fn drop(&mut self) {
         let rc = unsafe { ffi::rdma_destroy_id(self.0) };
@@ -165,6 +268,29 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    pub fn create_ep<'ctx>(
+        ai: AddrInfo,
+        pd: Option<&ibv::ProtectionDomain<'ctx>>,
+        qp_init_attr: Option<&ffi::ibv_qp_init_attr>,
+    ) -> io::Result<CmId> {
+        let mut cm_id = ptr::null_mut();
+        let mut a = ai.as_addrinfo();
+        let rc = unsafe {
+            ffi::rdma_create_ep(
+                &mut cm_id,
+                a.as_mut(),
+                pd.map_or(ptr::null_mut(), |pd| pd.pd),
+                qp_init_attr.map_or(ptr::null_mut(), |a| a as *const _ as *mut _),
+            )
+        };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        assert!(!cm_id.is_null());
+        Ok(CmId(cm_id))
+    }
+
     pub fn create_id(
         channel: Option<EventChannel>,
         context: usize,

@@ -15,8 +15,12 @@ log = "0.4.14"
 dns-lookup = "1.0.8"
 libc = "0.2.103"
 interface = { path = "../interface", optional = true }
+ipc = { path = "../ipc", optional = true }
 static_assertions = "1.1.0"
-socket2 = { version = "0.4.2", optional = true }
+socket2 = "0.4.2"
+bytes = { version = "1.1.0", features = ["serde"], optional = true }
+bincode = { version = "1.3.3", optional = true }
+serde = { version = "1.0.130", features = ["derive"], optional = true }
 
 [features]
-convert = ["interface", "socket2"]
+convert = ["interface", "ipc", "bytes", "serde", "bincode"]
