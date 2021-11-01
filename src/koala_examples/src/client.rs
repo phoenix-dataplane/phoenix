@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let id = cm::koala_create_ep(&ctx, ai, None, Some(&qp_init_attr))?;
 
-    let recv_msg = [0; 4096];
+    let recv_msg = [0; 128];
     let mr = cm::koala_reg_msgs(&ctx, &id, &recv_msg.as_ptr_range())
         .expect("Memory registration failed!");
 
@@ -64,5 +64,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_send = cm::koala_get_send_comp(&ctx, &id).expect("Get send comp failed!");
     let wc_recv = cm::koala_get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
 
+    println!("{:#?}", recv_msg);
     Ok(())
 }

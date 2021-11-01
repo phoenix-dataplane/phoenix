@@ -1,0 +1,21 @@
+[package]
+name = "koala_examples"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libkoala = { path = "../libkoala" }
+interface = { path = "../interface" }
+dns-lookup = "1.0.8"
+libc = "0.2.103"
+
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"

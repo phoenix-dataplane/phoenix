@@ -1,5 +1,5 @@
 [workspace]
-members = ["src/experimental", "src/ipc", "src/engine", "src/utils", "src/libkoala"]
+members = ["src/experimental", "src/ipc", "src/engine", "src/utils", "src/libkoala","src/koala_examples"]
 
 [profile.release]
 debug=true
