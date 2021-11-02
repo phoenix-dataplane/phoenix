@@ -1,34 +1,46 @@
+use std::any::Any;
 use serde::{Deserialize, Serialize};
-use std::{any::Any, vec};
 use thiserror::Error;
+use bitflags::bitflags;
 
 pub mod addrinfo;
-pub use addrinfo::AddrInfo;
 
 #[derive(Debug, Error, Serialize, Deserialize)]
 pub enum Error {
     #[error("rdmacm internal error: {0}")]
     RdmaCm(i32),
+    #[error("getaddrinfo error: {0}")]
+    GetAddrInfo(i32),
+    #[error("resource not found")]
+    NotFound,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize)]
 pub struct Handle(pub usize);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct ProtectionDomain(pub Handle);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct SharedReceiveQueue(pub Handle);
 
+/// The type of QP used for communciation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QpType {
+    // reliable connection
     RC,
+    // unreliable datagram
     UD,
 }
 
@@ -41,15 +53,16 @@ pub struct QpCapability {
     pub max_inline_data: u32,
 }
 
-pub struct QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq> {
+pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     pub qp_context: Option<&'ctx dyn Any>,
-    pub send_cq: Option<&'send_cq CompletionQueue>,
-    pub recv_cq: Option<&'recv_cq CompletionQueue>,
+    pub send_cq: Option<&'scq CompletionQueue>,
+    pub recv_cq: Option<&'rcq CompletionQueue>,
     pub srq: Option<&'srq SharedReceiveQueue>,
     pub cap: QpCapability,
     pub qp_type: QpType,
     pub sq_sig_all: bool,
 }
+
 
 #[derive(Serialize, Deserialize)]
 pub struct MemoryRegion(pub Handle);
@@ -65,51 +78,60 @@ pub struct ConnParam<'priv_data> {
     pub qp_num: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum WCStatus {
-    WC_SUCCESS,
-    WC_LOC_LEN_ERR,
-    WC_LOC_QP_OP_ERR,
-    WC_LOC_EEC_OP_ERR,
-    WC_LOC_PROT_ERR,
-    WC_WR_FLUSH_ERR,
-    WC_MW_BIND_ERR,
-    WC_BAD_RESP_ERR,
-    WC_LOC_ACCESS_ERR,
-    WC_REM_INV_REQ_ERR,
-    WC_REM_ACCESS_ERR,
-    WC_REM_OP_ERR,
-    WC_RETRY_EXC_ERR,
-    WC_RNR_RETRY_EXC_ERR,
-    WC_LOC_RDD_VIOL_ERR,
-    WC_REM_INV_RD_REQ_ERR,
-    WC_REM_ABORT_ERR,
-    WC_INV_EECN_ERR,
-    WC_INV_EEC_STATE_ERR,
-    WC_FATAL_ERR,
-    WC_RESP_TIMEOUT_ERR,
-    WC_GENERAL_ERR,
+#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WcStatus {
+    Success,
+    Error(i32),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum WCOpcode {
-    WC_SEND,
-    WC_RDMA_WRITE,
-    WC_RDMA_READ,
-    WC_COMP_SWAP,
-    WC_FETCH_ADD,
-    WC_BIND_MW,
-    WC_LOCAL_INV,
-    WC_TSO,
-    WC_RECV,
-    WC_RECV_RDMA_WITH_IMM,
+#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WcOpcode {
+    Send,
+    RdmaWrite,
+    RdmaRead,
+    Recv,
+    RecvRdmaWithImm,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+bitflags! {
+    /// Flags of the completed WR.
+    #[derive(Serialize, Deserialize)]
+    #[derive(Default)]
+    pub struct WcFlags: u32 {
+        /// GRH is present (valid only for UD QPs).
+        const GRH = 0b00000001;
+        /// Immediate data value is valid.
+        const WITH_IMM = 0b00000010;
+    }
+
+    /// Flags of the WR properties.
+    #[derive(Serialize, Deserialize)]
+    #[derive(Default)]
+    pub struct SendFlags: u32 {
+        /// Set the fence indicator. Valid only for QPs with Transport Service Type RC.
+        const SEND_FENCE = 0b00000001;
+        /// Set the completion notification indicator. Relevant only if QP was created with
+        /// sq_sig_all=0.
+        const SEND_SIGNALED = 0b00000010;
+        /// Set the solicited event indicator. Valid only for Send and RDMA Write with immediate.
+        const SEND_SOLICITED = 0b00000100;
+        /// Send data in given gather list as inline data in a send WQE.  Valid only for Send and
+        /// RDMA Write.  The L_Key will not be checked. 
+        const SEND_INLINE = 0b00001000;
+    }
+}
+
+/// A structure represent completion of some work.
+#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct WorkCompletion {
     pub wr_id: u64,
-    pub status: WCStatus,
-    pub opcode: WCOpcode,
-    pub vendor_err: i32,
-    pub byte_len: i32,
+    pub status: WcStatus,
+    pub opcode: WcOpcode,
+    pub vendor_err: u32,
+    pub byte_len: u32,
+    pub imm_data: u32,
+    pub wc_flags: WcFlags,
 }

@@ -3,6 +3,11 @@ use std::borrow::Borrow;
 use interface::*;
 use serde::{Deserialize, Serialize};
 
+// Get an owned structure from a borrow
+pub trait FromBorrow<Borrowed> {
+    fn from_borrow<T: Borrow<Borrowed>>(borrow: &T) -> Self;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QpInitAttrOwned {
     // no need to serialize qp_context
@@ -14,10 +19,8 @@ pub struct QpInitAttrOwned {
     pub sq_sig_all: bool,
 }
 
-impl<'ctx, 'send_cq, 'recv_cq, 'srq> FromBorrow<QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq>>
-    for QpInitAttrOwned
-{
-    fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'send_cq, 'recv_cq, 'srq>>>(borrow: &T) -> Self {
+impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>> for QpInitAttrOwned {
+    fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
         QpInitAttrOwned {
             send_cq: b.send_cq.map(|x| CompletionQueue(x.0)),
@@ -56,9 +59,4 @@ impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for ConnParamOwned {
             qp_num: b.qp_num,
         }
     }
-}
-
-// Get an owned structure from a borrow
-pub trait FromBorrow<Borrowed> {
-    fn from_borrow<T: Borrow<Borrowed>>(borrow: &T) -> Self;
 }
