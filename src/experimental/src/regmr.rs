@@ -27,6 +27,7 @@ impl<'a> SMR<'a> {
         let addr = self.buffer.as_ptr() as usize;
         (addr - addr % page_size) as _
     }
+
     #[inline]
     pub fn page_aligned_end(&self) -> *const u8 {
         let page_size = *PAGE_SIZE;
@@ -34,6 +35,7 @@ impl<'a> SMR<'a> {
         let len = self.buffer.len();
         ((addr + len + page_size - 1) / page_size * page_size) as _
     }
+
     #[inline]
     pub fn page_aligned_len(&self) -> usize {
         unsafe {

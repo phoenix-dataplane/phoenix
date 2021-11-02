@@ -52,7 +52,7 @@ impl TransportModule {
 
         // 2. tell the name to the client
         let mut buf = bincode::serialize(&Response::NewClient(mode, server_name))?;
-        let nbytes = sock.send_to(buf.as_mut_slice(), client_path)?;
+        let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {
             return Err(anyhow!(
                 "expect to send {} bytes, but only {} was sent",
@@ -67,7 +67,7 @@ impl TransportModule {
             server.accept()?;
 
         // 4. the transport module is responsible for initializing and starting the transport engines
-        let engine = TransportEngine::new(tx, rx, mode);
+        let engine = TransportEngine::new(&client_path, tx, rx, mode);
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine));
 

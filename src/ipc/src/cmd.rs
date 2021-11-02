@@ -27,8 +27,8 @@ pub enum Request {
         Option<QpInitAttrOwned>,
     ),
     Listen(Handle, i32),
-    Accept(Handle, Option<ConnParamOwned>),
     GetRequest(Handle),
+    Accept(Handle, Option<ConnParamOwned>),
     Connect(Handle, Option<ConnParamOwned>),
     RegMsgs(Handle, Range<u64>),
 }
@@ -43,8 +43,8 @@ pub enum Response {
     // handle of cmid
     CreateEp(IResult<Handle>), // TODO(lsh): Handle to CmIdOwned
     Listen(IResult<()>),
-    Accept(IResult<()>),
     GetRequest(IResult<Handle>),
+    Accept(IResult<()>),
     Connect(IResult<()>),
     RegMsgs(IResult<Handle>),
 }

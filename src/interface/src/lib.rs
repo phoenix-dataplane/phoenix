@@ -2,6 +2,7 @@ use std::any::Any;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use bitflags::bitflags;
+use std::fs::File;
 
 pub mod addrinfo;
 
@@ -64,8 +65,17 @@ pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
 }
 
 
-#[derive(Serialize, Deserialize)]
-pub struct MemoryRegion(pub Handle);
+#[derive(Debug)]
+pub struct MemoryRegion {
+    pub handle: Handle,
+    memfd: File,
+}
+
+impl MemoryRegion {
+    pub fn new(handle: Handle, memfd: File) -> Self {
+        MemoryRegion { handle, memfd }
+    }
+}
 
 pub struct ConnParam<'priv_data> {
     pub private_data: Option<&'priv_data [u8]>,
