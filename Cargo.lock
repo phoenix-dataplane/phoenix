@@ -600,6 +600,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala_examples"
+version = "0.1.0"
+dependencies = [
+ "dns-lookup",
+ "interface",
+ "libc",
+ "libkoala",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

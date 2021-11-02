@@ -44,7 +44,8 @@ bitflags! {
 }
 
 /// A structure containing hints about the type of service the caller supports.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct AddrInfoHints {
     /// Hint flags that control the operation.
     pub flags: AddrInfoFlags,

@@ -2,27 +2,22 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-use crate::interface::*;
-use interface::*;
+use interface::{Handle, WorkCompletion, SendFlags};
+
+type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Serialize, Deserialize)]
 pub enum Request {
     PostRecv(Handle, u64, Range<u64>, Handle),
-    PostSend(Handle, u64, Range<u64>, Handle, i32),
-    Connect(Handle, Option<ConnParamOwned>),
+    PostSend(Handle, u64, Range<u64>, Handle, SendFlags),
     GetSendComp(Handle),
     GetRecvComp(Handle),
-    GetRequest(Handle),
-    Accept(Handle, Option<ConnParamOwned>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
-    PostRecv(Result<(), interface::Error>),
-    PostSend(Result<(), interface::Error>),
-    Connect(Result<(), interface::Error>),
-    GetSendComp(Result<WorkCompletion, interface::Error>),
-    GetRecvComp(Result<WorkCompletion, interface::Error>),
-    GetRequest(Result<Handle, interface::Error>),
-    Accept(Result<(), interface::Error>),
+    PostRecv(IResult<()>),
+    PostSend(IResult<()>),
+    GetSendComp(IResult<WorkCompletion>),
+    GetRecvComp(IResult<WorkCompletion>),
 }

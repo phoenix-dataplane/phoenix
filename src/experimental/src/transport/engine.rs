@@ -149,6 +149,19 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
                         self.tx.send(Response::CreateEp(ret)).unwrap();
                     }
+                    Request::Listen(cmid_handle, backlog) => {
+                        trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
+                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                            Err(interface::Error::NotFound),
+                            |cmid| {
+                                cmid.listen(backlog).map_err(|e| {
+                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
+                                })
+                            },
+                        );
+                        self.tx.send(Response::Listen(ret)).unwrap()
+                    }
+                    _ => { unimplemented!() }
                 }
                 true
             }

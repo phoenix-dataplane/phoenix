@@ -1,12 +1,15 @@
 //! Control path commands.
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
-use crate::interface::QpInitAttrOwned;
+use crate::interface::{QpInitAttrOwned, ConnParamOwned};
 use interface::{
     Handle,
     addrinfo,
 };
+
+type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Serialize, Deserialize)]
 pub enum Request {
@@ -23,6 +26,11 @@ pub enum Request {
         Option<Handle>,
         Option<QpInitAttrOwned>,
     ),
+    RegMsgs(Handle, Range<u64>),
+    Listen(Handle, i32),
+    Accept(Handle, Option<ConnParamOwned>),
+    Connect(Handle, Option<ConnParamOwned>),
+    GetRequest(Handle),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,7 +39,12 @@ pub enum Response {
     NewClient(SchedulingMode, String),
     HelloBack(i32),
 
-    GetAddrInfo(Result<addrinfo::AddrInfo, interface::Error>),
+    GetAddrInfo(IResult<addrinfo::AddrInfo>),
     // handle of cmid
-    CreateEp(Result<Handle, interface::Error>),
+    CreateEp(IResult<Handle>), // TODO(lsh): Handle to CmIdOwned
+    RegMsgs(IResult<Handle>),
+    Listen(IResult<()>),
+    Accept(IResult<()>),
+    Connect(IResult<()>),
+    GetRequest(IResult<Handle>),
 }
