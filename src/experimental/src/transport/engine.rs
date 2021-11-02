@@ -17,6 +17,7 @@ struct Resource<'ctx> {
     pd_table: HashMap<Handle, ibv::ProtectionDomain<'ctx>>,
     cq_table: HashMap<Handle, ibv::CompletionQueue<'ctx>>,
     cmid_table: HashMap<Handle, CmId>,
+    mr_table: HashMap<Handle, rdmacm::MemoryRegion>,
 }
 
 impl<'ctx> Resource<'ctx> {
@@ -153,15 +154,94 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
                         trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
                         let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
                             Err(interface::Error::NotFound),
-                            |cmid| {
-                                cmid.listen(backlog).map_err(|e| {
+                            |listener| {
+                                listener.listen(backlog).map_err(|e| {
                                     interface::Error::RdmaCm(e.raw_os_error().unwrap())
                                 })
                             },
                         );
                         self.tx.send(Response::Listen(ret)).unwrap()
                     }
-                    _ => { unimplemented!() }
+                    Request::Accept(cmid_handle, conn_param) => {
+                        trace!(
+                            "cmid_handle: {:?}, conn_param: {:?}",
+                            cmid_handle,
+                            conn_param
+                        );
+                        warn!("TODO: conn_param is ignored for now");
+                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                            Err(interface::Error::NotFound),
+                            |listener| {
+                                listener.accept().map_err(|e| {
+                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
+                                })
+                            },
+                        );
+                        self.tx.send(Response::Accept(ret)).unwrap()
+                    }
+                    Request::GetRequest(cmid_handle) => {
+                        trace!("cmid_handle: {:?}", cmid_handle);
+
+                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                            Err(interface::Error::NotFound),
+                            |listener| {
+                                listener.get_request().map_err(|e| {
+                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
+                                })
+                            },
+                        );
+                        let ret = ret.map(|new_cmid| {
+                            let new_handle = self.resource.allocate_handle();
+                            self.resource
+                                .cmid_table
+                                .insert(new_handle, new_cmid)
+                                .ok_or(())
+                                .unwrap_err();
+                            new_handle
+                        });
+                        self.tx.send(Response::GetRequest(ret)).unwrap()
+                    }
+                    Request::Connect(cmid_handle, conn_param) => {
+                        trace!(
+                            "cmid_handle: {:?}, conn_param: {:?}",
+                            cmid_handle,
+                            conn_param
+                        );
+                        warn!("TODO: conn_param is ignored for now");
+                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                            Err(interface::Error::NotFound),
+                            |cmid| {
+                                cmid.connect().map_err(|e| {
+                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
+                                })
+                            },
+                        );
+                        self.tx.send(Response::Connect(ret)).unwrap()
+                    }
+                    Request::RegMsgs(cmid_handle, addr_range) => {
+                        trace!("cmid_handle: {:?}, addr_range: {:?}", cmid_handle, addr_range);
+                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                            Err(interface::Error::NotFound),
+                            |listener| {
+                                listener.reg_msgs().map_err(|e| {
+                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
+                                })
+                            },
+                        );
+                        let ret = ret.map(|mr| {
+                            let new_mr = self.resource.allocate_handle();
+                            self.resource
+                                .mr_table
+                                .insert(new_mr, mr)
+                                .ok_or(())
+                                .unwrap_err();
+                            new_mr
+                        });
+                        self.tx.send(Response::RegMsgs(ret)).unwrap()
+                    }
+                    _ => {
+                        unimplemented!()
+                    }
                 }
                 true
             }

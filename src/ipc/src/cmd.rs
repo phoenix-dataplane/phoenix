@@ -26,11 +26,11 @@ pub enum Request {
         Option<Handle>,
         Option<QpInitAttrOwned>,
     ),
-    RegMsgs(Handle, Range<u64>),
     Listen(Handle, i32),
     Accept(Handle, Option<ConnParamOwned>),
-    Connect(Handle, Option<ConnParamOwned>),
     GetRequest(Handle),
+    Connect(Handle, Option<ConnParamOwned>),
+    RegMsgs(Handle, Range<u64>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,9 +42,9 @@ pub enum Response {
     GetAddrInfo(IResult<addrinfo::AddrInfo>),
     // handle of cmid
     CreateEp(IResult<Handle>), // TODO(lsh): Handle to CmIdOwned
-    RegMsgs(IResult<Handle>),
     Listen(IResult<()>),
     Accept(IResult<()>),
-    Connect(IResult<()>),
     GetRequest(IResult<Handle>),
+    Connect(IResult<()>),
+    RegMsgs(IResult<Handle>),
 }
