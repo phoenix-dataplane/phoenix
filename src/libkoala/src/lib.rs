@@ -1,5 +1,6 @@
 use std::env;
 use std::io;
+use std::ops::Range;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 
@@ -10,6 +11,7 @@ use engine::SchedulingMode;
 use ipc::{self, cmd, dp};
 
 pub mod cm;
+pub mod verbs;
 
 const KOALA_TRANSPORT_PATH: &str = "/tmp/koala/koala-transport.sock";
 const MAX_MSG_LEN: usize = 65536;
@@ -78,6 +80,15 @@ pub fn koala_register() -> Result<Context, Error> {
             })
         }
         _ => panic!("unexpected response: {:?}", res),
+    }
+}
+
+#[inline]
+pub(crate) fn slice_to_range<T>(s: &[T]) -> Range<u64> {
+    let r = s.as_ptr_range();
+    Range {
+        start: r.start as u64,
+        end: r.end as u64,
     }
 }
 

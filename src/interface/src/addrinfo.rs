@@ -1,41 +1,96 @@
+//! Provide transport independ address translation.
 use std::net::SocketAddr;
-use serde::{Serialize, Deserialize};
+use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
+use crate::QpType;
 
-/// Struct that stores socket information, as returned by getaddrinfo.
-///
-/// This maps to the same definition provided by libc backends.
-#[derive(Clone, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "dns_lookup::AddrInfo")]
-struct AddrInfoDef {
-  /// Type of this socket.
-  ///
-  /// Values are defined by the libc on your system.
-  pub socktype: i32,
-  /// Protcol family for this socket.
-  ///
-  /// Values are defined by the libc on your system.
-  pub protocol: i32,
-  /// Address family for this socket (usually matches protocol family).
-  ///
-  /// Values are defined by the libc on your system.
-  pub address: i32,
-  /// Socket address for this socket, usually containing an actual
-  /// IP Address and port.
-  pub sockaddr: SocketAddr,
-  /// If requested, this is the canonical name for this socket/host.
-  pub canonname: Option<String>,
-  /// Optional bitmask arguments, usually set to zero.
-  pub flags: i32,
+/// Port space
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PortSpace {
+    IPOIB,
+    TCP,
+    UDP,
+    IB,
 }
 
+/// Address family for the source and destination address.
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AddrFamily {
+    /// IP protocol family.
+    Inet,
+    /// IP version 6.
+    Inet6,
+    /// Infiniband
+    Infiniband,
+}
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Serialize, Deserialize)]
-pub struct AddrInfo(#[serde(with = "AddrInfoDef")] pub dns_lookup::AddrInfo);
-
-impl From<dns_lookup::AddrInfo> for AddrInfo {
-    fn from(ai: dns_lookup::AddrInfo) -> Self {
-        AddrInfo(ai)
+bitflags! {
+    /// Hint flags that control the operation of getaddrinfo.
+    #[derive(Serialize, Deserialize)]
+    #[derive(Default)]
+    pub struct AddrInfoFlags: u32 {
+        /// Indicates that the results will be used on the passive/listening
+        /// side of a connection.
+        const PASSIVE = 0b00000001;
+        /// If specified, then the node parameter, if provided, must be a  numerical
+        /// network address.  This flag suppresses any lengthy address resolution.
+        const NUMERICHOST = 0b00000010;
+        /// If set, this flag suppresses any lengthy route resolution.
+        const NOROUTE = 0b00000100;
+        /// If set, the ai_family setting should be used as an input hint for inter‐
+        /// pretting the node parameter.
+        const FAMILY = 0b00001000;
     }
+}
+
+/// A structure containing hints about the type of service the caller supports.
+#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+pub struct AddrInfoHints {
+    /// Hint flags that control the operation.
+    pub flags: AddrInfoFlags,
+    /// Address family for the source and destination address.
+    pub family: Option<AddrFamily>,
+    /// Indicates the type of QP used for communication.
+    pub qp_type: QpType,
+    /// Port space in use.
+    pub port_space: PortSpace,
+}
+
+impl AddrInfoHints {
+    pub fn new(
+        flags: AddrInfoFlags,
+        family: Option<AddrFamily>,
+        qp_type: QpType,
+        port_space: PortSpace,
+    ) -> Self {
+        AddrInfoHints {
+            flags,
+            family,
+            qp_type,
+            port_space,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddrInfo {
+    /// Hint flags that control the operation.
+    pub flags: AddrInfoFlags,
+    /// Address family for the source and destination address.
+    pub family: Option<AddrFamily>,
+    /// Indicates the type of QP used for communication.
+    pub qp_type: QpType,
+    /// Port space in use.
+    pub port_space: PortSpace,
+    /// The address for the local device.
+    pub src_addr: Option<SocketAddr>,
+    /// The canonical for the source.
+    pub src_canonname: Option<String>,
+    /// The address for the destination device.
+    pub dst_addr: Option<SocketAddr>,
+    /// The canonical for the destination.
+    pub dst_canonname: Option<String>,
+    /// Implementation specific payload
+    pub payload: Vec<u8>,
 }

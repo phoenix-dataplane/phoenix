@@ -1,12 +1,52 @@
-use std::{io, ops::Range};
+use interface::{
+    addrinfo::{AddrInfo, AddrInfoHints},
+    CmId, ProtectionDomain, QpInitAttr,
+    MemoryRegion, ConnParam,
+};
+use ipc::cmd::{Request, Response};
+use ipc::interface::{FromBorrow, QpInitAttrOwned, ConnParamOwned};
 
-use dns_lookup::AddrInfoIter;
+use crate::{Context, Error, slice_to_range};
 
-use interface::*;
-use ipc::interface::*;
-use ipc::{cmd, dp};
+/// Creates an identifier that is used to track communication information.
+pub fn create_ep(
+    ctx: &Context,
+    ai: &AddrInfo,
+    pd: Option<&ProtectionDomain>,
+    qp_init_attr: Option<&QpInitAttr>,
+) -> Result<CmId, Error> {
+    let req = Request::CreateEp(
+        ai.clone(),
+        pd.map(|pd| pd.0),
+        qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
+    );
+    ctx.cmd_tx.send(req)?;
+    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
+        Response::CreateEp(Ok(handle)) => Ok(CmId(handle)),
+        Response::CreateEp(Err(e)) => Err(e.into()),
+        _ => panic!(""),
+    }
+}
 
-use crate::{Context, Error};
+/// Address and route resolution service.
+pub fn getaddrinfo(
+    ctx: &Context,
+    node: Option<&str>,
+    service: Option<&str>,
+    hints: Option<&AddrInfoHints>,
+) -> Result<AddrInfo, Error> {
+    let req = Request::GetAddrInfo(
+        node.map(String::from),
+        service.map(String::from),
+        hints.map(AddrInfoHints::clone),
+    );
+    ctx.cmd_tx.send(req)?;
+    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
+        Response::GetAddrInfo(Ok(ai)) => Ok(ai),
+        Response::GetAddrInfo(Err(e)) => Err(e.into()),
+        _ => panic!(""),
+    }
+}
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
@@ -20,115 +60,46 @@ macro_rules! rx_recv_impl {
     };
 }
 
-fn range_ptr_to_u64<T>(range: &Range<*const T>) -> Range<u64> {
-    Range {
-        start: range.start as u64,
-        end: range.end as u64,
-    }
-}
-
-/// Creates an identifier that is used to track communication information.
-pub fn koala_create_ep(
-    ctx: &Context,
-    ai: AddrInfoIter,
-    pd: Option<&ProtectionDomain>,
-    qp_init_attr: Option<&QpInitAttr>,
-) -> Result<CmId, Error> {
-    let ai_vec = ai
-        .map(|a| a.map(interface::AddrInfo::from))
-        .collect::<io::Result<Vec<_>>>()?;
-    let req = cmd::Request::CreateEp(
-        ai_vec,
-        pd.map(|pd| pd.0),
-        qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
-    );
-    ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, cmd::Response::CreateEp, handle, {
-        Ok(CmId(handle))
-    })
-}
-
-pub fn koala_reg_msgs<T>(
+pub fn reg_msgs<T>(
     ctx: &Context,
     id: &CmId,
-    range: &Range<*const T>,
+    buffer: &[T],
 ) -> Result<MemoryRegion, Error> {
-    let req = cmd::Request::RegMsgs(id.0, range_ptr_to_u64(range));
+    let req = Request::RegMsgs(id.0, slice_to_range(buffer));
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, cmd::Response::RegMsgs, handle, {
+    rx_recv_impl!(ctx.cmd_rx, Response::RegMsgs, handle, {
         Ok(MemoryRegion(handle))
     })
 }
 
-pub fn koala_post_recv<T>(
-    ctx: &Context,
-    id: &CmId,
-    context: u64,
-    range: &Range<*const T>,
-    mr: &MemoryRegion,
-) -> Result<(), Error> {
-    let req = dp::Request::PostRecv(id.0, context, range_ptr_to_u64(range), mr.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::PostRecv, x, { Ok(x) })
-}
-
-pub fn koala_post_send<T>(
-    ctx: &Context,
-    id: &CmId,
-    context: u64,
-    range: &Range<*const T>,
-    mr: &MemoryRegion,
-    flags: i32,
-) -> Result<(), Error> {
-    let req = dp::Request::PostSend(id.0, context, range_ptr_to_u64(range), mr.0, flags);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::PostSend, x, { Ok(x) })
-}
-
-pub fn koala_listen(ctx: &Context, id: &CmId, backlog: i32) -> Result<(), Error> {
-    let req = cmd::Request::Listen(id.0, backlog);
+pub fn listen(ctx: &Context, id: &CmId, backlog: i32) -> Result<(), Error> {
+    let req = Request::Listen(id.0, backlog);
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, cmd::Response::Listen, x, { Ok(x) })
+    rx_recv_impl!(ctx.cmd_rx, Response::Listen, x, { Ok(x) })
 }
 
-pub fn koala_get_requst(ctx: &Context, listen: &CmId) -> Result<CmId, Error> {
-    let req = dp::Request::GetRequest(listen.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::GetRequest, handle, {
+pub fn get_requst(ctx: &Context, listen: &CmId) -> Result<CmId, Error> {
+    let req = Request::GetRequest(listen.0);
+    ctx.cmd_tx.send(req)?;
+    rx_recv_impl!(ctx.cmd_rx, Response::GetRequest, handle, {
         Ok(CmId(handle))
     })
 }
 
-pub fn koala_accept(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
-    let req = dp::Request::Accept(
+pub fn accept(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
+    let req = Request::Accept(
         id.0,
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::Accept, x, { Ok(x) })
+    ctx.cmd_tx.send(req)?;
+    rx_recv_impl!(ctx.cmd_rx, Response::Accept, x, { Ok(x) })
 }
 
-pub fn koala_connect(
-    ctx: &Context,
-    id: &CmId,
-    conn_param: Option<&ConnParam>,
-) -> Result<(), Error> {
-    let req = dp::Request::Connect(
+pub fn connect(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
+    let req = Request::Connect(
         id.0,
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::Connect, x, { Ok(x) })
-}
-
-pub fn koala_get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = dp::Request::GetSendComp(id.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::GetSendComp, wc, { Ok(wc) })
-}
-
-pub fn koala_get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = dp::Request::GetRecvComp(id.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, dp::Response::GetRecvComp, wc, { Ok(wc) })
+    ctx.cmd_tx.send(req)?;
+    rx_recv_impl!(ctx.cmd_rx, Response::Connect, x, { Ok(x) })
 }

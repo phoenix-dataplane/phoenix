@@ -25,6 +25,8 @@ bincode = "1.3.3"
 anyhow = "1.0.44"
 ipc = { path = "../ipc" }
 engine = { path = "../engine" }
+rdma = { path = "../rdma", features = ["convert"] }
+interface = { path = "../interface" }
 
 [dev-dependencies]
 rand = "0.8.3"
