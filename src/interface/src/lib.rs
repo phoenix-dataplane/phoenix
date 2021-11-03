@@ -105,6 +105,7 @@ pub enum WcOpcode {
     RdmaRead,
     Recv,
     RecvRdmaWithImm,
+    Invalid,
 }
 
 bitflags! {

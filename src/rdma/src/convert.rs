@@ -171,19 +171,27 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
         use ffi::ibv_wc_opcode;
         use ffi::ibv_wc_status;
         use interface::WcOpcode;
+        use interface::WcStatus;
         let status = match other.status {
-            ibv_wc_status::IBV_WC_SUCCESS => interface::WcStatus::Success,
-            e @ _ => interface::WcStatus::Error(e),
+            ibv_wc_status::IBV_WC_SUCCESS => WcStatus::Success,
+            e @ _ => WcStatus::Error(e),
         };
-        // if status is ERR, the opcode and other fields might be invalid
-        let opcode = match other.opcode {
-            ibv_wc_opcode::IBV_WC_SEND => WcOpcode::Send,
-            ibv_wc_opcode::IBV_WC_RDMA_WRITE => WcOpcode::RdmaWrite,
-            ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
-            ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
-            ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
-            code @ _ => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
+
+        // If status is ERR, the opcode and some other fields might be invalid.
+        let opcode = if other.status == ibv_wc_status::IBV_WC_SUCCESS {
+            // This conversion only valid when status is success.
+            match other.opcode {
+                ibv_wc_opcode::IBV_WC_SEND => WcOpcode::Send,
+                ibv_wc_opcode::IBV_WC_RDMA_WRITE => WcOpcode::RdmaWrite,
+                ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
+                ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
+                ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
+                code @ _ => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
+            }
+        } else {
+            WcOpcode::Invalid
         };
+
         let wc_flags = interface::WcFlags::from_bits(other.wc_flags.0).unwrap();
 
         interface::WorkCompletion {
