@@ -462,9 +462,9 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_send(&self, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_send(&self, wr_id: u64, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
         let id = self.0;
-        let context = ptr::null_mut();
+        let context = wr_id as _;
         let addr = buf.as_ptr();
         let length = buf.len();
 
@@ -484,9 +484,9 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_recv(&self, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_recv(&self, wr_id: u64, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
         let id = self.0;
-        let context = ptr::null_mut();
+        let context = wr_id as _;
         let addr = buf.as_ptr();
         let length = buf.len();
 

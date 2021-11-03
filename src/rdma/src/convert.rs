@@ -28,6 +28,9 @@ mod sa {
     // if h.flags.contains(AddrInfoFlags::FAMILY) {
     //     flags |= ffi::RAI_FAMILY;
     // }
+    use interface::WcFlags;
+    const_assert_eq!(WcFlags::GRH.bits(), ffi::ibv_wc_flags::IBV_WC_GRH.0);
+    const_assert_eq!(WcFlags::WITH_IMM.bits(), ffi::ibv_wc_flags::IBV_WC_WITH_IMM.0);
 }
 
 impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
@@ -157,5 +160,36 @@ impl From<interface::QpType> for ibv::QpType {
             UD => ffi::ibv_qp_type::IBV_QPT_UD,
         };
         ibv::QpType(inner)
+    }
+}
+
+impl From<ffi::ibv_wc> for interface::WorkCompletion {
+    fn from(other: ffi::ibv_wc) -> Self {
+        use ffi::ibv_wc_status;
+        use ffi::ibv_wc_opcode;
+        use interface::WcOpcode;
+        let status = match other.status {
+            ibv_wc_status::IBV_WC_SUCCESS => interface::WcStatus::Success,
+            e@_ => interface::WcStatus::Error(e),
+        };
+        let opcode = match other.opcode {
+            ibv_wc_opcode::IBV_WC_SEND => WcOpcode::Send,
+            ibv_wc_opcode::IBV_WC_RDMA_WRITE => WcOpcode::RdmaWrite,
+            ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
+            ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
+            ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
+            _ => unimplemented!(),
+        };
+        let wc_flags = interface::WcFlags::from_bits(other.wc_flags.0).unwrap();
+
+        interface::WorkCompletion {
+            wr_id: other.wr_id,
+            status,
+            opcode,
+            vendor_err: other.vendor_err,
+            byte_len: other.byte_len,
+            imm_data: other.imm_data,
+            wc_flags,
+        }
     }
 }

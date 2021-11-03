@@ -8,8 +8,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::Result;
 
-use ipc;
-use ipc::cmd::{Request, Response};
+use ipc::{self, cmd, dp};
 
 use crate::module::Module;
 use crate::transport::engine::TransportEngine;
@@ -34,9 +33,9 @@ impl TransportModule {
         let client_path = sender
             .as_pathname()
             .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
-        let msg: Request = bincode::deserialize(buf).unwrap();
+        let msg: cmd::Request = bincode::deserialize(buf).unwrap();
         match msg {
-            Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode),
+            cmd::Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode),
             _ => unreachable!(""),
         }
     }
@@ -51,7 +50,7 @@ impl TransportModule {
         let (server, server_name) = ipc::OneShotServer::new()?;
 
         // 2. tell the name to the client
-        let mut buf = bincode::serialize(&Response::NewClient(mode, server_name))?;
+        let mut buf = bincode::serialize(&cmd::Response::NewClient(mode, server_name))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {
             return Err(anyhow!(
@@ -63,11 +62,18 @@ impl TransportModule {
 
         // 3. the client should later connect to the oneshot server, and create these channels
         // to communicate with its transport engine.
-        let (_, (tx, rx)): (_, (ipc::Sender<Response>, ipc::Receiver<Request>)) =
-            server.accept()?;
+        let (_, (cmd_tx, cmd_rx, dp_tx, dp_rx)): (
+            _,
+            (
+                ipc::Sender<cmd::Response>,
+                ipc::Receiver<cmd::Request>,
+                ipc::Sender<dp::Response>,
+                ipc::Receiver<dp::Request>,
+            ),
+        ) = server.accept()?;
 
         // 4. the transport module is responsible for initializing and starting the transport engines
-        let engine = TransportEngine::new(&client_path, tx, rx, mode);
+        let engine = TransportEngine::new(&client_path, cmd_tx, cmd_rx, dp_tx, dp_rx, mode);
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine));
 

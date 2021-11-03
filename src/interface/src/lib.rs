@@ -14,6 +14,8 @@ pub enum Error {
     GetAddrInfo(i32),
     #[error("resource not found")]
     NotFound,
+    // #[error("cannot open shared memory: {0}")]
+    // ShmOpen(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -92,7 +94,7 @@ pub struct ConnParam<'priv_data> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcStatus {
     Success,
-    Error(i32),
+    Error(u32),
 }
 
 #[derive(Serialize, Deserialize)]

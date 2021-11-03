@@ -1,13 +1,12 @@
-use std::fs;
-use std::slice;
-use std::os::unix::net::UnixDatagram;
 use std::collections::HashMap;
+use std::fs;
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::slice;
 
 use interface::Handle;
-use ipc;
-use ipc::cmd::{Request, Response};
+use ipc::{self, cmd, dp};
 
 use engine::{Engine, SchedulingMode, Upgradable, Version};
 
@@ -37,7 +36,9 @@ struct MemoryTranslationTable {
 
 impl MemoryTranslationTable {
     fn new() -> Self {
-        MemoryTranslationTable { table: Default::default(), }
+        MemoryTranslationTable {
+            table: Default::default(),
+        }
     }
     fn allocate(&mut self, uaddr: u64, kaddr: u64) {
         self.table.insert(uaddr, kaddr).ok_or(()).unwrap_err();
@@ -60,8 +61,10 @@ pub struct TransportEngine<'ctx> {
     /// The mainly purpose of keeping is to send file descriptors to the client.
     client_path: PathBuf,
     sock: UnixDatagram,
-    tx: ipc::Sender<Response>,
-    rx: ipc::Receiver<Request>,
+    cmd_tx: ipc::Sender<cmd::Response>,
+    cmd_rx: ipc::Receiver<cmd::Request>,
+    dp_tx: ipc::Sender<dp::Response>,
+    dp_rx: ipc::Receiver<dp::Request>,
     mode: SchedulingMode,
 
     resource: Resource<'ctx>,
@@ -71,23 +74,27 @@ pub struct TransportEngine<'ctx> {
 impl<'ctx> TransportEngine<'ctx> {
     pub fn new<P: AsRef<Path>>(
         client_path: P,
-        tx: ipc::Sender<Response>,
-        rx: ipc::Receiver<Request>,
+        cmd_tx: ipc::Sender<cmd::Response>,
+        cmd_rx: ipc::Receiver<cmd::Request>,
+        dp_tx: ipc::Sender<dp::Response>,
+        dp_rx: ipc::Receiver<dp::Request>,
         mode: SchedulingMode,
     ) -> Self {
         let engine_path = PathBuf::from(ENGINE_PATH.to_string());
         if engine_path.exists() {
-            fs::remove_file(&engine_path).expect("remvoe_file");
+            fs::remove_file(&engine_path).expect("remove_file");
         }
         let sock = UnixDatagram::bind(&engine_path).expect("create unix domain socket failed");
         TransportEngine {
             client_path: client_path.as_ref().to_owned(),
             sock,
-            tx,
-            rx,
+            cmd_tx,
+            cmd_rx,
+            dp_tx,
+            dp_rx,
             mode,
             resource: Resource::new(),
-            mtt: MemoryTranslationTable::new(),  // it should be passed in from the transport module
+            mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
         }
     }
 }
@@ -124,203 +131,35 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
     }
 
     fn run(&mut self) -> bool {
-        match self.rx.try_recv() {
+        if self.check_dp() {
+            return true;
+        }
+        if self.check_cmd() {
+            return true;
+        }
+        false
+    }
+
+    fn shutdown(&mut self) {
+        unimplemented!();
+    }
+
+    fn enqueue(&self) {
+        unimplemented!();
+    }
+
+    fn check_queue_len(&self) {
+        unimplemented!();
+    }
+}
+
+impl<'ctx> TransportEngine<'ctx> {
+    fn check_dp(&mut self) -> bool {
+        match self.dp_rx.try_recv() {
             // handle request
             Ok(req) => {
-                match req {
-                    Request::NewClient(..) => unreachable!(),
-                    Request::Hello(number) => {
-                        self.tx.send(Response::HelloBack(number)).unwrap();
-                    }
-                    Request::GetAddrInfo(node, service, hints) => {
-                        trace!(
-                            "node: {:?}, service: {:?}, hints: {:?}",
-                            node,
-                            service,
-                            hints,
-                        );
-                        let hints = hints.map(rdmacm::AddrInfoHints::from);
-                        let ai = rdmacm::AddrInfo::getaddrinfo(
-                            node.as_deref(),
-                            service.as_deref(),
-                            hints.as_ref(),
-                        );
-                        let ret = ai.map_or_else(
-                            |e| Err(interface::Error::GetAddrInfo(e.raw_os_error().unwrap())),
-                            |ai| Ok(ai.into()),
-                        );
-                        self.tx.send(Response::GetAddrInfo(ret)).unwrap();
-                    }
-                    Request::CreateEp(ai, pd_handle, qp_init_attr) => {
-                        // do something with this
-                        trace!(
-                            "ai: {:?}, pd_handle: {:?}, qp_init_attr: {:?}",
-                            ai,
-                            pd_handle,
-                            qp_init_attr
-                        );
-
-                        let pd = pd_handle.and_then(|h| self.resource.pd_table.get(&h));
-                        let qp_init_attr = qp_init_attr.map(|a| {
-                            let attr = ibv::QpInitAttr {
-                                qp_context: 0,
-                                send_cq: a.send_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                                recv_cq: a.recv_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                                cap: a.cap.into(),
-                                qp_type: a.qp_type.into(),
-                                sq_sig_all: a.sq_sig_all,
-                            };
-                            attr.to_ibv_qp_init_attr()
-                        });
-
-                        let ret = match CmId::create_ep(&ai.into(), pd, qp_init_attr.as_ref()) {
-                            Ok(cmid) => {
-                                let cmid_handle = self.resource.allocate_handle();
-                                self.resource
-                                    .cmid_table
-                                    .insert(cmid_handle, cmid)
-                                    .ok_or(())
-                                    .unwrap_err();
-                                Ok(cmid_handle)
-                            }
-                            Err(e) => Err(interface::Error::RdmaCm(e.raw_os_error().unwrap())),
-                        };
-
-                        self.tx.send(Response::CreateEp(ret)).unwrap();
-                    }
-                    Request::Listen(cmid_handle, backlog) => {
-                        trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
-                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                            Err(interface::Error::NotFound),
-                            |listener| {
-                                listener.listen(backlog).map_err(|e| {
-                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
-                                })
-                            },
-                        );
-                        self.tx.send(Response::Listen(ret)).unwrap()
-                    }
-                    Request::GetRequest(cmid_handle) => {
-                        trace!("cmid_handle: {:?}", cmid_handle);
-
-                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                            Err(interface::Error::NotFound),
-                            |listener| {
-                                listener.get_request().map_err(|e| {
-                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
-                                })
-                            },
-                        );
-                        let ret = ret.map(|new_cmid| {
-                            let new_handle = self.resource.allocate_handle();
-                            self.resource
-                                .cmid_table
-                                .insert(new_handle, new_cmid)
-                                .ok_or(())
-                                .unwrap_err();
-                            new_handle
-                        });
-                        self.tx.send(Response::GetRequest(ret)).unwrap()
-                    }
-                    Request::Accept(cmid_handle, conn_param) => {
-                        trace!(
-                            "cmid_handle: {:?}, conn_param: {:?}",
-                            cmid_handle,
-                            conn_param
-                        );
-                        warn!("TODO: conn_param is ignored for now");
-                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                            Err(interface::Error::NotFound),
-                            |listener| {
-                                listener.accept().map_err(|e| {
-                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
-                                })
-                            },
-                        );
-                        self.tx.send(Response::Accept(ret)).unwrap()
-                    }
-                    Request::Connect(cmid_handle, conn_param) => {
-                        trace!(
-                            "cmid_handle: {:?}, conn_param: {:?}",
-                            cmid_handle,
-                            conn_param
-                        );
-                        warn!("TODO: conn_param is ignored for now");
-                        let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                            Err(interface::Error::NotFound),
-                            |cmid| {
-                                cmid.connect().map_err(|e| {
-                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
-                                })
-                            },
-                        );
-                        self.tx.send(Response::Connect(ret)).unwrap()
-                    }
-                    Request::RegMsgs(cmid_handle, addr_range) => {
-                        trace!("cmid_handle: {:?}, addr_range: {:?}", cmid_handle, addr_range);
-                        let res = self.resource.cmid_table.get(&cmid_handle);
-                        match res {
-                            Some(cmid) => {
-                                // 1. create/open shared memory file
-                                use uuid::Uuid;
-                                use nix::fcntl::OFlag;
-                                use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
-                                use nix::sys::stat::Mode;
-                                // just randomly pick an string and use that for now
-                                let shm_path = format!("/dev/shm/koala-{}", Uuid::new_v4());
-                                let fd = shm_open(
-                                    &PathBuf::from(shm_path),
-                                    OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
-                                    Mode::S_IRUSR | Mode::S_IWUSR,
-                                ).expect("shm_open");
-                                // 2. mmap the user's vaddr into koala's address space through
-                                // __linear__ mapping (this is necessary) (actually, maybe not)
-                                let uaddr = addr_range.start;
-                                let ulen = (addr_range.end - addr_range.start) as usize;
-                                let page_size = 4096;
-                                let aligned_end = (uaddr as usize + ulen + page_size - 1) / page_size * page_size;
-                                let aligned_begin = uaddr as usize - uaddr as usize % page_size;
-                                let aligned_len = aligned_end - aligned_begin;
-                                let kaddr = unsafe {
-                                    mmap(
-                                        ptr::null_mut(),
-                                        aligned_len,
-                                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                                        MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE,
-                                        fd,
-                                        0,
-                                    ).expect("mmap")
-                                };
-                                // 3. send fd back
-                                ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
-                                // 4. allocate entry in MTT (uaddr -> kaddr)
-                                self.mtt.allocate(uaddr, kaddr as u64);
-                                // 5. register vaddr2 with ibv_reg_mr
-                                let buf = unsafe { slice::from_raw_parts(kaddr as *const u8, aligned_len) };
-                                let ret = cmid.reg_msgs(&buf).map_err(|e| {
-                                    interface::Error::RdmaCm(e.raw_os_error().unwrap())
-                                });
-                                let ret = ret.map(|mr| {
-                                    // 6. allocate mr handle
-                                    let new_mr = self.resource.allocate_handle();
-                                    self.resource
-                                        .mr_table
-                                        .insert(new_mr, mr)
-                                        .ok_or(())
-                                        .unwrap_err();
-                                    new_mr
-                                });
-                                // 7. send mr handle back
-                                self.tx.send(Response::RegMsgs(ret)).unwrap();
-                            }
-                            None => self.tx.send(Response::RegMsgs(Err(interface::Error::NotFound))).unwrap(),
-                        }
-                    }
-                    _ => {
-                        unimplemented!()
-                    }
-                }
-                true
+                let res = self.process_dp(req);
+                self.dp_tx.send(res).map_or_else(|_| true, |_| false)
             }
             Err(ipc::TryRecvError::Empty) => {
                 // do nothing
@@ -335,15 +174,308 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
         }
     }
 
-    fn shutdown(&mut self) {
-        unimplemented!();
+    fn check_cmd(&mut self) -> bool {
+        match self.cmd_rx.try_recv() {
+            // handle request
+            Ok(req) => {
+                let res = self.process_cmd(req);
+                self.cmd_tx.send(res).map_or_else(|_| true, |_| false)
+            }
+            Err(ipc::TryRecvError::Empty) => {
+                // do nothing
+                false
+            }
+            Err(ipc::TryRecvError::IpcError(e)) => {
+                if matches!(e, ipc::IpcError::Disconnected) {
+                    return true;
+                }
+                panic!("recv error: {:?}", e);
+            }
+        }
     }
 
-    fn enqueue(&self) {
-        unimplemented!();
+    /// Process data path operations.
+    fn process_dp(&mut self, req: dp::Request) -> dp::Response {
+        use ipc::dp::{Request, Response};
+        match req {
+            Request::PostRecv(cmid_handle, wr_id, addr_range, mr_handle) => {
+                let ret = self
+                    .resource
+                    .cmid_table
+                    .get(&cmid_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::PostRecv(Err(e)); }
+                let cmid = ret.unwrap();
+                let ret = self
+                    .resource
+                    .mr_table
+                    .get(&mr_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::PostRecv(Err(e)); }
+                let mr = ret.unwrap();
+                let buf = unsafe {
+                    slice::from_raw_parts(
+                        addr_range.start as *const u8,
+                        (addr_range.end - addr_range.start) as usize,
+                    )
+                };
+                let ret = unsafe { cmid.post_recv(wr_id, buf, &mr) }
+                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
+                Response::PostRecv(ret)
+            }
+            Request::PostSend(cmid_handle, wr_id, addr_range, mr_handle, send_flags) => {
+                // TODO(cjr): send_flags is currently ignored
+                let ret = self
+                    .resource
+                    .cmid_table
+                    .get(&cmid_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::PostSend(Err(e)); }
+                let cmid = ret.unwrap();
+                let ret = self
+                    .resource
+                    .mr_table
+                    .get(&mr_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::PostSend(Err(e)); }
+                let mr = ret.unwrap();
+                let buf = unsafe {
+                    slice::from_raw_parts(
+                        addr_range.start as *const u8,
+                        (addr_range.end - addr_range.start) as usize,
+                    )
+                };
+                let ret = unsafe { cmid.post_send(wr_id, buf, &mr) }
+                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
+                Response::PostSend(ret)
+            }
+            Request::GetRecvComp(cmid_handle) => {
+                let ret = self
+                    .resource
+                    .cmid_table
+                    .get(&cmid_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::GetRecvComp(Err(e)); }
+                let cmid = ret.unwrap();
+                let ret = cmid
+                    .get_recv_comp()
+                    .map(|wc| wc.into())
+                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
+                Response::GetRecvComp(ret)
+            }
+            Request::GetSendComp(cmid_handle) => {
+                let ret = self
+                    .resource
+                    .cmid_table
+                    .get(&cmid_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret { return Response::GetSendComp(Err(e)); }
+                let cmid = ret.unwrap();
+                let ret = cmid
+                    .get_send_comp()
+                    .map(|wc| wc.into())
+                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
+                Response::GetSendComp(ret)
+            }
+        }
     }
 
-    fn check_queue_len(&self) {
-        unimplemented!();
+    /// Process control path operations.
+    fn process_cmd(&mut self, req: cmd::Request) -> cmd::Response {
+        use ipc::cmd::{Request, Response};
+        match req {
+            Request::NewClient(..) => unreachable!(),
+            Request::Hello(number) => Response::HelloBack(number),
+            Request::GetAddrInfo(node, service, hints) => {
+                trace!(
+                    "node: {:?}, service: {:?}, hints: {:?}",
+                    node,
+                    service,
+                    hints,
+                );
+                let hints = hints.map(rdmacm::AddrInfoHints::from);
+                let ai = rdmacm::AddrInfo::getaddrinfo(
+                    node.as_deref(),
+                    service.as_deref(),
+                    hints.as_ref(),
+                );
+                let ret = ai.map_or_else(
+                    |e| Err(interface::Error::GetAddrInfo(e.raw_os_error().unwrap())),
+                    |ai| Ok(ai.into()),
+                );
+                Response::GetAddrInfo(ret)
+            }
+            Request::CreateEp(ai, pd_handle, qp_init_attr) => {
+                trace!(
+                    "ai: {:?}, pd_handle: {:?}, qp_init_attr: {:?}",
+                    ai,
+                    pd_handle,
+                    qp_init_attr
+                );
+
+                let pd = pd_handle.and_then(|h| self.resource.pd_table.get(&h));
+                let qp_init_attr = qp_init_attr.map(|a| {
+                    let attr = ibv::QpInitAttr {
+                        qp_context: 0,
+                        send_cq: a.send_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
+                        recv_cq: a.recv_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
+                        cap: a.cap.into(),
+                        qp_type: a.qp_type.into(),
+                        sq_sig_all: a.sq_sig_all,
+                    };
+                    attr.to_ibv_qp_init_attr()
+                });
+
+                let ret = match CmId::create_ep(&ai.into(), pd, qp_init_attr.as_ref()) {
+                    Ok(cmid) => {
+                        let cmid_handle = self.resource.allocate_handle();
+                        self.resource
+                            .cmid_table
+                            .insert(cmid_handle, cmid)
+                            .ok_or(())
+                            .unwrap_err();
+                        Ok(cmid_handle)
+                    }
+                    Err(e) => Err(interface::Error::RdmaCm(e.raw_os_error().unwrap())),
+                };
+
+                Response::CreateEp(ret)
+            }
+            Request::Listen(cmid_handle, backlog) => {
+                trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
+                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                    Err(interface::Error::NotFound),
+                    |listener| {
+                        listener
+                            .listen(backlog)
+                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
+                    },
+                );
+                Response::Listen(ret)
+            }
+            Request::GetRequest(cmid_handle) => {
+                trace!("cmid_handle: {:?}", cmid_handle);
+
+                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                    Err(interface::Error::NotFound),
+                    |listener| {
+                        listener
+                            .get_request()
+                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
+                    },
+                );
+                let ret = ret.map(|new_cmid| {
+                    let new_handle = self.resource.allocate_handle();
+                    self.resource
+                        .cmid_table
+                        .insert(new_handle, new_cmid)
+                        .ok_or(())
+                        .unwrap_err();
+                    new_handle
+                });
+                Response::GetRequest(ret)
+            }
+            Request::Accept(cmid_handle, conn_param) => {
+                trace!(
+                    "cmid_handle: {:?}, conn_param: {:?}",
+                    cmid_handle,
+                    conn_param
+                );
+                warn!("TODO: conn_param is ignored for now");
+                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                    Err(interface::Error::NotFound),
+                    |listener| {
+                        listener
+                            .accept()
+                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
+                    },
+                );
+                Response::Accept(ret)
+            }
+            Request::Connect(cmid_handle, conn_param) => {
+                trace!(
+                    "cmid_handle: {:?}, conn_param: {:?}",
+                    cmid_handle,
+                    conn_param
+                );
+                warn!("TODO: conn_param is ignored for now");
+                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
+                    Err(interface::Error::NotFound),
+                    |cmid| {
+                        cmid.connect()
+                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
+                    },
+                );
+                Response::Connect(ret)
+            }
+            Request::RegMsgs(cmid_handle, addr_range) => {
+                trace!(
+                    "cmid_handle: {:?}, addr_range: {:?}",
+                    cmid_handle,
+                    addr_range
+                );
+                let res = self.resource.cmid_table.get(&cmid_handle);
+                if res.is_none() {
+                    return Response::RegMsgs(Err(interface::Error::NotFound));
+                }
+                let cmid = res.unwrap();
+                // 1. create/open shared memory file
+                use nix::fcntl::OFlag;
+                use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
+                use nix::sys::stat::Mode;
+                use uuid::Uuid;
+                // just randomly pick an string and use that for now
+                let shm_path = format!("/dev/shm/koala-{}", Uuid::new_v4());
+                let fd = shm_open(
+                    &PathBuf::from(shm_path),
+                    OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
+                    Mode::S_IRUSR | Mode::S_IWUSR,
+                )
+                .expect("shm_open");
+                // 2. mmap the user's vaddr into koala's address space through
+                // __linear__ mapping (this is necessary) (actually, maybe not)
+                let uaddr = addr_range.start;
+                let ulen = (addr_range.end - addr_range.start) as usize;
+                let page_size = 4096;
+                let aligned_end = (uaddr as usize + ulen + page_size - 1) / page_size * page_size;
+                let aligned_begin = uaddr as usize - uaddr as usize % page_size;
+                let aligned_len = aligned_end - aligned_begin;
+                let kaddr = unsafe {
+                    mmap(
+                        ptr::null_mut(),
+                        aligned_len,
+                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                        MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE,
+                        fd,
+                        0,
+                    )
+                    .expect("mmap")
+                };
+                // 3. send fd back
+                ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
+                // 4. allocate entry in MTT (uaddr -> kaddr)
+                self.mtt.allocate(uaddr, kaddr as u64);
+                // 5. register vaddr2 with ibv_reg_mr
+                let buf = unsafe { slice::from_raw_parts(kaddr as *const u8, aligned_len) };
+                let ret = cmid
+                    .reg_msgs(&buf)
+                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
+                let ret = ret.map(|mr| {
+                    // 6. allocate mr handle
+                    let new_mr = self.resource.allocate_handle();
+                    self.resource
+                        .mr_table
+                        .insert(new_mr, mr)
+                        .ok_or(())
+                        .unwrap_err();
+                    new_mr
+                });
+                // 7. send mr handle back
+                Response::RegMsgs(ret)
+            }
+            _ => {
+                unimplemented!()
+            }
+        }
     }
 }

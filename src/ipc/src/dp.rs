@@ -10,14 +10,14 @@ type IResult<T> = Result<T, interface::Error>;
 pub enum Request {
     PostRecv(Handle, u64, Range<u64>, Handle),
     PostSend(Handle, u64, Range<u64>, Handle, SendFlags),
-    GetSendComp(Handle),
     GetRecvComp(Handle),
+    GetSendComp(Handle),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     PostRecv(IResult<()>),
     PostSend(IResult<()>),
-    GetSendComp(IResult<WorkCompletion>),
     GetRecvComp(IResult<WorkCompletion>),
+    GetSendComp(IResult<WorkCompletion>),
 }
