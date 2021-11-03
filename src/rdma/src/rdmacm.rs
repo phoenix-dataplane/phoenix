@@ -462,7 +462,13 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_send(&self, wr_id: u64, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_send(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+    ) -> io::Result<()> {
         let id = self.0;
         let context = wr_id as _;
         let addr = buf.as_ptr();
@@ -474,7 +480,6 @@ impl CmId {
             (&*mr).addr as *const _ <= addr
                 && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
         );
-        let flags = ffi::ibv_send_flags::IBV_SEND_SIGNALED;
         let rc =
             ffi::rdma_post_send_real(id, context, addr as *mut _, length as u64, mr, flags.0 as _);
         if rc != 0 {

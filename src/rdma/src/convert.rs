@@ -34,6 +34,24 @@ mod sa {
         WcFlags::WITH_IMM.bits(),
         ffi::ibv_wc_flags::IBV_WC_WITH_IMM.0
     );
+
+    use interface::SendFlags;
+    const_assert_eq!(
+        SendFlags::FENCE.bits(),
+        ffi::ibv_send_flags::IBV_SEND_FENCE.0
+    );
+    const_assert_eq!(
+        SendFlags::SIGNALED.bits(),
+        ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
+    );
+    const_assert_eq!(
+        SendFlags::SOLICITED.bits(),
+        ffi::ibv_send_flags::IBV_SEND_SOLICITED.0
+    );
+    const_assert_eq!(
+        SendFlags::INLINE.bits(),
+        ffi::ibv_send_flags::IBV_SEND_INLINE.0
+    );
 }
 
 impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
@@ -203,5 +221,11 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             imm_data: other.imm_data,
             wc_flags,
         }
+    }
+}
+
+impl From<interface::SendFlags> for ibv::SendFlags {
+    fn from(other: interface::SendFlags) -> Self {
+        ibv::SendFlags(ffi::ibv_send_flags(other.bits()))
     }
 }

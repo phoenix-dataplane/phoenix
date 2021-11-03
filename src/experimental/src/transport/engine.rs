@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
 
+use uuid::Uuid;
+
 use interface::Handle;
 use ipc::{self, cmd, dp};
 
@@ -16,9 +18,6 @@ use engine::{Engine, SchedulingMode, Upgradable, Version};
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
-
-/// TODO(cjr): replace this later.
-const ENGINE_PATH: &str = "/tmp/koala/koala-tranport-engine.sock";
 
 /// A variety of tables map a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
@@ -104,11 +103,14 @@ impl<'ctx> TransportEngine<'ctx> {
         dp_rx: ipc::Receiver<dp::Request>,
         mode: SchedulingMode,
     ) -> Self {
-        let engine_path = PathBuf::from(ENGINE_PATH.to_string());
-        if engine_path.exists() {
-            fs::remove_file(&engine_path).expect("remove_file");
+        let uuid = Uuid::new_v4();
+        let sock_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
+
+        if sock_path.exists() {
+            // This is impossible using uuid.
+            fs::remove_file(&sock_path).expect("remove_file");
         }
-        let sock = UnixDatagram::bind(&engine_path).expect("create unix domain socket failed");
+        let sock = UnixDatagram::bind(&sock_path).expect("create unix domain socket failed");
         TransportEngine {
             client_path: client_path.as_ref().to_owned(),
             sock,
@@ -260,7 +262,6 @@ impl<'ctx> TransportEngine<'ctx> {
                 Response::PostRecv(ret)
             }
             Request::PostSend(cmid_handle, wr_id, addr_range, mr_handle, send_flags) => {
-                // TODO(cjr): send_flags is currently ignored
                 let ret = self
                     .resource
                     .cmid_table
@@ -293,7 +294,8 @@ impl<'ctx> TransportEngine<'ctx> {
                 let offset = (addr_range.start - smf.urange.start) as usize;
                 let len = (addr_range.end - addr_range.start) as usize;
                 let buf = &smf.kbuf[offset..offset + len];
-                let ret = unsafe { cmid.post_send(wr_id, buf, &mr) }
+                let flags: ibv::SendFlags = send_flags.into();
+                let ret = unsafe { cmid.post_send(wr_id, buf, &mr, flags.0) }
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 Response::PostSend(ret)
             }
@@ -475,7 +477,6 @@ impl<'ctx> TransportEngine<'ctx> {
                 use nix::fcntl::OFlag;
                 use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
                 use nix::sys::stat::Mode;
-                use uuid::Uuid;
                 // just randomly pick an string and use that for now
                 let shm_path = PathBuf::from(format!("koala-{}", Uuid::new_v4())); // no /dev/shm prefix is needed
                 let fd = shm_open(

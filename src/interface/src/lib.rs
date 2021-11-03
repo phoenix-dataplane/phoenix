@@ -124,15 +124,15 @@ bitflags! {
     #[derive(Default)]
     pub struct SendFlags: u32 {
         /// Set the fence indicator. Valid only for QPs with Transport Service Type RC.
-        const SEND_FENCE = 0b00000001;
+        const FENCE = 0b00000001;
         /// Set the completion notification indicator. Relevant only if QP was created with
         /// sq_sig_all=0.
-        const SEND_SIGNALED = 0b00000010;
+        const SIGNALED = 0b00000010;
         /// Set the solicited event indicator. Valid only for Send and RDMA Write with immediate.
-        const SEND_SOLICITED = 0b00000100;
+        const SOLICITED = 0b00000100;
         /// Send data in given gather list as inline data in a send WQE.  Valid only for Send and
         /// RDMA Write.  The L_Key will not be checked. 
-        const SEND_INLINE = 0b00001000;
+        const INLINE = 0b00001000;
     }
 }
 
