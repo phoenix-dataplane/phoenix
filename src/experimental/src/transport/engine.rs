@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
+use std::fs::File;
+use std::ops::Range;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -15,7 +18,7 @@ use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
 /// TODO(cjr): replace this later.
-const ENGINE_PATH: &str = "/tmp/koala/koala_tranport_engine.sock";
+const ENGINE_PATH: &str = "/tmp/koala/koala-tranport-engine.sock";
 
 /// A variety of tables map a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
@@ -31,7 +34,28 @@ struct Resource<'ctx> {
 /// and modification. But for now, we implement it without considering synchronization.
 #[derive(Debug)]
 struct MemoryTranslationTable {
-    table: HashMap<u64, u64>,
+    // mr_handle -> SharedMemoryFile
+    table: HashMap<Handle, SharedMemoryFile>,
+}
+
+/// A piece of memory region that is both mmap shared and registered in the NIC.
+#[derive(Debug)]
+struct SharedMemoryFile {
+    urange: Range<u64>,
+    kbuf: &'static [u8],
+    memfile: File,
+    path: PathBuf,
+}
+
+impl SharedMemoryFile {
+    fn new<P: AsRef<Path>>(urange: Range<u64>, buffer: &[u8], memfile: File, path: P) -> Self {
+        SharedMemoryFile {
+            urange,
+            kbuf: unsafe { slice::from_raw_parts(buffer.as_ptr(), buffer.len()) },
+            memfile,
+            path: path.as_ref().to_owned(),
+        }
+    }
 }
 
 impl MemoryTranslationTable {
@@ -40,8 +64,8 @@ impl MemoryTranslationTable {
             table: Default::default(),
         }
     }
-    fn allocate(&mut self, uaddr: u64, kaddr: u64) {
-        self.table.insert(uaddr, kaddr).ok_or(()).unwrap_err();
+    fn allocate(&mut self, mr_handle: Handle, smf: SharedMemoryFile) {
+        self.table.insert(mr_handle, smf).ok_or(()).unwrap_err();
     }
 }
 
@@ -204,21 +228,33 @@ impl<'ctx> TransportEngine<'ctx> {
                     .cmid_table
                     .get(&cmid_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::PostRecv(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::PostRecv(Err(e));
+                }
                 let cmid = ret.unwrap();
                 let ret = self
                     .resource
                     .mr_table
                     .get(&mr_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::PostRecv(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::PostRecv(Err(e));
+                }
                 let mr = ret.unwrap();
-                let buf = unsafe {
-                    slice::from_raw_parts(
-                        addr_range.start as *const u8,
-                        (addr_range.end - addr_range.start) as usize,
-                    )
-                };
+                let ret = self
+                    .mtt
+                    .table
+                    .get(&mr_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret {
+                    return Response::PostRecv(Err(e));
+                }
+                let smf = ret.unwrap();
+                // TODO(cjr): shouldn't assert, should return an error
+                assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
+                let offset = (addr_range.start - smf.urange.start) as usize;
+                let len = (addr_range.end - addr_range.start) as usize;
+                let buf = &smf.kbuf[offset..len];
                 let ret = unsafe { cmid.post_recv(wr_id, buf, &mr) }
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 Response::PostRecv(ret)
@@ -230,21 +266,33 @@ impl<'ctx> TransportEngine<'ctx> {
                     .cmid_table
                     .get(&cmid_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::PostSend(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::PostSend(Err(e));
+                }
                 let cmid = ret.unwrap();
                 let ret = self
                     .resource
                     .mr_table
                     .get(&mr_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::PostSend(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::PostSend(Err(e));
+                }
                 let mr = ret.unwrap();
-                let buf = unsafe {
-                    slice::from_raw_parts(
-                        addr_range.start as *const u8,
-                        (addr_range.end - addr_range.start) as usize,
-                    )
-                };
+                let ret = self
+                    .mtt
+                    .table
+                    .get(&mr_handle)
+                    .ok_or(interface::Error::NotFound);
+                if let Err(e) = ret {
+                    return Response::PostRecv(Err(e));
+                }
+                let smf = ret.unwrap();
+                // TODO(cjr): shouldn't assert, should return an error
+                assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
+                let offset = (addr_range.start - smf.urange.start) as usize;
+                let len = (addr_range.end - addr_range.start) as usize;
+                let buf = &smf.kbuf[offset..len];
                 let ret = unsafe { cmid.post_send(wr_id, buf, &mr) }
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 Response::PostSend(ret)
@@ -255,7 +303,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     .cmid_table
                     .get(&cmid_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::GetRecvComp(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::GetRecvComp(Err(e));
+                }
                 let cmid = ret.unwrap();
                 let ret = cmid
                     .get_recv_comp()
@@ -269,7 +319,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     .cmid_table
                     .get(&cmid_handle)
                     .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret { return Response::GetSendComp(Err(e)); }
+                if let Err(e) = ret {
+                    return Response::GetSendComp(Err(e));
+                }
                 let cmid = ret.unwrap();
                 let ret = cmid
                     .get_send_comp()
@@ -410,7 +462,7 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::RegMsgs(cmid_handle, addr_range) => {
                 trace!(
-                    "cmid_handle: {:?}, addr_range: {:?}",
+                    "cmid_handle: {:?}, addr_range: {:#x?}",
                     cmid_handle,
                     addr_range
                 );
@@ -425,9 +477,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 use nix::sys::stat::Mode;
                 use uuid::Uuid;
                 // just randomly pick an string and use that for now
-                let shm_path = format!("/dev/shm/koala-{}", Uuid::new_v4());
+                let shm_path = PathBuf::from(format!("koala-{}", Uuid::new_v4())); // no /dev/shm prefix is needed
                 let fd = shm_open(
-                    &PathBuf::from(shm_path),
+                    &shm_path,
                     OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
                     Mode::S_IRUSR | Mode::S_IWUSR,
                 )
@@ -440,6 +492,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 let aligned_end = (uaddr as usize + ulen + page_size - 1) / page_size * page_size;
                 let aligned_begin = uaddr as usize - uaddr as usize % page_size;
                 let aligned_len = aligned_end - aligned_begin;
+                // ftruncate the file
+                let memfile = unsafe { File::from_raw_fd(fd) };
+                memfile.set_len(aligned_len as _).expect("memfile set_len");
                 let kaddr = unsafe {
                     mmap(
                         ptr::null_mut(),
@@ -453,21 +508,22 @@ impl<'ctx> TransportEngine<'ctx> {
                 };
                 // 3. send fd back
                 ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
-                // 4. allocate entry in MTT (uaddr -> kaddr)
-                self.mtt.allocate(uaddr, kaddr as u64);
-                // 5. register vaddr2 with ibv_reg_mr
+                // 4. register kaddr with ibv_reg_mr
                 let buf = unsafe { slice::from_raw_parts(kaddr as *const u8, aligned_len) };
                 let ret = cmid
                     .reg_msgs(&buf)
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 let ret = ret.map(|mr| {
-                    // 6. allocate mr handle
+                    // 5. allocate mr handle
                     let new_mr = self.resource.allocate_handle();
                     self.resource
                         .mr_table
                         .insert(new_mr, mr)
                         .ok_or(())
                         .unwrap_err();
+                    // 6. allocate entry in MTT (mr -> SharedMemoryFile)
+                    let smf = SharedMemoryFile::new(addr_range, buf, memfile, &shm_path);
+                    self.mtt.allocate(new_mr, smf);
                     new_mr
                 });
                 // 7. send mr handle back

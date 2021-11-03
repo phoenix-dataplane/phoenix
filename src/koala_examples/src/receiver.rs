@@ -25,6 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .expect("getaddrinfo");
 
+    eprintln!("ai: {:?}", ai);
+
     let qp_init_attr = QpInitAttr {
         qp_context: Some(&3),
         send_cq: None,
@@ -43,10 +45,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listen_id = cm::create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
 
+    eprintln!("listen_id: {:?}", listen_id);
+
     cm::listen(&ctx, &listen_id, 16).expect("Listen failed!");
     let id = cm::get_requst(&ctx, &listen_id).expect("Get request failed!");
 
-    let recv_msg = [0; 128];
+    let recv_msg = [0u8; 128];
     let mr =
         cm::reg_msgs(&ctx, &id, &recv_msg).expect("Memory registration failed!");
 

@@ -9,19 +9,42 @@ use spin::Mutex;
 
 use crate::runtime::{self, Runtime};
 use crate::Engine;
+use crate::SchedulingMode;
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
 }
 
 struct Inner {
+    next_core: usize,
     runtimes: Vec<Arc<Runtime>>,
     handles: Vec<JoinHandle<Result<(), runtime::Error>>>,
+}
+
+impl Inner {
+    fn schedule_dedicate(&mut self, engine: Box<dyn Engine>) {
+        // find a spare runtime
+        let rid = match self.runtimes.iter().enumerate().find(|(_i, r)| r.is_empty()) {
+            Some((rid, _runtime)) => rid,
+            None => {
+                // if there's not spare runtime, and there are available resources (e.g. cpus),
+                // spawn a new one.
+
+                // find the next available CPU and start a runtime on it.
+                let rid = self.next_core;
+                self.start_runtime(self.next_core);
+                self.next_core += 1;
+                rid
+            }
+        };
+        self.runtimes[rid].add_engine(engine)
+    }
 }
 
 impl RuntimeManager {
     pub fn new(n: usize) -> Self {
         let inner = Inner {
+            next_core: 0,
             runtimes: Vec::with_capacity(n),
             handles: Vec::with_capacity(n),
         };
@@ -30,13 +53,16 @@ impl RuntimeManager {
         }
     }
 
-    pub fn submit(&self, engine: Box<dyn Engine>) {
+    pub fn submit(&self, engine: Box<dyn Engine>, mode: SchedulingMode) {
         // always submit to the first runtime
         let mut inner = self.inner.lock();
-        if inner.runtimes.is_empty() {
-            inner.start_runtime(0);
+        match mode {
+            SchedulingMode::Dedicate => {
+                inner.schedule_dedicate(engine);
+            }
+            SchedulingMode::Compact => unimplemented!(),
+            SchedulingMode::Spread => unimplemented!(),
         }
-        inner.runtimes[0].add_engine(engine)
     }
 }
 

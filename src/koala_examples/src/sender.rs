@@ -4,7 +4,7 @@ use interface::{
 };
 use libkoala::{cm, verbs, koala_register};
 
-const SERVER_ADDR: &str = "127.0.0.1";
+const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .expect("getaddrinfo");
 
-    println!("ai: {:?}", ai);
+    eprintln!("ai: {:?}", ai);
 
     let qp_init_attr = QpInitAttr {
         qp_context: Some(&3),
@@ -46,9 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let id = cm::create_ep(&ctx, ai, None, None)?;
     let id = cm::create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
 
-    println!("id: {:?}", id);
+    eprintln!("id: {:?}", id);
 
-    let recv_msg = [0; 128];
+    let recv_msg = [0u8; 128];
     let mr =
         cm::reg_msgs(&ctx, &id, &recv_msg).expect("Memory registration failed!");
 

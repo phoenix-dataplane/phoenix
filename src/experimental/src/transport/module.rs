@@ -75,7 +75,7 @@ impl TransportModule {
         // 4. the transport module is responsible for initializing and starting the transport engines
         let engine = TransportEngine::new(&client_path, cmd_tx, cmd_rx, dp_tx, dp_rx, mode);
         // submit the engine to a runtime
-        self.runtime_manager.submit(Box::new(engine));
+        self.runtime_manager.submit(Box::new(engine), mode);
 
         Ok(())
     }

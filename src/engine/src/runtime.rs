@@ -18,9 +18,9 @@ pub enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 /// __Safety__: A __Runtime__ only have one single consumer which iterates through
-/// the `running` and runs each engine. Newly added or stolen running are
+/// `running` and runs each engine. Newly added or stolen engines are
 /// appended to `pending`, which is protected by a spinlock. In the mainloop,
-/// the runtime moves engines from `pending` to `runing`.
+/// the runtime moves engines from `pending` to `running` by checking the `new_pending` flag.
 unsafe impl Sync for Runtime {}
 
 pub struct Runtime {
@@ -28,10 +28,10 @@ pub struct Runtime {
     pub(crate) _id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
-    pub(crate) running: RefCell<Vec<Box<dyn Engine>>>,
+    pub(crate) running: RefCell<Vec<RefCell<Box<dyn Engine>>>>,
 
     pub(crate) new_pending: AtomicBool,
-    pub(crate) pending: Mutex<Vec<Box<dyn Engine>>>,
+    pub(crate) pending: Mutex<Vec<RefCell<Box<dyn Engine>>>>,
 }
 
 impl Runtime {
@@ -44,15 +44,25 @@ impl Runtime {
         }
     }
 
+    /// Returns true if there is no runnable engine or pending engine.
+    pub fn is_empty(&self) -> bool {
+        self.is_spinning() && self.pending.lock().is_empty()
+    }
+
+    /// Returns true if there is no runnable engine.
+    pub fn is_spinning(&self) -> bool {
+        self.running.borrow().is_empty()
+    }
+
     pub fn add_engine(&self, engine: Box<dyn Engine>) {
-        self.pending.lock().push(engine);
+        self.pending.lock().push(RefCell::new(engine));
         self.new_pending.store(true, Ordering::Release);
     }
 
     pub(crate) fn mainloop(&self) -> Result<()> {
         loop {
-            for engine in self.running.borrow_mut().iter_mut() {
-                engine.run();
+            for engine in self.running.borrow().iter() {
+                engine.borrow_mut().run();
             }
             // move newly added running to the scheduling queue
             if self.new_pending.load(Ordering::Acquire) {
