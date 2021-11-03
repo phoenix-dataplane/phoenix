@@ -12,4 +12,4 @@ pub mod dp;
 pub mod interface;
 
 mod unix;
-pub use unix::{send_fd, recv_fd};
+pub use unix::{recv_fd, send_fd};

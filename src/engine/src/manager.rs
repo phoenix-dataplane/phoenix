@@ -24,7 +24,12 @@ struct Inner {
 impl Inner {
     fn schedule_dedicate(&mut self, engine: Box<dyn Engine>) {
         // find a spare runtime
-        let rid = match self.runtimes.iter().enumerate().find(|(_i, r)| r.is_empty()) {
+        let rid = match self
+            .runtimes
+            .iter()
+            .enumerate()
+            .find(|(_i, r)| r.is_empty())
+        {
             Some((rid, _runtime)) => rid,
             None => {
                 // if there's not spare runtime, and there are available resources (e.g. cpus),

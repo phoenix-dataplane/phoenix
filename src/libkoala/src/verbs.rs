@@ -1,7 +1,7 @@
 use interface::{CmId, MemoryRegion, SendFlags, WorkCompletion};
 use ipc::dp::{Request, Response};
 
-use crate::{Context, Error, slice_to_range};
+use crate::{slice_to_range, Context, Error};
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {

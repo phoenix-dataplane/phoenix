@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{FromRawFd, AsRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use interface::{
     addrinfo::{AddrInfo, AddrInfoHints},
@@ -96,8 +96,8 @@ pub fn connect(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Resu
 }
 
 pub fn reg_msgs<T>(ctx: &Context, id: &CmId, buffer: &[T]) -> Result<MemoryRegion, Error> {
-    use std::slice;
     use nix::sys::mman::{mmap, MapFlags, ProtFlags};
+    use std::slice;
 
     // 1. send regmsgs request to koala server
     let req = Request::RegMsgs(id.0, slice_to_range(buffer));
@@ -132,7 +132,8 @@ pub fn reg_msgs<T>(ctx: &Context, id: &CmId, buffer: &[T]) -> Result<MemoryRegio
             MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE | MapFlags::MAP_FIXED,
             memfd.as_raw_fd(),
             0,
-        ).map_err(io::Error::from)?
+        )
+        .map_err(io::Error::from)?
     };
 
     assert_eq!(pa, aligned_begin as _);

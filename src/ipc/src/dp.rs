@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-use interface::{Handle, WorkCompletion, SendFlags};
+use interface::{Handle, SendFlags, WorkCompletion};
 
 type IResult<T> = Result<T, interface::Error>;
 

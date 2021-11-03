@@ -3,11 +3,8 @@ use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-use crate::interface::{QpInitAttrOwned, ConnParamOwned};
-use interface::{
-    Handle,
-    addrinfo,
-};
+use crate::interface::{ConnParamOwned, QpInitAttrOwned};
+use interface::{addrinfo, Handle};
 
 type IResult<T> = Result<T, interface::Error>;
 
@@ -21,11 +18,7 @@ pub enum Request {
         Option<String>,
         Option<addrinfo::AddrInfoHints>,
     ),
-    CreateEp(
-        addrinfo::AddrInfo,
-        Option<Handle>,
-        Option<QpInitAttrOwned>,
-    ),
+    CreateEp(addrinfo::AddrInfo, Option<Handle>, Option<QpInitAttrOwned>),
     Listen(Handle, i32),
     GetRequest(Handle),
     Accept(Handle, Option<ConnParamOwned>),
