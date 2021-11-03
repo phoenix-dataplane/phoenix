@@ -42,16 +42,16 @@ struct MemoryTranslationTable {
 #[derive(Debug)]
 struct SharedMemoryFile {
     urange: Range<u64>,
-    kbuf: &'static [u8],
+    kbuf: &'static mut [u8],
     memfile: File,
     path: PathBuf,
 }
 
 impl SharedMemoryFile {
-    fn new<P: AsRef<Path>>(urange: Range<u64>, buffer: &[u8], memfile: File, path: P) -> Self {
+    fn new<P: AsRef<Path>>(urange: Range<u64>, buffer: &mut [u8], memfile: File, path: P) -> Self {
         SharedMemoryFile {
             urange,
-            kbuf: unsafe { slice::from_raw_parts(buffer.as_ptr(), buffer.len()) },
+            kbuf: unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len()) },
             memfile,
             path: path.as_ref().to_owned(),
         }
@@ -244,7 +244,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let ret = self
                     .mtt
                     .table
-                    .get(&mr_handle)
+                    .get_mut(&mr_handle)
                     .ok_or(interface::Error::NotFound);
                 if let Err(e) = ret {
                     return Response::PostRecv(Err(e));
@@ -254,7 +254,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
                 let offset = (addr_range.start - smf.urange.start) as usize;
                 let len = (addr_range.end - addr_range.start) as usize;
-                let buf = &smf.kbuf[offset..len];
+                let buf = &mut smf.kbuf[offset..offset + len];
                 let ret = unsafe { cmid.post_recv(wr_id, buf, &mr) }
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 Response::PostRecv(ret)
@@ -292,7 +292,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
                 let offset = (addr_range.start - smf.urange.start) as usize;
                 let len = (addr_range.end - addr_range.start) as usize;
-                let buf = &smf.kbuf[offset..len];
+                let buf = &smf.kbuf[offset..offset + len];
                 let ret = unsafe { cmid.post_send(wr_id, buf, &mr) }
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
                 Response::PostSend(ret)
@@ -486,11 +486,11 @@ impl<'ctx> TransportEngine<'ctx> {
                 .expect("shm_open");
                 // 2. mmap the user's vaddr into koala's address space through
                 // __linear__ mapping (this is necessary) (actually, maybe not)
-                let uaddr = addr_range.start;
+                let uaddr = addr_range.start as usize;
                 let ulen = (addr_range.end - addr_range.start) as usize;
                 let page_size = 4096;
-                let aligned_end = (uaddr as usize + ulen + page_size - 1) / page_size * page_size;
-                let aligned_begin = uaddr as usize - uaddr as usize % page_size;
+                let aligned_end = (uaddr + ulen + page_size - 1) / page_size * page_size;
+                let aligned_begin = uaddr - uaddr % page_size;
                 let aligned_len = aligned_end - aligned_begin;
                 // ftruncate the file
                 let memfile = unsafe { File::from_raw_fd(fd) };
@@ -509,7 +509,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 // 3. send fd back
                 ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
                 // 4. register kaddr with ibv_reg_mr
-                let buf = unsafe { slice::from_raw_parts(kaddr as *const u8, aligned_len) };
+                let buf = unsafe { slice::from_raw_parts_mut(kaddr as *mut u8, aligned_len) };
                 let ret = cmid
                     .reg_msgs(&buf)
                     .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
@@ -522,7 +522,8 @@ impl<'ctx> TransportEngine<'ctx> {
                         .ok_or(())
                         .unwrap_err();
                     // 6. allocate entry in MTT (mr -> SharedMemoryFile)
-                    let smf = SharedMemoryFile::new(addr_range, buf, memfile, &shm_path);
+                    let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
+                    let smf = SharedMemoryFile::new(addr_range, kbuf, memfile, &shm_path);
                     self.mtt.allocate(new_mr, smf);
                     new_mr
                 });

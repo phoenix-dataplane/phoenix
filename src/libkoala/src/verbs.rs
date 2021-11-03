@@ -15,11 +15,11 @@ macro_rules! rx_recv_impl {
     };
 }
 
-pub fn post_recv<T>(
+pub unsafe fn post_recv<T>(
     ctx: &Context,
     id: &CmId,
     context: u64,
-    buffer: &[T],
+    buffer: &mut [T],
     mr: &MemoryRegion,
 ) -> Result<(), Error> {
     let req = Request::PostRecv(id.0, context, slice_to_range(buffer), mr.handle);

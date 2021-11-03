@@ -484,7 +484,12 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_recv(&self, wr_id: u64, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_recv(
+        &self,
+        wr_id: u64,
+        buf: &mut [u8],
+        mr: &MemoryRegion,
+    ) -> io::Result<()> {
         let id = self.0;
         let context = wr_id as _;
         let addr = buf.as_ptr();

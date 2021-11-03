@@ -172,13 +172,14 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             ibv_wc_status::IBV_WC_SUCCESS => interface::WcStatus::Success,
             e@_ => interface::WcStatus::Error(e),
         };
+        // if status is ERR, the opcode and other fields might be invalid
         let opcode = match other.opcode {
             ibv_wc_opcode::IBV_WC_SEND => WcOpcode::Send,
             ibv_wc_opcode::IBV_WC_RDMA_WRITE => WcOpcode::RdmaWrite,
             ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
             ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
             ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
-            _ => unimplemented!(),
+            code@_ => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
         };
         let wc_flags = interface::WcFlags::from_bits(other.wc_flags.0).unwrap();
 
