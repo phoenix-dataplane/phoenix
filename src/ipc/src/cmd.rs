@@ -3,11 +3,8 @@ use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-use crate::interface::{QpInitAttrOwned, ConnParamOwned};
-use interface::{
-    Handle,
-    addrinfo,
-};
+use crate::interface::{ConnParamOwned, QpInitAttrOwned};
+use interface::{addrinfo, Handle};
 
 type IResult<T> = Result<T, interface::Error>;
 
@@ -21,16 +18,12 @@ pub enum Request {
         Option<String>,
         Option<addrinfo::AddrInfoHints>,
     ),
-    CreateEp(
-        addrinfo::AddrInfo,
-        Option<Handle>,
-        Option<QpInitAttrOwned>,
-    ),
-    RegMsgs(Handle, Range<u64>),
+    CreateEp(addrinfo::AddrInfo, Option<Handle>, Option<QpInitAttrOwned>),
     Listen(Handle, i32),
+    GetRequest(Handle),
     Accept(Handle, Option<ConnParamOwned>),
     Connect(Handle, Option<ConnParamOwned>),
-    GetRequest(Handle),
+    RegMsgs(Handle, Range<u64>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,9 +35,9 @@ pub enum Response {
     GetAddrInfo(IResult<addrinfo::AddrInfo>),
     // handle of cmid
     CreateEp(IResult<Handle>), // TODO(lsh): Handle to CmIdOwned
-    RegMsgs(IResult<Handle>),
     Listen(IResult<()>),
+    GetRequest(IResult<Handle>),
     Accept(IResult<()>),
     Connect(IResult<()>),
-    GetRequest(IResult<Handle>),
+    RegMsgs(IResult<Handle>),
 }

@@ -44,15 +44,15 @@ pub fn koala_register() -> Result<Context, Error> {
     let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
     let sock_path = format!("/tmp/koala/koala-client-{}_{}.sock", appname, uuid);
     let sock = UnixDatagram::bind(sock_path)?;
-    sock.connect(KOALA_TRANSPORT_PATH)?;
 
     let req = cmd::Request::NewClient(SchedulingMode::Dedicate);
     let buf = bincode::serialize(&req)?;
     assert!(buf.len() < MAX_MSG_LEN);
-    sock.send(&buf)?;
+    sock.send_to(&buf, KOALA_TRANSPORT_PATH)?;
 
     let mut buf = vec![0u8; 128];
-    sock.recv(buf.as_mut_slice())?;
+    let (_, sender) = sock.recv_from(buf.as_mut_slice())?;
+    assert_eq!(sender.as_pathname(), Some(Path::new(KOALA_TRANSPORT_PATH)));
     let res: cmd::Response = bincode::deserialize(&buf)?;
 
     assert!(matches!(res, cmd::Response::NewClient(..)));

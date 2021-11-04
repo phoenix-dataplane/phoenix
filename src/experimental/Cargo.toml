@@ -27,6 +27,7 @@ ipc = { path = "../ipc" }
 engine = { path = "../engine" }
 rdma = { path = "../rdma", features = ["convert"] }
 interface = { path = "../interface" }
+uuid = "0.8.2"
 
 [dev-dependencies]
 rand = "0.8.3"

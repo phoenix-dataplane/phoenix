@@ -28,6 +28,30 @@ mod sa {
     // if h.flags.contains(AddrInfoFlags::FAMILY) {
     //     flags |= ffi::RAI_FAMILY;
     // }
+    use interface::WcFlags;
+    const_assert_eq!(WcFlags::GRH.bits(), ffi::ibv_wc_flags::IBV_WC_GRH.0);
+    const_assert_eq!(
+        WcFlags::WITH_IMM.bits(),
+        ffi::ibv_wc_flags::IBV_WC_WITH_IMM.0
+    );
+
+    use interface::SendFlags;
+    const_assert_eq!(
+        SendFlags::FENCE.bits(),
+        ffi::ibv_send_flags::IBV_SEND_FENCE.0
+    );
+    const_assert_eq!(
+        SendFlags::SIGNALED.bits(),
+        ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
+    );
+    const_assert_eq!(
+        SendFlags::SOLICITED.bits(),
+        ffi::ibv_send_flags::IBV_SEND_SOLICITED.0
+    );
+    const_assert_eq!(
+        SendFlags::INLINE.bits(),
+        ffi::ibv_send_flags::IBV_SEND_INLINE.0
+    );
 }
 
 impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
@@ -157,5 +181,51 @@ impl From<interface::QpType> for ibv::QpType {
             UD => ffi::ibv_qp_type::IBV_QPT_UD,
         };
         ibv::QpType(inner)
+    }
+}
+
+impl From<ffi::ibv_wc> for interface::WorkCompletion {
+    fn from(other: ffi::ibv_wc) -> Self {
+        use ffi::ibv_wc_opcode;
+        use ffi::ibv_wc_status;
+        use interface::WcOpcode;
+        use interface::WcStatus;
+        let status = match other.status {
+            ibv_wc_status::IBV_WC_SUCCESS => WcStatus::Success,
+            e @ _ => WcStatus::Error(e),
+        };
+
+        // If status is ERR, the opcode and some other fields might be invalid.
+        let opcode = if other.status == ibv_wc_status::IBV_WC_SUCCESS {
+            // This conversion only valid when status is success.
+            match other.opcode {
+                ibv_wc_opcode::IBV_WC_SEND => WcOpcode::Send,
+                ibv_wc_opcode::IBV_WC_RDMA_WRITE => WcOpcode::RdmaWrite,
+                ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
+                ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
+                ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
+                code @ _ => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
+            }
+        } else {
+            WcOpcode::Invalid
+        };
+
+        let wc_flags = interface::WcFlags::from_bits(other.wc_flags.0).unwrap();
+
+        interface::WorkCompletion {
+            wr_id: other.wr_id,
+            status,
+            opcode,
+            vendor_err: other.vendor_err,
+            byte_len: other.byte_len,
+            imm_data: other.imm_data,
+            wc_flags,
+        }
+    }
+}
+
+impl From<interface::SendFlags> for ibv::SendFlags {
+    fn from(other: interface::SendFlags) -> Self {
+        ibv::SendFlags(ffi::ibv_send_flags(other.bits()))
     }
 }
