@@ -4,7 +4,6 @@ use interface::{
 };
 use libkoala::{cm, koala_register, verbs};
 
-const SERVER_ADDR: &str = "0.0.0.0";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ai = cm::getaddrinfo(
         &ctx,
-        Some(&SERVER_ADDR),
+        None,
         Some(&SERVER_PORT.to_string()),
         Some(&hints),
     )
@@ -74,5 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(wc_send.status, WcStatus::Success);
 
     println!("{:?}", recv_msg);
+
+    assert_eq!(&recv_msg[..send_msg.len()], "Hello koala server!".as_bytes());
     Ok(())
 }

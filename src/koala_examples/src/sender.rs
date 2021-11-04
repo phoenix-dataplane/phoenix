@@ -71,5 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(wc_recv.status, WcStatus::Success);
 
     println!("{:?}", recv_msg);
+
+    assert_eq!(&recv_msg[..send_msg.len()], "Hello koala client!".as_bytes());
     Ok(())
 }
