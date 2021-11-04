@@ -1,6 +1,6 @@
 use interface::{
     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-    QpCapability, QpInitAttr, QpType, WcStatus,
+    QpCapability, QpInitAttr, QpType, WcStatus, SendFlags,
 };
 use libkoala::{cm, koala_register, verbs};
 
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_recv = verbs::get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
 
-    let send_flags = Default::default();
+    let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala client!";
     let send_mr =
         cm::reg_msgs(&ctx, &id, send_msg.as_bytes()).expect("Memory registration failed!");
