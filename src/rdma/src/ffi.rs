@@ -4,11 +4,11 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ibv_wc {
-    wr_id: u64,
-    status: ibv_wc_status::Type,
-    opcode: ibv_wc_opcode::Type,
-    vendor_err: u32,
-    byte_len: u32,
+    pub(crate) wr_id: u64,
+    pub(crate) status: ibv_wc_status::Type,
+    pub(crate) opcode: ibv_wc_opcode::Type,
+    pub(crate) vendor_err: u32,
+    pub(crate) byte_len: u32,
 
     /// Immediate data OR the local RKey that was invalidated depending on `wc_flags`.
     /// See `man ibv_poll_cq` for details.

@@ -271,6 +271,9 @@ impl Drop for EventChannel {
 #[derive(Debug)]
 pub struct MemoryRegion(*mut ffi::ibv_mr);
 
+unsafe impl Send for MemoryRegion {}
+unsafe impl Sync for MemoryRegion {}
+
 #[derive(Debug)]
 pub struct CmId(*mut ffi::rdma_cm_id);
 
@@ -459,9 +462,15 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_send(&self, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_send(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+    ) -> io::Result<()> {
         let id = self.0;
-        let context = ptr::null_mut();
+        let context = wr_id as _;
         let addr = buf.as_ptr();
         let length = buf.len();
 
@@ -471,7 +480,6 @@ impl CmId {
             (&*mr).addr as *const _ <= addr
                 && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
         );
-        let flags = ffi::ibv_send_flags::IBV_SEND_SIGNALED;
         let rc =
             ffi::rdma_post_send_real(id, context, addr as *mut _, length as u64, mr, flags.0 as _);
         if rc != 0 {
@@ -481,9 +489,14 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_recv(&self, buf: &[u8], mr: &MemoryRegion) -> io::Result<()> {
+    pub unsafe fn post_recv(
+        &self,
+        wr_id: u64,
+        buf: &mut [u8],
+        mr: &MemoryRegion,
+    ) -> io::Result<()> {
         let id = self.0;
-        let context = ptr::null_mut();
+        let context = wr_id as _;
         let addr = buf.as_ptr();
         let length = buf.len();
 

@@ -404,11 +404,11 @@ impl<'a> Drop for CompletionQueue<'a> {
 
 /// QP capabilities.
 #[derive(Debug, Clone, Copy)]
-pub struct QpCapability(pub(crate) ffi::ibv_qp_cap);
+pub struct QpCapability(pub ffi::ibv_qp_cap);
 
 /// The type of QP used for communciation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QpType(pub(crate) ibv_qp_type::Type);
+pub struct QpType(pub ibv_qp_type::Type);
 
 /// The attributes to initialize a QP.
 pub struct QpInitAttr<'ctx, 'scq, 'rcq> {
@@ -448,6 +448,10 @@ where
         }
     }
 }
+
+/// Flags of the WR properties.
+#[derive(Debug, Clone, Copy)]
+pub struct SendFlags(pub ffi::ibv_send_flags);
 
 /// An unconfigured `QueuePair`.
 ///

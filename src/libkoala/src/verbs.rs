@@ -1,8 +1,7 @@
 use interface::{CmId, MemoryRegion, SendFlags, WorkCompletion};
 use ipc::dp::{Request, Response};
-use ipc::interface::FromBorrow;
 
-use crate::{Context, Error, slice_to_range};
+use crate::{slice_to_range, Context, Error};
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
@@ -16,14 +15,14 @@ macro_rules! rx_recv_impl {
     };
 }
 
-pub fn post_recv<T>(
+pub unsafe fn post_recv<T>(
     ctx: &Context,
     id: &CmId,
     context: u64,
-    buffer: &[T],
+    buffer: &mut [T],
     mr: &MemoryRegion,
 ) -> Result<(), Error> {
-    let req = Request::PostRecv(id.0, context, slice_to_range(buffer), mr.0);
+    let req = Request::PostRecv(id.0, context, slice_to_range(buffer), mr.handle);
     ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx.dp_rx, Response::PostRecv, x, { Ok(x) })
 }
@@ -36,7 +35,7 @@ pub fn post_send<T>(
     mr: &MemoryRegion,
     flags: SendFlags,
 ) -> Result<(), Error> {
-    let req = Request::PostSend(id.0, context, slice_to_range(buffer), mr.0, flags);
+    let req = Request::PostSend(id.0, context, slice_to_range(buffer), mr.handle, flags);
     ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx.dp_rx, Response::PostSend, x, { Ok(x) })
 }
