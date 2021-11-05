@@ -1,6 +1,6 @@
 use interface::{
     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-    QpCapability, QpInitAttr, QpType, WcStatus, SendFlags,
+    QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
 };
 use libkoala::{cm, koala_register, verbs};
 
@@ -72,6 +72,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", recv_msg);
 
-    assert_eq!(&recv_msg[..send_msg.len()], "Hello koala client!".as_bytes());
+    assert_eq!(
+        &recv_msg[..send_msg.len()],
+        "Hello koala client!".as_bytes()
+    );
     Ok(())
 }

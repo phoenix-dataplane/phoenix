@@ -1,6 +1,6 @@
 use interface::{
     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-    QpCapability, QpInitAttr, QpType, WcStatus, SendFlags,
+    QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
 };
 use libkoala::{cm, koala_register, verbs};
 
@@ -16,13 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PortSpace::TCP,
     );
 
-    let ai = cm::getaddrinfo(
-        &ctx,
-        None,
-        Some(&SERVER_PORT.to_string()),
-        Some(&hints),
-    )
-    .expect("getaddrinfo");
+    let ai = cm::getaddrinfo(&ctx, None, Some(&SERVER_PORT.to_string()), Some(&hints))
+        .expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
 
@@ -74,6 +69,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", recv_msg);
 
-    assert_eq!(&recv_msg[..send_msg.len()], "Hello koala server!".as_bytes());
+    assert_eq!(
+        &recv_msg[..send_msg.len()],
+        "Hello koala server!".as_bytes()
+    );
     Ok(())
 }

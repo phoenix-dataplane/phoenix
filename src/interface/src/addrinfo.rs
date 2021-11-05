@@ -1,8 +1,8 @@
 //! Provide transport independ address translation.
-use std::net::SocketAddr;
+use crate::QpType;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-use crate::QpType;
+use std::net::SocketAddr;
 
 /// Port space
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -44,8 +44,7 @@ bitflags! {
 }
 
 /// A structure containing hints about the type of service the caller supports.
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct AddrInfoHints {
     /// Hint flags that control the operation.
     pub flags: AddrInfoFlags,
