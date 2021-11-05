@@ -10,18 +10,6 @@ pub mod addrinfo;
 pub enum Error {
     #[error("{0}")]
     Generic(String),
-    // #[error("rdmacm internal error: {0}.")]
-    // RdmaCm(String),
-    // #[error("getaddrinfo error: {0}.")]
-    // GetAddrInfo(String),
-    // #[error("Resource not found.")]
-    // NotFound,
-    // #[error("Cannot open or create shared memory file: {0}")]
-    // ShmOpen(String),
-    // #[error("Mmap failed: {0}")]
-    // Mmap(String),
-    // #[error("Failed to send file descriptors: {0}")]
-    // SendFd(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
