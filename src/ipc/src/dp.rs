@@ -15,9 +15,12 @@ pub enum Request {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Response {
-    PostRecv(IResult<()>),
-    PostSend(IResult<()>),
-    GetRecvComp(IResult<WorkCompletion>),
-    GetSendComp(IResult<WorkCompletion>),
+pub enum ResponseKind {
+    PostRecv,
+    PostSend,
+    GetRecvComp(WorkCompletion),
+    GetSendComp(WorkCompletion),
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Response(pub IResult<ResponseKind>);

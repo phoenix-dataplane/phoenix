@@ -50,7 +50,10 @@ impl TransportModule {
         let (server, server_name) = ipc::OneShotServer::new()?;
 
         // 2. tell the name to the client
-        let mut buf = bincode::serialize(&cmd::Response::NewClient(mode, server_name))?;
+        let mut buf = bincode::serialize(&cmd::Response(Ok(cmd::ResponseKind::NewClient(
+            mode,
+            server_name,
+        ))))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {
             return Err(anyhow!(

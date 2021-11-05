@@ -27,17 +27,20 @@ pub enum Request {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Response {
+pub enum ResponseKind {
     /// name of the OneShotServer
     NewClient(SchedulingMode, String),
     HelloBack(i32),
 
-    GetAddrInfo(IResult<addrinfo::AddrInfo>),
+    GetAddrInfo(addrinfo::AddrInfo),
     // handle of cmid
-    CreateEp(IResult<Handle>), // TODO(lsh): Handle to CmIdOwned
-    Listen(IResult<()>),
-    GetRequest(IResult<Handle>),
-    Accept(IResult<()>),
-    Connect(IResult<()>),
-    RegMsgs(IResult<Handle>),
+    CreateEp(Handle), // TODO(lsh): Handle to CmIdOwned
+    Listen,
+    GetRequest(Handle),
+    Accept,
+    Connect,
+    RegMsgs(Handle),
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Response(pub IResult<ResponseKind>);

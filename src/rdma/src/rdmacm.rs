@@ -15,7 +15,7 @@ use socket2::SockAddr;
 use crate::ffi;
 use crate::ibv;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct AddrInfoHints {
     pub(crate) flags: i32,
     pub(crate) family: i32,
