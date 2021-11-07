@@ -1,10 +1,9 @@
 use interface::{
     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-    QpCapability, QpInitAttr, QpType, WcStatus,
+    QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
 };
 use libkoala::{cm, koala_register, verbs};
 
-const SERVER_ADDR: &str = "0.0.0.0";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,13 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PortSpace::TCP,
     );
 
-    let ai = cm::getaddrinfo(
-        &ctx,
-        Some(&SERVER_ADDR),
-        Some(&SERVER_PORT.to_string()),
-        Some(&hints),
-    )
-    .expect("getaddrinfo");
+    let ai = cm::getaddrinfo(&ctx, None, Some(&SERVER_PORT.to_string()), Some(&hints))
+        .expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
 
@@ -63,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_recv = verbs::get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
 
-    let send_flags = Default::default();
+    let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala client!";
     let send_mr =
         cm::reg_msgs(&ctx, &id, send_msg.as_bytes()).expect("Memory registration failed!");
@@ -74,5 +68,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(wc_send.status, WcStatus::Success);
 
     println!("{:?}", recv_msg);
+
+    assert_eq!(
+        &recv_msg[..send_msg.len()],
+        "Hello koala server!".as_bytes()
+    );
     Ok(())
 }

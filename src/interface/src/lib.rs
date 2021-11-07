@@ -1,41 +1,30 @@
-use std::any::Any;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::fs::File;
+use thiserror::Error;
 
 pub mod addrinfo;
 
 #[derive(Debug, Error, Serialize, Deserialize)]
 pub enum Error {
-    #[error("rdmacm internal error: {0}")]
-    RdmaCm(i32),
-    #[error("getaddrinfo error: {0}")]
-    GetAddrInfo(i32),
-    #[error("resource not found")]
-    NotFound,
-    // #[error("cannot open shared memory: {0}")]
-    // ShmOpen(i32),
+    #[error("{0}")]
+    Generic(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Handle(pub usize);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProtectionDomain(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SharedReceiveQueue(pub Handle);
 
 /// The type of QP used for communciation.
@@ -66,7 +55,6 @@ pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     pub sq_sig_all: bool,
 }
 
-
 #[derive(Debug)]
 pub struct MemoryRegion {
     pub handle: Handle,
@@ -90,15 +78,13 @@ pub struct ConnParam<'priv_data> {
     pub qp_num: u32,
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcStatus {
     Success,
     Error(u32),
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcOpcode {
     Send,
     RdmaWrite,
@@ -131,14 +117,13 @@ bitflags! {
         /// Set the solicited event indicator. Valid only for Send and RDMA Write with immediate.
         const SOLICITED = 0b00000100;
         /// Send data in given gather list as inline data in a send WQE.  Valid only for Send and
-        /// RDMA Write.  The L_Key will not be checked. 
+        /// RDMA Write.  The L_Key will not be checked.
         const INLINE = 0b00001000;
     }
 }
 
 /// A structure represent completion of some work.
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkCompletion {
     pub wr_id: u64,
     pub status: WcStatus,

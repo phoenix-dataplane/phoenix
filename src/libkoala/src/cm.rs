@@ -6,7 +6,7 @@ use interface::{
     addrinfo::{AddrInfo, AddrInfoHints},
     CmId, ConnParam, MemoryRegion, ProtectionDomain, QpInitAttr,
 };
-use ipc::cmd::{Request, Response};
+use ipc::cmd::{Request, ResponseKind};
 use ipc::interface::{ConnParamOwned, FromBorrow, QpInitAttrOwned};
 
 use crate::{slice_to_range, Context, Error};
@@ -24,9 +24,10 @@ pub fn create_ep(
         qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
     );
     ctx.cmd_tx.send(req)?;
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::CreateEp(Ok(handle)) => Ok(CmId(handle)),
-        Response::CreateEp(Err(e)) => Err(e.into()),
+
+    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        Ok(ResponseKind::CreateEp(handle)) => Ok(CmId(handle)),
+        Err(e) => Err(e.into()),
         _ => panic!(""),
     }
 }
@@ -44,21 +45,26 @@ pub fn getaddrinfo(
         hints.map(AddrInfoHints::clone),
     );
     ctx.cmd_tx.send(req)?;
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::GetAddrInfo(Ok(ai)) => Ok(ai),
-        Response::GetAddrInfo(Err(e)) => Err(e.into()),
+    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
+        Err(e) => Err(e.into()),
         _ => panic!(""),
     }
 }
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-            $resp(Ok($inst)) => $ok_block,
-            $resp(Err(e)) => Err(e.into()),
-            _ => {
-                panic!("");
-            }
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp($inst)) => $ok_block,
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
+        }
+    };
+    ($rx:expr, $resp:path, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => $ok_block,
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
         }
     };
 }
@@ -66,13 +72,13 @@ macro_rules! rx_recv_impl {
 pub fn listen(ctx: &Context, id: &CmId, backlog: i32) -> Result<(), Error> {
     let req = Request::Listen(id.0, backlog);
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Listen, x, { Ok(x) })
+    rx_recv_impl!(ctx.cmd_rx, ResponseKind::Listen, { Ok(()) })
 }
 
 pub fn get_requst(ctx: &Context, listen: &CmId) -> Result<CmId, Error> {
     let req = Request::GetRequest(listen.0);
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::GetRequest, handle, {
+    rx_recv_impl!(ctx.cmd_rx, ResponseKind::GetRequest, handle, {
         Ok(CmId(handle))
     })
 }
@@ -83,7 +89,7 @@ pub fn accept(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Resul
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Accept, x, { Ok(x) })
+    rx_recv_impl!(ctx.cmd_rx, ResponseKind::Accept, { Ok(()) })
 }
 
 pub fn connect(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
@@ -92,7 +98,7 @@ pub fn connect(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Resu
         conn_param.map(|param| ConnParamOwned::from_borrow(param)),
     );
     ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Connect, x, { Ok(x) })
+    rx_recv_impl!(ctx.cmd_rx, ResponseKind::Connect, { Ok(()) })
 }
 
 pub fn reg_msgs<T>(ctx: &Context, id: &CmId, buffer: &[T]) -> Result<MemoryRegion, Error> {
@@ -138,9 +144,9 @@ pub fn reg_msgs<T>(ctx: &Context, id: &CmId, buffer: &[T]) -> Result<MemoryRegio
 
     assert_eq!(pa, aligned_begin as _);
 
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::RegMsgs(Ok(handle)) => Ok(MemoryRegion::new(handle, memfd)),
-        Response::RegMsgs(Err(e)) => Err(e.into()),
+    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        Ok(ResponseKind::RegMsgs(handle)) => Ok(MemoryRegion::new(handle, memfd)),
+        Err(e) => Err(e.into()),
         _ => panic!(""),
     }
 }
