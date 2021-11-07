@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
+use std::mem;
 use std::ops::Range;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
@@ -18,6 +19,8 @@ use engine::{Engine, SchedulingMode, Upgradable, Version};
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
+
+use crate::transport::Error;
 
 /// A variety of tables map a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
@@ -184,8 +187,12 @@ impl<'ctx> TransportEngine<'ctx> {
         match self.dp_rx.try_recv() {
             // handle request
             Ok(req) => {
-                let res = self.process_dp(req);
-                self.dp_tx.send(res).map_or_else(|_| true, |_| false)
+                let result = self.process_dp(&req);
+                match result {
+                    Ok(res) => self.dp_tx.send(dp::Response(Ok(res))),
+                    Err(e) => self.dp_tx.send(dp::Response(Err(e.into()))),
+                }
+                .map_or_else(|_| true, |_| false)
             }
             Err(ipc::TryRecvError::Empty) => {
                 // do nothing
@@ -204,8 +211,12 @@ impl<'ctx> TransportEngine<'ctx> {
         match self.cmd_rx.try_recv() {
             // handle request
             Ok(req) => {
-                let res = self.process_cmd(req);
-                self.cmd_tx.send(res).map_or_else(|_| true, |_| false)
+                let result = self.process_cmd(&req);
+                match result {
+                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
+                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into()))),
+                }
+                .map_or_else(|_| true, |_| false)
             }
             Err(ipc::TryRecvError::Empty) => {
                 // do nothing
@@ -221,125 +232,84 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     /// Process data path operations.
-    fn process_dp(&mut self, req: dp::Request) -> dp::Response {
-        use ipc::dp::{Request, Response};
+    fn process_dp(&mut self, req: &dp::Request) -> Result<dp::ResponseKind, Error> {
+        use ipc::dp::{Request, ResponseKind};
         match req {
             Request::PostRecv(cmid_handle, wr_id, addr_range, mr_handle) => {
-                let ret = self
+                let cmid = self
                     .resource
                     .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = self
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                let mr = self
                     .resource
                     .mr_table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let mr = ret.unwrap();
-                let ret = self
-                    .mtt
-                    .table
-                    .get_mut(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let smf = ret.unwrap();
+                    .get(mr_handle)
+                    .ok_or(Error::NotFound)?;
+                let smf = self.mtt.table.get_mut(mr_handle).ok_or(Error::NotFound)?;
                 // TODO(cjr): shouldn't assert, should return an error
                 assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
                 let offset = (addr_range.start - smf.urange.start) as usize;
                 let len = (addr_range.end - addr_range.start) as usize;
                 let buf = &mut smf.kbuf[offset..offset + len];
-                let ret = unsafe { cmid.post_recv(wr_id, buf, &mr) }
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::PostRecv(ret)
+                let ret = unsafe { cmid.post_recv(*wr_id, buf, mr) }.map_err(Error::RdmaCm);
+                Ok(ResponseKind::PostRecv)
             }
             Request::PostSend(cmid_handle, wr_id, addr_range, mr_handle, send_flags) => {
-                let ret = self
+                let cmid = self
                     .resource
                     .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostSend(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = self
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                let mr = self
                     .resource
                     .mr_table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostSend(Err(e));
-                }
-                let mr = ret.unwrap();
-                let ret = self
-                    .mtt
-                    .table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let smf = ret.unwrap();
+                    .get(mr_handle)
+                    .ok_or(Error::NotFound)?;
+                let smf = self.mtt.table.get_mut(mr_handle).ok_or(Error::NotFound)?;
                 // TODO(cjr): shouldn't assert, should return an error
                 assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
                 let offset = (addr_range.start - smf.urange.start) as usize;
                 let len = (addr_range.end - addr_range.start) as usize;
                 let buf = &smf.kbuf[offset..offset + len];
-                let flags: ibv::SendFlags = send_flags.into();
-                let ret = unsafe { cmid.post_send(wr_id, buf, &mr, flags.0) }
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::PostSend(ret)
+                let flags: ibv::SendFlags = (*send_flags).into();
+                let ret =
+                    unsafe { cmid.post_send(*wr_id, buf, mr, flags.0) }.map_err(Error::RdmaCm);
+                Ok(ResponseKind::PostSend)
             }
             Request::GetRecvComp(cmid_handle) => {
-                let ret = self
+                let cmid = self
                     .resource
                     .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::GetRecvComp(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = cmid
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                let wc = cmid
                     .get_recv_comp()
                     .map(|wc| wc.into())
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::GetRecvComp(ret)
+                    .map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::GetRecvComp(wc))
             }
             Request::GetSendComp(cmid_handle) => {
-                let ret = self
+                let cmid = self
                     .resource
                     .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::GetSendComp(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = cmid
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                let wc = cmid
                     .get_send_comp()
                     .map(|wc| wc.into())
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::GetSendComp(ret)
+                    .map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::GetSendComp(wc))
             }
         }
     }
 
     /// Process control path operations.
-    fn process_cmd(&mut self, req: cmd::Request) -> cmd::Response {
-        use ipc::cmd::{Request, Response};
+    fn process_cmd(&mut self, req: &cmd::Request) -> Result<cmd::ResponseKind, Error> {
+        use ipc::cmd::{Request, ResponseKind};
         match req {
             Request::NewClient(..) => unreachable!(),
-            Request::Hello(number) => Response::HelloBack(number),
+            &Request::Hello(number) => Ok(ResponseKind::HelloBack(number)),
             Request::GetAddrInfo(node, service, hints) => {
                 trace!(
                     "node: {:?}, service: {:?}, hints: {:?}",
@@ -348,16 +318,15 @@ impl<'ctx> TransportEngine<'ctx> {
                     hints,
                 );
                 let hints = hints.map(rdmacm::AddrInfoHints::from);
-                let ai = rdmacm::AddrInfo::getaddrinfo(
+                let ret = rdmacm::AddrInfo::getaddrinfo(
                     node.as_deref(),
                     service.as_deref(),
                     hints.as_ref(),
                 );
-                let ret = ai.map_or_else(
-                    |e| Err(interface::Error::GetAddrInfo(e.raw_os_error().unwrap())),
-                    |ai| Ok(ai.into()),
-                );
-                Response::GetAddrInfo(ret)
+                match ret {
+                    Ok(ai) => Ok(ResponseKind::GetAddrInfo(ai.into())),
+                    Err(e) => Err(Error::GetAddrInfo(e)),
+                }
             }
             Request::CreateEp(ai, pd_handle, qp_init_attr) => {
                 trace!(
@@ -368,19 +337,25 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
 
                 let pd = pd_handle.and_then(|h| self.resource.pd_table.get(&h));
-                let qp_init_attr = qp_init_attr.map(|a| {
+                let qp_init_attr = qp_init_attr.as_ref().map(|a| {
                     let attr = ibv::QpInitAttr {
                         qp_context: 0,
-                        send_cq: a.send_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                        recv_cq: a.recv_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                        cap: a.cap.into(),
+                        send_cq: a
+                            .send_cq
+                            .as_ref()
+                            .and_then(|h| self.resource.cq_table.get(&h.0)),
+                        recv_cq: a
+                            .recv_cq
+                            .as_ref()
+                            .and_then(|h| self.resource.cq_table.get(&h.0)),
+                        cap: a.cap.clone().into(),
                         qp_type: a.qp_type.into(),
                         sq_sig_all: a.sq_sig_all,
                     };
                     attr.to_ibv_qp_init_attr()
                 });
 
-                let ret = match CmId::create_ep(&ai.into(), pd, qp_init_attr.as_ref()) {
+                match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
                         let cmid_handle = self.resource.allocate_handle();
                         self.resource
@@ -388,46 +363,41 @@ impl<'ctx> TransportEngine<'ctx> {
                             .insert(cmid_handle, cmid)
                             .ok_or(())
                             .unwrap_err();
-                        Ok(cmid_handle)
+                        Ok(ResponseKind::CreateEp(cmid_handle))
                     }
-                    Err(e) => Err(interface::Error::RdmaCm(e.raw_os_error().unwrap())),
-                };
-
-                Response::CreateEp(ret)
+                    Err(e) => Err(Error::RdmaCm(e)),
+                }
             }
             Request::Listen(cmid_handle, backlog) => {
                 trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .listen(backlog)
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Listen(ret)
+
+                let listener = self
+                    .resource
+                    .cmid_table
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+
+                listener.listen(*backlog).map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Listen)
             }
             Request::GetRequest(cmid_handle) => {
                 trace!("cmid_handle: {:?}", cmid_handle);
 
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .get_request()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                let ret = ret.map(|new_cmid| {
-                    let new_handle = self.resource.allocate_handle();
-                    self.resource
-                        .cmid_table
-                        .insert(new_handle, new_cmid)
-                        .ok_or(())
-                        .unwrap_err();
-                    new_handle
-                });
-                Response::GetRequest(ret)
+                let listener = self
+                    .resource
+                    .cmid_table
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
+
+                let new_handle = self.resource.allocate_handle();
+                self.resource
+                    .cmid_table
+                    .insert(new_handle, new_cmid)
+                    .ok_or(())
+                    .unwrap_err();
+                Ok(ResponseKind::GetRequest(new_handle))
             }
             Request::Accept(cmid_handle, conn_param) => {
                 trace!(
@@ -436,15 +406,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 warn!("TODO: conn_param is ignored for now");
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .accept()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Accept(ret)
+                let listener = self
+                    .resource
+                    .cmid_table
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                listener.accept().map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Accept)
             }
             Request::Connect(cmid_handle, conn_param) => {
                 trace!(
@@ -453,14 +422,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 warn!("TODO: conn_param is ignored for now");
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |cmid| {
-                        cmid.connect()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Connect(ret)
+                let cmid = self
+                    .resource
+                    .cmid_table
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
+                cmid.connect().map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Connect)
             }
             Request::RegMsgs(cmid_handle, addr_range) => {
                 trace!(
@@ -468,11 +437,11 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     addr_range
                 );
-                let res = self.resource.cmid_table.get(&cmid_handle);
-                if res.is_none() {
-                    return Response::RegMsgs(Err(interface::Error::NotFound));
-                }
-                let cmid = res.unwrap();
+                let cmid = self
+                    .resource
+                    .cmid_table
+                    .get(cmid_handle)
+                    .ok_or(Error::NotFound)?;
                 // 1. create/open shared memory file
                 use nix::fcntl::OFlag;
                 use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
@@ -484,7 +453,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
                     Mode::S_IRUSR | Mode::S_IWUSR,
                 )
-                .expect("shm_open");
+                .map_err(Error::ShmOpen)?;
                 // 2. mmap the user's vaddr into koala's address space through
                 // __linear__ mapping (this is necessary) (actually, maybe not)
                 let uaddr = addr_range.start as usize;
@@ -495,7 +464,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let aligned_len = aligned_end - aligned_begin;
                 // ftruncate the file
                 let memfile = unsafe { File::from_raw_fd(fd) };
-                memfile.set_len(aligned_len as _).expect("memfile set_len");
+                memfile.set_len(aligned_len as _).map_err(Error::Truncate)?;
                 let kaddr = unsafe {
                     mmap(
                         ptr::null_mut(),
@@ -505,31 +474,26 @@ impl<'ctx> TransportEngine<'ctx> {
                         fd,
                         0,
                     )
-                    .expect("mmap")
+                    .map_err(Error::Mmap)?
                 };
                 // 3. send fd back
-                ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
+                ipc::send_fd(&self.sock, &self.client_path, fd).map_err(Error::SendFd)?;
                 // 4. register kaddr with ibv_reg_mr
                 let buf = unsafe { slice::from_raw_parts_mut(kaddr as *mut u8, aligned_len) };
-                let ret = cmid
-                    .reg_msgs(&buf)
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                let ret = ret.map(|mr| {
-                    // 5. allocate mr handle
-                    let new_mr = self.resource.allocate_handle();
-                    self.resource
-                        .mr_table
-                        .insert(new_mr, mr)
-                        .ok_or(())
-                        .unwrap_err();
-                    // 6. allocate entry in MTT (mr -> SharedMemoryFile)
-                    let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
-                    let smf = SharedMemoryFile::new(addr_range, kbuf, memfile, &shm_path);
-                    self.mtt.allocate(new_mr, smf);
-                    new_mr
-                });
+                let mr = cmid.reg_msgs(&buf).map_err(Error::RdmaCm)?;
+                // 5. allocate mr handle
+                let new_mr = self.resource.allocate_handle();
+                self.resource
+                    .mr_table
+                    .insert(new_mr, mr)
+                    .ok_or(())
+                    .unwrap_err();
+                // 6. allocate entry in MTT (mr -> SharedMemoryFile)
+                let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
+                let smf = SharedMemoryFile::new(addr_range.clone(), kbuf, memfile, &shm_path);
+                self.mtt.allocate(new_mr, smf);
                 // 7. send mr handle back
-                Response::RegMsgs(ret)
+                Ok(ResponseKind::RegMsgs(new_mr))
             }
             _ => {
                 unimplemented!()

@@ -194,7 +194,10 @@ impl<'devlist> Device<'devlist> {
     pub fn index(&self) -> io::Result<i32> {
         let idx = unsafe { ffi::ibv_get_device_index(*self.0) };
         if idx == -1 {
-            Err(io::Error::new(io::ErrorKind::Unsupported, "device index not known"))
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "device index not known",
+            ))
         } else {
             Ok(idx)
         }
@@ -233,7 +236,11 @@ impl Context {
         //
         let mut port_attr = ffi::ibv_port_attr::default();
         let errno = unsafe {
-            ffi::ibv_query_port(ctx, PORT_NUM, &mut port_attr as *mut ffi::ibv_port_attr as *mut _)
+            ffi::ibv_query_port(
+                ctx,
+                PORT_NUM,
+                &mut port_attr as *mut ffi::ibv_port_attr as *mut _,
+            )
         };
         if errno != 0 {
             return Err(io::Error::from_raw_os_error(errno));

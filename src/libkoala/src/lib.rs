@@ -55,10 +55,10 @@ pub fn koala_register() -> Result<Context, Error> {
     assert_eq!(sender.as_pathname(), Some(Path::new(KOALA_TRANSPORT_PATH)));
     let res: cmd::Response = bincode::deserialize(&buf)?;
 
-    assert!(matches!(res, cmd::Response::NewClient(..)));
+    let res = res.0.unwrap();
 
     match res {
-        cmd::Response::NewClient(mode, server_name) => {
+        cmd::ResponseKind::NewClient(mode, server_name) => {
             assert_eq!(mode, SchedulingMode::Dedicate);
             let (cmd_tx1, cmd_rx1): (ipc::Sender<cmd::Request>, ipc::Receiver<cmd::Request>) =
                 ipc::channel().unwrap();
