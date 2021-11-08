@@ -4,7 +4,6 @@ use std::io;
 use std::ops::Range;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
-use std::rc::Rc;
 
 use thiserror::Error;
 use uuid::Uuid;
@@ -33,6 +32,10 @@ pub enum Error {
     InternalError(#[from] interface::Error),
 }
 
+thread_local! {
+    pub static KL_CTX: Context = Context::register().expect("koala transport register failed");
+}
+
 pub struct Context {
     sock: UnixDatagram,
     cmd_tx: ipc::Sender<cmd::Request>,
@@ -42,7 +45,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn register() -> Result<Rc<Context>, Error> {
+    fn register() -> Result<Context, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
@@ -75,13 +78,13 @@ impl Context {
                 let tx0 = ipc::Sender::connect(server_name)?;
                 tx0.send((cmd_tx2, cmd_rx1, dp_tx2, dp_rx1))?;
 
-                Ok(Rc::new(Context {
+                Ok(Context {
                     sock,
                     cmd_tx: cmd_tx1,
                     cmd_rx: cmd_rx2,
                     dp_tx: dp_tx1,
                     dp_rx: dp_rx2,
-                }))
+                })
             }
             _ => panic!("unexpected response: {:?}", res),
         }

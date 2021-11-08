@@ -1,10 +1,11 @@
 //! Fast path operations.
 use ipc::dp::{Request, ResponseKind};
 
-use crate::{slice_to_range, Error};
+use crate::{slice_to_range, KL_CTX, Error};
 
 use crate::verbs;
 use crate::cm::CmId;
+use crate::verbs::{CompletionQueue, WorkCompletion};
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
@@ -63,5 +64,18 @@ impl CmId {
         let req = Request::GetRecvComp(self.handle.0);
         self.ctx.dp_tx.send(req)?;
         rx_recv_impl!(self.ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })
+    }
+}
+
+impl CompletionQueue {
+    pub fn poll_cq(&self, wc: &mut [WorkCompletion]) -> Result<(), Error> {
+        let req = Request::PollCq(self.inner.clone(), wc.len());
+        KL_CTX.with(|ctx| {
+            ctx.dp_tx.send(req)?;
+            rx_recv_impl!(ctx.dp_rx, ResponseKind::PollCq, wc_ret, {
+                wc.clone_from_slice(&wc_ret);
+                Ok(())
+            })
+        })
     }
 }

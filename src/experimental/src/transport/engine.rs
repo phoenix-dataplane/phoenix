@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -110,7 +111,10 @@ impl<'ctx> Resource<'ctx> {
         ret
     }
 
-    fn insert_cmid(&mut self, cmid: CmId) -> Result<(Handle, Option<(Handle, Handle, Handle)>), Error> {
+    fn insert_cmid(
+        &mut self,
+        cmid: CmId,
+    ) -> Result<(Handle, Option<(Handle, Handle, Handle)>), Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
         if let Some(qp) = cmid.qp() {
             let send_cq = qp.send_cq();
@@ -328,6 +332,19 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map_err(Error::RdmaCm)?;
                 Ok(ResponseKind::GetSendComp(wc))
             }
+            Request::PollCq(cq, num_entries) => {
+                let cq = self.resource.cq_table.get(&cq.0)?;
+                // allocate num_entries here
+                let mut wc = Vec::with_capacity(*num_entries);
+                unsafe {
+                    wc.set_len(*num_entries);
+                }
+                let completions = cq
+                    .poll(&mut wc)
+                    .map_err(|_| Error::Ibv(io::Error::last_os_error()))?;
+                let ret = completions.iter().map(|x| (*x).into()).collect();
+                Ok(ResponseKind::PollCq(ret))
+            }
         }
     }
 
@@ -394,8 +411,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
-                        let (cmid_handle, handles) =
-                            self.resource.insert_cmid(cmid)?;
+                        let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
                         let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
                             Some(returned::QueuePair {
                                 handle: interface::QueuePair(qp_handle),
@@ -433,8 +449,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let listener = self.resource.cmid_table.get(cmid_handle)?;
                 let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
 
-                let (new_cmid_handle, handles) =
-                    self.resource.insert_cmid(new_cmid)?;
+                let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
                 let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
                     Some(returned::QueuePair {
                         handle: interface::QueuePair(qp_handle),
