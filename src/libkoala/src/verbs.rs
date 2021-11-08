@@ -1,58 +1,114 @@
-use interface::{CmId, MemoryRegion, SendFlags, WorkCompletion};
-use ipc::dp::{Request, ResponseKind};
+use std::any::Any;
+use std::borrow::Borrow;
+use std::fs::File;
 
-use crate::{slice_to_range, Context, Error};
+use interface::returned;
+use interface::Handle;
 
-macro_rules! rx_recv_impl {
-    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
+use crate::FromBorrow;
+
+// Re-exports
+pub use interface::{QpCapability, QpType};
+pub use interface::{SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
+
+pub struct ProtectionDomain {
+    pub(crate) inner: interface::ProtectionDomain,
+}
+
+pub struct CompletionQueue {
+    pub(crate) inner: interface::CompletionQueue,
+}
+
+impl From<returned::CompletionQueue> for CompletionQueue {
+    fn from(other: returned::CompletionQueue) -> Self {
+        CompletionQueue {
+            inner: other.handle,
         }
-    };
-    ($rx:expr, $resp:path, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => $ok_block,
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
+    }
+}
+
+pub struct SharedReceiveQueue {
+    pub(crate) inner: interface::SharedReceiveQueue,
+}
+
+#[derive(Debug)]
+pub struct MemoryRegion {
+    pub(crate) inner: interface::MemoryRegion,
+    memfd: File,
+}
+
+impl MemoryRegion {
+    pub fn new(handle: Handle, memfd: File) -> Self {
+        MemoryRegion {
+            inner: interface::MemoryRegion(handle),
+            memfd,
         }
-    };
+    }
 }
 
-pub unsafe fn post_recv<T>(
-    ctx: &Context,
-    id: &CmId,
-    context: u64,
-    buffer: &mut [T],
-    mr: &MemoryRegion,
-) -> Result<(), Error> {
-    let req = Request::PostRecv(id.0, context, slice_to_range(buffer), mr.handle);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, ResponseKind::PostRecv, { Ok(()) })
+pub struct QueuePair {
+    pub(crate) inner: interface::QueuePair,
+    pub send_cq: CompletionQueue,
+    pub recv_cq: CompletionQueue,
 }
 
-pub fn post_send<T>(
-    ctx: &Context,
-    id: &CmId,
-    context: u64,
-    buffer: &[T],
-    mr: &MemoryRegion,
-    flags: SendFlags,
-) -> Result<(), Error> {
-    let req = Request::PostSend(id.0, context, slice_to_range(buffer), mr.handle, flags);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, ResponseKind::PostSend, { Ok(()) })
+impl From<returned::QueuePair> for QueuePair {
+    fn from(other: returned::QueuePair) -> Self {
+        QueuePair {
+            inner: other.handle,
+            send_cq: CompletionQueue::from(other.send_cq),
+            recv_cq: CompletionQueue::from(other.recv_cq),
+        }
+    }
 }
 
-pub fn get_send_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = Request::GetSendComp(id.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, ResponseKind::GetSendComp, wc, { Ok(wc) })
+pub struct QpInitAttr<'ctx> {
+    pub qp_context: Option<&'ctx dyn Any>,
+    pub send_cq: Option<CompletionQueue>,
+    pub recv_cq: Option<CompletionQueue>,
+    pub srq: Option<SharedReceiveQueue>,
+    pub cap: QpCapability,
+    pub qp_type: QpType,
+    pub sq_sig_all: bool,
 }
 
-pub fn get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> {
-    let req = Request::GetRecvComp(id.0);
-    ctx.dp_tx.send(req)?;
-    rx_recv_impl!(ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })
+impl<'ctx> FromBorrow<QpInitAttr<'ctx>> for interface::QpInitAttr {
+    fn from_borrow<T: Borrow<QpInitAttr<'ctx>>>(borrow: &T) -> Self {
+        let b = borrow.borrow();
+        interface::QpInitAttr {
+            send_cq: b.send_cq.as_ref().map(|x| x.inner.clone()),
+            recv_cq: b.recv_cq.as_ref().map(|x| x.inner.clone()),
+            srq: b.srq.as_ref().map(|x| x.inner.clone()),
+            cap: b.cap.clone(),
+            qp_type: b.qp_type,
+            sq_sig_all: b.sq_sig_all,
+        }
+    }
+}
+
+pub struct ConnParam<'priv_data> {
+    pub private_data: Option<&'priv_data [u8]>,
+    pub responder_resources: u8,
+    pub initiator_depth: u8,
+    pub flow_control: u8,
+    pub retry_count: u8,
+    pub rnr_retry_count: u8,
+    pub srq: u8,
+    pub qp_num: u32,
+}
+
+impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for interface::ConnParam {
+    fn from_borrow<T: Borrow<ConnParam<'priv_data>>>(borrow: &T) -> Self {
+        let b = borrow.borrow();
+        interface::ConnParam {
+            private_data: b.private_data.map(|x| x.to_owned()),
+            responder_resources: b.responder_resources,
+            initiator_depth: b.initiator_depth,
+            flow_control: b.flow_control,
+            retry_count: b.retry_count,
+            rnr_retry_count: b.rnr_retry_count,
+            srq: b.srq,
+            qp_num: b.qp_num,
+        }
+    }
 }

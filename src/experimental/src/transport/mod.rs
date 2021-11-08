@@ -12,6 +12,8 @@ enum Error {
     GetAddrInfo(io::Error),
     #[error("Resource not found.")]
     NotFound,
+    #[error("Resource exists.")]
+    Exists,
     #[error("Cannot open or create shared memory file: {0}")]
     ShmOpen(nix::Error),
     #[error("Failed to truncate file: {0}")]

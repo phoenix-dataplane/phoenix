@@ -274,6 +274,14 @@ pub struct MemoryRegion(*mut ffi::ibv_mr);
 unsafe impl Send for MemoryRegion {}
 unsafe impl Sync for MemoryRegion {}
 
+impl MemoryRegion {
+    // TODO(cjr): Replace this with proc macro
+    pub fn handle(&self) -> u32 {
+        assert!(!self.0.is_null());
+        unsafe { &*self.0 }.handle
+    }
+}
+
 #[derive(Debug)]
 pub struct CmId(*mut ffi::rdma_cm_id);
 
@@ -293,6 +301,30 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    pub fn handle(&self) -> u32 {
+        assert!(!self.0.is_null());
+        self.qp().handle()
+    }
+
+    pub fn qp<'res>(&self) -> ibv::QueuePair<'res> {
+        assert!(!self.0.is_null());
+        let qp = unsafe { &*self.0 }.qp;
+        assert!(!qp.is_null());
+        ibv::QueuePair {
+            _phantom: PhantomData,
+            qp,
+        }
+    }
+
+    pub fn qp_handle(&self) -> u32 {
+        assert!(!self.0.is_null());
+        unsafe {
+            let qp = (&*self.0).qp;
+            assert!(!qp.is_null());
+            (&*qp).handle
+        }
+    }
+
     pub fn create_ep<'ctx>(
         ai: &AddrInfo,
         pd: Option<&ibv::ProtectionDomain<'ctx>>,
