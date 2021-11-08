@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io;
-use std::ops::Range;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::rc::Rc;
 
@@ -9,7 +8,7 @@ use ipc::cmd::{Request, ResponseKind};
 use crate::{slice_to_range, verbs, Context, Error, FromBorrow};
 
 // Re-exports
-pub use interface::addrinfo::{AddrInfo, AddrInfoHints};
+pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(
@@ -34,7 +33,8 @@ pub fn getaddrinfo(
 pub struct CmId {
     pub(crate) ctx: Rc<Context>,
     pub(crate) handle: interface::CmId,
-    pub(crate) qp: verbs::QueuePair,
+    // it could be empty for listener QP.
+    pub qp: Option<verbs::QueuePair>,
 }
 
 unsafe impl Send for CmId {}
@@ -76,7 +76,7 @@ impl CmId {
             Ok(ResponseKind::CreateEp(cmid)) => Ok(CmId {
                 ctx,
                 handle: cmid.handle,
-                qp: verbs::QueuePair::from(cmid.qp),
+                qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
             }),
             Err(e) => Err(e.into()),
             _ => panic!(""),
@@ -103,7 +103,7 @@ impl CmId {
             Ok(ResponseKind::GetRequest(cmid)) => Ok(CmId {
                 ctx: Rc::clone(&self.ctx),
                 handle: cmid.handle,
-                qp: verbs::QueuePair::from(cmid.qp),
+                qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
             }),
             Err(e) => Err(e.into()),
             _ => panic!(""),

@@ -301,27 +301,16 @@ impl Drop for CmId {
 }
 
 impl CmId {
-    pub fn handle(&self) -> u32 {
-        assert!(!self.0.is_null());
-        self.qp().handle()
-    }
-
-    pub fn qp<'res>(&self) -> ibv::QueuePair<'res> {
+    pub fn qp<'res>(&self) -> Option<ibv::QueuePair<'res>> {
         assert!(!self.0.is_null());
         let qp = unsafe { &*self.0 }.qp;
-        assert!(!qp.is_null());
-        ibv::QueuePair {
-            _phantom: PhantomData,
-            qp,
-        }
-    }
-
-    pub fn qp_handle(&self) -> u32 {
-        assert!(!self.0.is_null());
-        unsafe {
-            let qp = (&*self.0).qp;
-            assert!(!qp.is_null());
-            (&*qp).handle
+        if qp.is_null() {
+            None
+        } else {
+            Some(ibv::QueuePair {
+                _phantom: PhantomData,
+                qp,
+            })
         }
     }
 

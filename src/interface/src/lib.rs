@@ -53,7 +53,8 @@ pub mod returned {
     #[derive(Debug, Serialize, Deserialize)]
     pub struct CmId {
         pub handle: super::CmId,
-        pub qp: QueuePair,
+        // could be empty for passive CmId (listener).
+        pub qp: Option<QueuePair>,
     }
 }
 

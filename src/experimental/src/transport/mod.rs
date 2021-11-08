@@ -10,9 +10,9 @@ enum Error {
     RdmaCm(io::Error),
     #[error("getaddrinfo error: {0}.")]
     GetAddrInfo(io::Error),
-    #[error("Resource not found.")]
+    #[error("Resource not found in table.")]
     NotFound,
-    #[error("Resource exists.")]
+    #[error("Resource exists in table.")]
     Exists,
     #[error("Cannot open or create shared memory file: {0}")]
     ShmOpen(nix::Error),

@@ -1,13 +1,16 @@
-use interface::{
-    addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-    QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
-};
-use libkoala::{cm, koala_register, verbs};
+// use interface::{
+//     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
+//     QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
+// };
+// use libkoala::{cm, koala_register, verbs};
+use libkoala::{cm, Context, verbs};
+use libkoala::cm::{AddrInfoHints, AddrInfoFlags, AddrFamily, PortSpace};
+use libkoala::verbs::{QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = koala_register().expect("register failed!");
+    let ctx = Context::register().expect("register failed");
 
     let hints = AddrInfoHints::new(
         AddrInfoFlags::PASSIVE,
@@ -21,12 +24,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("ai: {:?}", ai);
 
-    let qp_init_attr = QpInitAttr {
+    let qp_init_attr = verbs::QpInitAttr {
         qp_context: Some(&3),
         send_cq: None,
         recv_cq: None,
         srq: None,
-        cap: QpCapability {
+        cap: verbs::QpCapability {
             max_send_wr: 16,
             max_recv_wr: 16,
             max_send_sge: 1,
@@ -37,34 +40,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let listen_id = cm::create_ep(&ctx, &ai, None, Some(&qp_init_attr))?;
+    let listen_id = cm::CmId::create_ep(ctx, &ai, None, Some(&qp_init_attr))?;
 
-    eprintln!("listen_id: {:?}", listen_id);
+    eprintln!("listen_id created");
 
-    cm::listen(&ctx, &listen_id, 16).expect("Listen failed!");
-    let id = cm::get_requst(&ctx, &listen_id).expect("Get request failed!");
+    listen_id.listen(16).expect("Listen failed!");
+    let id = listen_id.get_requst().expect("Get request failed!");
 
-    let mut recv_msg: Vec<u8> = Vec::with_capacity(128);
-    recv_msg.resize(recv_msg.capacity(), 0);
-    let recv_mr = cm::reg_msgs(&ctx, &id, &recv_msg).expect("Memory registration failed!");
+    let mut recv_msg = vec![0u8; 128];
+    let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");
 
     unsafe {
-        verbs::post_recv(&ctx, &id, 0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+        id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
     }
 
-    cm::accept(&ctx, &id, None).expect("Accept failed!");
+    id.accept(None).expect("Accept failed!");
 
-    let wc_recv = verbs::get_recv_comp(&ctx, &id).expect("Get recv comp failed!");
+    let wc_recv = id.get_recv_comp().expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
 
     let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala client!";
     let send_mr =
-        cm::reg_msgs(&ctx, &id, send_msg.as_bytes()).expect("Memory registration failed!");
-    verbs::post_send(&ctx, &id, 0, send_msg.as_bytes(), &send_mr, send_flags)
+        id.reg_msgs(send_msg.as_bytes()).expect("Memory registration failed!");
+    id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
         .expect("Connect failed!");
 
-    let wc_send = verbs::get_send_comp(&ctx, &id).expect("Get send comp failed!");
+    let wc_send = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc_send.status, WcStatus::Success);
 
     println!("{:?}", recv_msg);

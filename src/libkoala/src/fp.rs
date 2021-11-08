@@ -1,8 +1,7 @@
 //! Fast path operations.
-use std::ops::Range;
 use ipc::dp::{Request, ResponseKind};
 
-use crate::{slice_to_range, Context, Error};
+use crate::{slice_to_range, Error};
 
 use crate::verbs;
 use crate::cm::CmId;
@@ -60,7 +59,7 @@ impl CmId {
         rx_recv_impl!(self.ctx.dp_rx, ResponseKind::GetSendComp, wc, { Ok(wc) })
     }
 
-    pub fn get_recv_comp(self) -> Result<verbs::WorkCompletion, Error> {
+    pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let req = Request::GetRecvComp(self.handle.0);
         self.ctx.dp_tx.send(req)?;
         rx_recv_impl!(self.ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })

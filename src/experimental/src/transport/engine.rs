@@ -26,6 +26,7 @@ use crate::transport::Error;
 /// A variety of tables map a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
 struct Resource<'ctx> {
+    cmid_cnt: usize,
     pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
     cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
     qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
@@ -47,8 +48,11 @@ impl<R> Default for ResourceTable<R> {
 }
 
 impl<R> ResourceTable<R> {
-    fn insert(&mut self, h: Handle, r: R) -> Result<R, Error> {
-        self.table.insert(h, r).ok_or(Error::Exists)
+    fn insert(&mut self, h: Handle, r: R) -> Result<(), Error> {
+        match self.table.insert(h, r) {
+            Some(_) => Err(Error::Exists),
+            None => Ok(()),
+        }
     }
     fn get(&self, h: &Handle) -> Result<&R, Error> {
         self.table.get(h).ok_or(Error::NotFound)
@@ -100,20 +104,32 @@ impl<'ctx> Resource<'ctx> {
         Default::default()
     }
 
-    fn insert_cmid(&mut self, cmid: CmId) -> Result<(Handle, Handle, Handle, Handle), Error> {
-        let qp = cmid.qp();
-        let send_cq = qp.send_cq();
-        let recv_cq = qp.recv_cq();
-        let scq_handle = send_cq.handle().into();
-        let rcq_handle = recv_cq.handle().into();
-        let qp_handle = qp.handle().into();
-        let cmid_handle = cmid.handle().into();
-        self.cmid_table.insert(cmid_handle, cmid)?;
-        self.qp_table.insert(qp_handle, qp)?;
-        // safely ignore the error if the cq has already been created.
-        let _ = self.cq_table.insert(scq_handle, send_cq);
-        let _ = self.cq_table.insert(rcq_handle, recv_cq);
-        Ok((cmid_handle, qp_handle, scq_handle, rcq_handle))
+    fn allocate_new_cmid_handle(&mut self) -> Handle {
+        let ret = Handle(self.cmid_cnt);
+        self.cmid_cnt += 1;
+        ret
+    }
+
+    fn insert_cmid(&mut self, cmid: CmId) -> Result<(Handle, Option<(Handle, Handle, Handle)>), Error> {
+        let cmid_handle = self.allocate_new_cmid_handle();
+        if let Some(qp) = cmid.qp() {
+            let send_cq = qp.send_cq();
+            let recv_cq = qp.recv_cq();
+            let scq_handle = send_cq.handle().into();
+            let rcq_handle = recv_cq.handle().into();
+            let qp_handle = qp.handle().into();
+            self.cmid_table.insert(cmid_handle, cmid)?;
+            self.qp_table.insert(qp_handle, qp)?;
+            // safely ignore the error if the cq has already been created.
+            let _ = self.cq_table.insert(scq_handle, send_cq);
+            let _ = self.cq_table.insert(rcq_handle, recv_cq);
+            let handles = Some((qp_handle, scq_handle, rcq_handle));
+            Ok((cmid_handle, handles))
+        } else {
+            // passive cmid, no QP associated.
+            self.cmid_table.insert(cmid_handle, cmid)?;
+            Ok((cmid_handle, None))
+        }
     }
 }
 
@@ -378,16 +394,20 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
-                        let (cmid_handle, qp_handle, scq_handle, rcq_handle) =
+                        let (cmid_handle, handles) =
                             self.resource.insert_cmid(cmid)?;
-                        let ret_qp = returned::QueuePair {
-                            handle: interface::QueuePair(qp_handle),
-                            send_cq: returned::CompletionQueue {
-                                handle: interface::CompletionQueue(scq_handle),
-                            },
-                            recv_cq: returned::CompletionQueue {
-                                handle: interface::CompletionQueue(rcq_handle),
-                            },
+                        let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
+                            Some(returned::QueuePair {
+                                handle: interface::QueuePair(qp_handle),
+                                send_cq: returned::CompletionQueue {
+                                    handle: interface::CompletionQueue(scq_handle),
+                                },
+                                recv_cq: returned::CompletionQueue {
+                                    handle: interface::CompletionQueue(rcq_handle),
+                                },
+                            })
+                        } else {
+                            None
                         };
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
@@ -413,17 +433,20 @@ impl<'ctx> TransportEngine<'ctx> {
                 let listener = self.resource.cmid_table.get(cmid_handle)?;
                 let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
 
-                let (new_cmid_handle, qp_handle, scq_handle, rcq_handle) =
+                let (new_cmid_handle, handles) =
                     self.resource.insert_cmid(new_cmid)?;
-
-                let ret_qp = returned::QueuePair {
-                    handle: interface::QueuePair(qp_handle),
-                    send_cq: returned::CompletionQueue {
-                        handle: interface::CompletionQueue(scq_handle),
-                    },
-                    recv_cq: returned::CompletionQueue {
-                        handle: interface::CompletionQueue(rcq_handle),
-                    },
+                let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
+                    Some(returned::QueuePair {
+                        handle: interface::QueuePair(qp_handle),
+                        send_cq: returned::CompletionQueue {
+                            handle: interface::CompletionQueue(scq_handle),
+                        },
+                        recv_cq: returned::CompletionQueue {
+                            handle: interface::CompletionQueue(rcq_handle),
+                        },
+                    })
+                } else {
+                    None
                 };
                 let ret_cmid = returned::CmId {
                     handle: interface::CmId(new_cmid_handle),
