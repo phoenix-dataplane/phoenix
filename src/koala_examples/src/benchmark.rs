@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if test == "delay" || test == "d" {
         let size = size.unwrap_or(1024); //KB
-        let num = num.unwrap_or(10000);
+        let num = num.unwrap_or(1000);
         if client {
             run_delay_client(size, num);
         } else {
