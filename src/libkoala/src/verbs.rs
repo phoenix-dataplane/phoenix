@@ -1,4 +1,4 @@
-use interface::{CmId, MemoryRegion, SendFlags, WorkCompletion};
+use interface::{CmId, CompletionQueue, MemoryRegion, SendFlags, WorkCompletion};
 use ipc::dp::{Request, Response};
 
 use crate::{slice_to_range, Context, Error};
@@ -50,4 +50,12 @@ pub fn get_recv_comp(ctx: &Context, id: &CmId) -> Result<WorkCompletion, Error> 
     let req = Request::GetRecvComp(id.0);
     ctx.dp_tx.send(req)?;
     rx_recv_impl!(ctx.dp_rx, Response::GetRecvComp, wc, { Ok(wc) })
+}
+
+pub fn poll_cq(
+    ctx: &Context,
+    // cq: &CompletionQueue,
+    num_entries: i32,
+) -> Result<Vec<WorkCompletion>, Error> {
+    Ok(vec![])
 }

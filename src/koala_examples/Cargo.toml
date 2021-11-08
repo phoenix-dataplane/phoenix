@@ -10,6 +10,8 @@ libkoala = { path = "../libkoala" }
 interface = { path = "../interface" }
 dns-lookup = "1.0.8"
 libc = "0.2.103"
+getopt = "1.1.0"
+rand = "0.8.4"
 
 
 [[bin]]
@@ -19,3 +21,7 @@ path = "src/sender.rs"
 [[bin]]
 name = "receiver"
 path = "src/receiver.rs"
+
+[[bin]]
+name = "benchmark"
+path = "src/benchmark.rs"
