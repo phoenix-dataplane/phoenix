@@ -88,12 +88,15 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let mut wc = Vec::with_capacity(32);
     let cq = &id.qp.as_ref().unwrap().recv_cq;
     let mut cqe = 0;
-    while cqe < opts.warm_iters + opts.total_iters {
+    loop {
         cq.poll_cq(&mut wc)?;
+        if cqe >= opts.warm_iters + opts.total_iters {
+            break;
+        }
         for c in &wc {
             assert_eq!(c.status, WcStatus::Success);
             cqe += 1;
-            let send_flags = if cqe == opts.warm_iters + opts.total_iters {
+            let send_flags = if cqe + 1 == opts.warm_iters + opts.total_iters {
                 SendFlags::SIGNALED
             } else {
                 Default::default()
@@ -107,7 +110,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
 
-    assert_eq!(&recv_msg, &vec![42u8; opts.msg_size],);
+    assert_eq!(&recv_msg, &vec![42u8; opts.msg_size]);
     Ok(())
 }
 
@@ -167,9 +170,12 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let mut wc = Vec::with_capacity(1);
     let cq = &id.qp.as_ref().unwrap().recv_cq;
     let mut cqe = 0;
-    while cqe < opts.total_iters + opts.warm_iters {
+    loop {
         cq.poll_cq(&mut wc)?;
         cqe += wc.len();
+        if cqe >= opts.warm_iters + opts.total_iters {
+            break;
+        }
         for c in &wc {
             assert_eq!(c.status, WcStatus::Success, "{:?}", c);
 
@@ -183,7 +189,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
                 ts = time::Instant::now();
             }
 
-            let send_flags = if cqe == opts.warm_iters + opts.total_iters {
+            let send_flags = if cqe + 1 == opts.warm_iters + opts.total_iters {
                 SendFlags::SIGNALED
             } else {
                 no_signal
@@ -194,8 +200,10 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     let send_wc = id.get_send_comp()?;
     assert_eq!(send_wc.status, WcStatus::Success);
+    stats.push(ts.elapsed());
 
     let dura = start_ts.elapsed();
+    stats.sort();
     eprintln!(
         "duration: {:?}, avg: {:?}, median: {:?}, min: {:?}, max: {:?}",
         dura,
@@ -214,23 +222,18 @@ fn get_avg(stats: &[time::Duration]) -> time::Duration {
 }
 
 fn get_median(stats: &[time::Duration]) -> time::Duration {
-    let mut v = stats.to_owned();
-    v.sort();
-    assert!(!v.is_empty());
-    v[v.len() / 2]
+    assert!(!stats.is_empty());
+    stats[stats.len() / 2]
 }
 
 fn get_min(stats: &[time::Duration]) -> time::Duration {
-    let mut v = stats.to_owned();
-    v.sort();
-    v[0]
+    assert!(!stats.is_empty());
+    stats[0]
 }
 
 fn get_max(stats: &[time::Duration]) -> time::Duration {
-    let mut v = stats.to_owned();
-    v.sort();
-    assert!(!v.is_empty());
-    *v.last().unwrap()
+    assert!(!stats.is_empty());
+    *stats.last().unwrap()
 }
 
 fn main() {
