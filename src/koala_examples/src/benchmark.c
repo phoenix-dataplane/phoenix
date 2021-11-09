@@ -74,20 +74,18 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
 
     struct ibv_wc *wcs = (struct ibv_wc *)malloc(num * sizeof(struct ibv_wc));
 
-    uint64_t sum = 0;
+    uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
     {
-        uint64_t t1 = get_timestamp_us();
         ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
         while (ibv_poll_cq(id->send_cq, 1, wcs + i) == 0)
             ;
         error_handler(wcs[i].status != IBV_WC_SUCCESS, "ibv_poll_cq",
                       out_disconnect);
-        uint64_t t2 = get_timestamp_us();
-        sum += t2 - t1;
     }
-    printf("%ld %d %ld\n", sum, num, sum / num);
+    uint64_t t2 = get_timestamp_us();
+    printf("sum: %ld, avg delay: %ld\n", t2 - t1, (t2 - t1) / num);
     /*
     uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
@@ -255,6 +253,7 @@ int main(int argc, char **argv)
             break;
         }
     }
+    printf("num: %d, size: %d\n", num, size);
     int ret = 0;
     if (client)
         ret = run_delay_client(size, num, ip, port);
