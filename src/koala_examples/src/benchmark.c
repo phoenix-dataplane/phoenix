@@ -72,6 +72,7 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
     ret = rdma_connect(id, NULL);
     error_handler(ret, "rdma_connect", out_dereg_send);
 
+    
     uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
     {
@@ -89,8 +90,8 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
                           out_disconnect);
         cnt += n;
     }
-
     uint64_t t2 = get_timestamp_us();
+    
     cnt = 0;
     while (cnt < num)
     {
@@ -100,7 +101,6 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
                           out_disconnect);
         cnt += n;
     }
-    error_handler(ret < 0, "rdma_get_recv_comp", out_disconnect);
     uint64_t t3 = get_timestamp_us();
 
     printf("%ld %ld %ld %ld\n", t2 - t1, (t2 - t1) / num, t3 - t1,
