@@ -10,6 +10,8 @@ libkoala = { path = "../libkoala" }
 interface = { path = "../interface" }
 dns-lookup = "1.0.8"
 libc = "0.2.103"
+structopt = "0.3.23"
+anyhow = "1.0.44"
 
 
 [[bin]]
@@ -19,3 +21,11 @@ path = "src/sender.rs"
 [[bin]]
 name = "receiver"
 path = "src/receiver.rs"
+
+[[bin]]
+name = "send_bw"
+path = "src/send_bw.rs"
+
+[[bin]]
+name = "send_lat"
+path = "src/send_lat.rs"

@@ -350,6 +350,14 @@ unsafe impl<'a> Send for CompletionQueue<'a> {}
 unsafe impl<'a> Sync for CompletionQueue<'a> {}
 
 impl<'ctx> CompletionQueue<'ctx> {
+    /// Returns the inner handle of this CompletionQueue.
+    pub fn handle(&self) -> u32 {
+        assert!(!self.cq.is_null());
+        unsafe { &*self.cq }.handle
+    }
+}
+
+impl<'ctx> CompletionQueue<'ctx> {
     /// Poll for (possibly multiple) work completions.
     ///
     /// A Work Completion indicates that a Work Request in a Work Queue, and all of the outstanding
@@ -1134,12 +1142,42 @@ impl<'a> Drop for ProtectionDomain<'a> {
 /// is a resource of an RDMA device and a QP number can be used by one process at the same time
 /// (similar to a socket that is associated with a specific TCP or UDP port number)
 pub struct QueuePair<'res> {
-    _phantom: PhantomData<&'res ()>,
-    qp: *mut ffi::ibv_qp,
+    pub(crate) _phantom: PhantomData<&'res ()>,
+    pub(crate) qp: *mut ffi::ibv_qp,
 }
 
 unsafe impl<'a> Send for QueuePair<'a> {}
 unsafe impl<'a> Sync for QueuePair<'a> {}
+
+impl<'res> QueuePair<'res> {
+    /// Returns the inner handle of this QP.
+    pub fn handle(&self) -> u32 {
+        assert!(!self.qp.is_null());
+        unsafe { &*self.qp }.handle
+    }
+
+    /// Returns the send_cq that this QP assocates with.
+    pub fn send_cq(&self) -> CompletionQueue<'res> {
+        assert!(!self.qp.is_null());
+        let cq = unsafe { &*self.qp }.send_cq;
+        assert!(!cq.is_null());
+        CompletionQueue {
+            _phantom: PhantomData,
+            cq,
+        }
+    }
+
+    /// Returns the recv_cq that this QP assocates with.
+    pub fn recv_cq(&self) -> CompletionQueue<'res> {
+        assert!(!self.qp.is_null());
+        let cq = unsafe { &*self.qp }.recv_cq;
+        assert!(!cq.is_null());
+        CompletionQueue {
+            _phantom: PhantomData,
+            cq,
+        }
+    }
+}
 
 impl<'res> QueuePair<'res> {
     /// Posts a linked list of Work Requests (WRs) to the Send Queue of this Queue Pair.
