@@ -47,7 +47,7 @@ impl MemoryRegion {
 }
 
 pub struct QueuePair {
-    inner: interface::QueuePair,
+    pub(crate) inner: interface::QueuePair,
     pub send_cq: CompletionQueue,
     pub recv_cq: CompletionQueue,
 }

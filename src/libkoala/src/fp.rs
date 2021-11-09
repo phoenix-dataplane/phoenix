@@ -1,10 +1,10 @@
 //! Fast path operations.
 use ipc::dp::{Request, ResponseKind};
 
-use crate::{slice_to_range, KL_CTX, Error};
+use crate::{slice_to_range, Error, KL_CTX};
 
-use crate::verbs;
 use crate::cm::CmId;
+use crate::verbs;
 use crate::verbs::{CompletionQueue, WorkCompletion};
 
 macro_rules! rx_recv_impl {
@@ -32,8 +32,10 @@ impl CmId {
         mr: &verbs::MemoryRegion,
     ) -> Result<(), Error> {
         let req = Request::PostRecv(self.handle.0, context, slice_to_range(buffer), mr.inner.0);
-        self.ctx.dp_tx.send(req)?;
-        rx_recv_impl!(self.ctx.dp_rx, ResponseKind::PostRecv, { Ok(()) })
+        KL_CTX.with(|ctx| {
+            ctx.dp_tx.send(req)?;
+            rx_recv_impl!(ctx.dp_rx, ResponseKind::PostRecv, { Ok(()) })
+        })
     }
 
     pub fn post_send<T>(
@@ -50,20 +52,26 @@ impl CmId {
             mr.inner.0,
             flags,
         );
-        self.ctx.dp_tx.send(req)?;
-        rx_recv_impl!(self.ctx.dp_rx, ResponseKind::PostSend, { Ok(()) })
+        KL_CTX.with(|ctx| {
+            ctx.dp_tx.send(req)?;
+            rx_recv_impl!(ctx.dp_rx, ResponseKind::PostSend, { Ok(()) })
+        })
     }
 
     pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let req = Request::GetSendComp(self.handle.0);
-        self.ctx.dp_tx.send(req)?;
-        rx_recv_impl!(self.ctx.dp_rx, ResponseKind::GetSendComp, wc, { Ok(wc) })
+        KL_CTX.with(|ctx| {
+            ctx.dp_tx.send(req)?;
+            rx_recv_impl!(ctx.dp_rx, ResponseKind::GetSendComp, wc, { Ok(wc) })
+        })
     }
 
     pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let req = Request::GetRecvComp(self.handle.0);
-        self.ctx.dp_tx.send(req)?;
-        rx_recv_impl!(self.ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })
+        KL_CTX.with(|ctx| {
+            ctx.dp_tx.send(req)?;
+            rx_recv_impl!(ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })
+        })
     }
 }
 

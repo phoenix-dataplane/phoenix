@@ -1,17 +1,10 @@
-// use interface::{
-//     addrinfo::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace},
-//     QpCapability, QpInitAttr, QpType, SendFlags, WcStatus,
-// };
-// use libkoala::{cm, koala_register, verbs};
-use libkoala::{cm, Context, verbs};
+use libkoala::{cm, verbs};
 use libkoala::cm::{AddrInfoHints, AddrInfoFlags, AddrFamily, PortSpace};
 use libkoala::verbs::{QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = Context::register().expect("register failed");
-
     let hints = AddrInfoHints::new(
         AddrInfoFlags::PASSIVE,
         Some(AddrFamily::Inet),
@@ -19,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PortSpace::TCP,
     );
 
-    let ai = cm::getaddrinfo(&ctx, None, Some(&SERVER_PORT.to_string()), Some(&hints))
+    let ai = cm::getaddrinfo(None, Some(&SERVER_PORT.to_string()), Some(&hints))
         .expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
@@ -40,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let listen_id = cm::CmId::create_ep(ctx, &ai, None, Some(&qp_init_attr))?;
+    let listen_id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
 
     eprintln!("listen_id created");
 

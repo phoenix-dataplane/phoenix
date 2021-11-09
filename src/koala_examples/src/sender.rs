@@ -1,14 +1,11 @@
-use libkoala::{cm, Context, verbs};
+use libkoala::{cm, verbs};
 use libkoala::verbs::{SendFlags, WcStatus};
 
 const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = Context::register().expect("register failed");
-
     let ai = cm::getaddrinfo(
-        &ctx,
         Some(&SERVER_ADDR),
         Some(&SERVER_PORT.to_string()),
         None,
@@ -33,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let id = cm::CmId::create_ep(ctx, &ai, None, Some(&qp_init_attr))?;
+    let id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
 
     eprintln!("cmid created");
 

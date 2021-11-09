@@ -1,18 +1,16 @@
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd};
-use std::rc::Rc;
 
 use ipc::cmd::{Request, ResponseKind};
 
-use crate::{slice_to_range, verbs, Context, Error, FromBorrow};
+use crate::{slice_to_range, verbs, Error, FromBorrow, KL_CTX};
 
 // Re-exports
 pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(
-    ctx: &Context,
     node: Option<&str>,
     service: Option<&str>,
     hints: Option<&AddrInfoHints>,
@@ -22,16 +20,18 @@ pub fn getaddrinfo(
         service.map(String::from),
         hints.map(AddrInfoHints::clone),
     );
-    ctx.cmd_tx.send(req)?;
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-        Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
-        Err(e) => Err(e.into()),
-        _ => panic!(""),
-    }
+
+    KL_CTX.with(|ctx| {
+        ctx.cmd_tx.send(req)?;
+        match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
+        }
+    })
 }
 
 pub struct CmId {
-    pub(crate) ctx: Rc<Context>,
     pub(crate) handle: interface::CmId,
     // it could be empty for listener QP.
     pub qp: Option<verbs::QueuePair>,
@@ -60,7 +60,6 @@ macro_rules! rx_recv_impl {
 impl CmId {
     /// Creates an identifier that is used to track communication information.
     pub fn create_ep(
-        ctx: Rc<Context>,
         ai: &AddrInfo,
         pd: Option<&verbs::ProtectionDomain>,
         qp_init_attr: Option<&verbs::QpInitAttr>,
@@ -70,44 +69,42 @@ impl CmId {
             pd.map(|pd| pd.inner.0),
             qp_init_attr.map(|attr| interface::QpInitAttr::from_borrow(attr)),
         );
-        ctx.cmd_tx.send(req)?;
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
 
-        match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok(ResponseKind::CreateEp(cmid)) => Ok(CmId {
-                ctx,
-                handle: cmid.handle,
-                qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
-            }),
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
-        }
+            match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::CreateEp(cmid)) => Ok(CmId {
+                    handle: cmid.handle,
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                }),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            }
+        })
     }
 
     pub fn listen(&self, backlog: i32) -> Result<(), Error> {
         let req = Request::Listen(self.handle.0, backlog);
-        self.ctx.cmd_tx.send(req)?;
-        rx_recv_impl!(self.ctx.cmd_rx, ResponseKind::Listen, { Ok(()) })
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Listen, { Ok(()) })
+        })
     }
 
     pub fn get_requst(&self) -> Result<CmId, Error> {
         let req = Request::GetRequest(self.handle.0);
-        self.ctx.cmd_tx.send(req)?;
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
 
-        match self
-            .ctx
-            .cmd_rx
-            .recv()
-            .map_err(|e| Error::IpcRecvError(e))?
-            .0
-        {
-            Ok(ResponseKind::GetRequest(cmid)) => Ok(CmId {
-                ctx: Rc::clone(&self.ctx),
-                handle: cmid.handle,
-                qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
-            }),
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
-        }
+            match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::GetRequest(cmid)) => Ok(CmId {
+                    handle: cmid.handle,
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                }),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            }
+        })
     }
 
     pub fn accept(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
@@ -115,8 +112,10 @@ impl CmId {
             self.handle.0,
             conn_param.map(|param| interface::ConnParam::from_borrow(param)),
         );
-        self.ctx.cmd_tx.send(req)?;
-        rx_recv_impl!(self.ctx.cmd_rx, ResponseKind::Accept, { Ok(()) })
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Accept, { Ok(()) })
+        })
     }
 
     pub fn connect(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
@@ -124,8 +123,10 @@ impl CmId {
             self.handle.0,
             conn_param.map(|param| interface::ConnParam::from_borrow(param)),
         );
-        self.ctx.cmd_tx.send(req)?;
-        rx_recv_impl!(self.ctx.cmd_rx, ResponseKind::Connect, { Ok(()) })
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Connect, { Ok(()) })
+        })
     }
 
     pub fn reg_msgs<T>(&self, buffer: &[T]) -> Result<verbs::MemoryRegion, Error> {
@@ -134,9 +135,9 @@ impl CmId {
 
         // 1. send regmsgs request to koala server
         let req = Request::RegMsgs(self.handle.0, slice_to_range(buffer));
-        self.ctx.cmd_tx.send(req)?;
+        KL_CTX.with(|ctx| ctx.cmd_tx.send(req))?;
         // 2. receive file descriptors of the shared memories
-        let fd = ipc::recv_fd(&self.ctx.sock)?;
+        let fd = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;
         let mut memfd = unsafe { File::from_raw_fd(fd) };
         let shm_len = memfd.metadata()?.len() as usize;
 
@@ -171,16 +172,12 @@ impl CmId {
 
         assert_eq!(pa, aligned_begin as _);
 
-        match self
-            .ctx
-            .cmd_rx
-            .recv()
-            .map_err(|e| Error::IpcRecvError(e))?
-            .0
-        {
-            Ok(ResponseKind::RegMsgs(handle)) => Ok(verbs::MemoryRegion::new(handle, memfd)),
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
-        }
+        KL_CTX.with(
+            |ctx| match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::RegMsgs(handle)) => Ok(verbs::MemoryRegion::new(handle, memfd)),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            },
+        )
     }
 }
