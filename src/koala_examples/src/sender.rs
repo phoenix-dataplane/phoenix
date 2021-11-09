@@ -1,16 +1,12 @@
-use libkoala::{cm, verbs};
 use libkoala::verbs::{SendFlags, WcStatus};
+use libkoala::{cm, verbs};
 
 const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ai = cm::getaddrinfo(
-        Some(&SERVER_ADDR),
-        Some(&SERVER_PORT.to_string()),
-        None,
-    )
-    .expect("getaddrinfo");
+    let ai = cm::getaddrinfo(Some(&SERVER_ADDR), Some(&SERVER_PORT.to_string()), None)
+        .expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
 
@@ -40,14 +36,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         // Should I force the post_send/recv to take an memory region (or a slice of memory region)
         // as its input to make sure the memory is registered?
-        id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+        id.post_recv(0, &mut recv_msg, &recv_mr)
+            .expect("Post recv failed!");
     }
 
     id.connect(None).expect("Connect failed!");
 
     let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala server!";
-    let send_mr = id.reg_msgs(send_msg.as_bytes()).expect("Memory registration failed!");
+    let send_mr = id
+        .reg_msgs(send_msg.as_bytes())
+        .expect("Memory registration failed!");
     id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
         .expect("Post send failed!");
 

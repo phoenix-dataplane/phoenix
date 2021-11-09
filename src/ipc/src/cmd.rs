@@ -3,8 +3,8 @@ use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-use interface::{addrinfo, Handle, ConnParam, QpInitAttr};
 use interface::returned;
+use interface::{addrinfo, ConnParam, Handle, QpInitAttr};
 
 type IResult<T> = Result<T, interface::Error>;
 

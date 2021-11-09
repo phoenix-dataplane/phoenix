@@ -1,6 +1,6 @@
-use libkoala::{cm, verbs};
-use libkoala::cm::{AddrInfoHints, AddrInfoFlags, AddrFamily, PortSpace};
+use libkoala::cm::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace};
 use libkoala::verbs::{QpType, SendFlags, WcStatus};
+use libkoala::{cm, verbs};
 
 const SERVER_PORT: u16 = 5000;
 
@@ -12,8 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PortSpace::TCP,
     );
 
-    let ai = cm::getaddrinfo(None, Some(&SERVER_PORT.to_string()), Some(&hints))
-        .expect("getaddrinfo");
+    let ai =
+        cm::getaddrinfo(None, Some(&SERVER_PORT.to_string()), Some(&hints)).expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
 
@@ -44,7 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");
 
     unsafe {
-        id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+        id.post_recv(0, &mut recv_msg, &recv_mr)
+            .expect("Post recv failed!");
     }
 
     id.accept(None).expect("Accept failed!");
@@ -54,8 +55,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala client!";
-    let send_mr =
-        id.reg_msgs(send_msg.as_bytes()).expect("Memory registration failed!");
+    let send_mr = id
+        .reg_msgs(send_msg.as_bytes())
+        .expect("Memory registration failed!");
     id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
         .expect("Post send failed!");
 

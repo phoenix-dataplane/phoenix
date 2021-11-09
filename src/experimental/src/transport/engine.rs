@@ -245,7 +245,7 @@ impl<'ctx> TransportEngine<'ctx> {
             Ok(req) => {
                 let result = self.process_dp(&req);
                 match result {
-                    Ok(ResponseKind::PostSend) | Ok(ResponseKind::PostRecv) => { Ok(()) }
+                    Ok(ResponseKind::PostSend) | Ok(ResponseKind::PostRecv) => Ok(()),
                     Ok(res) => self.dp_tx.send(dp::Response(Ok(res))),
                     Err(e) => self.dp_tx.send(dp::Response(Err(e.into()))),
                 }

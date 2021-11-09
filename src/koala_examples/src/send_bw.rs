@@ -44,10 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let dura = ts.elapsed();
-    eprintln!(
-        "post_send finished, duration: {:?}",
-        dura,
-    );
+    eprintln!("post_send finished, duration: {:?}", dura,);
 
     // busy poll
     let mut wc = Vec::with_capacity(32);

@@ -34,9 +34,8 @@ pub struct SharedReceiveQueue(pub Handle);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueuePair(pub Handle);
 
-
 pub mod returned {
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct CompletionQueue {

@@ -1,6 +1,6 @@
-use libkoala::{cm, verbs};
-use libkoala::cm::{AddrInfoHints, AddrInfoFlags, AddrFamily, PortSpace};
+use libkoala::cm::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace};
 use libkoala::verbs::{QpType, SendFlags, WcStatus};
+use libkoala::{cm, verbs};
 
 const SERVER_PORT: u16 = 5000;
 
@@ -12,8 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PortSpace::TCP,
     );
 
-    let ai = cm::getaddrinfo(None, Some(&SERVER_PORT.to_string()), Some(&hints))
-        .expect("getaddrinfo");
+    let ai =
+        cm::getaddrinfo(None, Some(&SERVER_PORT.to_string()), Some(&hints)).expect("getaddrinfo");
 
     eprintln!("ai: {:?}", ai);
 
@@ -45,7 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for i in 0..1000 {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+            id.post_recv(0, &mut recv_msg, &recv_mr)
+                .expect("Post recv failed!");
         }
     }
 
@@ -70,9 +71,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", &recv_msg[..100]);
 
-    assert_eq!(
-        &recv_msg,
-        &vec![42u8; 65536],
-    );
+    assert_eq!(&recv_msg, &vec![42u8; 65536],);
     Ok(())
 }
