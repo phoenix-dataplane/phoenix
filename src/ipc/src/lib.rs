@@ -9,7 +9,6 @@ pub use ipc_channel::Error;
 
 pub mod cmd;
 pub mod dp;
-pub mod interface;
 
 mod unix;
 pub use unix::{recv_fd, send_fd};

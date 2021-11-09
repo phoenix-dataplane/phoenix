@@ -12,6 +12,7 @@ pub enum Request {
     PostSend(Handle, u64, Range<u64>, Handle, SendFlags),
     GetRecvComp(Handle),
     GetSendComp(Handle),
+    PollCq(interface::CompletionQueue, usize),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,6 +21,7 @@ pub enum ResponseKind {
     PostSend,
     GetRecvComp(WorkCompletion),
     GetSendComp(WorkCompletion),
+    PollCq(Vec<WorkCompletion>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
