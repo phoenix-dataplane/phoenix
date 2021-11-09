@@ -29,7 +29,7 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
     struct ibv_mr *recv_mr, *send_mr;
     int send_flags = 0, ret;
 
-    char recv_msg[1];
+    char recv_msg[size];
     char send_msg[size];
 
     memset(&hints, 0, sizeof hints);
@@ -43,11 +43,11 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
     attr.cap.max_send_sge = attr.cap.max_recv_sge = 1;
     attr.cap.max_inline_data = 16;
     attr.qp_context = id;
-    attr.sq_sig_all = 1;
+    attr.sq_sig_all = 0;
     ret = rdma_create_ep(&id, res, NULL, &attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
 
-    recv_mr = rdma_reg_msgs(id, recv_msg, 1);
+    recv_mr = rdma_reg_msgs(id, recv_msg, size);
     if (!recv_mr)
     {
         perror("rdma_reg_msgs for recv_msg");
@@ -65,7 +65,7 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
 
     for (int i = 0; i < num; i++)
     {
-        ret = rdma_post_recv(id, NULL, recv_msg, 1, recv_mr);
+        ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_dereg_send);
     }
 
@@ -73,17 +73,23 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
     error_handler(ret, "rdma_connect", out_dereg_send);
 
     struct ibv_wc *wcs = (struct ibv_wc *)malloc(num * sizeof(struct ibv_wc));
-
     uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
     {
+        if (i == num - 1)
+            send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
-        while (ibv_poll_cq(id->send_cq, 1, wcs + i) == 0)
+        while (ibv_poll_cq(id->recv_cq, 1, wcs + i) == 0)
             ;
         error_handler(wcs[i].status != IBV_WC_SUCCESS, "ibv_poll_cq",
                       out_disconnect);
     }
+    struct ibv_wc wc;
+    while (ibv_poll_cq(id->send_cq, 1, &wc) == 0)
+        ;
+    error_handler(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq",
+                  out_disconnect);
     uint64_t t2 = get_timestamp_us();
     printf("sum: %ld, avg delay: %ld\n", t2 - t1, (t2 - t1) / num);
     /*
@@ -145,7 +151,7 @@ int run_delay_server(int size, int num, char *srv_port)
     int ret;
 
     char recv_msg[size];
-    char send_msg[1];
+    char send_msg[size];
 
     memset(&hints, 0, sizeof hints);
     hints.ai_flags = RAI_PASSIVE;
@@ -158,7 +164,7 @@ int run_delay_server(int size, int num, char *srv_port)
     init_attr.cap.max_send_wr = init_attr.cap.max_recv_wr = 1024;
     init_attr.cap.max_send_sge = init_attr.cap.max_recv_sge = 1;
     init_attr.cap.max_inline_data = 16;
-    init_attr.sq_sig_all = 1;
+    init_attr.sq_sig_all = 0;
     ret = rdma_create_ep(&listen_id, res, NULL, &init_attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo_srv);
 
@@ -176,7 +182,7 @@ int run_delay_server(int size, int num, char *srv_port)
         goto out_destroy_accept_ep_srv;
     }
 
-    send_mr = rdma_reg_msgs(id, send_msg, 1);
+    send_mr = rdma_reg_msgs(id, send_msg, size);
     if (!send_mr)
     {
         ret = -1;
@@ -194,6 +200,7 @@ int run_delay_server(int size, int num, char *srv_port)
     error_handler(ret, "rdma_accpet", out_dereg_send_srv);
 
     struct ibv_wc *wcs = (struct ibv_wc *)malloc(num * sizeof(struct ibv_wc));
+    /*
     int cnt = 0;
     while (cnt < num)
     {
@@ -203,14 +210,21 @@ int run_delay_server(int size, int num, char *srv_port)
                           out_disconnect_srv);
         cnt += n;
     }
+    */
 
-    /*
     for (int i = 0; i < num; i++)
     {
-        ret = rdma_post_send(id, NULL, send_msg, 1, send_mr, send_flags);
+        while (ibv_poll_cq(id->recv_cq, 1, wcs + i) == 0)
+            ;
+        if (i == num - 1)
+            send_flags |= IBV_SEND_SIGNALED;
+        ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect_srv);
     }
-    */
+    struct ibv_wc wc;
+    while (ibv_poll_cq(id->send_cq, 1, &wc) == 0)
+        ;
+
 out_disconnect_srv:
     free(wcs);
     rdma_disconnect(id);
