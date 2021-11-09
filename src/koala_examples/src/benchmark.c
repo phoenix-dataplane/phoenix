@@ -257,8 +257,8 @@ int main(int argc, char **argv)
     }
     int ret = 0;
     if (client)
-        ret = run_delay_client(num, size, ip, port);
+        ret = run_delay_client(size, num, ip, port);
     else
-        ret = run_delay_server(num, size, port);
+        ret = run_delay_server(size, num, port);
     return ret;
 }
