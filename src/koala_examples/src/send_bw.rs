@@ -69,7 +69,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     listen_id.listen(16)?;
     let id = listen_id.get_requst()?;
 
-    let mut recv_msg = vec![0u8; 65536];
+    let mut recv_msg = vec![0u8; opts.msg_size];
     let recv_mr = id.reg_msgs(&recv_msg)?;
 
     for _ in 0..opts.warm_iters + opts.total_iters {
@@ -87,18 +87,15 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let mut cqe = 0;
     while cqe < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
-        if !wc.is_empty() {
-            break;
-        }
         cqe += wc.len();
         for c in &wc {
             assert_eq!(c.status, WcStatus::Success);
         }
     }
 
-    println!("{:?}", &recv_msg[..100]);
+    println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
 
-    assert_eq!(&recv_msg, &vec![42u8; 65536],);
+    assert_eq!(&recv_msg, &vec![42u8; opts.msg_size],);
     Ok(())
 }
 
@@ -135,7 +132,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("connected to remote side");
 
     let send_flags = SendFlags::SIGNALED;
-    let send_msg = vec![42u8; 65536];
+    let send_msg = vec![42u8; opts.msg_size];
     let send_mr = id.reg_msgs(&send_msg)?;
     for _ in 0..opts.warm_iters {
         id.post_send(0, &send_msg, &send_mr, send_flags)?;
@@ -175,7 +172,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!(
         "duration: {:?}, bandwidth: {} Gb/s",
         dura,
-        8e-9 * 1000. * 65536. / dura.as_secs_f64()
+        8e-9 * opts.total_iters as f64 * opts.msg_size as f64 / dura.as_secs_f64()
     );
 
     Ok(())
