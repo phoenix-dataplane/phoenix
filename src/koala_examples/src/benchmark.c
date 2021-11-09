@@ -80,13 +80,14 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
         uint64_t t1 = get_timestamp_us();
         ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
-        ibv_poll_cq(id->send_cq, 1, wcs + i);
+        while (ibv_poll_cq(id->send_cq, 1, wcs + i) == 0)
+            ;
         error_handler(wcs[i].status != IBV_WC_SUCCESS, "ibv_poll_cq",
                       out_disconnect);
         uint64_t t2 = get_timestamp_us();
         sum += t2 - t1;
     }
-    printf("%ld\n", sum / num);
+    printf("%ld %d %ld\n", sum, num, sum / num);
     /*
     uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
@@ -194,7 +195,6 @@ int run_delay_server(int size, int num, char *srv_port)
     ret = rdma_accept(id, NULL);
     error_handler(ret, "rdma_accpet", out_dereg_send_srv);
 
-    /*
     struct ibv_wc *wcs = (struct ibv_wc *)malloc(num * sizeof(struct ibv_wc));
     int cnt = 0;
     while (cnt < num)
@@ -206,6 +206,7 @@ int run_delay_server(int size, int num, char *srv_port)
         cnt += n;
     }
 
+    /*
     for (int i = 0; i < num; i++)
     {
         ret = rdma_post_send(id, NULL, send_msg, 1, send_mr, send_flags);
@@ -213,7 +214,7 @@ int run_delay_server(int size, int num, char *srv_port)
     }
     */
 out_disconnect_srv:
-    // free(wcs);
+    free(wcs);
     rdma_disconnect(id);
 out_dereg_send_srv:
     rdma_dereg_mr(send_mr);
@@ -231,11 +232,11 @@ out_srv:
 
 int main(int argc, char **argv)
 {
-    int op;
+    int op, num = 1000, size = 2;
     bool client = false;
     char *ip = "127.0.0.1", *port = "5000";
 
-    while ((op = getopt(argc, argv, "c:p:")) != -1)
+    while ((op = getopt(argc, argv, "c:p:n:s:")) != -1)
     {
         switch (op)
         {
@@ -246,12 +247,18 @@ int main(int argc, char **argv)
         case 'p':
             port = optarg;
             break;
+        case 'n':
+            num = atoi(optarg);
+            break;
+        case 's':
+            size = atoi(optarg);
+            break;
         }
     }
     int ret = 0;
     if (client)
-        ret = run_delay_client(1024, 1000, ip, port);
+        ret = run_delay_client(num, size, ip, port);
     else
-        ret = run_delay_server(1024, 1000, port);
+        ret = run_delay_server(num, size, port);
     return ret;
 }
