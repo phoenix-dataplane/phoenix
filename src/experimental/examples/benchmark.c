@@ -63,11 +63,11 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
         goto out_dereg_recv;
     }
 
-    for (int i = 0; i < num; i++)
-    {
-        ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
-        error_handler(ret, "rdma_post_recv", out_dereg_send);
-    }
+    // for (int i = 0; i < num; i++)
+    // {
+    //     ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
+    //     error_handler(ret, "rdma_post_recv", out_dereg_send);
+    // }
 
     ret = rdma_connect(id, NULL);
     error_handler(ret, "rdma_connect", out_dereg_send);
@@ -76,6 +76,8 @@ int run_delay_client(int size, int num, char *srv_ip, char *srv_port)
     uint64_t t1 = get_timestamp_us();
     for (int i = 0; i < num; i++)
     {
+        ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
+        error_handler(ret, "rdma_post_recv", out_dereg_send);
         if (i == num - 1)
             send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
@@ -189,12 +191,16 @@ int run_delay_server(int size, int num, char *srv_port)
         perror("rdma_reg_msgs for send_msg");
         goto out_dereg_recv_srv;
     }
-
+    /*
     for (int i = 0; i < num; i++)
     {
         ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_dereg_send_srv);
     }
+    */
+
+    ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
+    error_handler(ret, "rdma_post_recv", out_dereg_send_srv);
 
     ret = rdma_accept(id, NULL);
     error_handler(ret, "rdma_accpet", out_dereg_send_srv);
@@ -216,6 +222,8 @@ int run_delay_server(int size, int num, char *srv_port)
     {
         while (ibv_poll_cq(id->recv_cq, 1, wcs + i) == 0)
             ;
+        ret = rdma_post_recv(id, NULL, recv_msg, size, recv_mr);
+        error_handler(ret, "rdma_post_recv", out_dereg_send_srv);
         if (i == num - 1)
             send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(id, NULL, send_msg, size, send_mr, send_flags);
