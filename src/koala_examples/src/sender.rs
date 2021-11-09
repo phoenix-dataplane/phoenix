@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let send_msg = "Hello koala server!";
     let send_mr = id.reg_msgs(send_msg.as_bytes()).expect("Memory registration failed!");
     id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
-        .expect("Connect failed!");
+        .expect("Post send failed!");
 
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc_send.status, WcStatus::Success);

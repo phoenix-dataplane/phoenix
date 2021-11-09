@@ -19,3 +19,11 @@ path = "src/sender.rs"
 [[bin]]
 name = "receiver"
 path = "src/receiver.rs"
+
+[[bin]]
+name = "send_bw"
+path = "src/send_bw.rs"
+
+[[bin]]
+name = "recv_bw"
+path = "src/recv_bw.rs"

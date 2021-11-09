@@ -34,7 +34,7 @@ impl CmId {
         let req = Request::PostRecv(self.handle.0, context, slice_to_range(buffer), mr.inner.0);
         KL_CTX.with(|ctx| {
             ctx.dp_tx.send(req)?;
-            rx_recv_impl!(ctx.dp_rx, ResponseKind::PostRecv, { Ok(()) })
+            Ok(())
         })
     }
 
@@ -54,7 +54,7 @@ impl CmId {
         );
         KL_CTX.with(|ctx| {
             ctx.dp_tx.send(req)?;
-            rx_recv_impl!(ctx.dp_rx, ResponseKind::PostSend, { Ok(()) })
+            Ok(())
         })
     }
 
@@ -76,12 +76,13 @@ impl CmId {
 }
 
 impl CompletionQueue {
-    pub fn poll_cq(&self, wc: &mut [WorkCompletion]) -> Result<(), Error> {
-        let req = Request::PollCq(self.inner.clone(), wc.len());
+    pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
+        let req = Request::PollCq(self.inner.clone(), wc.capacity());
         KL_CTX.with(|ctx| {
             ctx.dp_tx.send(req)?;
             rx_recv_impl!(ctx.dp_rx, ResponseKind::PollCq, wc_ret, {
-                wc.clone_from_slice(&wc_ret);
+                unsafe { wc.set_len(wc_ret.len()) };
+                wc[..wc_ret.len()].clone_from_slice(&wc_ret);
                 Ok(())
             })
         })

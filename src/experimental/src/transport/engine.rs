@@ -239,11 +239,13 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
 impl<'ctx> TransportEngine<'ctx> {
     fn check_dp(&mut self) -> bool {
+        use dp::ResponseKind;
         match self.dp_rx.try_recv() {
             // handle request
             Ok(req) => {
                 let result = self.process_dp(&req);
                 match result {
+                    Ok(ResponseKind::PostSend) | Ok(ResponseKind::PostRecv) => { Ok(()) }
                     Ok(res) => self.dp_tx.send(dp::Response(Ok(res))),
                     Err(e) => self.dp_tx.send(dp::Response(Err(e.into()))),
                 }

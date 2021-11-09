@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         srq: None,
         cap: verbs::QpCapability {
             max_send_wr: 16,
-            max_recv_wr: 16,
+            max_recv_wr: 1024,
             max_send_sge: 1,
             max_recv_sge: 1,
             max_inline_data: 128,
@@ -40,33 +40,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     listen_id.listen(16).expect("Listen failed!");
     let id = listen_id.get_requst().expect("Get request failed!");
 
-    let mut recv_msg = vec![0u8; 128];
+    let mut recv_msg = vec![0u8; 65536];
     let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");
 
-    unsafe {
-        id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+    for i in 0..1000 {
+        unsafe {
+            id.post_recv(0, &mut recv_msg, &recv_mr).expect("Post recv failed!");
+        }
     }
 
     id.accept(None).expect("Accept failed!");
 
-    let wc_recv = id.get_recv_comp().expect("Get recv comp failed!");
-    assert_eq!(wc_recv.status, WcStatus::Success);
+    // busy poll
+    let mut wc = Vec::with_capacity(32);
+    let cq = id.qp.unwrap().recv_cq;
+    let mut cqe = 0;
+    while cqe < 1000 {
+        loop {
+            cq.poll_cq(&mut wc).expect("poll_cq failed");
+            if !wc.is_empty() {
+                break;
+            }
+        }
+        cqe += wc.len();
+        for c in &wc {
+            assert_eq!(c.status, WcStatus::Success);
+        }
+    }
 
-    let send_flags = SendFlags::SIGNALED;
-    let send_msg = "Hello koala client!";
-    let send_mr =
-        id.reg_msgs(send_msg.as_bytes()).expect("Memory registration failed!");
-    id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
-        .expect("Post send failed!");
-
-    let wc_send = id.get_send_comp().expect("Get send comp failed!");
-    assert_eq!(wc_send.status, WcStatus::Success);
-
-    println!("{:?}", recv_msg);
+    println!("{:?}", &recv_msg[..100]);
 
     assert_eq!(
-        &recv_msg[..send_msg.len()],
-        "Hello koala server!".as_bytes()
+        &recv_msg,
+        &vec![42u8; 65536],
     );
     Ok(())
 }
