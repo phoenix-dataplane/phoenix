@@ -16,12 +16,13 @@ use shmem_ipc::sharedring::{Receiver, Sender};
 use experimental::*;
 use ipc::{recv_fd, send_fd};
 
-type Value = usize;
+type Value = [u8; 64];
 
 const SOCK_PATH: &str = "/tmp/bench_shmem_ipc.sock";
 
 fn send_loop(sender: &mut Sender<Value>, num_iters: usize) -> anyhow::Result<()> {
     let mut scnt = 0; // the send count
+    let mut value = [0u8; 64];
     while scnt < num_iters {
         unsafe {
             sender.send_trusted(|buffer| -> usize {
@@ -30,7 +31,8 @@ fn send_loop(sender: &mut Sender<Value>, num_iters: usize) -> anyhow::Result<()>
                     if scnt >= num_iters {
                         break;
                     }
-                    *v = scnt;
+                    *v = value;
+                    value[scnt % 64] = value[scnt % 64].wrapping_add(1);
                     scnt += 1;
                 }
                 scnt - tmp
@@ -42,6 +44,7 @@ fn send_loop(sender: &mut Sender<Value>, num_iters: usize) -> anyhow::Result<()>
 
 fn recv_loop(receiver: &mut Receiver<Value>, num_iters: usize) -> anyhow::Result<()> {
     let mut rcnt = 0;
+    let mut value = [0u8; 64];
     while rcnt < num_iters {
         unsafe {
             receiver.receive_trusted(|buffer| -> usize {
@@ -50,7 +53,8 @@ fn recv_loop(receiver: &mut Receiver<Value>, num_iters: usize) -> anyhow::Result
                     if rcnt >= num_iters {
                         break;
                     }
-                    assert_eq!(*v, rcnt);
+                    assert_eq!(*v, value);
+                    value[rcnt % 64] = value[rcnt % 64].wrapping_add(1);
                     rcnt += 1;
                 }
                 rcnt - tmp
