@@ -3,8 +3,9 @@ use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use ipc::cmd::{Request, ResponseKind};
+use ipc::buf;
 
-use crate::{slice_to_range, verbs, Error, FromBorrow, KL_CTX};
+use crate::{verbs, Error, FromBorrow, KL_CTX};
 
 // Re-exports
 pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
@@ -134,7 +135,7 @@ impl CmId {
         use std::slice;
 
         // 1. send regmsgs request to koala server
-        let req = Request::RegMsgs(self.handle.0, slice_to_range(buffer));
+        let req = Request::RegMsgs(self.handle.0, buf::Buffer::from(buffer));
         KL_CTX.with(|ctx| ctx.cmd_tx.send(req))?;
         // 2. receive file descriptors of the shared memories
         let fds = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;

@@ -21,5 +21,6 @@ ibverbs = "0.6.1"
 dns-lookup = "1.0.8"
 libc = "0.2.103"
 nix = "0.23.0"
+fnv = "1.0.7"
 
 [features]

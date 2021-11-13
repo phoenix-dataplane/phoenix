@@ -1,10 +1,11 @@
 //! Control path commands.
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
-use std::ops::Range;
 
 use interface::returned;
 use interface::{addrinfo, ConnParam, Handle, QpInitAttr};
+
+use crate::buf::Buffer;
 
 type IResult<T> = Result<T, interface::Error>;
 
@@ -23,13 +24,16 @@ pub enum Request {
     GetRequest(Handle),
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
-    RegMsgs(Handle, Range<u64>),
+    RegMsgs(Handle, Buffer),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ResponseKind {
-    /// name of the OneShotServer
-    NewClient(SchedulingMode, String),
+    /// .0: the requested scheduling mode
+    /// .1: name of the OneShotServer
+    /// .2: data path work queue capacity
+    /// .3: data path completion queue capacity
+    NewClient(SchedulingMode, String, usize, usize),
     HelloBack(i32),
 
     GetAddrInfo(addrinfo::AddrInfo),

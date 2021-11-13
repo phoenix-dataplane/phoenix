@@ -1,0 +1,23 @@
+Potential Compatibility Issue
+
+- Providing C API with high level abstraction.
+    - break RAII into construction and destruction.
+    - Rust recommends that object should avoid intermediate state
+        e.g. TcpStream::connect(), UnixDatagram::bind() will return
+        immediately usable socket.
+- Some structures, flags are not fully supported yet.
+    - ibv_wc
+    - ibv_send_flags
+    - ibv_wc_status
+- Some RNIC supported operations has not been supported.
+    - read/write
+    - atomic
+    - other
+- Some rdmacm/ibv functions has not been supported.
+    - rdma_set_option
+    - ibv
+- CompletionQueue is !Sync or !Send, but in reality, it should be
+Sync and Send, so as QueuePair and CmId.
+    - Protect every structure with spinlock.
+    - Maybe try some NUMA-aware MCS spinlock.
+- Many compile time guarantees will be broken on the FFI boundary.

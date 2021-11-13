@@ -1,11 +1,15 @@
 use std::any::Any;
 use std::borrow::Borrow;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::fs::File;
+use std::rc::Rc;
 
 use interface::returned;
 use interface::Handle;
 
 use crate::FromBorrow;
+use crate::KL_CTX;
 
 // Re-exports
 pub use interface::{QpCapability, QpType};
@@ -17,15 +21,57 @@ pub struct ProtectionDomain {
 
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
+    pub(crate) buffer: CqBuffer,
 }
 
-impl From<returned::CompletionQueue> for CompletionQueue {
-    fn from(other: returned::CompletionQueue) -> Self {
-        CompletionQueue {
-            inner: other.handle,
+#[derive(Debug)]
+pub(crate) struct CqBuffer {
+    pub(crate) queue: Rc<RefCell<VecDeque<WorkCompletion>>>,
+}
+
+impl CqBuffer {
+    fn new() -> Self {
+        CqBuffer {
+            queue: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
 }
+
+impl Drop for CompletionQueue {
+    fn drop(&mut self) {
+        KL_CTX.with(|ctx| {
+            let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].queue);
+            if ref_cnt == 2 {
+                // this is the last CQ
+                // should I flush the remaining completions in the buffer?
+                ctx.cq_buffers.borrow_mut().remove(&self.inner);
+            }
+        });
+    }
+}
+
+impl CompletionQueue {
+    fn new(other: returned::CompletionQueue) -> Self {
+        // allocate a buffer in the thread local context
+        let queue = KL_CTX.with(|ctx| {
+            Rc::clone(
+                &ctx.cq_buffers
+                    .borrow_mut()
+                    .entry(other.handle)
+                    .or_insert_with(CqBuffer::new)
+                    .queue,
+            )
+        });
+        CompletionQueue {
+            inner: other.handle,
+            buffer: CqBuffer { queue },
+        }
+    }
+}
+
+// TODO(cjr): For the moment, we disallow `Send` for CompletionQueue.
+impl !Send for CompletionQueue {}
+impl !Sync for CompletionQueue {}
 
 pub struct SharedReceiveQueue {
     pub(crate) inner: interface::SharedReceiveQueue,
@@ -56,8 +102,8 @@ impl From<returned::QueuePair> for QueuePair {
     fn from(other: returned::QueuePair) -> Self {
         QueuePair {
             inner: other.handle,
-            send_cq: CompletionQueue::from(other.send_cq),
-            recv_cq: CompletionQueue::from(other.recv_cq),
+            send_cq: CompletionQueue::new(other.send_cq),
+            recv_cq: CompletionQueue::new(other.recv_cq),
         }
     }
 }

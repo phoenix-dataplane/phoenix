@@ -1,0 +1,15 @@
+TODO
+
+- RAII
+    - implement resource release
+- libkoala interface
+    - CmId::connect()
+    - CmIdListener::bind()
+    - CmIdListener::incoming()
+    - CmIdListener::accept()
+- shmem-ipc
+    - Error::Disconnected
+    - remove the blocking send/recv
+    - expose current available count to read/write
+- Thread-safety
+    - Add spinlock to QueuePair, CompletionQueue...
