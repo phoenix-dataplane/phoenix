@@ -1,5 +1,7 @@
 use std::fs;
 use std::io;
+use std::mem;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{SocketAddr, UnixDatagram};
 use std::path::Path;
 use std::sync::Arc;
@@ -14,8 +16,11 @@ use crate::module::Module;
 use crate::transport::engine::TransportEngine;
 use engine::{manager::RuntimeManager, SchedulingMode};
 
-// TODO(cjr): make this configurable, see koala.toml
+// TODO(cjr): make these configurable, see koala.toml
 const KOALA_PATH: &'static str = "/tmp/koala/koala-transport.sock";
+
+const DP_WQ_DEPTH: usize = 32;
+const DP_CQ_DEPTH: usize = 32;
 
 pub struct TransportModule {
     runtime_manager: Arc<RuntimeManager>,
@@ -49,10 +54,15 @@ impl TransportModule {
         // 1. create an IPC channel with random name
         let (server, server_name) = ipc::OneShotServer::new()?;
 
-        // 2. tell the name to the client
+        // 2. tell the name, and the capacities of data path shared memory queues to the client
+        let wq_cap = DP_WQ_DEPTH * mem::size_of::<dp::WorkRequestSlot>();
+        let cq_cap = DP_CQ_DEPTH * mem::size_of::<dp::CompletionSlot>();
+
         let mut buf = bincode::serialize(&cmd::Response(Ok(cmd::ResponseKind::NewClient(
             mode,
             server_name,
+            wq_cap,
+            cq_cap,
         ))))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {
@@ -65,18 +75,29 @@ impl TransportModule {
 
         // 3. the client should later connect to the oneshot server, and create these channels
         // to communicate with its transport engine.
-        let (_, (cmd_tx, cmd_rx, dp_tx, dp_rx)): (
-            _,
-            (
-                ipc::Sender<cmd::Response>,
-                ipc::Receiver<cmd::Request>,
-                ipc::Sender<dp::Response>,
-                ipc::Receiver<dp::Request>,
-            ),
-        ) = server.accept()?;
+        let (_, (cmd_tx, cmd_rx)): (_, (ipc::Sender<cmd::Response>, ipc::Receiver<cmd::Request>)) =
+            server.accept()?;
 
-        // 4. the transport module is responsible for initializing and starting the transport engines
-        let engine = TransportEngine::new(&client_path, cmd_tx, cmd_rx, dp_tx, dp_rx, mode);
+        // 4. create data path shared memory queues
+        let dp_wq = ipc::ShmReceiver::new(wq_cap)?;
+        let dp_cq = ipc::ShmSender::new(cq_cap)?;
+
+        // 5. send file descriptors back to let the client attach to these shared memory queues
+        ipc::send_fd(
+            &sock,
+            &client_path,
+            &vec![
+                dp_wq.memfd().as_raw_fd(),
+                dp_wq.empty_signal().as_raw_fd(),
+                dp_wq.full_signal().as_raw_fd(),
+                dp_cq.memfd().as_raw_fd(),
+                dp_cq.empty_signal().as_raw_fd(),
+                dp_cq.full_signal().as_raw_fd(),
+            ],
+        )?;
+
+        // 6. the transport module is responsible for initializing and starting the transport engines
+        let engine = TransportEngine::new(&client_path, cmd_tx, cmd_rx, dp_wq, dp_cq, mode);
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
 
