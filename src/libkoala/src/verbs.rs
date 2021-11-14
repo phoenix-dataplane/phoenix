@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::RefCell;
@@ -25,14 +26,23 @@ pub struct CompletionQueue {
 }
 
 #[derive(Debug)]
+pub(crate) struct CqBufferShared {
+    pub(crate) outstanding: AtomicBool,
+    pub(crate) queue: RefCell<VecDeque<WorkCompletion>>,
+}
+
+#[derive(Debug)]
 pub(crate) struct CqBuffer {
-    pub(crate) queue: Rc<RefCell<VecDeque<WorkCompletion>>>,
+    pub(crate) shared: Rc<CqBufferShared>,
 }
 
 impl CqBuffer {
     fn new() -> Self {
         CqBuffer {
-            queue: Rc::new(RefCell::new(VecDeque::new())),
+            shared: Rc::new(CqBufferShared {
+                outstanding: AtomicBool::new(false),
+                queue: RefCell::new(VecDeque::new()),
+            })
         }
     }
 }
@@ -40,7 +50,7 @@ impl CqBuffer {
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
         KL_CTX.with(|ctx| {
-            let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].queue);
+            let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].shared);
             if ref_cnt == 2 {
                 // this is the last CQ
                 // should I flush the remaining completions in the buffer?
@@ -53,18 +63,18 @@ impl Drop for CompletionQueue {
 impl CompletionQueue {
     fn new(other: returned::CompletionQueue) -> Self {
         // allocate a buffer in the thread local context
-        let queue = KL_CTX.with(|ctx| {
+        let shared = KL_CTX.with(|ctx| {
             Rc::clone(
                 &ctx.cq_buffers
                     .borrow_mut()
                     .entry(other.handle)
                     .or_insert_with(CqBuffer::new)
-                    .queue,
+                    .shared,
             )
         });
         CompletionQueue {
             inner: other.handle,
-            buffer: CqBuffer { queue },
+            buffer: CqBuffer { shared },
         }
     }
 }

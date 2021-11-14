@@ -114,7 +114,13 @@ pub struct MemoryRegion(pub Handle);
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcStatus {
     Success,
-    Error(NonZeroU32), // 1-23, maybe non-exhaustive
+    // 1-23, error code from verbs, maybe non-exhaustive
+    // 1024, EAGAIN: no entry returned, user should poll again
+    Error(NonZeroU32),
+}
+
+impl WcStatus {
+    pub const AGAIN: WcStatus = WcStatus::Error(unsafe { NonZeroU32::new_unchecked(1024) });
 }
 
 #[repr(u32)]
@@ -174,7 +180,7 @@ pub struct WorkCompletion {
 }
 
 impl WorkCompletion {
-    pub fn new_vendor_err(wr_id: u64, status: WcStatus, vendor_err: u32) -> Self {
+    pub const fn new_vendor_err(wr_id: u64, status: WcStatus, vendor_err: u32) -> Self {
         WorkCompletion {
             wr_id,
             status,
@@ -184,7 +190,21 @@ impl WorkCompletion {
             imm_data: 0,
             qp_num: 0,
             ud_src_qp: 0,
-            wc_flags: WcFlags::default(),
+            wc_flags: WcFlags::empty(),
+        }
+    }
+
+    pub const fn again() -> Self {
+        WorkCompletion {
+            wr_id: 0,
+            status: WcStatus::AGAIN,
+            opcode: WcOpcode::Invalid,
+            vendor_err: 0,
+            byte_len: 0,
+            imm_data: 0,
+            qp_num: 0,
+            ud_src_qp: 0,
+            wc_flags: WcFlags::empty(),
         }
     }
 }

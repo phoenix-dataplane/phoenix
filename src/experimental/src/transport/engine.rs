@@ -536,7 +536,13 @@ impl<'ctx> TransportEngine<'ctx> {
                         let mut wc = slice::from_raw_parts_mut(handle_ptr.add(1).cast(), 1);
                         match cq.poll(&mut wc) {
                             Ok(completions) if !completions.is_empty() => cnt += 1,
-                            Ok(_) => break,
+                            Ok(_) => {
+                                wc.as_mut_ptr()
+                                    .cast::<interface::WorkCompletion>()
+                                    .write(interface::WorkCompletion::again());
+                                cnt += 1;
+                                break;
+                            }
                             Err(()) => {
                                 err = true;
                                 break;
