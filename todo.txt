@@ -13,4 +13,9 @@ TODO
     - expose current available count to read/write
 - Thread-safety
     - Add spinlock to QueuePair, CompletionQueue...
-- GetSendComp()
+- GetSendComp() is busy spin
+- overlapped memory registration (two non-overlapped regions sharing one
+  virtual page), currently, we just avoid this in the example code.
+- balance poll_cq and post_send/recv, reduce redundant poll_cq
+    - use seperate queues can work, but still can cause HOL among
+      multiple CQs

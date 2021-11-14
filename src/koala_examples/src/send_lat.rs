@@ -1,4 +1,10 @@
+#![feature(nonnull_slice_from_raw_parts)]
+#![feature(allocator_api)]
 use std::time;
+
+use std::alloc::{Allocator, Layout, AllocError};
+use std::ptr::NonNull;
+use std::ptr;
 
 use structopt::StructOpt;
 
@@ -29,6 +35,28 @@ pub struct Opts {
     /// Message size.
     #[structopt(short, long, default_value = "8")]
     pub msg_size: usize,
+}
+
+struct AlignedAllocator;
+
+unsafe impl Allocator for AlignedAllocator {
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
+        let mut addr = ptr::null_mut();
+        let err = unsafe { libc::posix_memalign(&mut addr as *mut _ as _, 4096, layout.size()) };
+        if err != 0 {
+            return Err(AllocError);
+        }
+
+        let ptr = NonNull::new(addr).unwrap();
+        Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
+        libc::free(ptr.as_ptr() as _);
+    }
 }
 
 fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
@@ -69,10 +97,12 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     listen_id.listen(16)?;
     let id = listen_id.get_request()?;
 
-    let mut recv_msg = vec![0u8; opts.msg_size];
+    let mut recv_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
+    recv_msg.resize(opts.msg_size, 0u8);
     let recv_mr = id.reg_msgs(&recv_msg)?;
 
-    let send_msg = vec![42u8; opts.msg_size];
+    let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
+    send_msg.resize(opts.msg_size, 42u8);
     let send_mr = id.reg_msgs(&send_msg)?;
 
     for _ in 0..opts.warm_iters + opts.total_iters {
@@ -91,7 +121,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
         for c in &wc {
-            eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
+            // eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
             assert_eq!(c.status, WcStatus::Success);
             rcnt += 1;
             let send_flags = if rcnt == opts.warm_iters + opts.total_iters {
@@ -109,7 +139,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
 
-    assert_eq!(&recv_msg, &vec![42u8; opts.msg_size]);
+    assert_eq!(recv_msg.as_slice(), vec![42u8; opts.msg_size].as_slice());
     Ok(())
 }
 
@@ -146,7 +176,8 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("connected to remote side");
 
     // post receives in advance
-    let mut recv_msg = vec![0u8; opts.msg_size];
+    let mut recv_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
+    recv_msg.resize(opts.msg_size, 0u8);
     let recv_mr = id.reg_msgs(&recv_msg)?;
 
     for _ in 0..opts.warm_iters + opts.total_iters {
@@ -156,7 +187,8 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let no_signal = Default::default();
-    let send_msg = vec![42u8; opts.msg_size];
+    let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
+    send_msg.resize(opts.msg_size, 42u8);
     let send_mr = id.reg_msgs(&send_msg)?;
 
     // start sending
@@ -164,7 +196,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     let start_ts = time::Instant::now();
     let mut ts = time::Instant::now();
-    let mut stats = Vec::with_capacity(opts.total_iters);
+    let mut stats = Vec::with_capacity_in(opts.total_iters, AlignedAllocator);
 
     let mut wc = Vec::with_capacity(1);
     let cq = &id.qp.as_ref().unwrap().recv_cq;
@@ -173,7 +205,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
         for c in &wc {
-            eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
+            // eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
             assert_eq!(c.status, WcStatus::Success, "{:?}", c);
             rcnt += 1;
 

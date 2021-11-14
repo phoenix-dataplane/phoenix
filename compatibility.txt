@@ -17,7 +17,7 @@ Potential Compatibility Issue
     - rdma_set_option
     - ibv
 - CompletionQueue is !Sync or !Send, but in reality, it should be
-Sync and Send, so as QueuePair and CmId.
+  Sync and Send, so as QueuePair and CmId.
     - Protect every structure with spinlock.
     - Maybe try some NUMA-aware MCS spinlock.
 - Many compile time guarantees will be broken on the FFI boundary.
