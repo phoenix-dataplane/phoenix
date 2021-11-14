@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("listen_id created");
 
     listen_id.listen(16).expect("Listen failed!");
-    let id = listen_id.get_requst().expect("Get request failed!");
+    let id = listen_id.get_request().expect("Get request failed!");
 
     let mut recv_msg = vec![0u8; 128];
     let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");

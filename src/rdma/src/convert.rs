@@ -1,5 +1,7 @@
 //! Convert ibv types and rdmacm types from and to koala types.
 #![cfg(feature = "convert")]
+use std::num::NonZeroU32;
+
 use socket2::SockAddr;
 use static_assertions::const_assert_eq;
 use std::ffi::CString;
@@ -192,7 +194,7 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
         use interface::WcStatus;
         let status = match other.status {
             ibv_wc_status::IBV_WC_SUCCESS => WcStatus::Success,
-            e @ _ => WcStatus::Error(e),
+            e @ _ => WcStatus::Error(NonZeroU32::new(e).unwrap()),
         };
 
         // If status is ERR, the opcode and some other fields might be invalid.
@@ -219,6 +221,8 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             vendor_err: other.vendor_err,
             byte_len: other.byte_len,
             imm_data: other.imm_data,
+            qp_num: other.qp_num,
+            ud_src_qp: other.qp_num,
             wc_flags,
         }
     }
