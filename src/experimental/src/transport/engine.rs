@@ -537,7 +537,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map_err(Error::Mmap)?
                 };
                 // 3. send fd back
-                ipc::send_fd(&self.sock, &self.client_path, fd).map_err(Error::SendFd)?;
+                ipc::send_fd(&self.sock, &self.client_path, &[fd][..]).map_err(Error::SendFd)?;
                 // 4. register kaddr with ibv_reg_mr
                 let buf = unsafe { slice::from_raw_parts_mut(kaddr as *mut u8, aligned_len) };
                 let mr = cmid.reg_msgs(&buf).map_err(Error::RdmaCm)?;

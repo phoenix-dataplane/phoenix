@@ -137,8 +137,9 @@ impl CmId {
         let req = Request::RegMsgs(self.handle.0, slice_to_range(buffer));
         KL_CTX.with(|ctx| ctx.cmd_tx.send(req))?;
         // 2. receive file descriptors of the shared memories
-        let fd = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;
-        let mut memfd = unsafe { File::from_raw_fd(fd) };
+        let fds = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;
+        assert_eq!(fds.len(), 1);
+        let mut memfd = unsafe { File::from_raw_fd(fds[0]) };
         let shm_len = memfd.metadata()?.len() as usize;
 
         // 3. because the received are all new pages (pages haven't been mapped in the client's address
