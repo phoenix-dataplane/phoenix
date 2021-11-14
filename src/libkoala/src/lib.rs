@@ -40,6 +40,8 @@ pub enum Error {
     SendFd(#[from] ipc::unix::Error),
     #[error("Shared memory queue error: {0}")]
     ShmIpc(#[from] ipc::ShmIpcError),
+    #[error("Shared memory queue ringbuf error: {0}")]
+    ShmRingbuf(#[from] ipc::ShmRingbufError),
 }
 
 thread_local! {

@@ -9,6 +9,7 @@ pub use ipc_channel::Error;
 
 pub use shmem_ipc::sharedring::{Receiver as ShmReceiver, Sender as ShmSender};
 pub use shmem_ipc::Error as ShmIpcError;
+pub use shmem_ipc::ringbuf::Error as ShmRingbufError;
 
 pub mod buf;
 pub mod cmd;

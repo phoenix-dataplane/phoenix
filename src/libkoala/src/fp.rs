@@ -28,7 +28,7 @@ impl CmId {
             // This WR must be successfully sent.
             let mut sent = false;
             while !sent {
-                ctx.dp_wq.borrow_mut().send_raw(|ptr, count| unsafe {
+                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, count| unsafe {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
@@ -56,7 +56,7 @@ impl CmId {
         KL_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
-                ctx.dp_wq.borrow_mut().send_raw(|ptr, count| unsafe {
+                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, count| unsafe {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
@@ -112,7 +112,7 @@ impl CompletionQueue {
                 // to be sent successfully. Because the user would keep retrying until they get what
                 // they expect.
                 let req = WorkRequest::PollCq(self.inner);
-                ctx.dp_wq.borrow_mut().send_raw(|ptr, _count| unsafe {
+                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, _count| unsafe {
                     ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
                     self.buffer
                         .shared
@@ -123,7 +123,7 @@ impl CompletionQueue {
             }
             // 2. Poll the shared memory queue, and put into the local buffer. Then return
             // immediately.
-            ctx.dp_cq.borrow_mut().receive_raw(|ptr, count| unsafe {
+            ctx.dp_cq.borrow_mut().receiver_mut().recv(|ptr, count| unsafe {
                 // iterate and dispatch
                 for i in 0..count {
                     let c = ptr.add(i).cast::<Completion>().read();

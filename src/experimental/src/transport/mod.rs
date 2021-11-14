@@ -40,6 +40,8 @@ enum DatapathError {
     OutOfRange,
     #[error("Shared memory queue error: {0}.")]
     ShmIpc(#[from] ipc::ShmIpcError),
+    #[error("Shared memory queue ringbuf error: {0}.")]
+    ShmRingbuf(#[from] ipc::ShmRingbufError),
     #[error("rdmacm internal error: {0}.")]
     RdmaCm(io::Error),
     #[error("ibv internal error: {0}.")]
@@ -52,6 +54,7 @@ impl DatapathError {
             Self::NotFound => 1024,
             Self::OutOfRange => 1025,
             Self::ShmIpc(_) => 1026,
+            Self::ShmRingbuf(_) => 1027,
             Self::RdmaCm(e) => e.raw_os_error().unwrap() as u32,
             Self::Ibv(e) => e.raw_os_error().unwrap() as u32,
         }
