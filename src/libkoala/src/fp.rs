@@ -28,12 +28,15 @@ impl CmId {
             // This WR must be successfully sent.
             let mut sent = false;
             while !sent {
-                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, count| unsafe {
+                        debug_assert!(count >= 1);
+                        ptr.cast::<WorkRequest>().write(req);
+                        sent = true;
+                        1
+                    })?;
             }
             Ok(())
         })
@@ -56,12 +59,15 @@ impl CmId {
         KL_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
-                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, count| unsafe {
+                        debug_assert!(count >= 1);
+                        ptr.cast::<WorkRequest>().write(req);
+                        sent = true;
+                        1
+                    })?;
             }
             Ok(())
         })
@@ -112,33 +118,39 @@ impl CompletionQueue {
                 // to be sent successfully. Because the user would keep retrying until they get what
                 // they expect.
                 let req = WorkRequest::PollCq(self.inner);
-                ctx.dp_wq.borrow_mut().sender_mut().send(|ptr, _count| unsafe {
-                    ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
-                    self.buffer
-                        .shared
-                        .outstanding
-                        .store(true, Ordering::Release);
-                    1
-                })?;
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, _count| unsafe {
+                        ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
+                        self.buffer
+                            .shared
+                            .outstanding
+                            .store(true, Ordering::Release);
+                        1
+                    })?;
             }
             // 2. Poll the shared memory queue, and put into the local buffer. Then return
             // immediately.
-            ctx.dp_cq.borrow_mut().receiver_mut().recv(|ptr, count| unsafe {
-                // iterate and dispatch
-                for i in 0..count {
-                    let c = ptr.add(i).cast::<Completion>().read();
-                    if let Some(buffer) = ctx.cq_buffers.borrow().get(&c.cq_handle) {
-                        buffer.shared.outstanding.store(false, Ordering::Release);
-                        // this is just a notification that outstanding flag should be flapped
-                        if c.wc.status != interface::WcStatus::AGAIN {
-                            buffer.shared.queue.borrow_mut().push_back(c.wc);
+            ctx.dp_cq
+                .borrow_mut()
+                .receiver_mut()
+                .recv(|ptr, count| unsafe {
+                    // iterate and dispatch
+                    for i in 0..count {
+                        let c = ptr.add(i).cast::<Completion>().read();
+                        if let Some(buffer) = ctx.cq_buffers.borrow().get(&c.cq_handle) {
+                            buffer.shared.outstanding.store(false, Ordering::Release);
+                            // this is just a notification that outstanding flag should be flapped
+                            if c.wc.status != interface::WcStatus::AGAIN {
+                                buffer.shared.queue.borrow_mut().push_back(c.wc);
+                            }
+                        } else {
+                            eprintln!("no corresponding entry for {:?}", c);
                         }
-                    } else {
-                        eprintln!("no corresponding entry for {:?}", c);
                     }
-                }
-                count
-            })?;
+                    count
+                })?;
             Ok(())
         })
     }

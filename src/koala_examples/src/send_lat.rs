@@ -8,8 +8,8 @@ use std::ptr::NonNull;
 
 use structopt::StructOpt;
 
-use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
 use libkoala::cm;
+use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: &str = "5000";
 
