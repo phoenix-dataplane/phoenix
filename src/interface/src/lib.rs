@@ -120,12 +120,12 @@ pub enum WcStatus {
 #[repr(u32)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcOpcode {
-    Send,
-    RdmaWrite,
-    RdmaRead,
-    Recv,
-    RecvRdmaWithImm,
-    Invalid,
+    Send = 0,
+    RdmaWrite = 1,
+    RdmaRead = 2,
+    Recv = 128,
+    RecvRdmaWithImm = 129,
+    Invalid = 255,
 }
 
 bitflags! {
@@ -159,7 +159,7 @@ bitflags! {
 }
 
 /// A structure represent completion of some work.
-#[repr(C)]
+#[repr(C, align(8))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct WorkCompletion {
     pub wr_id: u64,
@@ -168,6 +168,8 @@ pub struct WorkCompletion {
     pub vendor_err: u32,
     pub byte_len: u32,
     pub imm_data: u32,
+    pub qp_num: u32,
+    pub ud_src_qp: u32,
     pub wc_flags: WcFlags,
 }
 
@@ -180,6 +182,8 @@ impl WorkCompletion {
             vendor_err,
             byte_len: 0,
             imm_data: 0,
+            qp_num: 0,
+            ud_src_qp: 0,
             wc_flags: WcFlags::default(),
         }
     }
@@ -193,5 +197,5 @@ mod sa {
 
     const_assert_eq!(size_of::<WcStatus>(), 4);
     const_assert_eq!(size_of::<WcOpcode>(), 4);
-    const_assert_eq!(size_of::<WorkCompletion>(), 32);
+    const_assert_eq!(size_of::<WorkCompletion>(), 40);
 }

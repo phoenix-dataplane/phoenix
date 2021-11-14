@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
-use ipc::cmd::{Request, ResponseKind};
 use ipc::buf;
+use ipc::cmd::{Request, ResponseKind};
 
 use crate::{verbs, Error, FromBorrow, KL_CTX};
 
@@ -92,7 +92,7 @@ impl CmId {
         })
     }
 
-    pub fn get_requst(&self) -> Result<CmId, Error> {
+    pub fn get_request(&self) -> Result<CmId, Error> {
         let req = Request::GetRequest(self.handle.0);
         KL_CTX.with(|ctx| {
             ctx.cmd_tx.send(req)?;
@@ -135,7 +135,8 @@ impl CmId {
         use std::slice;
 
         // 1. send regmsgs request to koala server
-        let req = Request::RegMsgs(self.handle.0, buf::Buffer::from(buffer));
+        let buffer = buf::Buffer::from(buffer);
+        let req = Request::RegMsgs(self.handle.0, buffer);
         KL_CTX.with(|ctx| ctx.cmd_tx.send(req))?;
         // 2. receive file descriptors of the shared memories
         let fds = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;
@@ -145,8 +146,8 @@ impl CmId {
 
         // 3. because the received are all new pages (pages haven't been mapped in the client's address
         //    space), copy the content of the original pages to the shared memory
-        let addr = buffer.as_ptr() as usize;
-        let len = buffer.len();
+        let addr = buffer.addr as usize;
+        let len = buffer.len as usize;
 
         let page_size = 4096;
         let aligned_end = (addr + len + page_size - 1) / page_size * page_size;

@@ -67,48 +67,55 @@ impl CmId {
     }
 
     pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
-        unimplemented!();
-        // let req = Request::GetSendComp(self.handle.0);
-        // KL_CTX.with(|ctx| {
-        //     ctx.dp_tx.send(req)?;
-        //     rx_recv_impl!(ctx.dp_rx, ResponseKind::GetSendComp, wc, { Ok(wc) })
-        // })
+        let mut wc = Vec::with_capacity(1);
+        let cq = &self.qp.as_ref().unwrap().send_cq;
+        loop {
+            cq.poll_cq(&mut wc)?;
+            if wc.len() == 1 {
+                break;
+            }
+        }
+        Ok(wc[0])
     }
 
     pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
-        unimplemented!();
-        // let req = Request::GetRecvComp(self.handle.0);
-        // KL_CTX.with(|ctx| {
-        //     ctx.dp_tx.send(req)?;
-        //     rx_recv_impl!(ctx.dp_rx, ResponseKind::GetRecvComp, wc, { Ok(wc) })
-        // })
+        let mut wc = Vec::with_capacity(1);
+        let cq = &self.qp.as_ref().unwrap().recv_cq;
+        loop {
+            cq.poll_cq(&mut wc)?;
+            if wc.len() == 1 {
+                break;
+            }
+        }
+        Ok(wc[0])
     }
 }
 
 impl CompletionQueue {
     pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         // poll local buffer first
+        unsafe { wc.set_len(0) };
         if !self.buffer.queue.borrow().is_empty() {
             let count = wc.capacity().min(self.buffer.queue.borrow().len());
-            unsafe { wc.set_len(0) };
+            // eprintln!("before: buffer_len: {}, count: {}", self.buffer.queue.borrow().len(), count);
             for c in self.buffer.queue.borrow_mut().drain(..count) {
                 wc.push(c);
             }
-            // (&wc[..count]).copy_from_slice(&self.buffer.queue.borrow()[..count]);
-            // self.local_buffer.drain(..count);
+            // eprintln!("after: buffer_len: {}, count: {}", self.buffer.queue.borrow().len(), count);
             return Ok(());
         }
         // if local buffer is empty,
         let req = WorkRequest::PollCq(self.inner);
         KL_CTX.with(|ctx| {
-            // 1. send a poll_cq command to the koala server
-            // This poll_cq command does not have to be sent successfully. Because
-            // the user would keep retrying until they get what they expect.
+            // 1. Send a poll_cq command to the koala server. This poll_cq command does not have
+            // to be sent successfully. Because the user would keep retrying until they get what
+            // they expect.
             ctx.dp_wq.borrow_mut().send_raw(|ptr, _count| unsafe {
                 ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
                 1
             })?;
-            // 2. poll the shared memory queue and return immediately
+            // 2. Poll the shared memory queue, and put into the local buffer. Then return
+            // immediately.
             ctx.dp_cq.borrow_mut().receive_raw(|ptr, count| unsafe {
                 // iterate and dispatch
                 for i in 0..count {

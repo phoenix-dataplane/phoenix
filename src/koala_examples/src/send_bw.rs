@@ -67,7 +67,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("listen_id created");
 
     listen_id.listen(16)?;
-    let id = listen_id.get_requst()?;
+    let id = listen_id.get_request()?;
 
     let mut recv_msg = vec![0u8; opts.msg_size];
     let recv_mr = id.reg_msgs(&recv_msg)?;

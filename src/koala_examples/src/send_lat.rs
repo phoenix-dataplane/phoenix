@@ -67,7 +67,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("listen_id created");
 
     listen_id.listen(16)?;
-    let id = listen_id.get_requst()?;
+    let id = listen_id.get_request()?;
 
     let mut recv_msg = vec![0u8; opts.msg_size];
     let recv_mr = id.reg_msgs(&recv_msg)?;
@@ -87,16 +87,14 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     // busy poll
     let mut wc = Vec::with_capacity(32);
     let cq = &id.qp.as_ref().unwrap().recv_cq;
-    let mut cqe = 0;
-    loop {
+    let mut rcnt = 0;
+    while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
-        if cqe >= opts.warm_iters + opts.total_iters {
-            break;
-        }
         for c in &wc {
+            eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
             assert_eq!(c.status, WcStatus::Success);
-            cqe += 1;
-            let send_flags = if cqe + 1 == opts.warm_iters + opts.total_iters {
+            rcnt += 1;
+            let send_flags = if rcnt == opts.warm_iters + opts.total_iters {
                 SendFlags::SIGNALED
             } else {
                 Default::default()
@@ -106,6 +104,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let send_wc = id.get_send_comp()?;
+    eprintln!("get_send_comp, wc: {:?}", send_wc);
     assert_eq!(send_wc.status, WcStatus::Success);
 
     println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
@@ -169,36 +168,40 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut wc = Vec::with_capacity(1);
     let cq = &id.qp.as_ref().unwrap().recv_cq;
-    let mut cqe = 0;
-    loop {
+    let mut scnt = 1;
+    let mut rcnt = 0;
+    while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
-        cqe += wc.len();
-        if cqe >= opts.warm_iters + opts.total_iters {
-            break;
-        }
         for c in &wc {
+            eprintln!("rcnt: {}, wc: {:?}", rcnt, c);
             assert_eq!(c.status, WcStatus::Success, "{:?}", c);
+            rcnt += 1;
 
             // record the latency from post_send to receive completion is polled
-            if cqe > opts.warm_iters {
+            if rcnt > opts.warm_iters {
                 stats.push(ts.elapsed());
             }
 
-            if cqe >= opts.warm_iters {
+            if rcnt >= opts.warm_iters {
                 // start timing
                 ts = time::Instant::now();
             }
 
-            let send_flags = if cqe + 1 == opts.warm_iters + opts.total_iters {
+            if scnt >= opts.warm_iters + opts.total_iters {
+                continue;
+            }
+            let send_flags = if scnt + 1 == opts.warm_iters + opts.total_iters {
                 SendFlags::SIGNALED
             } else {
                 no_signal
             };
             id.post_send(0, &send_msg, &send_mr, send_flags)?;
+            scnt += 1;
         }
     }
 
     let send_wc = id.get_send_comp()?;
+    eprintln!("get_send_comp, wc: {:?}", send_wc);
     assert_eq!(send_wc.status, WcStatus::Success);
     stats.push(ts.elapsed());
 

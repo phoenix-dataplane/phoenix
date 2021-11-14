@@ -149,7 +149,7 @@ pub struct TransportEngine<'ctx> {
     cmd_rx: ipc::Receiver<cmd::Request>,
     dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
     dp_cq: ipc::ShmSender<dp::CompletionSlot>,
-    cq_buffer: VecDeque<dp::Completion>,
+    cq_err_buffer: VecDeque<dp::Completion>,
     _mode: SchedulingMode,
 
     resource: Resource<'ctx>,
@@ -180,7 +180,7 @@ impl<'ctx> TransportEngine<'ctx> {
             cmd_rx,
             dp_wq,
             dp_cq,
-            cq_buffer: VecDeque::new(),
+            cq_err_buffer: VecDeque::new(),
             _mode: mode,
             resource: Resource::new(),
             mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
@@ -245,7 +245,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 impl<'ctx> TransportEngine<'ctx> {
     fn check_dp(&mut self) -> bool {
         use dp::WorkRequest;
-        let mut buffer = Vec::new();
+        let mut buffer = Vec::with_capacity(32);
         // TODO(cjr): rewrite this logic with size_hint of shmem-ipc.
 
         // Fetch available work requests. Copy them into a buffer.
@@ -254,8 +254,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
                 for i in 0..count {
-                    let wq = ptr::read::<WorkRequest>(ptr.add(i).cast());
-                    buffer.push(wq);
+                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 0
             })
@@ -264,7 +263,7 @@ impl<'ctx> TransportEngine<'ctx> {
         // Process the work requests.
         let mut processed = 0;
         for wr in &buffer {
-            let result = self.process_dp(&wr);
+            let result = self.process_dp(wr);
             match result {
                 Ok(()) => {}
                 Err(e) => {
@@ -295,14 +294,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     // Another downside of this approach is similar to the busy waiting one. If the
                     // user just post a send request and do nothing. If that request is failed, the
                     // koala server will keep executing that failed request many many times.
-                    let _sent = self.process_dp_error(&wr, e).unwrap();
+                    let _sent = self.process_dp_error(wr, e).unwrap();
                 }
             }
 
             processed += 1;
         }
 
-        self.try_flush_cq_buffer().unwrap();
+        self.try_flush_cq_err_buffer().unwrap();
 
         // Advance the ptr. Mark some slots as processed.
         self.dp_wq
@@ -410,8 +409,8 @@ impl<'ctx> TransportEngine<'ctx> {
     ) -> Result<bool, DatapathError> {
         let mut sent = false;
         let comp = self.get_completion_from_error(wr, e);
-        if !self.cq_buffer.is_empty() {
-            self.cq_buffer.push_back(comp);
+        if !self.cq_err_buffer.is_empty() {
+            self.cq_err_buffer.push_back(comp);
         } else {
             self.dp_cq.send_raw(|ptr, _count| unsafe {
                 // construct an WorkCompletion and set the vendor_err
@@ -424,24 +423,24 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(sent)
     }
 
-    fn try_flush_cq_buffer(&mut self) -> Result<(), DatapathError> {
-        if self.cq_buffer.is_empty() {
+    fn try_flush_cq_err_buffer(&mut self) -> Result<(), DatapathError> {
+        if self.cq_err_buffer.is_empty() {
             return Ok(());
         }
 
-        let mut cq_buffer = VecDeque::new();
-        mem::swap(&mut cq_buffer, &mut self.cq_buffer);
+        let mut cq_err_buffer = VecDeque::new();
+        mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
         let status = self.dp_cq.send_raw(|ptr, count| unsafe {
             let mut cnt = 0;
             // construct an WorkCompletion and set the vendor_err
-            for comp in cq_buffer.drain(..count) {
+            for comp in cq_err_buffer.drain(..count) {
                 ptr.cast::<dp::Completion>().write(comp);
                 cnt += 1;
             }
             cnt
         });
 
-        mem::swap(&mut cq_buffer, &mut self.cq_buffer);
+        mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
         status?;
         Ok(())
     }
@@ -451,6 +450,13 @@ impl<'ctx> TransportEngine<'ctx> {
         use ipc::dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, user_buf, mr_handle) => {
+                // trace!(
+                //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}",
+                //     cmid_handle,
+                //     wr_id,
+                //     user_buf,
+                //     mr_handle
+                // );
                 let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
                 let mr = self.resource.mr_table.get_dp(mr_handle)?;
                 let smf = self
@@ -460,7 +466,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     .ok_or(DatapathError::NotFound)?;
 
                 if smf.ubuf.addr > user_buf.addr
-                    && smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
+                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
                 {
                     return Err(DatapathError::OutOfRange);
                 }
@@ -472,6 +478,14 @@ impl<'ctx> TransportEngine<'ctx> {
                 Ok(())
             }
             WorkRequest::PostSend(cmid_handle, wr_id, user_buf, mr_handle, send_flags) => {
+                // trace!(
+                //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}, send_flags: {:?}",
+                //     cmid_handle,
+                //     wr_id,
+                //     user_buf,
+                //     mr_handle,
+                //     send_flags,
+                // );
                 let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
                 let mr = self.resource.mr_table.get_dp(mr_handle)?;
                 let smf = self
@@ -481,7 +495,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     .ok_or(DatapathError::NotFound)?;
 
                 if smf.ubuf.addr > user_buf.addr
-                    && smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
+                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
                 {
                     return Err(DatapathError::OutOfRange);
                 }
@@ -494,24 +508,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map_err(DatapathError::RdmaCm)?;
                 Ok(())
             }
-            // Request::GetRecvComp(cmid_handle) => {
-            //     let cmid = self.resource.cmid_table.get(cmid_handle)?;
-            //     let wc = cmid
-            //         .get_recv_comp()
-            //         .map(|wc| wc.into())
-            //         .map_err(Error::RdmaCm)?;
-            //     Ok(ResponseKind::GetRecvComp(wc))
-            // }
-            // Request::GetSendComp(cmid_handle) => {
-            //     let cmid = self.resource.cmid_table.get(cmid_handle)?;
-            //     let wc = cmid
-            //         .get_send_comp()
-            //         .map(|wc| wc.into())
-            //         .map_err(Error::RdmaCm)?;
-            //     Ok(ResponseKind::GetSendComp(wc))
-            // }
             WorkRequest::PollCq(cq_handle) => {
-                self.try_flush_cq_buffer()?;
+                // trace!("cq_handle: {:?}", cq_handle);
+                self.try_flush_cq_err_buffer()?;
                 let cq = self.resource.cq_table.get_dp(&cq_handle.0)?;
 
                 // Poll the completions and put them directly into the shared memory queue.
@@ -701,7 +700,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 Ok(ResponseKind::Connect)
             }
             Request::RegMsgs(cmid_handle, user_buf) => {
-                trace!("cmid_handle: {:?}, user_buf: {:#x?}", cmid_handle, user_buf);
+                trace!("cmid_handle: {:?}, user_buf: {:x?}", cmid_handle, user_buf);
                 let cmid = self.resource.cmid_table.get(cmid_handle)?;
                 // 1. create/open shared memory file
                 use nix::fcntl::OFlag;

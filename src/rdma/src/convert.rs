@@ -221,6 +221,8 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             vendor_err: other.vendor_err,
             byte_len: other.byte_len,
             imm_data: other.imm_data,
+            qp_num: other.qp_num,
+            ud_src_qp: other.qp_num,
             wc_flags,
         }
     }

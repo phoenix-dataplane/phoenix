@@ -13,3 +13,4 @@ TODO
     - expose current available count to read/write
 - Thread-safety
     - Add spinlock to QueuePair, CompletionQueue...
+- GetSendComp()

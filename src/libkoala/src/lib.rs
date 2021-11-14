@@ -98,9 +98,9 @@ impl Context {
                 };
                 let (cq_memfd, cq_empty_signal, cq_full_signal) = unsafe {
                     (
+                        File::from_raw_fd(fds[3]),
                         File::from_raw_fd(fds[4]),
                         File::from_raw_fd(fds[5]),
-                        File::from_raw_fd(fds[6]),
                     )
                 };
                 // attach to the shared memories

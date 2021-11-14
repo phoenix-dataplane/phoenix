@@ -11,7 +11,7 @@ pub struct Buffer {
 
 impl<T> From<&[T]> for Buffer {
     fn from(s: &[T]) -> Self {
-        let r = s.as_ref().as_ptr_range();
+        let r = s.as_ptr_range();
         Buffer {
             addr: r.start as u64,
             len: r.end as u64 - r.start as u64,
@@ -21,7 +21,7 @@ impl<T> From<&[T]> for Buffer {
 
 impl<T> From<&mut [T]> for Buffer {
     fn from(s: &mut [T]) -> Self {
-        let r = s.as_ref().as_ptr_range();
+        let r = s.as_ptr_range();
         Buffer {
             addr: r.start as u64,
             len: r.end as u64 - r.start as u64,
