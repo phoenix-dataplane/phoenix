@@ -23,7 +23,7 @@ enum Error {
     #[error("Mmap failed: {0}")]
     Mmap(nix::Error),
     #[error("Failed to send file descriptors: {0}")]
-    SendFd(io::Error),
+    SendFd(ipc::unix::Error),
 }
 
 impl From<Error> for interface::Error {

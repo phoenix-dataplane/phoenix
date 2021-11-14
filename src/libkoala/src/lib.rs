@@ -30,6 +30,8 @@ pub enum Error {
     IpcRecvError(ipc::IpcError),
     #[error("Internal error: {0}")]
     InternalError(#[from] interface::Error),
+    #[error("{0}")]
+    SendFd(#[from] ipc::unix::Error),
 }
 
 thread_local! {
