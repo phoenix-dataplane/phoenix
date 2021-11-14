@@ -2,14 +2,14 @@
 #![feature(allocator_api)]
 use std::time;
 
-use std::alloc::{Allocator, Layout, AllocError};
-use std::ptr::NonNull;
+use std::alloc::{AllocError, Allocator, Layout};
 use std::ptr;
+use std::ptr::NonNull;
 
 use structopt::StructOpt;
 
 use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
-use libkoala::{cm, verbs};
+use libkoala::cm;
 
 const SERVER_PORT: &str = "5000";
 
@@ -40,10 +40,7 @@ pub struct Opts {
 struct AlignedAllocator;
 
 unsafe impl Allocator for AlignedAllocator {
-    fn allocate(
-        &self,
-        layout: Layout,
-    ) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
         let mut addr = ptr::null_mut();
         let err = unsafe { libc::posix_memalign(&mut addr as *mut _ as _, 4096, layout.size()) };
         if err != 0 {
@@ -127,7 +124,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             let send_flags = if rcnt == opts.warm_iters + opts.total_iters {
                 SendFlags::SIGNALED
             } else {
-                Default::default()
+                SendFlags::empty()
             };
             id.post_send(0, &send_msg, &send_mr, send_flags)?;
         }
@@ -186,7 +183,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let no_signal = Default::default();
+    let no_signal = SendFlags::empty();
     let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
     send_msg.resize(opts.msg_size, 42u8);
     let send_mr = id.reg_msgs(&send_msg)?;

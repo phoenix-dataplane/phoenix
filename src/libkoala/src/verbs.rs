@@ -1,10 +1,10 @@
-use std::sync::atomic::AtomicBool;
 use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 
 use interface::returned;
 use interface::Handle;
@@ -42,7 +42,7 @@ impl CqBuffer {
             shared: Rc::new(CqBufferShared {
                 outstanding: AtomicBool::new(false),
                 queue: RefCell::new(VecDeque::new()),
-            })
+            }),
         }
     }
 }

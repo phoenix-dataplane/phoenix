@@ -1,6 +1,6 @@
 //! Fast path operations.
-use std::sync::atomic::Ordering;
 use std::mem;
+use std::sync::atomic::Ordering;
 
 use ipc::buf;
 use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
@@ -114,7 +114,10 @@ impl CompletionQueue {
                 let req = WorkRequest::PollCq(self.inner);
                 ctx.dp_wq.borrow_mut().send_raw(|ptr, _count| unsafe {
                     ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
-                    self.buffer.shared.outstanding.store(true, Ordering::Release);
+                    self.buffer
+                        .shared
+                        .outstanding
+                        .store(true, Ordering::Release);
                     1
                 })?;
             }

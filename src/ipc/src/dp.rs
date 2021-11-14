@@ -28,8 +28,8 @@ pub struct Completion {
 
 mod sa {
     use super::*;
-    use std::mem::size_of;
     use static_assertions::const_assert;
+    use std::mem::size_of;
     const_assert!(size_of::<WorkRequest>() <= size_of::<WorkRequestSlot>());
     const_assert!(size_of::<Completion>() <= size_of::<CompletionSlot>());
 }

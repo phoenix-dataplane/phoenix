@@ -3,7 +3,7 @@ use std::time;
 use structopt::StructOpt;
 
 use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
-use libkoala::{cm, verbs};
+use libkoala::cm;
 
 const SERVER_PORT: &str = "5000";
 
