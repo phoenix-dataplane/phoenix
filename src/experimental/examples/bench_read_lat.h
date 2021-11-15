@@ -15,18 +15,16 @@ int run_read_lat_client(Context *ctx)
 
     ret = set_params(ctx);
     error_handler(ret, "rdma_getaddrinfo", out);
-    if (ctx->attr.cap.max_inline_data >= ctx->size)
-        send_flags |= IBV_SEND_INLINE;
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
 
     read_mr = rdma_reg_msgs(ctx->id, read_msg, ctx->size);
-    error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_ep);
+    error_handler_ret(!read_mr, "rdma_reg_msgs for read_msg", -1, out_destroy_ep);
 
     write_mr = rdma_reg_read(ctx->id, write_msg, ctx->size);
-    error_handler_ret(!write_mr, "rdma_reg_write for send_msg", -1, out_destroy_ep);
+    error_handler_ret(!write_mr, "rdma_reg_read for send_msg", -1, out_destroy_ep);
 
     ret = handshake(ctx, write_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_ep);
@@ -80,8 +78,6 @@ int run_read_lat_server(Context *ctx)
     ctx->ip = "0.0.0.0";
     ret = set_params(ctx);
     error_handler(ret, "rdma_getaddrinfo", out);
-    if (ctx->attr.cap.max_inline_data >= ctx->size)
-        send_flags |= IBV_SEND_INLINE;
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
