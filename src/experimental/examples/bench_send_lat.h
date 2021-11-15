@@ -99,14 +99,14 @@ int run_send_lat_server(Context *ctx)
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
     error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_dereg_recv);
 
-    ret = rdma_accept(ctx->id, NULL);
-    error_handler(ret, "rdma_accpet", out_dereg_send);
-
     for (int i = 0; i < ctx->num; i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_dereg_send);
     }
+
+    ret = rdma_accept(ctx->id, NULL);
+    error_handler(ret, "rdma_accpet", out_dereg_send);
 
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)

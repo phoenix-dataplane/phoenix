@@ -16,19 +16,22 @@ int handshake(Context *ctx, struct ibv_mr *read_mr, struct ibv_mr *remote_mr)
         ret = rdma_connect(ctx->id, NULL);
         error_handler(ret, "rdma_connect", out);
     }
+    else
+    {
+        ret = rdma_accept(ctx->id, NULL);
+        error_handler(ret, "rdma_accpet", out);
+    }
 
     ret = rdma_post_send(ctx->id, NULL, read_mr, sizeof(struct ibv_mr), hsk_send_mr, IBV_SEND_INLINE | IBV_SEND_SIGNALED);
-    error_handler(ret, "rdma_post_send", out_disconnect);
+    error_handler(ret, "rdma_post_send", out);
 
     struct ibv_wc wc;
-    ret = rdma_get_send_comp(ctx->id, &wc);
+    rdma_get_send_comp(ctx->id, &wc);
     error_handler_ret(wc.status != IBV_WC_SUCCESS, "rdma_get_send_comp", -1, out);
 
-    ret = rdma_get_recv_comp(ctx->id, &wc);
+    rdma_get_recv_comp(ctx->id, &wc);
     error_handler_ret(wc.status != IBV_WC_SUCCESS, "rdma_get_recv_comp", -1, out);
 
-out_disconnect:
-    rdma_disconnect(ctx->id);
 out:
     if (hsk_send_mr)
         rdma_dereg_mr(hsk_send_mr);
@@ -66,6 +69,7 @@ int run_write_lat_client(Context *ctx)
 
     ret = handshake(ctx, read_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_ep);
+    printf("handshake finished\n");
 
     struct ibv_wc wc;
     t1 = get_timestamp_us();
@@ -126,14 +130,11 @@ int run_write_lat_server(Context *ctx)
     ret = rdma_get_request(ctx->listen_id, &ctx->id);
     error_handler(ret, "rdma_get_request", out_destroy_listen_ep);
 
-    read_mr = rdma_reg_msgs(ctx->id, read_msg, ctx->size);
-    error_handler_ret(!read_mr, "rdma_reg_msgs for read_msg", -1, out_destroy_accept_ep);
+    read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
+    error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_accept_ep);
 
-    write_mr = rdma_reg_msgs(ctx->id, write_msg, ctx->size);
-    error_handler_ret(!write_mr, "rdma_reg_msgs for write_msg", -1, out_destroy_accept_ep);
-
-    ret = rdma_accept(ctx->id, NULL);
-    error_handler(ret, "rdma_accpet", out_destroy_accept_ep);
+    write_mr = rdma_reg_write(ctx->id, write_msg, ctx->size);
+    error_handler_ret(!write_mr, "rdma_reg_write for write_msg", -1, out_destroy_accept_ep);
 
     ret = handshake(ctx, read_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_accept_ep);
