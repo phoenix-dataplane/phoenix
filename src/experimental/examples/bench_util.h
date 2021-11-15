@@ -6,6 +6,9 @@
 #include <errno.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
+#include "get_clock.h"
+
+#define MAX(a, b) ((a) > (b)) ? (a) : (b);
 
 #define error_handler_ret(cond, str, v, label) \
     if (cond)                                  \

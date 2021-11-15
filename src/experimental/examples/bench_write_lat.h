@@ -24,6 +24,7 @@ int handshake(Context *ctx, struct ibv_mr *read_mr, struct ibv_mr *remote_mr)
 
     ret = rdma_post_send(ctx->id, NULL, read_mr, sizeof(struct ibv_mr), hsk_send_mr, IBV_SEND_INLINE | IBV_SEND_SIGNALED);
     error_handler(ret, "rdma_post_send", out);
+    printf("handshake finished\n");
 
     struct ibv_wc wc;
     rdma_get_send_comp(ctx->id, &wc);
