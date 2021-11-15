@@ -55,7 +55,7 @@ int run_send_lat_client(Context *ctx)
     t2 = get_cycles();
 
     // printf("sum: %ld, avg delay: %.2lf\n", (t2 - t1) / 2, 1.0 * (t2 - t1) / ctx->num / 2);
-    double factor = 2 * get_cpu_mhz(0);
+    double factor = 2 * get_cpu_mhz(1);
     printf("sum: %.2lf, avg delay: %.2lf\n", (t2 - t1) / factor, 1.0 * (t2 - t1) / ctx->num / factor);
 
 out_disconnect:

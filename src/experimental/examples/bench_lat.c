@@ -43,12 +43,14 @@ int main(int argc, char **argv)
     switch (ctx.opt)
     {
     case SEND:
+        printf("send perf\n");
         if (ctx.client)
             ret = run_send_lat_client(&ctx);
         else
             ret = run_send_lat_server(&ctx);
         break;
     case WRITE:
+        printf("write perf\n");
         if (ctx.client)
             ret = run_write_lat_client(&ctx);
         else
