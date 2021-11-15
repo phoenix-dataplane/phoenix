@@ -31,6 +31,12 @@ int main(int argc, char **argv)
             break;
         }
     }
+    if (optind < argc)
+    {
+        if (argv[optind] == "write")
+            ctx.opt = WRITE;
+    }
+
     printf("num: %d, size: %d\n", ctx.num, ctx.size);
     int ret = 0;
     switch (ctx.opt)
