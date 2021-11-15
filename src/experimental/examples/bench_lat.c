@@ -8,7 +8,7 @@ int main(int argc, char **argv)
 {
     Context ctx;
     ctx.opt = SEND;
-    ctx.num = 1000, ctx.size = 4, ctx.client = false;
+    ctx.num = 1000, ctx.warmup = 100, ctx.size = 4, ctx.client = false;
     ctx.ip = "127.0.0.1", ctx.port = "5000";
     int op;
 
@@ -39,6 +39,7 @@ int main(int argc, char **argv)
 
     ctx.size = MAX(ctx.size, 4);
     printf("num: %d, size: %d\n", ctx.num, ctx.size);
+
     int ret = 0;
     switch (ctx.opt)
     {

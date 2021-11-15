@@ -42,7 +42,7 @@ enum Operation
 typedef struct
 {
     enum Operation opt;
-    int size, num;
+    int size, num, warmup;
     char *ip, *port;
     bool client;
     struct rdma_cm_id *id, *listen_id;
