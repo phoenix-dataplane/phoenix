@@ -34,9 +34,6 @@ int run_write_lat_client(Context *ctx)
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
     {
-        // if (i == ctx->warmup)
-        //     // t1 = get_timestamp_us();
-        //     t1 = get_cycles();
         times[i] = get_cycles();
 
         *post_buf = i;
@@ -50,12 +47,6 @@ int run_write_lat_client(Context *ctx)
     }
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
-    // t2 = get_timestamp_us();
-    // t2 = get_cycles();
-
-    // printf("sum: %ld, avg delay: %.2lf\n", (t2 - t1) / 2, 1.0 * (t2 - t1) / ctx->num / 2);
-    // double factor = 2 * get_cpu_mhz(1);
-    // printf("sum: %.2lf, avg delay: %.2lf\n", (t2 - t1) / factor, 1.0 * (t2 - t1) / ctx->num / factor);
 
 out_disconnect:
     rdma_disconnect(ctx->id);
@@ -76,7 +67,6 @@ int run_write_lat_server(Context *ctx)
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     struct ibv_wc *wcs;
     int send_flags = 0, ret;
-    // uint64_t t1, t2;
 
     char write_msg[ctx->size];
     char read_msg[ctx->size];

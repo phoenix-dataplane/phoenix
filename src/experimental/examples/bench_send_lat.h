@@ -35,9 +35,6 @@ int run_send_lat_client(Context *ctx)
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
     {
-        // if (i == ctx->warmup)
-        //     // t1 = get_timestamp_us();
-        //     t1 = get_cycles();
         times[i] = get_cycles();
 
         if (i == ctx->num - 1)
@@ -54,14 +51,9 @@ int run_send_lat_client(Context *ctx)
         ;
     error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
                       out_disconnect);
-    // t2 = get_timestamp_us();
-    // printf("sum: %ld, avg delay: %.2lf\n", (t2 - t1) / 2, 1.0 * (t2 - t1) / ctx->num / 2);
 
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
-
-    // double factor = 2 * get_cpu_mhz(1);
-    // printf("sum: %.2lf, avg delay: %.2lf\n", (t2 - t1) / factor, 1.0 * (t2 - t1) / ctx->num / factor);
 
 out_disconnect:
     rdma_disconnect(ctx->id);

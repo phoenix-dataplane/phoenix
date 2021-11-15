@@ -7,8 +7,6 @@ int run_read_lat_client(Context *ctx)
     uint64_t times[ctx->num + 1];
 
     char write_msg[ctx->size];
-    for (int i = 0; i < ctx->size; i++)
-        write_msg[i] = i % 10 + '0';
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
@@ -44,9 +42,6 @@ int run_read_lat_client(Context *ctx)
     }
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
-    for (int i = 0; i < ctx->size; i++)
-        printf("%c", read_msg[i]);
-    printf("\n");
 
 out_disconnect:
     rdma_disconnect(ctx->id);
@@ -69,8 +64,6 @@ int run_read_lat_server(Context *ctx)
     int send_flags = 0, ret;
 
     char write_msg[ctx->size];
-    for (int i = 0; i < ctx->size; i++)
-        write_msg[i] = i % 26 + 'a';
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
@@ -109,9 +102,6 @@ int run_read_lat_server(Context *ctx)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
     }
-    for (int i = 0; i < ctx->size; i++)
-        printf("%c", read_msg[i]);
-    printf("\n");
 
 out_disconnect:
     rdma_disconnect(ctx->id);
