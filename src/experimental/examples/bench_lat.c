@@ -38,7 +38,9 @@ int main(int argc, char **argv)
     }
 
     ctx.size = MAX(ctx.size, 4);
-    printf("num: %d, size: %d\n", ctx.num, ctx.size);
+    if (ctx.num < ctx.warmup)
+        ctx.num += ctx.warmup;
+    printf("num: %d, size: %d\n, warmup: %d\n", ctx.num, ctx.size, ctx.warmup);
 
     int ret = 0;
     switch (ctx.opt)

@@ -23,8 +23,7 @@ int run_send_lat_client(Context *ctx)
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
     error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_dereg_recv);
 
-    int total = ctx->num + ctx->warmup;
-    for (int i = 0; i < total; i++)
+    for (int i = 0; i < ctx->num; i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_dereg_send);
@@ -34,13 +33,13 @@ int run_send_lat_client(Context *ctx)
     error_handler(ret, "rdma_connect", out_dereg_send);
 
     struct ibv_wc wc;
-    for (int i = 0; i < total; i++)
+    for (int i = 0; i < ctx->num; i++)
     {
         if (i == ctx->warmup)
             // t1 = get_timestamp_us();
             t1 = get_cycles();
 
-        if (i == total - 1)
+        if (i == ctx->num - 1)
             send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
@@ -106,8 +105,7 @@ int run_send_lat_server(Context *ctx)
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
     error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_dereg_recv);
 
-    int total = ctx->num + ctx->warmup;
-    for (int i = 0; i < total; i++)
+    for (int i = 0; i < ctx->num; i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_dereg_send);
@@ -117,14 +115,14 @@ int run_send_lat_server(Context *ctx)
     error_handler(ret, "rdma_accpet", out_dereg_send);
 
     struct ibv_wc wc;
-    for (int i = 0; i < total; i++)
+    for (int i = 0; i < ctx->num; i++)
     {
         while (ibv_poll_cq(ctx->id->recv_cq, 1, &wc) == 0)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
                           out_disconnect);
 
-        if (i == total - 1)
+        if (i == ctx->num - 1)
             send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
