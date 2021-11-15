@@ -36,6 +36,8 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[optind], "write") == 0)
             ctx.opt = WRITE;
+        else if (strcmp(argv[optind], "read") == 0)
+            ctx.opt = READ;
     }
 
     ctx.size = MAX(ctx.size, 4);
