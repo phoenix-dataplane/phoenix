@@ -1,0 +1,52 @@
+#include <getopt.h>
+#include <stdbool.h>
+#include <string.h>
+#include "bench_send_lat.h"
+#include "bench_write_lat.h"
+
+int main(int argc, char **argv)
+{
+    Context ctx;
+    ctx.opt = SEND;
+    ctx.num = 1000, ctx.size = 2, ctx.client = false;
+    ctx.ip = "127.0.0.1", ctx.port = "5000";
+    int op;
+
+    while ((op = getopt(argc, argv, "c:p:n:s:")) != -1)
+    {
+        switch (op)
+        {
+        case 'c':
+            ctx.client = true;
+            ctx.ip = optarg;
+            break;
+        case 'p':
+            ctx.port = optarg;
+            break;
+        case 'n':
+            ctx.num = atoi(optarg);
+            break;
+        case 's':
+            ctx.size = atoi(optarg);
+            break;
+        }
+    }
+    printf("num: %d, size: %d\n", ctx.num, ctx.size);
+    int ret = 0;
+    switch (ctx.opt)
+    {
+    SEND:
+        if (ctx.client)
+            ret = run_send_lat_client(&ctx);
+        else
+            ret = run_send_lat_server(&ctx);
+        break;
+    WRITE:
+        if (ctx.client)
+            ret = run_write_lat_client(&ctx);
+        else
+            ret = run_write_lat_server(&ctx);
+        break;
+    }
+    return ret;
+}
