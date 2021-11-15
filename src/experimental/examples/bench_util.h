@@ -83,11 +83,17 @@ static int cmp(const void *a, const void *b)
 #define LAT_MEASURE_TAIL (2)
 void print_lat(uint64_t times[], int num, int warmup)
 {
-    qsort(times, num, sizeof(uint64_t), cmp);
-    int cnt = num - LAT_MEASURE_TAIL;
-    uint64_t sum = 0;
-    for (int i = 0; i < cnt; i++)
-        sum += times[i];
+    num = num - 1;
+    uint64_t delta[num];
+    for (int i = 0; i < num; i++)
+        delta[i] = times[i + 1] - times[i];
+
     double factor = 2 * get_cpu_mhz(1);
-    printf("sum: %.2lf, avg: %.2lf\n", sum / factor, sum / factor / cnt);
+    qsort(delta, num, sizeof(uint64_t), cmp);
+
+    int cnt = num - LAT_MEASURE_TAIL;
+    double sum = 0;
+    for (int i = 0; i < cnt; i++)
+        sum += delta[i] / factor;
+    printf("sum: %.2lf, avg: %.2lf\n", sum, sum / cnt);
 }
