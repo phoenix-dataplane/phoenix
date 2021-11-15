@@ -12,7 +12,6 @@ int run_read_lat_client(Context *ctx)
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
-    volatile int *poll_buf = (volatile int *)read_msg;
 
     ret = set_params(ctx);
     error_handler(ret, "rdma_getaddrinfo", out);
@@ -38,14 +37,12 @@ int run_read_lat_client(Context *ctx)
     {
         times[i] = get_cycles();
 
-        *post_buf = i;
+        // *post_buf = i;
         ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_read", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
-        while (*poll_buf != i)
-            ;
     }
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
@@ -79,7 +76,6 @@ int run_read_lat_server(Context *ctx)
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
-    volatile int *poll_buf = (volatile int *)read_msg;
 
     ctx->ip = "0.0.0.0";
     ret = set_params(ctx);
@@ -110,9 +106,7 @@ int run_read_lat_server(Context *ctx)
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
     {
-        while (*poll_buf != i)
-            ;
-        *post_buf = i;
+        // *post_buf = i;
         ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_read", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
