@@ -11,8 +11,11 @@ int handshake(Context *ctx, struct ibv_mr *read_mr, struct ibv_mr *remote_mr)
     ret = rdma_post_recv(ctx->id, NULL, remote_mr, sizeof(struct ibv_mr), hsk_recv_mr);
     error_handler(ret, "rdma_post_recv", out);
 
-    ret = rdma_connect(ctx->id, NULL);
-    error_handler(ret, "rdma_connect", out);
+    if (ctx->client)
+    {
+        ret = rdma_connect(ctx->id, NULL);
+        error_handler(ret, "rdma_connect", out);
+    }
 
     ret = rdma_post_send(ctx->id, NULL, read_mr, sizeof(struct ibv_mr), hsk_send_mr, IBV_SEND_INLINE | IBV_SEND_SIGNALED);
     error_handler(ret, "rdma_post_send", out_disconnect);

@@ -33,21 +33,21 @@ int main(int argc, char **argv)
     }
     if (optind < argc)
     {
-        if (argv[optind] == "write")
+        if (strcmp(argv[optind], "write") == 0)
             ctx.opt = WRITE;
     }
-
+    
     printf("num: %d, size: %d\n", ctx.num, ctx.size);
     int ret = 0;
     switch (ctx.opt)
     {
-    SEND:
+    case SEND:
         if (ctx.client)
             ret = run_send_lat_client(&ctx);
         else
             ret = run_send_lat_server(&ctx);
         break;
-    WRITE:
+    case WRITE:
         if (ctx.client)
             ret = run_write_lat_client(&ctx);
         else
