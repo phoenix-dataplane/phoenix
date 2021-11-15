@@ -70,3 +70,24 @@ int set_params(Context *ctx)
     attr->sq_sig_all = 0;
     return 0;
 }
+
+static int cmp(const void *a, const void *b)
+{
+    if (*(uint64_t *)a < *(uint64_t *)b)
+        return -1;
+    if (*(uint64_t *)a > *(uint64_t *)b)
+        return 1;
+    return 0;
+}
+
+#define LAT_MEASURE_TAIL (2)
+void print_lat(uint64_t times[], int num, int warmup)
+{
+    qsort(times, num, sizeof(uint64_t), cmp);
+    int cnt = num - LAT_MEASURE_TAIL;
+    uint64_t sum = 0;
+    for (int i = 0; i < cnt; i++)
+        sum += times[i];
+    double factor = 2 * get_cpu_mhz(1);
+    printf("sum: %.2lf, avg: %.2lf\n", sum / factor, sum / factor / cnt);
+}
