@@ -21,27 +21,24 @@ int run_write_lat_client(Context *ctx)
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
 
-    read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
+    read_mr = rdma_reg_msgs(ctx->id, read_msg, ctx->size);
     error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_ep);
 
-    write_mr = rdma_reg_write(ctx->id, write_msg, ctx->size);
+    write_mr = rdma_reg_read(ctx->id, write_msg, ctx->size);
     error_handler_ret(!write_mr, "rdma_reg_write for send_msg", -1, out_destroy_ep);
 
-    ret = handshake(ctx, read_mr, &remote_mr);
+    ret = handshake(ctx, write_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_ep);
     printf("handshake finished\n");
 
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
     {
-        // if (i == ctx->warmup)
-        //     // t1 = get_timestamp_us();
-        //     t1 = get_cycles();
         times[i] = get_cycles();
 
         *post_buf = i;
-        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-        error_handler(ret, "rdma_post_write", out_disconnect);
+        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        error_handler(ret, "rdma_post_read", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
@@ -50,12 +47,6 @@ int run_write_lat_client(Context *ctx)
     }
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
-    // t2 = get_timestamp_us();
-    // t2 = get_cycles();
-
-    // printf("sum: %ld, avg delay: %.2lf\n", (t2 - t1) / 2, 1.0 * (t2 - t1) / ctx->num / 2);
-    // double factor = 2 * get_cpu_mhz(1);
-    // printf("sum: %.2lf, avg delay: %.2lf\n", (t2 - t1) / factor, 1.0 * (t2 - t1) / ctx->num / factor);
 
 out_disconnect:
     rdma_disconnect(ctx->id);
@@ -76,7 +67,6 @@ int run_write_lat_server(Context *ctx)
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     struct ibv_wc *wcs;
     int send_flags = 0, ret;
-    // uint64_t t1, t2;
 
     char write_msg[ctx->size];
     char read_msg[ctx->size];
@@ -100,13 +90,13 @@ int run_write_lat_server(Context *ctx)
     ret = rdma_get_request(ctx->listen_id, &ctx->id);
     error_handler(ret, "rdma_get_request", out_destroy_listen_ep);
 
-    read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
-    error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_accept_ep);
+    read_mr = rdma_reg_msgs(ctx->id, read_msg, ctx->size);
+    error_handler_ret(!read_mr, "rdma_reg_msgs for read_msg", -1, out_destroy_accept_ep);
 
-    write_mr = rdma_reg_write(ctx->id, write_msg, ctx->size);
-    error_handler_ret(!write_mr, "rdma_reg_write for write_msg", -1, out_destroy_accept_ep);
+    write_mr = rdma_reg_read(ctx->id, write_msg, ctx->size);
+    error_handler_ret(!write_mr, "rdma_reg_read for write_msg", -1, out_destroy_accept_ep);
 
-    ret = handshake(ctx, read_mr, &remote_mr);
+    ret = handshake(ctx, write_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_accept_ep);
     printf("handshake finished\n");
 
@@ -116,8 +106,8 @@ int run_write_lat_server(Context *ctx)
         while (*poll_buf != i)
             ;
         *post_buf = i;
-        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-        error_handler(ret, "rdma_post_write", out_disconnect);
+        ret = rdma_post_read(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        error_handler(ret, "rdma_post_read", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);

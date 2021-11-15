@@ -2,7 +2,7 @@
 
 int run_send_lat_client(Context *ctx)
 {
-    struct ibv_mr *recv_mr, *send_mr;
+    struct ibv_mr *recv_mr = NULL, *send_mr = NULL;
     int send_flags = 0, ret;
     uint64_t times[ctx->num + 1];
 
@@ -21,16 +21,16 @@ int run_send_lat_client(Context *ctx)
     error_handler_ret(!recv_mr, "rdma_reg_msgs for recv_msg", -1, out_destroy_ep);
 
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
-    error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_dereg_recv);
+    error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_destroy_ep);
 
     for (int i = 0; i < ctx->num; i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
-        error_handler(ret, "rdma_post_recv", out_dereg_send);
+        error_handler(ret, "rdma_post_recv", out_destroy_ep);
     }
 
     ret = rdma_connect(ctx->id, NULL);
-    error_handler(ret, "rdma_connect", out_dereg_send);
+    error_handler(ret, "rdma_connect", out_destroy_ep);
 
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
@@ -65,21 +65,21 @@ int run_send_lat_client(Context *ctx)
 
 out_disconnect:
     rdma_disconnect(ctx->id);
-out_dereg_send:
-    rdma_dereg_mr(send_mr);
-out_dereg_recv:
-    rdma_dereg_mr(recv_mr);
 out_destroy_ep:
     rdma_destroy_ep(ctx->id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
 out:
+    if (send_mr)
+        rdma_dereg_mr(send_mr);
+    if (recv_mr)
+        rdma_dereg_mr(recv_mr);
     return ret;
 }
 
 int run_send_lat_server(Context *ctx)
 {
-    struct ibv_mr *recv_mr, *send_mr;
+    struct ibv_mr *recv_mr = NULL, *send_mr = NULL;
     struct ibv_wc *wcs;
     int send_flags = 0, ret;
     // uint64_t t1, t2;
@@ -106,16 +106,16 @@ int run_send_lat_server(Context *ctx)
     error_handler_ret(!recv_mr, "rdma_reg_msgs for recv_msg", -1, out_destroy_accept_ep);
 
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
-    error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_dereg_recv);
+    error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_destroy_accept_ep);
 
     for (int i = 0; i < ctx->num; i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
-        error_handler(ret, "rdma_post_recv", out_dereg_send);
+        error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
     }
 
     ret = rdma_accept(ctx->id, NULL);
-    error_handler(ret, "rdma_accpet", out_dereg_send);
+    error_handler(ret, "rdma_accpet", out_destroy_accept_ep);
 
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
@@ -137,10 +137,6 @@ int run_send_lat_server(Context *ctx)
 
 out_disconnect:
     rdma_disconnect(ctx->id);
-out_dereg_send:
-    rdma_dereg_mr(send_mr);
-out_dereg_recv:
-    rdma_dereg_mr(recv_mr);
 out_destroy_accept_ep:
     rdma_destroy_ep(ctx->id);
 out_destroy_listen_ep:
@@ -148,5 +144,9 @@ out_destroy_listen_ep:
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
 out:
+    if (send_mr)
+        rdma_dereg_mr(send_mr);
+    if (recv_mr)
+        rdma_dereg_mr(recv_mr);
     return ret;
 };
