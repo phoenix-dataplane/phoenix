@@ -24,7 +24,7 @@ int run_write_lat_client(Context *ctx)
     read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
     error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_ep);
 
-    write_mr = rdma_reg_write(ctx->id, write_msg, ctx->size);
+    write_mr = rdma_reg_msgs(ctx->id, write_msg, ctx->size);
     error_handler_ret(!write_mr, "rdma_reg_write for send_msg", -1, out_destroy_ep);
 
     ret = handshake(ctx, read_mr, &remote_mr);
@@ -103,7 +103,7 @@ int run_write_lat_server(Context *ctx)
     read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
     error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_accept_ep);
 
-    write_mr = rdma_reg_write(ctx->id, write_msg, ctx->size);
+    write_mr = rdma_reg_msgs(ctx->id, write_msg, ctx->size);
     error_handler_ret(!write_mr, "rdma_reg_write for write_msg", -1, out_destroy_accept_ep);
 
     ret = handshake(ctx, read_mr, &remote_mr);

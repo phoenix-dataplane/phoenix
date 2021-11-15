@@ -1,12 +1,14 @@
 #include "bench_util.h"
 
-int run_write_lat_client(Context *ctx)
+int run_read_lat_client(Context *ctx)
 {
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret = 0;
     uint64_t times[ctx->num + 1];
 
     char write_msg[ctx->size];
+    for (int i = 0; i < ctx->size; i++)
+        write_msg[i] = i % 10 + '0';
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
@@ -47,6 +49,9 @@ int run_write_lat_client(Context *ctx)
     }
     times[ctx->num] = get_cycles();
     print_lat(times, ctx->num + 1, ctx->warmup);
+    for (int i = 0; i < ctx->size; i++)
+        printf("%c", read_msg[i]);
+    printf("\n");
 
 out_disconnect:
     rdma_disconnect(ctx->id);
@@ -62,13 +67,15 @@ out:
     return ret;
 }
 
-int run_write_lat_server(Context *ctx)
+int run_read_lat_server(Context *ctx)
 {
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     struct ibv_wc *wcs;
     int send_flags = 0, ret;
 
     char write_msg[ctx->size];
+    for (int i = 0; i < ctx->size; i++)
+        write_msg[i] = i % 26 + 'a';
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
@@ -106,12 +113,15 @@ int run_write_lat_server(Context *ctx)
         while (*poll_buf != i)
             ;
         *post_buf = i;
-        ret = rdma_post_read(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_read", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
     }
+    for (int i = 0; i < ctx->size; i++)
+        printf("%c", read_msg[i]);
+    printf("\n");
 
 out_disconnect:
     rdma_disconnect(ctx->id);

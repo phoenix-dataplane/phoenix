@@ -3,6 +3,7 @@
 #include <string.h>
 #include "bench_send_lat.h"
 #include "bench_write_lat.h"
+#include "bench_read_lat.h"
 
 int main(int argc, char **argv)
 {
@@ -59,6 +60,12 @@ int main(int argc, char **argv)
         else
             ret = run_write_lat_server(&ctx);
         break;
+    case READ:
+        printf("read perf\n");
+        if (ctx.client)
+            ret = run_read_lat_client(&ctx);
+        else
+            ret = run_read_lat_server(&ctx);
     }
     return ret;
 }
