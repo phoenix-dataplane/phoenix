@@ -121,14 +121,14 @@ static int cmp(const void *a, const void *b)
 }
 
 #define LAT_MEASURE_TAIL (2)
-void print_lat(uint64_t times[], int num, int warmup)
+void print_lat(Context *ctx, uint64_t times[])
 {
-    num = num - 1 - warmup;
+    int num = ctx->num - ctx->warmup;
     uint64_t delta[num];
     for (int i = 0; i < num; i++)
-        delta[i] = times[i + 1 + warmup] - times[i + warmup];
+        delta[i] = times[i + 1 + ctx->warmup] - times[i + ctx->warmup];
 
-    double factor = 2 * get_cpu_mhz(1);
+    double factor = get_cpu_mhz(1) * ((ctx->opt == READ) ? 1 : 2);
     qsort(delta, num, sizeof(uint64_t), cmp);
 
     int cnt = num - LAT_MEASURE_TAIL;

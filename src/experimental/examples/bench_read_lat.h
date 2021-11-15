@@ -41,7 +41,7 @@ int run_read_lat_client(Context *ctx)
         error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
     }
     times[ctx->num] = get_cycles();
-    print_lat(times, ctx->num + 1, ctx->warmup);
+    print_lat(ctx, times);
 
 out_disconnect:
     rdma_disconnect(ctx->id);

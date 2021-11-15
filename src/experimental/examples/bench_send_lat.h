@@ -53,7 +53,7 @@ int run_send_lat_client(Context *ctx)
                       out_disconnect);
 
     times[ctx->num] = get_cycles();
-    print_lat(times, ctx->num + 1, ctx->warmup);
+    print_lat(ctx, times);
 
 out_disconnect:
     rdma_disconnect(ctx->id);
