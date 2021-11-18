@@ -4,6 +4,7 @@ use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
+use std::slice;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -22,17 +23,19 @@ const SOCK_PATH: &str = "/tmp/bench_shmem_ipc.sock";
 
 fn send_loop(sender: &mut Sender<Value>, num_iters: usize) -> anyhow::Result<()> {
     let mut scnt = 0; // the send count
-    let mut value = [0u8; 64];
+    let mut value = [0u8; mem::size_of::<Value>()];
     while scnt < num_iters {
         unsafe {
-            sender.send_trusted(|buffer| -> usize {
+            sender.sender_mut().send(|ptr, count| -> usize {
+                let buffer = slice::from_raw_parts_mut(ptr, count);
                 let tmp = scnt;
                 for v in buffer {
                     if scnt >= num_iters {
                         break;
                     }
                     *v = value;
-                    value[scnt % 64] = value[scnt % 64].wrapping_add(1);
+                    value[scnt % mem::size_of::<Value>()] =
+                        value[scnt % mem::size_of::<Value>()].wrapping_add(1);
                     scnt += 1;
                 }
                 scnt - tmp
@@ -44,17 +47,19 @@ fn send_loop(sender: &mut Sender<Value>, num_iters: usize) -> anyhow::Result<()>
 
 fn recv_loop(receiver: &mut Receiver<Value>, num_iters: usize) -> anyhow::Result<()> {
     let mut rcnt = 0;
-    let mut value = [0u8; 64];
+    let mut value = [0u8; mem::size_of::<Value>()];
     while rcnt < num_iters {
         unsafe {
-            receiver.receive_trusted(|buffer| -> usize {
+            receiver.receiver_mut().recv(|ptr, count| -> usize {
+                let buffer = slice::from_raw_parts(ptr, count);
                 let tmp = rcnt;
                 for v in buffer {
                     if rcnt >= num_iters {
                         break;
                     }
                     assert_eq!(*v, value);
-                    value[rcnt % 64] = value[rcnt % 64].wrapping_add(1);
+                    value[rcnt % mem::size_of::<Value>()] =
+                        value[rcnt % mem::size_of::<Value>()].wrapping_add(1);
                     rcnt += 1;
                 }
                 rcnt - tmp
@@ -117,11 +122,13 @@ fn run_receiver(opts: &QueueOpt) -> anyhow::Result<()> {
     let timer = Instant::now();
     recv_loop(&mut receiver, opts.total_iters)?;
 
+    let dura = timer.elapsed().as_secs_f64();
     println!(
-        "{}: {} Mop/s in {} iters",
+        "{}: {} Mop/s in {} iters, {:.0} ns/op",
         file!(),
-        opts.total_iters as f64 / timer.elapsed().as_secs_f64() / 1e6,
+        opts.total_iters as f64 / dura / 1e6,
         opts.total_iters,
+        1e9 * dura / opts.total_iters as f64,
     );
     Ok(())
 }

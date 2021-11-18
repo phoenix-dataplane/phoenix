@@ -250,7 +250,8 @@ impl<'ctx> TransportEngine<'ctx> {
 
         // Fetch available work requests. Copy them into a buffer.
         self.dp_wq
-            .receive_raw(|ptr, count| unsafe {
+            .receiver_mut()
+            .recv(|ptr, count| unsafe {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
                 for i in 0..count {
@@ -305,7 +306,8 @@ impl<'ctx> TransportEngine<'ctx> {
 
         // Advance the ptr. Mark some slots as processed.
         self.dp_wq
-            .receive_raw(|_ptr, count| {
+            .receiver_mut()
+            .recv(|_ptr, count| {
                 assert!(processed <= count, "{} vs {}", processed, count);
                 processed
             })
@@ -521,7 +523,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 // The send_raw is not necessarily called due to the `dp_cq` is full. This is fine
                 // because the user would keep retrying polling CQ until they get what they want.
                 let mut err = false;
-                self.dp_cq.send_raw(|ptr, count| unsafe {
+                self.dp_cq.sender_mut().send(|ptr, count| unsafe {
                     let mut cnt = 0;
                     while cnt < count {
                         // NOTE(cjr): For now, we can only poll 1 entry at a time, because the size
