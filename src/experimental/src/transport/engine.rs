@@ -268,7 +268,7 @@ impl<'ctx> TransportEngine<'ctx> {
             match result {
                 Ok(()) => {}
                 Err(e) => {
-                    // NOTE(cjr): Typically, we expect report the user right after we get this
+                    // NOTE(cjr): Typically, we expect to report the user right after we get this
                     // error. But busy waiting here may cause circular waiting between koala engine
                     // and the user in some circumstance.
                     //
@@ -280,12 +280,12 @@ impl<'ctx> TransportEngine<'ctx> {
                     //
                     // There are three methods to address this problem. One is to put the error into
                     // a local buffer. Whenever we want to put things in the shared memory
-                    // completion, we put from the local buffer first. This way seems perfect. It
-                    // can guarantee progress. The backpressure is also not broken.
+                    // completion queue, we put from the local buffer first. This way seems perfect.
+                    // It can guarantee progress. The backpressure is also not broken.
                     //
-                    // The other choice is to check the cq's size_hint. Only when there is a
-                    // availble slot in the shared memory cq, we can make progress. This way impose
-                    // a implicit dependency of post_send and poll_cq. The work request will
+                    // Another choice is to check the cq's size_hint. Only when there is an
+                    // availble slot in the shared memory cq, we can make progress. This way imposes
+                    // an implicit dependency of post_send and poll_cq. The work request will
                     // finally be processed only after cq is polled in some rare case.
                     //
                     // The final choice is to stop processing here and pretend that failed operation

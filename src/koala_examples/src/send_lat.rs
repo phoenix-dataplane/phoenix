@@ -271,6 +271,7 @@ fn get_max(stats: &[time::Duration]) -> time::Duration {
 fn main() {
     let opts = Opts::from_args();
 
+    // scheduler::set_self_affinity(scheduler::CpuSet::single(20)).unwrap();
     if opts.connect.is_some() {
         run_client(&opts).unwrap();
     } else {

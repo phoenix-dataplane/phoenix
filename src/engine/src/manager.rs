@@ -32,7 +32,7 @@ impl Inner {
         {
             Some((rid, _runtime)) => rid,
             None => {
-                // if there's not spare runtime, and there are available resources (e.g. cpus),
+                // if there's no spare runtime, and there are available resources (e.g. cpus),
                 // spawn a new one.
 
                 // find the next available CPU and start a runtime on it.
@@ -42,7 +42,7 @@ impl Inner {
                 rid
             }
         };
-        self.runtimes[rid].add_engine(engine)
+        self.runtimes[rid].add_engine(engine);
     }
 }
 
@@ -59,7 +59,6 @@ impl RuntimeManager {
     }
 
     pub fn submit(&self, engine: Box<dyn Engine>, mode: SchedulingMode) {
-        // always submit to the first runtime
         let mut inner = self.inner.lock();
         match mode {
             SchedulingMode::Dedicate => {
