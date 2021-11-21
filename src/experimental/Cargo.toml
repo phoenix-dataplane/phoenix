@@ -28,6 +28,8 @@ engine = { path = "../engine" }
 rdma = { path = "../rdma", features = ["convert"] }
 interface = { path = "../interface" }
 uuid = "0.8.2"
+thiserror = "1.0.29"
+shmem-ipc = "0.2.0"
 
 [dev-dependencies]
 rand = "0.8.3"

@@ -7,9 +7,13 @@ pub use ipc_channel::ipc::{
 
 pub use ipc_channel::Error;
 
+pub use shmem_ipc::ringbuf::Error as ShmRingbufError;
+pub use shmem_ipc::sharedring::{Receiver as ShmReceiver, Sender as ShmSender};
+pub use shmem_ipc::Error as ShmIpcError;
+
+pub mod buf;
 pub mod cmd;
 pub mod dp;
-pub mod interface;
 
-mod unix;
+pub mod unix;
 pub use unix::{recv_fd, send_fd};

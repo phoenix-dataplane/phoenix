@@ -2,38 +2,16 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
-use interface::{
-    addrinfo::{AddrInfo, AddrInfoHints},
-    CmId, ConnParam, MemoryRegion, ProtectionDomain, QpInitAttr,
-};
-use ipc::cmd::{Request, Response};
-use ipc::interface::{ConnParamOwned, FromBorrow, QpInitAttrOwned};
+use ipc::buf;
+use ipc::cmd::{Request, ResponseKind};
 
-use crate::{slice_to_range, Context, Error};
+use crate::{verbs, Error, FromBorrow, KL_CTX};
 
-/// Creates an identifier that is used to track communication information.
-pub fn create_ep(
-    ctx: &Context,
-    ai: &AddrInfo,
-    pd: Option<&ProtectionDomain>,
-    qp_init_attr: Option<&QpInitAttr>,
-) -> Result<CmId, Error> {
-    let req = Request::CreateEp(
-        ai.clone(),
-        pd.map(|pd| pd.0),
-        qp_init_attr.map(|attr| QpInitAttrOwned::from_borrow(attr)),
-    );
-    ctx.cmd_tx.send(req)?;
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::CreateEp(Ok(handle)) => Ok(CmId(handle)),
-        Response::CreateEp(Err(e)) => Err(e.into()),
-        _ => panic!(""),
-    }
-}
+// Re-exports
+pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(
-    ctx: &Context,
     node: Option<&str>,
     service: Option<&str>,
     hints: Option<&AddrInfoHints>,
@@ -43,104 +21,166 @@ pub fn getaddrinfo(
         service.map(String::from),
         hints.map(AddrInfoHints::clone),
     );
-    ctx.cmd_tx.send(req)?;
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::GetAddrInfo(Ok(ai)) => Ok(ai),
-        Response::GetAddrInfo(Err(e)) => Err(e.into()),
-        _ => panic!(""),
-    }
+
+    KL_CTX.with(|ctx| {
+        ctx.cmd_tx.send(req)?;
+        match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
+        }
+    })
 }
+
+pub struct CmId {
+    pub(crate) handle: interface::CmId,
+    // it could be empty for listener QP.
+    pub qp: Option<verbs::QueuePair>,
+}
+
+unsafe impl Send for CmId {}
+unsafe impl Sync for CmId {}
 
 macro_rules! rx_recv_impl {
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-            $resp(Ok($inst)) => $ok_block,
-            $resp(Err(e)) => Err(e.into()),
-            _ => {
-                panic!("");
-            }
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp($inst)) => $ok_block,
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
+        }
+    };
+    ($rx:expr, $resp:path, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => $ok_block,
+            Err(e) => Err(e.into()),
+            _ => panic!(""),
         }
     };
 }
 
-pub fn listen(ctx: &Context, id: &CmId, backlog: i32) -> Result<(), Error> {
-    let req = Request::Listen(id.0, backlog);
-    ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Listen, x, { Ok(x) })
-}
+impl CmId {
+    /// Creates an identifier that is used to track communication information.
+    pub fn create_ep(
+        ai: &AddrInfo,
+        pd: Option<&verbs::ProtectionDomain>,
+        qp_init_attr: Option<&verbs::QpInitAttr>,
+    ) -> Result<Self, Error> {
+        let req = Request::CreateEp(
+            ai.clone(),
+            pd.map(|pd| pd.inner.0),
+            qp_init_attr.map(|attr| interface::QpInitAttr::from_borrow(attr)),
+        );
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
 
-pub fn get_requst(ctx: &Context, listen: &CmId) -> Result<CmId, Error> {
-    let req = Request::GetRequest(listen.0);
-    ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::GetRequest, handle, {
-        Ok(CmId(handle))
-    })
-}
+            match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::CreateEp(cmid)) => Ok(CmId {
+                    handle: cmid.handle,
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                }),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            }
+        })
+    }
 
-pub fn accept(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
-    let req = Request::Accept(
-        id.0,
-        conn_param.map(|param| ConnParamOwned::from_borrow(param)),
-    );
-    ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Accept, x, { Ok(x) })
-}
+    pub fn listen(&self, backlog: i32) -> Result<(), Error> {
+        let req = Request::Listen(self.handle.0, backlog);
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Listen, { Ok(()) })
+        })
+    }
 
-pub fn connect(ctx: &Context, id: &CmId, conn_param: Option<&ConnParam>) -> Result<(), Error> {
-    let req = Request::Connect(
-        id.0,
-        conn_param.map(|param| ConnParamOwned::from_borrow(param)),
-    );
-    ctx.cmd_tx.send(req)?;
-    rx_recv_impl!(ctx.cmd_rx, Response::Connect, x, { Ok(x) })
-}
+    pub fn get_request(&self) -> Result<CmId, Error> {
+        let req = Request::GetRequest(self.handle.0);
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
 
-pub fn reg_msgs<T>(ctx: &Context, id: &CmId, buffer: &[T]) -> Result<MemoryRegion, Error> {
-    use nix::sys::mman::{mmap, MapFlags, ProtFlags};
-    use std::slice;
+            match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::GetRequest(cmid)) => Ok(CmId {
+                    handle: cmid.handle,
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                }),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            }
+        })
+    }
 
-    // 1. send regmsgs request to koala server
-    let req = Request::RegMsgs(id.0, slice_to_range(buffer));
-    ctx.cmd_tx.send(req)?;
-    // 2. receive file descriptors of the shared memories
-    let fd = ipc::recv_fd(&ctx.sock)?;
-    let mut memfd = unsafe { File::from_raw_fd(fd) };
-    let shm_len = memfd.metadata()?.len() as usize;
+    pub fn accept(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
+        let req = Request::Accept(
+            self.handle.0,
+            conn_param.map(|param| interface::ConnParam::from_borrow(param)),
+        );
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Accept, { Ok(()) })
+        })
+    }
 
-    // 3. because the received are all new pages (pages haven't been mapped in the client's address
-    //    space), copy the content of the original pages to the shared memory
-    let addr = buffer.as_ptr() as usize;
-    let len = buffer.len();
+    pub fn connect(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
+        let req = Request::Connect(
+            self.handle.0,
+            conn_param.map(|param| interface::ConnParam::from_borrow(param)),
+        );
+        KL_CTX.with(|ctx| {
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Connect, { Ok(()) })
+        })
+    }
 
-    let page_size = 4096;
-    let aligned_end = (addr + len + page_size - 1) / page_size * page_size;
-    let aligned_begin = addr - addr % page_size;
-    let aligned_len = aligned_end - aligned_begin;
-    assert_eq!(aligned_len, shm_len);
+    pub fn reg_msgs<T>(&self, buffer: &[T]) -> Result<verbs::MemoryRegion, Error> {
+        use nix::sys::mman::{mmap, MapFlags, ProtFlags};
+        use std::slice;
 
-    let page_aligned_mem =
-        unsafe { slice::from_raw_parts(aligned_begin as *const u8, aligned_len) };
-    use std::io::Write;
-    memfd.write_all(page_aligned_mem)?;
+        // 1. send regmsgs request to koala server
+        let buffer = buf::Buffer::from(buffer);
+        let req = Request::RegMsgs(self.handle.0, buffer);
+        KL_CTX.with(|ctx| ctx.cmd_tx.send(req))?;
+        // 2. receive file descriptors of the shared memories
+        let fds = KL_CTX.with(|ctx| ipc::recv_fd(&ctx.sock))?;
+        assert_eq!(fds.len(), 1);
+        let mut memfd = unsafe { File::from_raw_fd(fds[0]) };
+        let shm_len = memfd.metadata()?.len() as usize;
 
-    // 4. mmap the shared memory in place (MAP_FIXED) to replace the client's original memory
-    let pa = unsafe {
-        mmap(
-            aligned_begin as *mut libc::c_void,
-            aligned_len,
-            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-            MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE | MapFlags::MAP_FIXED,
-            memfd.as_raw_fd(),
-            0,
+        // 3. because the received are all new pages (pages haven't been mapped in the client's address
+        //    space), copy the content of the original pages to the shared memory
+        let addr = buffer.addr as usize;
+        let len = buffer.len as usize;
+
+        let page_size = 4096;
+        let aligned_end = (addr + len + page_size - 1) / page_size * page_size;
+        let aligned_begin = addr - addr % page_size;
+        let aligned_len = aligned_end - aligned_begin;
+        assert_eq!(aligned_len, shm_len);
+
+        let page_aligned_mem =
+            unsafe { slice::from_raw_parts(aligned_begin as *const u8, aligned_len) };
+        use std::io::Write;
+        memfd.write_all(page_aligned_mem)?;
+
+        // 4. mmap the shared memory in place (MAP_FIXED) to replace the client's original memory
+        let pa = unsafe {
+            mmap(
+                aligned_begin as *mut libc::c_void,
+                aligned_len,
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE | MapFlags::MAP_FIXED,
+                memfd.as_raw_fd(),
+                0,
+            )
+            .map_err(io::Error::from)?
+        };
+
+        assert_eq!(pa, aligned_begin as _);
+
+        KL_CTX.with(
+            |ctx| match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+                Ok(ResponseKind::RegMsgs(handle)) => Ok(verbs::MemoryRegion::new(handle, memfd)),
+                Err(e) => Err(e.into()),
+                _ => panic!(""),
+            },
         )
-        .map_err(io::Error::from)?
-    };
-
-    assert_eq!(pa, aligned_begin as _);
-
-    match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))? {
-        Response::RegMsgs(Ok(handle)) => Ok(MemoryRegion::new(handle, memfd)),
-        Response::RegMsgs(Err(e)) => Err(e.into()),
-        _ => panic!(""),
     }
 }

@@ -1,49 +1,76 @@
-use std::any::Any;
+use std::num::NonZeroU32;
+
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use bitflags::bitflags;
-use std::fs::File;
 
 pub mod addrinfo;
 
 #[derive(Debug, Error, Serialize, Deserialize)]
 pub enum Error {
-    #[error("rdmacm internal error: {0}")]
-    RdmaCm(i32),
-    #[error("getaddrinfo error: {0}")]
-    GetAddrInfo(i32),
-    #[error("resource not found")]
-    NotFound,
-    // #[error("cannot open shared memory: {0}")]
-    // ShmOpen(i32),
+    #[error("{0}")]
+    Generic(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Handle(pub usize);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+impl Handle {
+    pub const INVALID: Handle = Handle(usize::MAX);
+}
+
+impl From<u32> for Handle {
+    fn from(x: u32) -> Self {
+        Handle(x as _)
+    }
+}
+
+// These data struct can be `Copy` because they are only for IPC use.
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ProtectionDomain(pub Handle);
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SharedReceiveQueue(pub Handle);
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct QueuePair(pub Handle);
+
+pub mod returned {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct CompletionQueue {
+        pub handle: super::CompletionQueue,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct QueuePair {
+        pub handle: super::QueuePair,
+        pub send_cq: CompletionQueue,
+        pub recv_cq: CompletionQueue,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct CmId {
+        pub handle: super::CmId,
+        // could be empty for passive CmId (listener).
+        pub qp: Option<QueuePair>,
+    }
+}
 
 /// The type of QP used for communciation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QpType {
-    // reliable connection
+    /// reliable connection
     RC,
-    // unreliable datagram
+    /// unreliable datagram
     UD,
 }
 
@@ -56,31 +83,20 @@ pub struct QpCapability {
     pub max_inline_data: u32,
 }
 
-pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
-    pub qp_context: Option<&'ctx dyn Any>,
-    pub send_cq: Option<&'scq CompletionQueue>,
-    pub recv_cq: Option<&'rcq CompletionQueue>,
-    pub srq: Option<&'srq SharedReceiveQueue>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QpInitAttr {
+    // no need to serialize qp_context
+    pub send_cq: Option<CompletionQueue>,
+    pub recv_cq: Option<CompletionQueue>,
+    pub srq: Option<SharedReceiveQueue>,
     pub cap: QpCapability,
     pub qp_type: QpType,
     pub sq_sig_all: bool,
 }
 
-
-#[derive(Debug)]
-pub struct MemoryRegion {
-    pub handle: Handle,
-    memfd: File,
-}
-
-impl MemoryRegion {
-    pub fn new(handle: Handle, memfd: File) -> Self {
-        MemoryRegion { handle, memfd }
-    }
-}
-
-pub struct ConnParam<'priv_data> {
-    pub private_data: Option<&'priv_data [u8]>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnParam {
+    pub private_data: Option<Vec<u8>>,
     pub responder_resources: u8,
     pub initiator_depth: u8,
     pub flow_control: u8,
@@ -90,26 +106,37 @@ pub struct ConnParam<'priv_data> {
     pub qp_num: u32,
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
+pub struct MemoryRegion(pub Handle);
+
+// NOTE(cjr): do not annotate this structure with any repr, use repr(Rust)
+// and static assert.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcStatus {
     Success,
-    Error(u32),
+    // 1-23, error code from verbs, maybe non-exhaustive
+    // 1024, EAGAIN: no entry returned, user should poll again
+    Error(NonZeroU32),
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl WcStatus {
+    pub const AGAIN: WcStatus = WcStatus::Error(unsafe { NonZeroU32::new_unchecked(1024) });
+}
+
+#[repr(u32)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcOpcode {
-    Send,
-    RdmaWrite,
-    RdmaRead,
-    Recv,
-    RecvRdmaWithImm,
-    Invalid,
+    Send = 0,
+    RdmaWrite = 1,
+    RdmaRead = 2,
+    Recv = 128,
+    RecvRdmaWithImm = 129,
+    Invalid = 255,
 }
 
 bitflags! {
     /// Flags of the completed WR.
+    #[repr(C)]
     #[derive(Serialize, Deserialize)]
     #[derive(Default)]
     pub struct WcFlags: u32 {
@@ -120,6 +147,7 @@ bitflags! {
     }
 
     /// Flags of the WR properties.
+    #[repr(C)]
     #[derive(Serialize, Deserialize)]
     #[derive(Default)]
     pub struct SendFlags: u32 {
@@ -131,14 +159,14 @@ bitflags! {
         /// Set the solicited event indicator. Valid only for Send and RDMA Write with immediate.
         const SOLICITED = 0b00000100;
         /// Send data in given gather list as inline data in a send WQE.  Valid only for Send and
-        /// RDMA Write.  The L_Key will not be checked. 
+        /// RDMA Write.  The L_Key will not be checked.
         const INLINE = 0b00001000;
     }
 }
 
 /// A structure represent completion of some work.
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct WorkCompletion {
     pub wr_id: u64,
     pub status: WcStatus,
@@ -146,5 +174,48 @@ pub struct WorkCompletion {
     pub vendor_err: u32,
     pub byte_len: u32,
     pub imm_data: u32,
+    pub qp_num: u32,
+    pub ud_src_qp: u32,
     pub wc_flags: WcFlags,
+}
+
+impl WorkCompletion {
+    pub const fn new_vendor_err(wr_id: u64, status: WcStatus, vendor_err: u32) -> Self {
+        WorkCompletion {
+            wr_id,
+            status,
+            opcode: WcOpcode::Invalid,
+            vendor_err,
+            byte_len: 0,
+            imm_data: 0,
+            qp_num: 0,
+            ud_src_qp: 0,
+            wc_flags: WcFlags::empty(),
+        }
+    }
+
+    pub const fn again() -> Self {
+        WorkCompletion {
+            wr_id: 0,
+            status: WcStatus::AGAIN,
+            opcode: WcOpcode::Invalid,
+            vendor_err: 0,
+            byte_len: 0,
+            imm_data: 0,
+            qp_num: 0,
+            ud_src_qp: 0,
+            wc_flags: WcFlags::empty(),
+        }
+    }
+}
+
+// TODO(cjr): add static assert to make sure WorkCompletion is compatible with ibv_wc
+mod sa {
+    use super::*;
+    use static_assertions::const_assert_eq;
+    use std::mem::size_of;
+
+    const_assert_eq!(size_of::<WcStatus>(), 4);
+    const_assert_eq!(size_of::<WcOpcode>(), 4);
+    const_assert_eq!(size_of::<WorkCompletion>(), 40);
 }

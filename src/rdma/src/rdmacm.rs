@@ -15,7 +15,7 @@ use socket2::SockAddr;
 use crate::ffi;
 use crate::ibv;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct AddrInfoHints {
     pub(crate) flags: i32,
     pub(crate) family: i32,
@@ -274,6 +274,14 @@ pub struct MemoryRegion(*mut ffi::ibv_mr);
 unsafe impl Send for MemoryRegion {}
 unsafe impl Sync for MemoryRegion {}
 
+impl MemoryRegion {
+    // TODO(cjr): Replace this with proc macro
+    pub fn handle(&self) -> u32 {
+        assert!(!self.0.is_null());
+        unsafe { &*self.0 }.handle
+    }
+}
+
 #[derive(Debug)]
 pub struct CmId(*mut ffi::rdma_cm_id);
 
@@ -293,6 +301,19 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    pub fn qp<'res>(&self) -> Option<ibv::QueuePair<'res>> {
+        assert!(!self.0.is_null());
+        let qp = unsafe { &*self.0 }.qp;
+        if qp.is_null() {
+            None
+        } else {
+            Some(ibv::QueuePair {
+                _phantom: PhantomData,
+                qp,
+            })
+        }
+    }
+
     pub fn create_ep<'ctx>(
         ai: &AddrInfo,
         pd: Option<&ibv::ProtectionDomain<'ctx>>,

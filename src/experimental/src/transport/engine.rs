@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
-use std::ops::Range;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::io;
+use std::mem;
+use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -10,8 +12,9 @@ use std::slice;
 
 use uuid::Uuid;
 
+use interface::returned;
 use interface::Handle;
-use ipc::{self, cmd, dp};
+use ipc::{self, buf, cmd, dp};
 
 use engine::{Engine, SchedulingMode, Upgradable, Version};
 
@@ -19,14 +22,45 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
+use crate::transport::{DatapathError, Error};
+
 /// A variety of tables map a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
 struct Resource<'ctx> {
-    handle_cnt: usize,
-    pd_table: HashMap<Handle, ibv::ProtectionDomain<'ctx>>,
-    cq_table: HashMap<Handle, ibv::CompletionQueue<'ctx>>,
-    cmid_table: HashMap<Handle, CmId>,
-    mr_table: HashMap<Handle, rdmacm::MemoryRegion>,
+    cmid_cnt: usize,
+    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
+    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
+    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
+    cmid_table: ResourceTable<CmId>,
+    mr_table: ResourceTable<rdmacm::MemoryRegion>,
+}
+
+#[derive(Debug)]
+struct ResourceTable<R> {
+    table: HashMap<Handle, R>,
+}
+
+impl<R> Default for ResourceTable<R> {
+    fn default() -> Self {
+        ResourceTable {
+            table: HashMap::new(),
+        }
+    }
+}
+
+impl<R> ResourceTable<R> {
+    fn insert(&mut self, h: Handle, r: R) -> Result<(), Error> {
+        match self.table.insert(h, r) {
+            Some(_) => Err(Error::Exists),
+            None => Ok(()),
+        }
+    }
+    fn get(&self, h: &Handle) -> Result<&R, Error> {
+        self.table.get(h).ok_or(Error::NotFound)
+    }
+    fn get_dp(&self, h: &Handle) -> Result<&R, DatapathError> {
+        self.table.get(h).ok_or(DatapathError::NotFound)
+    }
 }
 
 /// This table should be shared between multiple transport engines, it must allow concurrent access
@@ -40,16 +74,16 @@ struct MemoryTranslationTable {
 /// A piece of memory region that is both mmap shared and registered in the NIC.
 #[derive(Debug)]
 struct SharedMemoryFile {
-    urange: Range<u64>,
+    ubuf: buf::Buffer,
     kbuf: &'static mut [u8],
     memfile: File,
     path: PathBuf,
 }
 
 impl SharedMemoryFile {
-    fn new<P: AsRef<Path>>(urange: Range<u64>, buffer: &mut [u8], memfile: File, path: P) -> Self {
+    fn new<P: AsRef<Path>>(ubuf: buf::Buffer, buffer: &mut [u8], memfile: File, path: P) -> Self {
         SharedMemoryFile {
-            urange,
+            ubuf,
             kbuf: unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len()) },
             memfile,
             path: path.as_ref().to_owned(),
@@ -63,6 +97,7 @@ impl MemoryTranslationTable {
             table: Default::default(),
         }
     }
+
     fn allocate(&mut self, mr_handle: Handle, smf: SharedMemoryFile) {
         self.table.insert(mr_handle, smf).ok_or(()).unwrap_err();
     }
@@ -73,9 +108,35 @@ impl<'ctx> Resource<'ctx> {
         Default::default()
     }
 
-    fn allocate_handle(&mut self) -> Handle {
-        self.handle_cnt += 1;
-        Handle(self.handle_cnt)
+    fn allocate_new_cmid_handle(&mut self) -> Handle {
+        let ret = Handle(self.cmid_cnt);
+        self.cmid_cnt += 1;
+        ret
+    }
+
+    fn insert_cmid(
+        &mut self,
+        cmid: CmId,
+    ) -> Result<(Handle, Option<(Handle, Handle, Handle)>), Error> {
+        let cmid_handle = self.allocate_new_cmid_handle();
+        if let Some(qp) = cmid.qp() {
+            let send_cq = qp.send_cq();
+            let recv_cq = qp.recv_cq();
+            let scq_handle = send_cq.handle().into();
+            let rcq_handle = recv_cq.handle().into();
+            let qp_handle = qp.handle().into();
+            self.cmid_table.insert(cmid_handle, cmid)?;
+            self.qp_table.insert(qp_handle, qp)?;
+            // safely ignore the error if the cq has already been created.
+            let _ = self.cq_table.insert(scq_handle, send_cq);
+            let _ = self.cq_table.insert(rcq_handle, recv_cq);
+            let handles = Some((qp_handle, scq_handle, rcq_handle));
+            Ok((cmid_handle, handles))
+        } else {
+            // passive cmid, no QP associated.
+            self.cmid_table.insert(cmid_handle, cmid)?;
+            Ok((cmid_handle, None))
+        }
     }
 }
 
@@ -86,9 +147,10 @@ pub struct TransportEngine<'ctx> {
     sock: UnixDatagram,
     cmd_tx: ipc::Sender<cmd::Response>,
     cmd_rx: ipc::Receiver<cmd::Request>,
-    dp_tx: ipc::Sender<dp::Response>,
-    dp_rx: ipc::Receiver<dp::Request>,
-    mode: SchedulingMode,
+    dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
+    dp_cq: ipc::ShmSender<dp::CompletionSlot>,
+    cq_err_buffer: VecDeque<dp::Completion>,
+    _mode: SchedulingMode,
 
     resource: Resource<'ctx>,
     mtt: MemoryTranslationTable,
@@ -99,8 +161,8 @@ impl<'ctx> TransportEngine<'ctx> {
         client_path: P,
         cmd_tx: ipc::Sender<cmd::Response>,
         cmd_rx: ipc::Receiver<cmd::Request>,
-        dp_tx: ipc::Sender<dp::Response>,
-        dp_rx: ipc::Receiver<dp::Request>,
+        dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
+        dp_cq: ipc::ShmSender<dp::CompletionSlot>,
         mode: SchedulingMode,
     ) -> Self {
         let uuid = Uuid::new_v4();
@@ -116,9 +178,10 @@ impl<'ctx> TransportEngine<'ctx> {
             sock,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
-            mode,
+            dp_wq,
+            dp_cq,
+            cq_err_buffer: VecDeque::new(),
+            _mode: mode,
             resource: Resource::new(),
             mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
         }
@@ -181,31 +244,88 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
 impl<'ctx> TransportEngine<'ctx> {
     fn check_dp(&mut self) -> bool {
-        match self.dp_rx.try_recv() {
-            // handle request
-            Ok(req) => {
-                let res = self.process_dp(req);
-                self.dp_tx.send(res).map_or_else(|_| true, |_| false)
-            }
-            Err(ipc::TryRecvError::Empty) => {
-                // do nothing
-                false
-            }
-            Err(ipc::TryRecvError::IpcError(e)) => {
-                if matches!(e, ipc::IpcError::Disconnected) {
-                    return true;
+        use dp::WorkRequest;
+        let mut buffer = Vec::with_capacity(32);
+        // TODO(cjr): rewrite this logic with size_hint of shmem-ipc.
+
+        // Fetch available work requests. Copy them into a buffer.
+        self.dp_wq
+            .receiver_mut()
+            .recv(|ptr, count| unsafe {
+                // TODO(cjr): One optimization is to post all available send requests in one batch
+                // using doorbell
+                for i in 0..count {
+                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
-                panic!("recv error: {:?}", e);
+                0
+            })
+            .unwrap_or_else(|e| panic!("check_dp: {}", e));
+
+        // Process the work requests.
+        let mut processed = 0;
+        for wr in &buffer {
+            let result = self.process_dp(wr);
+            match result {
+                Ok(()) => {}
+                Err(e) => {
+                    // NOTE(cjr): Typically, we expect report the user right after we get this
+                    // error. But busy waiting here may cause circular waiting between koala engine
+                    // and the user in some circumstance.
+                    //
+                    // The work queue and completion queue are both bounded. The bound is set by
+                    // koala system rather than the specified by the user. Image that the user is
+                    // trying to post_send without polling for completion timely. The completion
+                    // queue is full and koala will spin here without make any other progress (e.g.
+                    // drain the work queue).
+                    //
+                    // There are three methods to address this problem. One is to put the error into
+                    // a local buffer. Whenever we want to put things in the shared memory
+                    // completion, we put from the local buffer first. This way seems perfect. It
+                    // can guarantee progress. The backpressure is also not broken.
+                    //
+                    // The other choice is to check the cq's size_hint. Only when there is a
+                    // availble slot in the shared memory cq, we can make progress. This way impose
+                    // a implicit dependency of post_send and poll_cq. The work request will
+                    // finally be processed only after cq is polled in some rare case.
+                    //
+                    // The final choice is to stop processing here and pretend that failed operation
+                    // is not executed at all. This way, the failed command will still be in the
+                    // work queue, and will be redone immediately. The potential risk of this way
+                    // is that we are not sure if the redo will yield the same result/error code.
+                    // Another downside of this approach is similar to the busy waiting one. If the
+                    // user just post a send request and do nothing. If that request is failed, the
+                    // koala server will keep executing that failed request many many times.
+                    let _sent = self.process_dp_error(wr, e).unwrap();
+                }
             }
+
+            processed += 1;
         }
+
+        self.try_flush_cq_err_buffer().unwrap();
+
+        // Advance the ptr. Mark some slots as processed.
+        self.dp_wq
+            .receiver_mut()
+            .recv(|_ptr, count| {
+                assert!(processed <= count, "{} vs {}", processed, count);
+                processed
+            })
+            .unwrap_or_else(|e| panic!("check_dp: {}", e));
+
+        false
     }
 
     fn check_cmd(&mut self) -> bool {
         match self.cmd_rx.try_recv() {
             // handle request
             Ok(req) => {
-                let res = self.process_cmd(req);
-                self.cmd_tx.send(res).map_or_else(|_| true, |_| false)
+                let result = self.process_cmd(&req);
+                match result {
+                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
+                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into()))),
+                }
+                .map_or_else(|_| true, |_| false)
             }
             Err(ipc::TryRecvError::Empty) => {
                 // do nothing
@@ -220,126 +340,234 @@ impl<'ctx> TransportEngine<'ctx> {
         }
     }
 
+    /// Return the cq_handle and wr_id for the work request
+    fn get_dp_error_info(&self, wr: &dp::WorkRequest) -> (interface::CompletionQueue, u64) {
+        use dp::WorkRequest;
+        match wr {
+            WorkRequest::PostSend(cmid_handle, wr_id, ..) => {
+                // if the cq_handle does not exists at all, set it to
+                // Handle::INVALID.
+                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                    if let Some(qp) = cmid.qp() {
+                        (
+                            interface::CompletionQueue(qp.send_cq().handle().into()),
+                            *wr_id,
+                        )
+                    } else {
+                        (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                    }
+                } else {
+                    (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                }
+            }
+            WorkRequest::PostRecv(cmid_handle, wr_id, ..) => {
+                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                    if let Some(qp) = cmid.qp() {
+                        (
+                            interface::CompletionQueue(qp.recv_cq().handle().into()),
+                            *wr_id,
+                        )
+                    } else {
+                        (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                    }
+                } else {
+                    (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                }
+            }
+            WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
+        }
+    }
+
+    fn get_completion_from_error(&self, wr: &dp::WorkRequest, e: DatapathError) -> dp::Completion {
+        use interface::{WcStatus, WorkCompletion};
+        use rdma::ffi::ibv_wc_status;
+        use std::num::NonZeroU32;
+
+        let (cq_handle, wr_id) = self.get_dp_error_info(wr);
+        dp::Completion {
+            cq_handle,
+            wc: WorkCompletion::new_vendor_err(
+                wr_id,
+                WcStatus::Error(NonZeroU32::new(ibv_wc_status::IBV_WC_GENERAL_ERR).unwrap()),
+                e.as_vendor_err(),
+            ),
+        }
+    }
+
+    /// Return the error through the work completion. The error happened in koala
+    /// side is considered a `vendor_err`.
+    ///
+    /// NOTE(cjr): There's no fundamental difference between the failure on
+    /// post_send and the failure on poll_cq for the same work request.
+    /// The general practice is to return the error early, but we can
+    /// postphone the error returning in order to achieve asynchronous IPC.
+    ///
+    /// However, the completion order can be changed due to some errors
+    /// happen on request posting stage.
+    fn process_dp_error(
+        &mut self,
+        wr: &dp::WorkRequest,
+        e: DatapathError,
+    ) -> Result<bool, DatapathError> {
+        let mut sent = false;
+        let comp = self.get_completion_from_error(wr, e);
+        if !self.cq_err_buffer.is_empty() {
+            self.cq_err_buffer.push_back(comp);
+        } else {
+            self.dp_cq.send_raw(|ptr, _count| unsafe {
+                // construct an WorkCompletion and set the vendor_err
+                ptr.cast::<dp::Completion>().write(comp);
+                sent = true;
+                1
+            })?;
+        }
+
+        Ok(sent)
+    }
+
+    fn try_flush_cq_err_buffer(&mut self) -> Result<(), DatapathError> {
+        if self.cq_err_buffer.is_empty() {
+            return Ok(());
+        }
+
+        let mut cq_err_buffer = VecDeque::new();
+        mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
+        let status = self.dp_cq.send_raw(|ptr, count| unsafe {
+            let mut cnt = 0;
+            // construct an WorkCompletion and set the vendor_err
+            for comp in cq_err_buffer.drain(..count) {
+                ptr.cast::<dp::Completion>().write(comp);
+                cnt += 1;
+            }
+            cnt
+        });
+
+        mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
+        status?;
+        Ok(())
+    }
+
     /// Process data path operations.
-    fn process_dp(&mut self, req: dp::Request) -> dp::Response {
-        use ipc::dp::{Request, Response};
+    fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
+        use ipc::dp::WorkRequest;
         match req {
-            Request::PostRecv(cmid_handle, wr_id, addr_range, mr_handle) => {
-                let ret = self
-                    .resource
-                    .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = self
-                    .resource
-                    .mr_table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
-                }
-                let mr = ret.unwrap();
-                let ret = self
+            WorkRequest::PostRecv(cmid_handle, wr_id, user_buf, mr_handle) => {
+                // trace!(
+                //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}",
+                //     cmid_handle,
+                //     wr_id,
+                //     user_buf,
+                //     mr_handle
+                // );
+                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
+                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+                let smf = self
                     .mtt
                     .table
-                    .get_mut(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
+                    .get_mut(mr_handle)
+                    .ok_or(DatapathError::NotFound)?;
+
+                if smf.ubuf.addr > user_buf.addr
+                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
+                {
+                    return Err(DatapathError::OutOfRange);
                 }
-                let smf = ret.unwrap();
-                // TODO(cjr): shouldn't assert, should return an error
-                assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
-                let offset = (addr_range.start - smf.urange.start) as usize;
-                let len = (addr_range.end - addr_range.start) as usize;
+
+                let offset = (user_buf.addr - smf.ubuf.addr) as usize;
+                let len = user_buf.len as usize;
                 let buf = &mut smf.kbuf[offset..offset + len];
-                let ret = unsafe { cmid.post_recv(wr_id, buf, &mr) }
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::PostRecv(ret)
+                unsafe { cmid.post_recv(*wr_id, buf, mr) }.map_err(DatapathError::RdmaCm)?;
+                Ok(())
             }
-            Request::PostSend(cmid_handle, wr_id, addr_range, mr_handle, send_flags) => {
-                let ret = self
-                    .resource
-                    .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostSend(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = self
-                    .resource
-                    .mr_table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostSend(Err(e));
-                }
-                let mr = ret.unwrap();
-                let ret = self
+            WorkRequest::PostSend(cmid_handle, wr_id, user_buf, mr_handle, send_flags) => {
+                // trace!(
+                //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}, send_flags: {:?}",
+                //     cmid_handle,
+                //     wr_id,
+                //     user_buf,
+                //     mr_handle,
+                //     send_flags,
+                // );
+                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
+                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+                let smf = self
                     .mtt
                     .table
-                    .get(&mr_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::PostRecv(Err(e));
+                    .get_mut(mr_handle)
+                    .ok_or(DatapathError::NotFound)?;
+
+                if smf.ubuf.addr > user_buf.addr
+                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
+                {
+                    return Err(DatapathError::OutOfRange);
                 }
-                let smf = ret.unwrap();
-                // TODO(cjr): shouldn't assert, should return an error
-                assert!(smf.urange.start <= addr_range.start && smf.urange.end >= addr_range.end);
-                let offset = (addr_range.start - smf.urange.start) as usize;
-                let len = (addr_range.end - addr_range.start) as usize;
+
+                let offset = (user_buf.addr - smf.ubuf.addr) as usize;
+                let len = user_buf.len as usize;
                 let buf = &smf.kbuf[offset..offset + len];
-                let flags: ibv::SendFlags = send_flags.into();
-                let ret = unsafe { cmid.post_send(wr_id, buf, &mr, flags.0) }
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::PostSend(ret)
+                let flags: ibv::SendFlags = (*send_flags).into();
+                unsafe { cmid.post_send(*wr_id, buf, mr, flags.0) }
+                    .map_err(DatapathError::RdmaCm)?;
+                Ok(())
             }
-            Request::GetRecvComp(cmid_handle) => {
-                let ret = self
-                    .resource
-                    .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::GetRecvComp(Err(e));
+            WorkRequest::PollCq(cq_handle) => {
+                // trace!("cq_handle: {:?}", cq_handle);
+                self.try_flush_cq_err_buffer()?;
+                let cq = self.resource.cq_table.get_dp(&cq_handle.0)?;
+
+                // Poll the completions and put them directly into the shared memory queue.
+                //
+                // NOTE(cjr): The correctness of the following code extremely depends on the memory
+                // layout. It must be carefully checked.
+                //
+                // The send_raw is not necessarily called due to the `dp_cq` is full. This is fine
+                // because the user would keep retrying polling CQ until they get what they want.
+                let mut err = false;
+                self.dp_cq.sender_mut().send(|ptr, count| unsafe {
+                    let mut cnt = 0;
+                    while cnt < count {
+                        // NOTE(cjr): For now, we can only poll 1 entry at a time, because the size
+                        // of an ibv_wc is 48 bytes, however, the slot for each completion is
+                        // 64-byte wide.
+                        //
+                        // In the future, we can embed cq_handle in the unused field in
+                        // WorkCompletion, or maybe just use wr_id to find the corresponding CQ.
+                        // In these ways, the CQ can be polled in batch.
+                        let handle_ptr: *mut interface::CompletionQueue = ptr.add(cnt).cast();
+                        handle_ptr.write(*cq_handle);
+                        let mut wc = slice::from_raw_parts_mut(handle_ptr.add(1).cast(), 1);
+                        match cq.poll(&mut wc) {
+                            Ok(completions) if !completions.is_empty() => cnt += 1,
+                            Ok(_) => {
+                                wc.as_mut_ptr()
+                                    .cast::<interface::WorkCompletion>()
+                                    .write(interface::WorkCompletion::again());
+                                cnt += 1;
+                                break;
+                            }
+                            Err(()) => {
+                                err = true;
+                                break;
+                            }
+                        }
+                    }
+                    cnt
+                })?;
+
+                if err {
+                    return Err(DatapathError::Ibv(io::Error::last_os_error()));
                 }
-                let cmid = ret.unwrap();
-                let ret = cmid
-                    .get_recv_comp()
-                    .map(|wc| wc.into())
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::GetRecvComp(ret)
-            }
-            Request::GetSendComp(cmid_handle) => {
-                let ret = self
-                    .resource
-                    .cmid_table
-                    .get(&cmid_handle)
-                    .ok_or(interface::Error::NotFound);
-                if let Err(e) = ret {
-                    return Response::GetSendComp(Err(e));
-                }
-                let cmid = ret.unwrap();
-                let ret = cmid
-                    .get_send_comp()
-                    .map(|wc| wc.into())
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                Response::GetSendComp(ret)
+                Ok(())
             }
         }
     }
 
     /// Process control path operations.
-    fn process_cmd(&mut self, req: cmd::Request) -> cmd::Response {
-        use ipc::cmd::{Request, Response};
+    fn process_cmd(&mut self, req: &cmd::Request) -> Result<cmd::ResponseKind, Error> {
+        use ipc::cmd::{Request, ResponseKind};
         match req {
             Request::NewClient(..) => unreachable!(),
-            Request::Hello(number) => Response::HelloBack(number),
+            &Request::Hello(number) => Ok(ResponseKind::HelloBack(number)),
             Request::GetAddrInfo(node, service, hints) => {
                 trace!(
                     "node: {:?}, service: {:?}, hints: {:?}",
@@ -348,16 +576,15 @@ impl<'ctx> TransportEngine<'ctx> {
                     hints,
                 );
                 let hints = hints.map(rdmacm::AddrInfoHints::from);
-                let ai = rdmacm::AddrInfo::getaddrinfo(
+                let ret = rdmacm::AddrInfo::getaddrinfo(
                     node.as_deref(),
                     service.as_deref(),
                     hints.as_ref(),
                 );
-                let ret = ai.map_or_else(
-                    |e| Err(interface::Error::GetAddrInfo(e.raw_os_error().unwrap())),
-                    |ai| Ok(ai.into()),
-                );
-                Response::GetAddrInfo(ret)
+                match ret {
+                    Ok(ai) => Ok(ResponseKind::GetAddrInfo(ai.into())),
+                    Err(e) => Err(Error::GetAddrInfo(e)),
+                }
             }
             Request::CreateEp(ai, pd_handle, qp_init_attr) => {
                 trace!(
@@ -367,67 +594,94 @@ impl<'ctx> TransportEngine<'ctx> {
                     qp_init_attr
                 );
 
-                let pd = pd_handle.and_then(|h| self.resource.pd_table.get(&h));
-                let qp_init_attr = qp_init_attr.map(|a| {
+                let pd = if let Some(h) = pd_handle {
+                    Some(self.resource.pd_table.get(h)?)
+                } else {
+                    None
+                };
+                let qp_init_attr = if let Some(a) = qp_init_attr {
+                    let send_cq = if let Some(ref h) = a.send_cq {
+                        Some(self.resource.cq_table.get(&h.0)?)
+                    } else {
+                        None
+                    };
+                    let recv_cq = if let Some(ref h) = a.recv_cq {
+                        Some(self.resource.cq_table.get(&h.0)?)
+                    } else {
+                        None
+                    };
                     let attr = ibv::QpInitAttr {
                         qp_context: 0,
-                        send_cq: a.send_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                        recv_cq: a.recv_cq.and_then(|h| self.resource.cq_table.get(&h.0)),
-                        cap: a.cap.into(),
+                        send_cq: send_cq,
+                        recv_cq: recv_cq,
+                        cap: a.cap.clone().into(),
                         qp_type: a.qp_type.into(),
                         sq_sig_all: a.sq_sig_all,
                     };
-                    attr.to_ibv_qp_init_attr()
-                });
-
-                let ret = match CmId::create_ep(&ai.into(), pd, qp_init_attr.as_ref()) {
-                    Ok(cmid) => {
-                        let cmid_handle = self.resource.allocate_handle();
-                        self.resource
-                            .cmid_table
-                            .insert(cmid_handle, cmid)
-                            .ok_or(())
-                            .unwrap_err();
-                        Ok(cmid_handle)
-                    }
-                    Err(e) => Err(interface::Error::RdmaCm(e.raw_os_error().unwrap())),
+                    Some(attr.to_ibv_qp_init_attr())
+                } else {
+                    None
                 };
 
-                Response::CreateEp(ret)
+                match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
+                    Ok(cmid) => {
+                        let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
+                        let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
+                            Some(returned::QueuePair {
+                                handle: interface::QueuePair(qp_handle),
+                                send_cq: returned::CompletionQueue {
+                                    handle: interface::CompletionQueue(scq_handle),
+                                },
+                                recv_cq: returned::CompletionQueue {
+                                    handle: interface::CompletionQueue(rcq_handle),
+                                },
+                            })
+                        } else {
+                            None
+                        };
+                        let ret_cmid = returned::CmId {
+                            handle: interface::CmId(cmid_handle),
+                            qp: ret_qp,
+                        };
+                        Ok(ResponseKind::CreateEp(ret_cmid))
+                    }
+                    Err(e) => Err(Error::RdmaCm(e)),
+                }
             }
             Request::Listen(cmid_handle, backlog) => {
                 trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .listen(backlog)
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Listen(ret)
+
+                let listener = self.resource.cmid_table.get(cmid_handle)?;
+
+                listener.listen(*backlog).map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Listen)
             }
             Request::GetRequest(cmid_handle) => {
                 trace!("cmid_handle: {:?}", cmid_handle);
 
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .get_request()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                let ret = ret.map(|new_cmid| {
-                    let new_handle = self.resource.allocate_handle();
-                    self.resource
-                        .cmid_table
-                        .insert(new_handle, new_cmid)
-                        .ok_or(())
-                        .unwrap_err();
-                    new_handle
-                });
-                Response::GetRequest(ret)
+                let listener = self.resource.cmid_table.get(cmid_handle)?;
+                let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
+
+                let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
+                let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
+                    Some(returned::QueuePair {
+                        handle: interface::QueuePair(qp_handle),
+                        send_cq: returned::CompletionQueue {
+                            handle: interface::CompletionQueue(scq_handle),
+                        },
+                        recv_cq: returned::CompletionQueue {
+                            handle: interface::CompletionQueue(rcq_handle),
+                        },
+                    })
+                } else {
+                    None
+                };
+                let ret_cmid = returned::CmId {
+                    handle: interface::CmId(new_cmid_handle),
+                    qp: ret_qp,
+                };
+                Ok(ResponseKind::GetRequest(ret_cmid))
             }
             Request::Accept(cmid_handle, conn_param) => {
                 trace!(
@@ -436,15 +690,10 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 warn!("TODO: conn_param is ignored for now");
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |listener| {
-                        listener
-                            .accept()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Accept(ret)
+                let listener = self.resource.cmid_table.get(cmid_handle)?;
+                listener.accept().map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Accept)
             }
             Request::Connect(cmid_handle, conn_param) => {
                 trace!(
@@ -453,26 +702,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 warn!("TODO: conn_param is ignored for now");
-                let ret = self.resource.cmid_table.get(&cmid_handle).map_or(
-                    Err(interface::Error::NotFound),
-                    |cmid| {
-                        cmid.connect()
-                            .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()))
-                    },
-                );
-                Response::Connect(ret)
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                cmid.connect().map_err(Error::RdmaCm)?;
+
+                Ok(ResponseKind::Connect)
             }
-            Request::RegMsgs(cmid_handle, addr_range) => {
-                trace!(
-                    "cmid_handle: {:?}, addr_range: {:#x?}",
-                    cmid_handle,
-                    addr_range
-                );
-                let res = self.resource.cmid_table.get(&cmid_handle);
-                if res.is_none() {
-                    return Response::RegMsgs(Err(interface::Error::NotFound));
-                }
-                let cmid = res.unwrap();
+            Request::RegMsgs(cmid_handle, user_buf) => {
+                trace!("cmid_handle: {:?}, user_buf: {:x?}", cmid_handle, user_buf);
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
                 // 1. create/open shared memory file
                 use nix::fcntl::OFlag;
                 use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
@@ -484,18 +721,18 @@ impl<'ctx> TransportEngine<'ctx> {
                     OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
                     Mode::S_IRUSR | Mode::S_IWUSR,
                 )
-                .expect("shm_open");
+                .map_err(Error::ShmOpen)?;
                 // 2. mmap the user's vaddr into koala's address space through
                 // __linear__ mapping (this is necessary) (actually, maybe not)
-                let uaddr = addr_range.start as usize;
-                let ulen = (addr_range.end - addr_range.start) as usize;
+                let uaddr = user_buf.addr as usize;
+                let ulen = user_buf.len as usize;
                 let page_size = 4096;
                 let aligned_end = (uaddr + ulen + page_size - 1) / page_size * page_size;
                 let aligned_begin = uaddr - uaddr % page_size;
                 let aligned_len = aligned_end - aligned_begin;
                 // ftruncate the file
                 let memfile = unsafe { File::from_raw_fd(fd) };
-                memfile.set_len(aligned_len as _).expect("memfile set_len");
+                memfile.set_len(aligned_len as _).map_err(Error::Truncate)?;
                 let kaddr = unsafe {
                     mmap(
                         ptr::null_mut(),
@@ -505,34 +742,22 @@ impl<'ctx> TransportEngine<'ctx> {
                         fd,
                         0,
                     )
-                    .expect("mmap")
+                    .map_err(Error::Mmap)?
                 };
                 // 3. send fd back
-                ipc::send_fd(&self.sock, &self.client_path, fd).unwrap();
+                ipc::send_fd(&self.sock, &self.client_path, &[fd][..]).map_err(Error::SendFd)?;
                 // 4. register kaddr with ibv_reg_mr
                 let buf = unsafe { slice::from_raw_parts_mut(kaddr as *mut u8, aligned_len) };
-                let ret = cmid
-                    .reg_msgs(&buf)
-                    .map_err(|e| interface::Error::RdmaCm(e.raw_os_error().unwrap()));
-                let ret = ret.map(|mr| {
-                    // 5. allocate mr handle
-                    let new_mr = self.resource.allocate_handle();
-                    self.resource
-                        .mr_table
-                        .insert(new_mr, mr)
-                        .ok_or(())
-                        .unwrap_err();
-                    // 6. allocate entry in MTT (mr -> SharedMemoryFile)
-                    let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
-                    let smf = SharedMemoryFile::new(addr_range, kbuf, memfile, &shm_path);
-                    self.mtt.allocate(new_mr, smf);
-                    new_mr
-                });
+                let mr = cmid.reg_msgs(&buf).map_err(Error::RdmaCm)?;
+                // 5. allocate mr handle
+                let new_mr_handle = mr.handle().into();
+                self.resource.mr_table.insert(new_mr_handle, mr)?;
+                // 6. allocate entry in MTT (mr -> SharedMemoryFile)
+                let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
+                let smf = SharedMemoryFile::new(*user_buf, kbuf, memfile, &shm_path);
+                self.mtt.allocate(new_mr_handle, smf);
                 // 7. send mr handle back
-                Response::RegMsgs(ret)
-            }
-            _ => {
-                unimplemented!()
+                Ok(ResponseKind::RegMsgs(new_mr_handle))
             }
         }
     }
