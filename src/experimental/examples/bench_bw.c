@@ -42,5 +42,5 @@ int main(int argc, char **argv)
         else
             ret = run_read_bw_server(&ctx);
     }
-    return ret;
+    return 0;
 }

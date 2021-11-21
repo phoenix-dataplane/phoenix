@@ -48,5 +48,5 @@ int main(int argc, char **argv)
         else
             ret = run_read_lat_server(&ctx);
     }
-    return ret;
+    return 0;
 }

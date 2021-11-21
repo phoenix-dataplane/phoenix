@@ -38,7 +38,7 @@ int run_write_bw_client(Context *ctx)
             tposted[scnt] = get_cycles();
             *post_buf = scnt;
             ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-            error_handler(ret, "rdma_post_read", out_disconnect);
+            error_handler(ret, "rdma_post_write", out_disconnect);
             scnt += 1;
         }
         if (ccnt < ctx->num)
@@ -56,6 +56,9 @@ int run_write_bw_client(Context *ctx)
             }
         }
     }
+    *post_buf = ctx->num;
+    ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags & (~IBV_SEND_SIGNALED), (uint64_t)remote_mr.addr, remote_mr.rkey);
+    error_handler(ret, "rdma_post_write", out_disconnect);
 
     print_bw(ctx, tposted, tcompleted);
 
@@ -106,7 +109,7 @@ int run_write_bw_server(Context *ctx)
     error_handler(ret, "handshake", out_destroy_accept_ep);
     printf("handshake finished\n");
 
-    while (*poll_buf != ctx->num - 1)
+    while (*poll_buf != ctx->num)
         ;
 
     // out_disconnect:
