@@ -1,15 +1,16 @@
 #include "bench_util.h"
 
-int run_read_lat_client(Context *ctx)
+int run_read_bw_client(Context *ctx)
 {
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
-    int send_flags = 0, ret = 0;
-    uint64_t times[ctx->num + 1];
+    int send_flags = 0, ret;
+    int scnt = 0, ccnt = 0;
+    uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
     char write_msg[ctx->size];
     char read_msg[ctx->size];
+    memset(write_msg, 0, ctx->size);
     memset(read_msg, 255, ctx->size);
-    // volatile int *post_buf = (volatile int *)write_msg;
 
     ret = set_params(ctx);
     error_handler(ret, "rdma_getaddrinfo", out);
@@ -22,26 +23,40 @@ int run_read_lat_client(Context *ctx)
     error_handler_ret(!read_mr, "rdma_reg_msgs for read_msg", -1, out_destroy_ep);
 
     write_mr = rdma_reg_read(ctx->id, write_msg, ctx->size);
-    error_handler_ret(!write_mr, "rdma_reg_read for send_msg", -1, out_destroy_ep);
+    error_handler_ret(!write_mr, "rdma_reg_read for write_msg", -1, out_destroy_ep);
 
     ret = handshake(ctx, write_mr, &remote_mr);
     error_handler(ret, "handshake", out_destroy_ep);
     printf("handshake finished\n");
 
-    struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    struct ibv_wc wc[CTX_POLL_BATCH];
+    while (scnt < ctx->num || ccnt < ctx->num)
     {
-        times[i] = get_cycles();
-
-        // *post_buf = i;
-        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-        error_handler(ret, "rdma_post_read", out_disconnect);
-        while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        if (scnt < ctx->num)
+        {
+            tposted[scnt] = get_cycles();
+            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+            error_handler(ret, "rdma_post_read", out_disconnect);
+            scnt += 1;
+        }
+        if (ccnt < ctx->num)
+        {
+            int ne = ibv_poll_cq(ctx->id->send_cq, CTX_POLL_BATCH, wc);
+            if (ne > 0)
+            {
+                for (int i = 0; i < ne; i++)
+                {
+                    error_handler_ret(wc[i].status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
+                                      out_disconnect);
+                    ccnt += 1;
+                    tcompleted[ccnt] = get_cycles();
+                }
+            }
+        }
     }
-    times[ctx->num] = get_cycles();
-    print_lat(ctx, times);
+    write_msg[0] = 1; //let server know that read finished
+
+    print_bw(ctx, tposted, tcompleted);
 
 out_disconnect:
     rdma_disconnect(ctx->id);
@@ -57,15 +72,15 @@ out:
     return ret;
 }
 
-int run_read_lat_server(Context *ctx)
+int run_read_bw_server(Context *ctx)
 {
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     int send_flags = 0, ret;
+    int scnt = 0, ccnt = 0;
 
-    char write_msg[ctx->size];
     char read_msg[ctx->size];
-    memset(read_msg, 255, ctx->size);
-    // volatile int *post_buf = (volatile int *)write_msg;
+    char write_msg[ctx->size];
+    memset(read_msg, 0, sizeof(read_msg));
 
     ctx->ip = "0.0.0.0";
     ret = set_params(ctx);
@@ -91,15 +106,29 @@ int run_read_lat_server(Context *ctx)
     error_handler(ret, "handshake", out_destroy_accept_ep);
     printf("handshake finished\n");
 
-    struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    struct ibv_wc wc[CTX_POLL_BATCH];
+
+    while (read_msg[0] != 1 || ccnt < scnt)
     {
-        // *post_buf = i;
-        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-        error_handler(ret, "rdma_post_read", out_disconnect);
-        while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        if (read_msg[0] != 1)
+        {
+            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+            error_handler(ret, "rdma_post_read", out_disconnect);
+            scnt += 1;
+        }
+        if (ccnt < scnt)
+        {
+            int ne = ibv_poll_cq(ctx->id->send_cq, CTX_POLL_BATCH, wc);
+            if (ne > 0)
+            {
+                for (int i = 0; i < ne; i++)
+                {
+                    error_handler_ret(wc[i].status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
+                                      out_disconnect);
+                    ccnt += 1;
+                }
+            }
+        }
     }
 
 out_disconnect:

@@ -1,13 +1,17 @@
 #include "bench_util.h"
 
-int run_send_bw_client(Context *ctx)
+int run_write_bw_client(Context *ctx)
 {
-    struct ibv_mr *send_mr = NULL;
+    struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret;
     int scnt = 0, ccnt = 0;
     uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
-    char send_msg[ctx->size];
+    char write_msg[ctx->size];
+    char read_msg[ctx->size];
+    memset(write_msg, 0, ctx->size);
+    memset(read_msg, 255, ctx->size);
+    volatile int *post_buf = (volatile int *)write_msg;
 
     ret = set_params(ctx);
     error_handler(ret, "rdma_getaddrinfo", out);
@@ -16,11 +20,15 @@ int run_send_bw_client(Context *ctx)
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
 
-    send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
-    error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_destroy_ep);
+    read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
+    error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_ep);
 
-    ret = rdma_connect(ctx->id, NULL);
-    error_handler(ret, "rdma_connect", out_destroy_ep);
+    write_mr = rdma_reg_msgs(ctx->id, write_msg, ctx->size);
+    error_handler_ret(!write_mr, "rdma_reg_msgs for write_msg", -1, out_destroy_ep);
+
+    ret = handshake(ctx, read_mr, &remote_mr);
+    error_handler(ret, "handshake", out_destroy_ep);
+    printf("handshake finished\n");
 
     struct ibv_wc wc[CTX_POLL_BATCH];
     while (scnt < ctx->num || ccnt < ctx->num)
@@ -28,8 +36,9 @@ int run_send_bw_client(Context *ctx)
         if (scnt < ctx->num)
         {
             tposted[scnt] = get_cycles();
-            ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
-            error_handler(ret, "rdma_post_send", out_disconnect);
+            *post_buf = scnt;
+            ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+            error_handler(ret, "rdma_post_read", out_disconnect);
             scnt += 1;
         }
         if (ccnt < ctx->num)
@@ -57,17 +66,22 @@ out_destroy_ep:
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
 out:
-    if (send_mr)
-        rdma_dereg_mr(send_mr);
+    if (read_mr)
+        rdma_dereg_mr(read_mr);
+    if (write_mr)
+        rdma_dereg_mr(write_mr);
     return ret;
 }
 
-int run_send_bw_server(Context *ctx)
+int run_write_bw_server(Context *ctx)
 {
-    struct ibv_mr *recv_mr = NULL;
+    struct ibv_mr *read_mr, remote_mr;
     int ret;
 
-    char recv_msg[ctx->size];
+    char read_msg[ctx->size];
+    // char write_msg[ctx->size];
+    memset(read_msg, 255, sizeof(read_msg));
+    volatile int *poll_buf = (volatile int *)read_msg;
 
     ctx->ip = "0.0.0.0";
     ret = set_params(ctx);
@@ -82,34 +96,20 @@ int run_send_bw_server(Context *ctx)
     ret = rdma_get_request(ctx->listen_id, &ctx->id);
     error_handler(ret, "rdma_get_request", out_destroy_listen_ep);
 
-    recv_mr = rdma_reg_msgs(ctx->id, recv_msg, ctx->size);
-    error_handler_ret(!recv_mr, "rdma_reg_msgs for recv_msg", -1, out_destroy_accept_ep);
+    read_mr = rdma_reg_write(ctx->id, read_msg, ctx->size);
+    error_handler_ret(!read_mr, "rdma_reg_write for read_msg", -1, out_destroy_accept_ep);
 
-    for (int i = 0; i < ctx->num; i++)
-    {
-        ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
-        error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
-    }
+    // write_mr = rdma_reg_msgs(ctx->id, write_msg, ctx->size);
+    // error_handler_ret(!write_mr, "rdma_reg_msgs for write_msg", -1, out_destroy_ep);
 
-    ret = rdma_accept(ctx->id, NULL);
-    error_handler(ret, "rdma_accpet", out_destroy_accept_ep);
+    ret = handshake(ctx, read_mr, &remote_mr);
+    error_handler(ret, "handshake", out_destroy_accept_ep);
+    printf("handshake finished\n");
 
-    struct ibv_wc wc[CTX_POLL_BATCH];
-    for (int ccnt = 0; ccnt < ctx->num;)
-    {
-        int ne = ibv_poll_cq(ctx->id->recv_cq, CTX_POLL_BATCH, wc);
-        if (ne > 0)
-        {
-            for (int i = 0; i < ne; i++)
-            {
-                error_handler_ret(wc[i].status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
-                                  out_disconnect);
-                ccnt += 1;
-            }
-        }
-    }
+    while (*poll_buf != ctx->num - 1)
+        ;
 
-out_disconnect:
+    // out_disconnect:
     rdma_disconnect(ctx->id);
 out_destroy_accept_ep:
     rdma_destroy_ep(ctx->id);
@@ -118,7 +118,9 @@ out_destroy_listen_ep:
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
 out:
-    if (recv_mr)
-        rdma_dereg_mr(recv_mr);
+    if (read_mr)
+        rdma_dereg_mr(read_mr);
+    // if (write_mr)
+    //     rdma_dereg_mr(write_mr);
     return ret;
 };

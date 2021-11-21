@@ -2,6 +2,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include <getopt.h>
 #include <sys/time.h>
 #include <errno.h>
 #include <rdma/rdma_cma.h>
@@ -51,6 +54,38 @@ typedef struct
     struct ibv_qp_init_attr attr;
     struct rdma_addrinfo *ai;
 } Context;
+
+void parse(Context *ctx, int argc, char **argv)
+{
+    int op;
+
+    while ((op = getopt(argc, argv, "c:p:n:s:")) != -1)
+    {
+        switch (op)
+        {
+        case 'c':
+            ctx->client = true;
+            ctx->ip = optarg;
+            break;
+        case 'p':
+            ctx->port = optarg;
+            break;
+        case 'n':
+            ctx->num = atoi(optarg);
+            break;
+        case 's':
+            ctx->size = atoi(optarg);
+            break;
+        }
+    }
+    if (optind < argc)
+    {
+        if (strcmp(argv[optind], "write") == 0)
+            ctx->opt = WRITE;
+        else if (strcmp(argv[optind], "read") == 0)
+            ctx->opt = READ;
+    }
+}
 
 int set_params(Context *ctx)
 {

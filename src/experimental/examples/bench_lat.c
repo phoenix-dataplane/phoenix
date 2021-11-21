@@ -11,34 +11,13 @@ int main(int argc, char **argv)
     ctx.opt = SEND;
     ctx.num = 1000, ctx.warmup = 100, ctx.size = 4, ctx.client = false;
     ctx.ip = "127.0.0.1", ctx.port = "5000";
-    int op;
 
-    while ((op = getopt(argc, argv, "c:p:n:s:")) != -1)
-    {
-        switch (op)
-        {
-        case 'c':
-            ctx.client = true;
-            ctx.ip = optarg;
-            break;
-        case 'p':
-            ctx.port = optarg;
-            break;
-        case 'n':
-            ctx.num = atoi(optarg);
-            break;
-        case 's':
-            ctx.size = atoi(optarg);
-            break;
-        }
-    }
-    if (optind < argc)
-    {
-        if (strcmp(argv[optind], "write") == 0)
-            ctx.opt = WRITE;
-        else if (strcmp(argv[optind], "read") == 0)
-            ctx.opt = READ;
-    }
+    parse(&ctx, argc, argv);
+
+    if (ctx.client)
+        printf("client\n");
+    else
+        printf("server\n");
 
     ctx.size = MAX(ctx.size, 4);
     if (ctx.num < ctx.warmup)
