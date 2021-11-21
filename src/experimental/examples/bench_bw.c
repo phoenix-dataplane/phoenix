@@ -42,5 +42,8 @@ int main(int argc, char **argv)
         else
             ret = run_read_bw_server(&ctx);
     }
+
+    if (ret)
+        printf("error %d\n", ret);
     return 0;
 }

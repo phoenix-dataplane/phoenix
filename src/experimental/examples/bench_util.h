@@ -6,6 +6,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include <errno.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
