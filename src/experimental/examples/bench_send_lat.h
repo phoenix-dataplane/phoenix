@@ -72,7 +72,6 @@ out:
 int run_send_lat_server(Context *ctx)
 {
     struct ibv_mr *recv_mr = NULL, *send_mr = NULL;
-    struct ibv_wc *wcs;
     int send_flags = 0, ret;
     // uint64_t t1, t2;
 
