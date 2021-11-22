@@ -31,7 +31,9 @@ fn send_loop(
         let mut sent = false;
         while !sent {
             wq.sender_mut().send(|ptr, _count| {
-                unsafe { ptr.write(value); }
+                unsafe {
+                    ptr.write(value);
+                }
                 value[cnt % mem::size_of::<Value>()] =
                     value[cnt % mem::size_of::<Value>()].wrapping_add(1);
                 sent = true;
@@ -77,7 +79,9 @@ fn recv_loop(
         let mut sent = false;
         while !sent {
             cq.sender_mut().send(|ptr, _count| {
-                unsafe { ptr.write(value); }
+                unsafe {
+                    ptr.write(value);
+                }
                 sent = true;
                 1
             })?;

@@ -4,9 +4,9 @@ use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{SocketAddr, UnixDatagram};
 use std::path::Path;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::atomic::AtomicUsize;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -106,8 +106,15 @@ impl TransportModule {
         )?;
 
         // 6. the transport module is responsible for initializing and starting the transport engines
-        let engine =
-            TransportEngine::new(&client_path, cmd_rx_entries, cmd_tx, cmd_rx, dp_wq, dp_cq, mode);
+        let engine = TransportEngine::new(
+            &client_path,
+            cmd_rx_entries,
+            cmd_tx,
+            cmd_rx,
+            dp_wq,
+            dp_cq,
+            mode,
+        );
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
 

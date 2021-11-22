@@ -1,8 +1,7 @@
 #![feature(unix_socket_ancillary_data)]
 pub use ipc_channel::ipc::{
     channel, IpcError, IpcOneShotServer as OneShotServer, IpcReceiver,
-    IpcReceiverSet as ReceiverSet, IpcSelectionResult, IpcSender,
-    IpcSharedMemory, TryRecvError,
+    IpcReceiverSet as ReceiverSet, IpcSelectionResult, IpcSender, IpcSharedMemory, TryRecvError,
 };
 
 pub use ipc_channel::Error;
@@ -21,8 +20,8 @@ pub use unix::{recv_fd, send_fd};
 pub mod shm;
 pub use shm::ShmObject;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use serde::Serialize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct IpcSenderNotify<T> {
     inner: IpcSender<T>,
@@ -31,10 +30,7 @@ pub struct IpcSenderNotify<T> {
 
 impl<T: Serialize> IpcSenderNotify<T> {
     pub fn new(inner: IpcSender<T>, entries: ShmObject<AtomicUsize>) -> Self {
-        IpcSenderNotify {
-            inner,
-            entries,
-        }
+        IpcSenderNotify { inner, entries }
     }
 
     pub fn send(&self, data: T) -> Result<(), bincode::Error> {
@@ -44,7 +40,10 @@ impl<T: Serialize> IpcSenderNotify<T> {
     }
 }
 
-impl<T> Clone for IpcSenderNotify<T> where T: Serialize {
+impl<T> Clone for IpcSenderNotify<T>
+where
+    T: Serialize,
+{
     fn clone(&self) -> IpcSenderNotify<T> {
         IpcSenderNotify {
             inner: self.inner.clone(),
@@ -52,4 +51,3 @@ impl<T> Clone for IpcSenderNotify<T> where T: Serialize {
         }
     }
 }
-

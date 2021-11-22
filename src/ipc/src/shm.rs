@@ -6,11 +6,11 @@ use std::mem::size_of;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use atomic_traits::Atomic;
 use memfd::{Memfd, MemfdOptions};
 use memmap2::{MmapOptions, MmapRaw};
 use thiserror::Error;
 use uuid::Uuid;
-use atomic_traits::Atomic;
 
 fn page_size() -> usize {
     unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
