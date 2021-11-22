@@ -1,7 +1,6 @@
 //! Runtime manager is the control plane of runtimes. It is responsible for
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
-use std::io;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -82,9 +81,11 @@ impl Inner {
             if core >= num_cpus {
                 return Err(runtime::Error::InvalidId(core));
             }
-            // set thread affinity, may dedicate this task to a load balancer.
-            scheduler::set_self_affinity(scheduler::CpuSet::single(core))
-                .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
+            // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
+            // does not run on the hyperthread core pair. Since we cannot expect that we always
+            // have hyperthread core pair available, not setting affinity turns out to be better.
+            // scheduler::set_self_affinity(scheduler::CpuSet::single(core))
+            //     .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
             runtime.mainloop()
         });
 

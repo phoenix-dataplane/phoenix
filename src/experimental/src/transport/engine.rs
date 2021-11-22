@@ -4,11 +4,14 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use uuid::Uuid;
 
@@ -145,12 +148,15 @@ pub struct TransportEngine<'ctx> {
     /// The mainly purpose of keeping is to send file descriptors to the client.
     client_path: PathBuf,
     sock: UnixDatagram,
-    cmd_tx: ipc::Sender<cmd::Response>,
-    cmd_rx: ipc::Receiver<cmd::Request>,
+    cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
+    cmd_tx: ipc::IpcSender<cmd::Response>,
+    cmd_rx: ipc::IpcReceiver<cmd::Request>,
     dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
     dp_cq: ipc::ShmSender<dp::CompletionSlot>,
     cq_err_buffer: VecDeque<dp::Completion>,
     _mode: SchedulingMode,
+    backoff: usize,
+    backoff_bound: usize,
 
     resource: Resource<'ctx>,
     mtt: MemoryTranslationTable,
@@ -159,8 +165,9 @@ pub struct TransportEngine<'ctx> {
 impl<'ctx> TransportEngine<'ctx> {
     pub fn new<P: AsRef<Path>>(
         client_path: P,
-        cmd_tx: ipc::Sender<cmd::Response>,
-        cmd_rx: ipc::Receiver<cmd::Request>,
+        cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
+        cmd_tx: ipc::IpcSender<cmd::Response>,
+        cmd_rx: ipc::IpcReceiver<cmd::Request>,
         dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
         dp_cq: ipc::ShmSender<dp::CompletionSlot>,
         mode: SchedulingMode,
@@ -176,12 +183,15 @@ impl<'ctx> TransportEngine<'ctx> {
         TransportEngine {
             client_path: client_path.as_ref().to_owned(),
             sock,
+            cmd_rx_entries,
             cmd_tx,
             cmd_rx,
             dp_wq,
             dp_cq,
             cq_err_buffer: VecDeque::new(),
             _mode: mode,
+            backoff: 0,
+            backoff_bound: 1,
             resource: Resource::new(),
             mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
         }
@@ -220,12 +230,32 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
     }
 
     fn run(&mut self) -> bool {
-        if self.check_dp() {
-            return true;
+        const DP_LIMIT: usize = 1 << 17;
+        match self.check_dp() {
+            Ok(n) => {
+                if n > 0 {
+                    self.backoff_bound = DP_LIMIT.min(self.backoff_bound * 2);
+                }
+            }
+            Err(_) => return true,
         }
-        if self.check_cmd() {
-            return true;
+
+        self.backoff += 1;
+        if self.backoff < self.backoff_bound {
+            return false;
         }
+
+        self.backoff = 0;
+
+        if self.cmd_rx_entries.load(Ordering::Acquire) > 0 {
+            self.backoff_bound = std::cmp::max(1, self.backoff_bound / 2);
+            if self.check_cmd() {
+                return true;
+            }
+        } else {
+            self.backoff_bound = DP_LIMIT.min(self.backoff_bound * 2);
+        }
+
         false
     }
 
@@ -243,34 +273,41 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 }
 
 impl<'ctx> TransportEngine<'ctx> {
-    fn check_dp(&mut self) -> bool {
+    fn check_dp(&mut self) -> Result<usize, DatapathError> {
         use dp::WorkRequest;
-        let mut buffer = Vec::with_capacity(32);
-        // TODO(cjr): rewrite this logic with size_hint of shmem-ipc.
+        const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
+        let mut count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
+        if count == 0 {
+            return Ok(0);
+        }
+
+        let mut buffer = Vec::with_capacity(BUF_LEN);
+
         self.dp_wq
             .receiver_mut()
-            .recv(|ptr, count| unsafe {
+            .recv(|ptr, read_count| unsafe {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
+                debug_assert!(count <= BUF_LEN);
+                count = count.min(read_count);
                 for i in 0..count {
                     buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
-                0
+                count
             })
             .unwrap_or_else(|e| panic!("check_dp: {}", e));
 
         // Process the work requests.
-        let mut processed = 0;
         for wr in &buffer {
             let result = self.process_dp(wr);
             match result {
                 Ok(()) => {}
                 Err(e) => {
-                    // NOTE(cjr): Typically, we expect to report the user right after we get this
-                    // error. But busy waiting here may cause circular waiting between koala engine
-                    // and the user in some circumstance.
+                    // NOTE(cjr): Typically, we expect to report the error to the user right after
+                    // we get this error. But busy waiting here may cause circular waiting between
+                    // koala engine and the user in some circumstance.
                     //
                     // The work queue and completion queue are both bounded. The bound is set by
                     // koala system rather than the specified by the user. Image that the user is
@@ -278,48 +315,25 @@ impl<'ctx> TransportEngine<'ctx> {
                     // queue is full and koala will spin here without make any other progress (e.g.
                     // drain the work queue).
                     //
-                    // There are three methods to address this problem. One is to put the error into
-                    // a local buffer. Whenever we want to put things in the shared memory
-                    // completion queue, we put from the local buffer first. This way seems perfect.
-                    // It can guarantee progress. The backpressure is also not broken.
-                    //
-                    // Another choice is to check the cq's size_hint. Only when there is an
-                    // availble slot in the shared memory cq, we can make progress. This way imposes
-                    // an implicit dependency of post_send and poll_cq. The work request will
-                    // finally be processed only after cq is polled in some rare case.
-                    //
-                    // The final choice is to stop processing here and pretend that failed operation
-                    // is not executed at all. This way, the failed command will still be in the
-                    // work queue, and will be redone immediately. The potential risk of this way
-                    // is that we are not sure if the redo will yield the same result/error code.
-                    // Another downside of this approach is similar to the busy waiting one. If the
-                    // user just post a send request and do nothing. If that request is failed, the
-                    // koala server will keep executing that failed request many many times.
+                    // Therefore, we put the error into a local buffer. Whenever we want to put
+                    // things in the shared memory completion queue, we put from the local buffer
+                    // first. This way seems perfect. It can guarantee progress. The backpressure
+                    // is also not broken.
                     let _sent = self.process_dp_error(wr, e).unwrap();
                 }
             }
-
-            processed += 1;
         }
 
         self.try_flush_cq_err_buffer().unwrap();
 
-        // Advance the ptr. Mark some slots as processed.
-        self.dp_wq
-            .receiver_mut()
-            .recv(|_ptr, count| {
-                assert!(processed <= count, "{} vs {}", processed, count);
-                processed
-            })
-            .unwrap_or_else(|e| panic!("check_dp: {}", e));
-
-        false
+        Ok(count)
     }
 
     fn check_cmd(&mut self) -> bool {
         match self.cmd_rx.try_recv() {
             // handle request
             Ok(req) => {
+                self.cmd_rx_entries.fetch_sub(1, Ordering::AcqRel);
                 let result = self.process_cmd(&req);
                 match result {
                     Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
@@ -520,40 +534,48 @@ impl<'ctx> TransportEngine<'ctx> {
                 // NOTE(cjr): The correctness of the following code extremely depends on the memory
                 // layout. It must be carefully checked.
                 //
-                // The send_raw is not necessarily called due to the `dp_cq` is full. This is fine
-                // because the user would keep retrying polling CQ until they get what they want.
+                // This send must be successful because the libkoala uses an outstanding flag to
+                // reduce the busy polling from the user appliation. If the shared memory cq is
+                // full of completion from another cq, and the shared memory wq only has one
+                // poll_cq, and the poll_cq is not really executed because the shmcq is full. Then
+                // the outstanding flag will never be flipped and that user cq is thus dead.
                 let mut err = false;
-                self.dp_cq.sender_mut().send(|ptr, count| unsafe {
-                    let mut cnt = 0;
-                    while cnt < count {
-                        // NOTE(cjr): For now, we can only poll 1 entry at a time, because the size
-                        // of an ibv_wc is 48 bytes, however, the slot for each completion is
-                        // 64-byte wide.
-                        //
-                        // In the future, we can embed cq_handle in the unused field in
-                        // WorkCompletion, or maybe just use wr_id to find the corresponding CQ.
-                        // In these ways, the CQ can be polled in batch.
-                        let handle_ptr: *mut interface::CompletionQueue = ptr.add(cnt).cast();
-                        handle_ptr.write(*cq_handle);
-                        let mut wc = slice::from_raw_parts_mut(handle_ptr.add(1).cast(), 1);
-                        match cq.poll(&mut wc) {
-                            Ok(completions) if !completions.is_empty() => cnt += 1,
-                            Ok(_) => {
-                                wc.as_mut_ptr()
-                                    .cast::<interface::WorkCompletion>()
-                                    .write(interface::WorkCompletion::again());
-                                cnt += 1;
-                                break;
-                            }
-                            Err(()) => {
-                                err = true;
-                                break;
+                let mut sent = false;
+                while !sent {
+                    self.dp_cq.sender_mut().send(|ptr, count| unsafe {
+                        sent = true;
+                        let mut cnt = 0;
+                        while cnt < count {
+                            // NOTE(cjr): For now, we can only poll 1 entry at a time, because the size
+                            // of an ibv_wc is 48 bytes, however, the slot for each completion is
+                            // 64-byte wide.
+                            //
+                            // In the future, we can embed cq_handle in the unused field in
+                            // WorkCompletion, or maybe just use wr_id to find the corresponding CQ.
+                            // In these ways, the CQ can be polled in batch.
+                            let handle_ptr: *mut interface::CompletionQueue = ptr.add(cnt).cast();
+                            handle_ptr.write(*cq_handle);
+                            let mut wc = slice::from_raw_parts_mut(handle_ptr.add(1).cast(), 1);
+                            match cq.poll(&mut wc) {
+                                Ok(completions) if !completions.is_empty() => cnt += 1,
+                                Ok(_) => {
+                                    wc.as_mut_ptr()
+                                        .cast::<interface::WorkCompletion>()
+                                        .write(interface::WorkCompletion::again());
+                                    cnt += 1;
+                                    break;
+                                }
+                                Err(()) => {
+                                    err = true;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    cnt
-                })?;
+                        cnt
+                    })?;
+                }
 
+                assert!(sent, "PollCq must write something to the queue");
                 if err {
                     return Err(DatapathError::Ibv(io::Error::last_os_error()));
                 }

@@ -42,6 +42,8 @@ pub enum Error {
     ShmIpc(#[from] ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}")]
     ShmRingbuf(#[from] ipc::ShmRingbufError),
+    #[error("ShmObject error: {0}")]
+    ShmObj(#[from] ipc::shm::Error),
 }
 
 thread_local! {
@@ -50,8 +52,8 @@ thread_local! {
 
 pub struct Context {
     sock: UnixDatagram,
-    cmd_tx: ipc::Sender<cmd::Request>,
-    cmd_rx: ipc::Receiver<cmd::Response>,
+    cmd_tx: ipc::IpcSenderNotify<cmd::Request>,
+    cmd_rx: ipc::IpcReceiver<cmd::Response>,
     dp_wq: RefCell<ipc::ShmSender<dp::WorkRequestSlot>>,
     dp_cq: RefCell<ipc::ShmReceiver<dp::CompletionSlot>>,
     // A cq can be created by calling create_cq, but it can also come from create_ep
@@ -81,16 +83,20 @@ impl Context {
         match res {
             cmd::ResponseKind::NewClient(mode, server_name, wq_cap, cq_cap) => {
                 assert_eq!(mode, SchedulingMode::Dedicate);
-                let (cmd_tx1, cmd_rx1): (ipc::Sender<cmd::Request>, ipc::Receiver<cmd::Request>) =
-                    ipc::channel()?;
-                let (cmd_tx2, cmd_rx2): (ipc::Sender<cmd::Response>, ipc::Receiver<cmd::Response>) =
-                    ipc::channel()?;
-                let tx0 = ipc::Sender::connect(server_name)?;
+                let (cmd_tx1, cmd_rx1): (
+                    ipc::IpcSender<cmd::Request>,
+                    ipc::IpcReceiver<cmd::Request>,
+                ) = ipc::channel()?;
+                let (cmd_tx2, cmd_rx2): (
+                    ipc::IpcSender<cmd::Response>,
+                    ipc::IpcReceiver<cmd::Response>,
+                ) = ipc::channel()?;
+                let tx0 = ipc::IpcSender::connect(server_name)?;
                 tx0.send((cmd_tx2, cmd_rx1))?;
 
                 // receive file descriptors to attach to the shared memory queues
                 let fds = ipc::recv_fd(&sock)?;
-                assert_eq!(fds.len(), 6);
+                assert_eq!(fds.len(), 7);
                 let (wq_memfd, wq_empty_signal, wq_full_signal) = unsafe {
                     (
                         File::from_raw_fd(fds[0]),
@@ -105,15 +111,18 @@ impl Context {
                         File::from_raw_fd(fds[5]),
                     )
                 };
+                let cmd_notify_memfd = unsafe { File::from_raw_fd(fds[6]) };
                 // attach to the shared memories
                 let dp_wq =
                     ipc::ShmSender::open(wq_cap, wq_memfd, wq_empty_signal, wq_full_signal)?;
                 let dp_cq =
                     ipc::ShmReceiver::open(cq_cap, cq_memfd, cq_empty_signal, cq_full_signal)?;
 
+                let entries = ipc::ShmObject::open(cmd_notify_memfd)?;
+
                 Ok(Context {
                     sock,
-                    cmd_tx: cmd_tx1,
+                    cmd_tx: ipc::IpcSenderNotify::new(cmd_tx1, entries),
                     cmd_rx: cmd_rx2,
                     dp_wq: RefCell::new(dp_wq),
                     dp_cq: RefCell::new(dp_cq),
