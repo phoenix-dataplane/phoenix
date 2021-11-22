@@ -4,6 +4,7 @@ use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{SocketAddr, UnixDatagram};
 use std::path::Path;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,12 +76,19 @@ impl TransportModule {
 
         // 3. the client should later connect to the oneshot server, and create these channels
         // to communicate with its transport engine.
-        let (_, (cmd_tx, cmd_rx)): (_, (ipc::Sender<cmd::Response>, ipc::Receiver<cmd::Request>)) =
-            server.accept()?;
+        let (_, (cmd_tx, cmd_rx)): (
+            _,
+            (
+                ipc::IpcSender<cmd::Response>,
+                ipc::IpcReceiver<cmd::Request>,
+            ),
+        ) = server.accept()?;
 
         // 4. create data path shared memory queues
         let dp_wq = ipc::ShmReceiver::new(wq_cap)?;
         let dp_cq = ipc::ShmSender::new(cq_cap)?;
+
+        let cmd_rx_entries = ipc::ShmObject::new(AtomicUsize::new(0))?;
 
         // 5. send file descriptors back to let the client attach to these shared memory queues
         ipc::send_fd(
@@ -93,11 +101,20 @@ impl TransportModule {
                 dp_cq.memfd().as_raw_fd(),
                 dp_cq.empty_signal().as_raw_fd(),
                 dp_cq.full_signal().as_raw_fd(),
+                ipc::ShmObject::memfd(&cmd_rx_entries).as_raw_fd(),
             ],
         )?;
 
         // 6. the transport module is responsible for initializing and starting the transport engines
-        let engine = TransportEngine::new(&client_path, cmd_tx, cmd_rx, dp_wq, dp_cq, mode);
+        let engine = TransportEngine::new(
+            &client_path,
+            cmd_rx_entries,
+            cmd_tx,
+            cmd_rx,
+            dp_wq,
+            dp_cq,
+            mode,
+        );
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
 

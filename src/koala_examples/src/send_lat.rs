@@ -122,9 +122,9 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             assert_eq!(c.status, WcStatus::Success);
             rcnt += 1;
             let send_flags = if rcnt == opts.warm_iters + opts.total_iters {
-                SendFlags::SIGNALED
+                SendFlags::SIGNALED | SendFlags::INLINE
             } else {
-                SendFlags::empty()
+                SendFlags::INLINE
             };
             id.post_send(0, &send_msg, &send_mr, send_flags)?;
         }
@@ -183,7 +183,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let no_signal = SendFlags::empty();
+    let no_signal = SendFlags::INLINE;
     let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
     send_msg.resize(opts.msg_size, 42u8);
     let send_mr = id.reg_msgs(&send_msg)?;
@@ -220,7 +220,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             let send_flags = if scnt + 1 == opts.warm_iters + opts.total_iters {
-                SendFlags::SIGNALED
+                SendFlags::SIGNALED | SendFlags::INLINE
             } else {
                 no_signal
             };
@@ -236,41 +236,30 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     let dura = start_ts.elapsed();
     stats.sort();
+    assert!(!stats.is_empty());
+
+    // One-way latency
+    let stats: Vec<_> = stats.into_iter().map(|x| x / 2).collect();
+
     eprintln!(
-        "duration: {:?}, avg: {:?}, median: {:?}, min: {:?}, max: {:?}",
+        "duration: {:?}, #iters: {}, avg: {:?}, min: {:?}, median: {:?}, P95: {:?}, P99: {:?}, max: {:?}",
         dura,
-        get_avg(&stats),
-        get_median(&stats),
-        get_min(&stats),
-        get_max(&stats),
+        opts.total_iters,
+        stats.iter().sum::<time::Duration>() / stats.len() as u32,
+        stats[0],
+        stats[(0.5 * stats.len() as f64) as usize],
+        stats[(0.95 * stats.len() as f64) as usize],
+        stats[(0.99 * stats.len() as f64) as usize],
+        stats[stats.len() - 1],
     );
 
     Ok(())
 }
 
-fn get_avg(stats: &[time::Duration]) -> time::Duration {
-    let s: time::Duration = stats.iter().sum();
-    s / stats.len() as u32
-}
-
-fn get_median(stats: &[time::Duration]) -> time::Duration {
-    assert!(!stats.is_empty());
-    stats[stats.len() / 2]
-}
-
-fn get_min(stats: &[time::Duration]) -> time::Duration {
-    assert!(!stats.is_empty());
-    stats[0]
-}
-
-fn get_max(stats: &[time::Duration]) -> time::Duration {
-    assert!(!stats.is_empty());
-    *stats.last().unwrap()
-}
-
 fn main() {
     let opts = Opts::from_args();
 
+    // scheduler::set_self_affinity(scheduler::CpuSet::single(20)).unwrap();
     if opts.connect.is_some() {
         run_client(&opts).unwrap();
     } else {

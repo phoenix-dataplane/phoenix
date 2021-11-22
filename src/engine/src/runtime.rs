@@ -12,7 +12,7 @@ pub enum Error {
     #[error("Invalid engine ID: {0}, (0 <= expected < {})", num_cpus::get())]
     InvalidId(usize),
     #[error("Fail to set thread affinity")]
-    SetAffinity(#[from] io::Error),
+    SetAffinity(io::Error),
 }
 
 type Result<T> = std::result::Result<T, Error>;

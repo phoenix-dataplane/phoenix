@@ -10,7 +10,6 @@ thiserror = "1.0.29"
 anyhow = "1.0.44"
 uuid = "0.8.2"
 ipc-channel = "0.15.0"
-experimental = { path = "../experimental" }
 ipc = { path = "../ipc" }
 engine = { path = "../engine" }
 interface = { path = "../interface" }
