@@ -2,8 +2,6 @@
 use std::mem;
 use std::sync::atomic::Ordering;
 
-use log::warn;
-
 use ipc::buf;
 use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
 
