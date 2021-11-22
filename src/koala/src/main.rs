@@ -5,8 +5,8 @@ extern crate log;
 use anyhow::Result;
 use crossbeam::thread;
 
-use experimental::module::Module;
-use experimental::transport::module::TransportModule;
+use koala::module::Module;
+use koala::transport::module::TransportModule;
 
 use engine::manager::RuntimeManager;
 

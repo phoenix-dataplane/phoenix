@@ -1,0 +1,6 @@
+modules = ["transport"]
+
+[transport]
+path = "/tmp/koala/koala-transport.sock"
+datapath_wq_depth = 32
+datapath_cq_depth = 32

@@ -1,4 +1,0 @@
-modules = ["transport"]
-
-[transport]
-path = "/tmp/koala/koala-transport.sock"

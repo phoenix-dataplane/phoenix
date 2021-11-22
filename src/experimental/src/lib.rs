@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 #![feature(allocator_api)]
 #![feature(unix_socket_ancillary_data)]
 use std::io;
@@ -9,10 +11,8 @@ extern crate log;
 pub mod ringbuffer;
 pub mod shm;
 // pub mod ipc;
-pub mod module;
 mod regmr;
 mod shmalloc;
-pub mod transport;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

@@ -628,6 +628,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "crossbeam",
+ "engine",
+ "env_logger 0.9.0",
+ "interface",
+ "ipc",
+ "libc",
+ "log",
+ "nix",
+ "num_cpus",
+ "rdma",
+ "serde",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "koala_examples"
 version = "0.1.0"
 dependencies = [
