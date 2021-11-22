@@ -11,8 +11,6 @@ int run_read_lat_client(Context *ctx)
     memset(read_msg, 255, ctx->size);
     // volatile int *post_buf = (volatile int *)write_msg;
 
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
@@ -49,7 +47,6 @@ out_destroy_ep:
     rdma_destroy_ep(ctx->id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     if (write_mr)
@@ -67,9 +64,6 @@ int run_read_lat_server(Context *ctx)
     memset(read_msg, 255, ctx->size);
     // volatile int *post_buf = (volatile int *)write_msg;
 
-    ctx->ip = "0.0.0.0";
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
@@ -110,7 +104,6 @@ out_destroy_listen_ep:
     rdma_destroy_ep(ctx->listen_id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     if (write_mr)

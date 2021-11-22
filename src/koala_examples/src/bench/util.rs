@@ -1,10 +1,11 @@
 use std::convert::From;
+use std::time::Instant;
 use structopt::StructOpt;
 
-use interface::addrinfo;
-use libkoala::{cm, verbs};
+use interface::{addrinfo, WcStatus, WorkCompletion};
+use libkoala::{cm, verbs, Error};
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Debug, PartialEq)]
 pub enum OptCommand {
     Send,
     Read,
@@ -97,4 +98,62 @@ impl<'ctx> Context<'ctx> {
             OptCommand::Write => println!("Write data from client to server"),
         }
     }
+}
+
+pub fn poll_cq_and_check(
+    cq: &verbs::CompletionQueue,
+    wcs: &mut Vec<WorkCompletion>,
+) -> Result<(), Error> {
+    loop {
+        cq.poll_cq(wcs)?;
+        if !wcs.is_empty() {
+            break;
+        }
+    }
+    for wc in wcs {
+        if wc.status != WcStatus::Success {
+            panic!("wc status is not succcss: {}", wc.vendor_err);
+        }
+    }
+    Ok(())
+}
+
+const LAT_MEASURE_TAIL: usize = 2;
+pub fn print_lat(ctx: &Context, times: Vec<Instant>) {
+    let num = ctx.opt.num - ctx.opt.warm;
+    assert!(num > 0);
+    let mut delta = Vec::new();
+    for i in 0..num {
+        delta.push(
+            times[i + ctx.opt.warm + 1]
+                .duration_since(times[i + ctx.opt.warm])
+                .as_micros(),
+        );
+    }
+    delta.sort();
+
+    let factor = if ctx.opt.cmd == OptCommand::Read {
+        1.0
+    } else {
+        2.0
+    };
+
+    let cnt = num - LAT_MEASURE_TAIL;
+    let mut duration = 0.0;
+    let mut lat = Vec::new();
+    for i in 0..cnt {
+        let t = delta[i] as f64 / factor;
+        duration += t;
+        lat.push(t);
+    }
+    println!(
+        "duration: {}, avg: {}, min: {}, median: {}, p95: {}, p99: {}, max: {}",
+        duration,
+        duration / cnt as f64,
+        lat[0],
+        lat[cnt / 2],
+        lat[(cnt as f64 * 0.95) as usize],
+        lat[(cnt as f64 * 0.99) as usize],
+        lat[cnt - 1]
+    );
 }

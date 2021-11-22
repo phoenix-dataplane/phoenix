@@ -1,4 +1,6 @@
-use crate::bench::util::Context;
+use std::time::Instant;
+
+use crate::bench::util::{poll_cq_and_check, print_lat, Context};
 use interface::SendFlags;
 use libkoala::{cm, Error};
 
@@ -22,23 +24,22 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     }
     id.connect(None)?;
 
-    let mut wc = Vec::with_capacity(1);
+    let mut times = Vec::new();
+    let mut wcs = Vec::with_capacity(1);
     let recv_cq = &id.qp.as_ref().unwrap().recv_cq;
     let send_cq = &id.qp.as_ref().unwrap().send_cq;
     for i in 0..ctx.opt.num {
+        times.push(Instant::now());
         if i == ctx.opt.num - 1 {
             send_flags |= SendFlags::SIGNALED;
         }
         id.post_send(0, &send_msg, &send_mr, send_flags)?;
-        wc.clear();
-        while wc.len() == 0 {
-            recv_cq.poll_cq(&mut wc)?
-        }
+        poll_cq_and_check(recv_cq, &mut wcs)?;
     }
-    wc.clear();
-    while wc.len() == 0 {
-        send_cq.poll_cq(&mut wc)?
-    }
+    poll_cq_and_check(send_cq, &mut wcs)?;
+    times.push(Instant::now());
+
+    print_lat(ctx, times);
 
     Ok(())
 }
@@ -65,23 +66,17 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     }
     id.accept(None)?;
 
-    let mut wc = Vec::with_capacity(1);
+    let mut wcs = Vec::with_capacity(1);
     let recv_cq = &id.qp.as_ref().unwrap().recv_cq;
     let send_cq = &id.qp.as_ref().unwrap().send_cq;
     for i in 0..ctx.opt.num {
-        wc.clear();
-        while wc.len() == 0 {
-            recv_cq.poll_cq(&mut wc)?
-        }
+        poll_cq_and_check(recv_cq, &mut wcs)?;
         if i == ctx.opt.num - 1 {
             send_flags |= SendFlags::SIGNALED;
         }
         id.post_send(0, &send_msg, &send_mr, send_flags)?;
     }
-    wc.clear();
-    while wc.len() == 0 {
-        send_cq.poll_cq(&mut wc)?
-    }
+    poll_cq_and_check(send_cq, &mut wcs)?;
 
     Ok(())
 }
