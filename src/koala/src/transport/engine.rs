@@ -4,7 +4,6 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::mem;
-use std::mem::MaybeUninit;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -280,7 +279,7 @@ impl<'ctx> TransportEngine<'ctx> {
         let mut processed = 0;
         let existing_work = match self.dp_wq.receiver_mut().read_count() {
             Ok(n) => n,
-            Err(e) => return true,
+            Err(_) => return true,
         };
 
         while processed < existing_work {
