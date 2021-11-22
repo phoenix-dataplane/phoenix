@@ -155,8 +155,8 @@ pub struct TransportEngine<'ctx> {
     dp_cq: ipc::ShmSender<dp::CompletionSlot>,
     cq_err_buffer: VecDeque<dp::Completion>,
     _mode: SchedulingMode,
+    dp_spin_cnt: usize,
     backoff: usize,
-    backoff_bound: usize,
 
     resource: Resource<'ctx>,
     mtt: MemoryTranslationTable,
@@ -190,8 +190,8 @@ impl<'ctx> TransportEngine<'ctx> {
             dp_cq,
             cq_err_buffer: VecDeque::new(),
             _mode: mode,
-            backoff: 0,
-            backoff_bound: 1,
+            dp_spin_cnt: 0,
+            backoff: 1,
             resource: Resource::new(),
             mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
         }
@@ -234,26 +234,29 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
         match self.check_dp() {
             Ok(n) => {
                 if n > 0 {
-                    self.backoff_bound = DP_LIMIT.min(self.backoff_bound * 2);
+                    self.backoff = DP_LIMIT.min(self.backoff * 2);
                 }
             }
             Err(_) => return true,
         }
 
-        self.backoff += 1;
-        if self.backoff < self.backoff_bound {
+        self.dp_spin_cnt += 1;
+        if self.dp_spin_cnt < self.backoff {
             return false;
         }
 
-        self.backoff = 0;
+        self.dp_spin_cnt = 0;
 
         if self.cmd_rx_entries.load(Ordering::Acquire) > 0 {
-            self.backoff_bound = std::cmp::max(1, self.backoff_bound / 2);
+            self.backoff = std::cmp::max(1, self.backoff / 2);
+            if self.flush_dp() {
+                return true;
+            }
             if self.check_cmd() {
                 return true;
             }
         } else {
-            self.backoff_bound = DP_LIMIT.min(self.backoff_bound * 2);
+            self.backoff = DP_LIMIT.min(self.backoff * 2);
         }
 
         false
@@ -273,6 +276,23 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 }
 
 impl<'ctx> TransportEngine<'ctx> {
+    fn flush_dp(&mut self) -> bool {
+        let mut processed = 0;
+        let existing_work = match self.dp_wq.receiver_mut().read_count() {
+            Ok(n) => n,
+            Err(e) => return true,
+        };
+
+        while processed < existing_work {
+            match self.check_dp() {
+                Ok(n) => processed += n,
+                Err(_) => return true,
+            }
+        }
+
+        false
+    }
+
     fn check_dp(&mut self) -> Result<usize, DatapathError> {
         use dp::WorkRequest;
         const BUF_LEN: usize = 32;
