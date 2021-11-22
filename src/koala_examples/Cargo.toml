@@ -12,7 +12,12 @@ dns-lookup = "1.0.8"
 libc = "0.2.103"
 structopt = "0.3.23"
 anyhow = "1.0.44"
+thiserror = "1.0.30"
 
+
+[[bin]]
+name = "bench_lat"
+path = "src/bench_lat.rs"
 
 [[bin]]
 name = "sender"
