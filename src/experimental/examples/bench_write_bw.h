@@ -13,8 +13,6 @@ int run_write_bw_client(Context *ctx)
     memset(read_msg, 255, ctx->size);
     volatile int *post_buf = (volatile int *)write_msg;
 
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
@@ -37,7 +35,8 @@ int run_write_bw_client(Context *ctx)
         {
             tposted[scnt] = get_cycles();
             *post_buf = scnt;
-            ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+            ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags,
+                                  (uint64_t)remote_mr.addr, remote_mr.rkey);
             error_handler(ret, "rdma_post_write", out_disconnect);
             scnt += 1;
         }
@@ -57,7 +56,9 @@ int run_write_bw_client(Context *ctx)
         }
     }
     *post_buf = ctx->num;
-    ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags & (~IBV_SEND_SIGNALED), (uint64_t)remote_mr.addr, remote_mr.rkey);
+    ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr,
+                          send_flags & (~IBV_SEND_SIGNALED), (uint64_t)remote_mr.addr,
+                          remote_mr.rkey);
     error_handler(ret, "rdma_post_write", out_disconnect);
 
     print_bw(ctx, tposted, tcompleted);
@@ -68,7 +69,6 @@ out_destroy_ep:
     rdma_destroy_ep(ctx->id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     if (write_mr)
@@ -85,10 +85,6 @@ int run_write_bw_server(Context *ctx)
     // char write_msg[ctx->size];
     memset(read_msg, 255, sizeof(read_msg));
     volatile int *poll_buf = (volatile int *)read_msg;
-
-    ctx->ip = "0.0.0.0";
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -112,7 +108,6 @@ int run_write_bw_server(Context *ctx)
     while (*poll_buf != ctx->num)
         ;
 
-    // out_disconnect:
     rdma_disconnect(ctx->id);
 out_destroy_accept_ep:
     rdma_destroy_ep(ctx->id);
@@ -120,7 +115,6 @@ out_destroy_listen_ep:
     rdma_destroy_ep(ctx->listen_id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     // if (write_mr)

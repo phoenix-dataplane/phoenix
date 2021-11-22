@@ -14,12 +14,7 @@ int main(int argc, char **argv)
     parse(&ctx, argc, argv);
     int ret = set_params(&ctx);
     if (ret)
-        return 0;
-
-    if (ctx.client)
-        printf("client\n");
-    else
-        printf("server\n");
+        goto out;
 
     ctx.size = max(ctx.size, (size_t)4);
     if (ctx.num < ctx.warmup)
@@ -29,27 +24,28 @@ int main(int argc, char **argv)
     switch (ctx.opt)
     {
     case SEND:
-        printf("send perf\n");
+        printf("Send data from client to server\n\n");
         if (ctx.client)
             ret = run_send_lat_client(&ctx);
         else
             ret = run_send_lat_server(&ctx);
         break;
     case WRITE:
-        printf("write perf\n");
+        printf("Write data from client to server\n");
         if (ctx.client)
             ret = run_write_lat_client(&ctx);
         else
             ret = run_write_lat_server(&ctx);
         break;
     case READ:
-        printf("read perf\n");
+        printf("Read data from server to client\n");
         if (ctx.client)
             ret = run_read_lat_client(&ctx);
         else
             ret = run_read_lat_server(&ctx);
     }
 
+out:
     if (ret)
         printf("error %d\n", ret);
     return 0;

@@ -35,7 +35,8 @@ int run_write_lat_client(Context *ctx)
         times[i] = get_cycles();
 
         *post_buf = i;
-        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags,
+                              (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_write", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;
@@ -99,7 +100,8 @@ int run_write_lat_server(Context *ctx)
         while (*poll_buf != i)
             ;
         *post_buf = i;
-        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags,
+                              (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_write", out_disconnect);
         while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
             ;

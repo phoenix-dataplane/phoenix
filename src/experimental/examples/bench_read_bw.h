@@ -12,8 +12,6 @@ int run_read_bw_client(Context *ctx)
     memset(write_msg, 0, ctx->size);
     memset(read_msg, 255, ctx->size);
 
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
@@ -35,7 +33,8 @@ int run_read_bw_client(Context *ctx)
         if (scnt < ctx->num)
         {
             tposted[scnt] = get_cycles();
-            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,
+                                 (uint64_t)remote_mr.addr, remote_mr.rkey);
             error_handler(ret, "rdma_post_read", out_disconnect);
             scnt += 1;
         }
@@ -54,7 +53,7 @@ int run_read_bw_client(Context *ctx)
             }
         }
     }
-    write_msg[0] = 1; //let server know that read finished
+    write_msg[0] = 1; // let server know that read finished
 
     print_bw(ctx, tposted, tcompleted);
 
@@ -64,7 +63,6 @@ out_destroy_ep:
     rdma_destroy_ep(ctx->id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     if (write_mr)
@@ -81,11 +79,6 @@ int run_read_bw_server(Context *ctx)
     char read_msg[ctx->size];
     char write_msg[ctx->size];
     memset(read_msg, 0, sizeof(read_msg));
-
-    ctx->ip = "0.0.0.0";
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
-    // send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -108,7 +101,8 @@ int run_read_bw_server(Context *ctx)
 
     while (read_msg[0] != 1)
     {
-        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
+        ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,
+                             (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_read", out_disconnect);
         scnt += 1;
         usleep(100);
@@ -120,8 +114,8 @@ int run_read_bw_server(Context *ctx)
     {
         if (read_msg[0] != 1 && scnt - ccnt < ctx->attr.cap.max_send_wr)
         {
-            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags, (uint64_t)remote_mr.addr, remote_mr.rkey);
-            error_handler(ret, "rdma_post_read", out_disconnect);
+            ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,
+    (uint64_t)remote_mr.addr, remote_mr.rkey); error_handler(ret, "rdma_post_read", out_disconnect);
             scnt += 1;
         }
         if (ccnt < scnt)
@@ -148,7 +142,6 @@ out_destroy_listen_ep:
     rdma_destroy_ep(ctx->listen_id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (read_mr)
         rdma_dereg_mr(read_mr);
     if (write_mr)

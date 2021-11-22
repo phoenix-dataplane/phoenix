@@ -111,6 +111,11 @@ int set_params(Context *ctx)
     attr->cap.max_inline_data = 236;
     attr->qp_context = ctx->id;
     attr->sq_sig_all = 0;
+
+    if (ctx->client)
+        printf("client\n");
+    else
+        printf("server\n");
     return 0;
 }
 

@@ -9,8 +9,6 @@ int run_send_bw_client(Context *ctx)
 
     char send_msg[ctx->size];
 
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
     send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
@@ -56,7 +54,6 @@ out_destroy_ep:
     rdma_destroy_ep(ctx->id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (send_mr)
         rdma_dereg_mr(send_mr);
     return ret;
@@ -68,10 +65,6 @@ int run_send_bw_server(Context *ctx)
     int ret;
 
     char recv_msg[ctx->size];
-
-    ctx->ip = "0.0.0.0";
-    ret = set_params(ctx);
-    error_handler(ret, "rdma_getaddrinfo", out);
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -117,7 +110,6 @@ out_destroy_listen_ep:
     rdma_destroy_ep(ctx->listen_id);
 out_free_addrinfo:
     rdma_freeaddrinfo(ctx->ai);
-out:
     if (recv_mr)
         rdma_dereg_mr(recv_mr);
     return ret;
