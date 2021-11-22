@@ -2,7 +2,7 @@
 
 On server `rdma0.danyang-06`, start koala backend,
 ```
-KOALA_LOG=trace cargo run --release --bin experimental
+KOALA_LOG=trace cargo run --release --bin koala
 ```
 
 then run the examples
@@ -13,7 +13,7 @@ cargo run --release --bin send_bw --
 
 On server B, start koala backend,
 ```
-KOALA_LOG=trace cargo run --release --bin experimental
+KOALA_LOG=trace cargo run --release --bin koala
 ```
 
 then run the examples
