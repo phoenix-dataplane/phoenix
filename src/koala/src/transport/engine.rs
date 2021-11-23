@@ -63,6 +63,9 @@ impl<R> ResourceTable<R> {
     fn get_dp(&self, h: &Handle) -> Result<&R, DatapathError> {
         self.table.get(h).ok_or(DatapathError::NotFound)
     }
+    fn remove(&mut self, h: &Handle) -> Result<R, Error> {
+        self.table.remove(h).ok_or(Error::NotFound)
+    }
 }
 
 /// This table should be shared between multiple transport engines, it must allow concurrent access
@@ -799,6 +802,37 @@ impl<'ctx> TransportEngine<'ctx> {
                 self.mtt.allocate(new_mr_handle, smf);
                 // 7. send mr handle back
                 Ok(ResponseKind::RegMsgs(new_mr_handle))
+            }
+
+            Request::DeallocPd(pd) => {
+                trace!("DeallocPd, pd: {:?}", pd);
+                let pd = self.resource.pd_table.remove(&pd.0)?;
+                drop(pd);
+                Ok(ResponseKind::DeallocPd)
+            }
+            Request::DestroyCq(cq) => {
+                trace!("DestroyQp, cq: {:?}", cq);
+                let cq = self.resource.cq_table.remove(&cq.0)?;
+                drop(cq);
+                Ok(ResponseKind::DestroyCq)
+            }
+            Request::DestroyQp(qp) => {
+                trace!("DestroyQp, qp: {:?}", qp);
+                let qp = self.resource.qp_table.remove(&qp.0)?;
+                drop(qp);
+                Ok(ResponseKind::DestroyQp)
+            }
+            Request::Disconnect(cmid) => {
+                trace!("Disconnect, cmid: {:?}", cmid);
+                let cmid = self.resource.cmid_table.get(&cmid.0)?;
+                cmid.disconnect().map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::Disconnect)
+            }
+            Request::DestroyId(cmid) => {
+                trace!("DestroyId, cmid: {:?}", cmid);
+                let cmid = self.resource.cmid_table.remove(&cmid.0)?;
+                drop(cmid);
+                Ok(ResponseKind::DestroyId)
             }
         }
     }

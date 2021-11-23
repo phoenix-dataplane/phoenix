@@ -14,6 +14,7 @@ pub enum Request {
     NewClient(SchedulingMode),
     Hello(i32),
 
+    // rdmacm
     GetAddrInfo(
         Option<String>,
         Option<String>,
@@ -25,6 +26,14 @@ pub enum Request {
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
     RegMsgs(Handle, Buffer),
+
+    Disconnect(interface::CmId),
+    DestroyId(interface::CmId),
+
+    // ibverbs
+    DeallocPd(interface::ProtectionDomain),
+    DestroyCq(interface::CompletionQueue),
+    DestroyQp(interface::QueuePair),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -36,6 +45,7 @@ pub enum ResponseKind {
     NewClient(SchedulingMode, String, usize, usize),
     HelloBack(i32),
 
+    // rdmacm
     GetAddrInfo(addrinfo::AddrInfo),
     // handle of cmid, handle of inner qp
     CreateEp(returned::CmId), // TODO(lsh): Handle to CmIdOwned
@@ -44,6 +54,14 @@ pub enum ResponseKind {
     Accept,
     Connect,
     RegMsgs(Handle),
+
+    Disconnect,
+    DestroyId,
+
+    // ibverbs
+    DeallocPd,
+    DestroyCq,
+    DestroyQp,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

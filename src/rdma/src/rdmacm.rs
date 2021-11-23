@@ -482,6 +482,15 @@ impl CmId {
         Ok(MemoryRegion(mr))
     }
 
+    pub fn disconnect(&self) -> io::Result<()> {
+        let id = self.0;
+        let rc = unsafe { ffi::rdma_disconnect(id) };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
     #[inline]
     pub unsafe fn post_send(
         &self,
