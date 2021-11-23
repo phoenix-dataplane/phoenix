@@ -660,7 +660,6 @@ dependencies = [
  "libkoala",
  "scheduler",
  "structopt",
- "thiserror",
 ]
 
 [[package]]
