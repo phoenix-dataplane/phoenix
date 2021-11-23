@@ -79,7 +79,7 @@ int run_send_bw_server(Context *ctx)
     recv_mr = rdma_reg_msgs(ctx->id, recv_msg, ctx->size);
     error_handler_ret(!recv_mr, "rdma_reg_msgs for recv_msg", -1, out_destroy_accept_ep);
 
-    for (uint32_t i = 0; i < min(ctx->num, ctx->attr.cap.max_send_wr); i++)
+    for (uint32_t i = 0; i < min(ctx->num, ctx->attr.cap.max_recv_wr); i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
@@ -92,10 +92,11 @@ int run_send_bw_server(Context *ctx)
     struct ibv_wc wc[CTX_POLL_BATCH];
     while (rcnt < ctx->num || ccnt < ctx->num)
     {
-        if (rcnt < ctx->num && rcnt - ccnt < ctx->attr.cap.max_send_wr)
+        if (rcnt < ctx->num && rcnt - ccnt < ctx->attr.cap.max_recv_wr)
         {
             ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
             error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
+            rcnt++;
         }
         if (ccnt < ctx->num)
         {
