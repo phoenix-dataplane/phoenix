@@ -67,14 +67,20 @@ unsafe impl Sync for CmId {}
 
 impl Drop for CmId {
     fn drop(&mut self) {
-        (|| {
-            KL_CTX.with(|ctx| {
-                // for listener CmId, no need to call disconnect
-                if self.qp.is_some() {
+        if self.qp.is_some() {
+            // for listener CmId, no need to call disconnect
+            (|| {
+                KL_CTX.with(|ctx| {
                     let disconnect_req = Request::Disconnect(self.handle);
                     ctx.cmd_tx.send(disconnect_req)?;
                     rx_recv_impl!(ctx.cmd_rx, ResponseKind::Disconnect)?;
-                }
+                    Ok(())
+                })
+            })()
+            .unwrap_or_else(|e: Error| eprintln!("Disconnecting and dropping CmId: {}", e));
+        }
+        (|| {
+            KL_CTX.with(|ctx| {
                 let destroy_req = Request::DestroyId(self.handle);
                 ctx.cmd_tx.send(destroy_req)?;
                 rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
