@@ -62,7 +62,7 @@ impl Runtime {
     pub(crate) fn mainloop(&self) -> Result<()> {
         loop {
             for engine in self.running.borrow().iter() {
-                engine.borrow_mut().run();
+                assert!(!engine.borrow_mut().run());
             }
             // move newly added running to the scheduling queue
             if self.new_pending.load(Ordering::Acquire) {

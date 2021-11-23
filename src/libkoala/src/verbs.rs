@@ -8,16 +8,39 @@ use std::sync::atomic::AtomicBool;
 
 use interface::returned;
 use interface::Handle;
+use ipc::cmd::{Request, ResponseKind};
 
-use crate::KL_CTX;
-use crate::{Context, Error, FromBorrow};
+use crate::{Error, FromBorrow, KL_CTX};
 
 // Re-exports
 pub use interface::{QpCapability, QpType};
 pub use interface::{SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 
+macro_rules! rx_recv_impl {
+    ($rx:expr, $resp:path) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => Ok(()),
+            Err(e) => Err(Error::from(e)),
+            _ => panic!("unexpected response"),
+        }
+    };
+}
+
 pub struct ProtectionDomain {
     pub(crate) inner: interface::ProtectionDomain,
+}
+
+impl Drop for ProtectionDomain {
+    fn drop(&mut self) {
+        (|| {
+            let req = Request::DeallocPd(self.inner);
+            KL_CTX.with(|ctx| {
+                ctx.cmd_tx.send(req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeallocPd)
+            })
+        })()
+        .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
+    }
 }
 
 pub struct CompletionQueue {
@@ -49,14 +72,23 @@ impl CqBuffer {
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
-        KL_CTX.with(|ctx| {
-            let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].shared);
-            if ref_cnt == 2 {
-                // this is the last CQ
-                // should I flush the remaining completions in the buffer?
-                ctx.cq_buffers.borrow_mut().remove(&self.inner);
-            }
-        });
+        (|| {
+            KL_CTX.with(|ctx| {
+                let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].shared);
+                if ref_cnt == 2 {
+                    // this is the last CQ
+                    // should I flush the remaining completions in the buffer?
+                    ctx.cq_buffers.borrow_mut().remove(&self.inner);
+                }
+
+                let req = Request::DestroyCq(self.inner);
+                KL_CTX.with(|ctx| {
+                    ctx.cmd_tx.send(req)?;
+                    rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyCq)
+                })
+            })
+        })()
+        .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
     }
 }
 
@@ -115,6 +147,19 @@ impl From<returned::QueuePair> for QueuePair {
             send_cq: CompletionQueue::new(other.send_cq),
             recv_cq: CompletionQueue::new(other.recv_cq),
         }
+    }
+}
+
+impl Drop for QueuePair {
+    fn drop(&mut self) {
+        (|| {
+            let req = Request::DestroyQp(self.inner);
+            KL_CTX.with(|ctx| {
+                ctx.cmd_tx.send(req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyQp)
+            })
+        })()
+        .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));
     }
 }
 

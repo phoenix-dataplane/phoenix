@@ -32,6 +32,30 @@ pub fn getaddrinfo(
     })
 }
 
+macro_rules! rx_recv_impl {
+    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp($inst)) => $ok_block,
+            Err(e) => Err(Error::from(e)),
+            _ => panic!(""),
+        }
+    };
+    ($rx:expr, $resp:path, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => $ok_block,
+            Err(e) => Err(Error::from(e)),
+            _ => panic!(""),
+        }
+    };
+    ($rx:expr, $resp:path) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => Ok(()),
+            Err(e) => Err(Error::from(e)),
+            _ => panic!(""),
+        }
+    };
+}
+
 pub struct CmId {
     pub(crate) handle: interface::CmId,
     // it could be empty for listener QP.
@@ -41,21 +65,30 @@ pub struct CmId {
 unsafe impl Send for CmId {}
 unsafe impl Sync for CmId {}
 
-macro_rules! rx_recv_impl {
-    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
+impl Drop for CmId {
+    fn drop(&mut self) {
+        if self.qp.is_some() {
+            // for listener CmId, no need to call disconnect
+            (|| {
+                KL_CTX.with(|ctx| {
+                    let disconnect_req = Request::Disconnect(self.handle);
+                    ctx.cmd_tx.send(disconnect_req)?;
+                    rx_recv_impl!(ctx.cmd_rx, ResponseKind::Disconnect)?;
+                    Ok(())
+                })
+            })()
+            .unwrap_or_else(|e: Error| eprintln!("Disconnecting and dropping CmId: {}", e));
         }
-    };
-    ($rx:expr, $resp:path, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => $ok_block,
-            Err(e) => Err(e.into()),
-            _ => panic!(""),
-        }
-    };
+        (|| {
+            KL_CTX.with(|ctx| {
+                let destroy_req = Request::DestroyId(self.handle);
+                ctx.cmd_tx.send(destroy_req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
+                Ok(())
+            })
+        })()
+        .unwrap_or_else(|e: Error| eprintln!("Disconnecting and dropping CmId: {}", e));
+    }
 }
 
 impl CmId {
