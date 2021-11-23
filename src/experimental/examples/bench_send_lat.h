@@ -38,18 +38,16 @@ int run_send_lat_client(Context *ctx)
 
         times[i] = get_cycles();
 
-        if (i == ctx->num - 1)
-            send_flags |= IBV_SEND_SIGNALED;
+        // if (i == ctx->num - 1)
+        send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
+        ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
 
-        while (ibv_poll_cq(ctx->id->recv_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        ret = poll_cq_and_check(ctx->id->recv_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
     }
-    while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-        ;
-    error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
 
     times[ctx->num] = get_cycles();
     print_lat(ctx, times);
@@ -109,9 +107,8 @@ int run_send_lat_server(Context *ctx)
     struct ibv_wc wc;
     for (int i = 0; i < ctx->num; i++)
     {
-        while (ibv_poll_cq(ctx->id->recv_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        poll_cq_and_check(ctx->id->recv_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
 
         if (i == ctx->num - 1)
             send_flags |= IBV_SEND_SIGNALED;
@@ -122,10 +119,9 @@ int run_send_lat_server(Context *ctx)
         }
         ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
+        ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
     }
-    while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-        ;
-    error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
 
 out_disconnect:
     rdma_disconnect(ctx->id);
