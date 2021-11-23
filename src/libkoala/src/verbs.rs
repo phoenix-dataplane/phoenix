@@ -9,8 +9,8 @@ use std::sync::atomic::AtomicBool;
 use interface::returned;
 use interface::Handle;
 
-use crate::FromBorrow;
 use crate::KL_CTX;
+use crate::{Context, Error, FromBorrow};
 
 // Re-exports
 pub use interface::{QpCapability, QpType};
