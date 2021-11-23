@@ -27,7 +27,7 @@ int run_read_lat_client(Context *ctx)
     printf("handshake finished\n");
 
     struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    for (uint32_t i = 0; i < ctx->num; i++)
     {
         times[i] = get_cycles();
 
@@ -87,7 +87,7 @@ int run_read_lat_server(Context *ctx)
     printf("handshake finished\n");
 
     struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    for (uint32_t i = 0; i < ctx->num; i++)
     {
         // *post_buf = i;
         ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,

@@ -48,7 +48,7 @@ enum Operation
 typedef struct
 {
     enum Operation opt;
-    int num, warmup;
+    uint32_t num, warmup;
     size_t size;
     char *ip, *port;
     bool client;

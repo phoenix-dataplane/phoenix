@@ -4,7 +4,7 @@ int run_read_bw_client(Context *ctx)
 {
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret;
-    int scnt = 0, ccnt = 0;
+    uint32_t scnt = 0, ccnt = 0;
     uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
     char write_msg[ctx->size];
@@ -30,7 +30,7 @@ int run_read_bw_client(Context *ctx)
     struct ibv_wc wc[CTX_POLL_BATCH];
     while (scnt < ctx->num || ccnt < ctx->num)
     {
-        if (scnt < ctx->num)
+        if (scnt < ctx->num && scnt - ccnt < ctx->attr.cap.max_send_wr)
         {
             tposted[scnt] = get_cycles();
             ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,

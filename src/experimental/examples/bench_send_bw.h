@@ -4,7 +4,7 @@ int run_send_bw_client(Context *ctx)
 {
     struct ibv_mr *send_mr = NULL;
     int send_flags = 0, ret;
-    int scnt = 0, ccnt = 0;
+    uint32_t scnt = 0, ccnt = 0;
     uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
     char send_msg[ctx->size];
@@ -23,7 +23,7 @@ int run_send_bw_client(Context *ctx)
     struct ibv_wc wc[CTX_POLL_BATCH];
     while (scnt < ctx->num || ccnt < ctx->num)
     {
-        if (scnt < ctx->num)
+        if (scnt < ctx->num && scnt - ccnt < ctx->attr.cap.max_send_wr)
         {
             tposted[scnt] = get_cycles();
             ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
@@ -62,7 +62,8 @@ out_free_addrinfo:
 int run_send_bw_server(Context *ctx)
 {
     struct ibv_mr *recv_mr = NULL;
-    int ret;
+    int ret = 0;
+    uint32_t ccnt = 0, rcnt = 0;
 
     char recv_msg[ctx->size];
 
@@ -78,27 +79,34 @@ int run_send_bw_server(Context *ctx)
     recv_mr = rdma_reg_msgs(ctx->id, recv_msg, ctx->size);
     error_handler_ret(!recv_mr, "rdma_reg_msgs for recv_msg", -1, out_destroy_accept_ep);
 
-    for (int i = 0; i < ctx->num; i++)
+    for (uint32_t i = 0; i < min(ctx->num, ctx->attr.cap.max_send_wr); i++)
     {
         ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
         error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
+        rcnt++;
     }
 
     ret = rdma_accept(ctx->id, NULL);
     error_handler(ret, "rdma_accpet", out_destroy_accept_ep);
 
     struct ibv_wc wc[CTX_POLL_BATCH];
-    for (int ccnt = 0; ccnt < ctx->num;)
+    while (rcnt < ctx->num || ccnt < ctx->num)
     {
-        int ne = ibv_poll_cq(ctx->id->recv_cq, CTX_POLL_BATCH, wc);
-        if (ne > 0)
+        if (rcnt < ctx->num && rcnt - ccnt < ctx->attr.cap.max_send_wr)
         {
-            for (int i = 0; i < ne; i++)
-            {
-                error_handler_ret(wc[i].status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
-                                  out_disconnect);
-                ccnt += 1;
-            }
+            ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
+            error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
+        }
+        if (ccnt < ctx->num)
+        {
+            int ne = ibv_poll_cq(ctx->id->recv_cq, CTX_POLL_BATCH, wc);
+            if (ne > 0)
+                for (int i = 0; i < ne; i++)
+                {
+                    error_handler_ret(wc[i].status != IBV_WC_SUCCESS, "ibv_poll_cq", -1,
+                                      out_disconnect);
+                    ccnt += 1;
+                }
         }
     }
 

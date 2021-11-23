@@ -9,8 +9,8 @@ int run_write_lat_client(Context *ctx)
     char write_msg[ctx->size];
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
-    volatile int *post_buf = (volatile int *)write_msg;
-    volatile int *poll_buf = (volatile int *)read_msg;
+    volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
+    volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
 
     if (ctx->attr.cap.max_inline_data >= ctx->size)
         send_flags |= IBV_SEND_INLINE;
@@ -30,7 +30,7 @@ int run_write_lat_client(Context *ctx)
     printf("handshake finished\n");
 
     struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    for (uint32_t i = 0; i < ctx->num; i++)
     {
         times[i] = get_cycles();
 
@@ -68,8 +68,8 @@ int run_write_lat_server(Context *ctx)
     char write_msg[ctx->size];
     char read_msg[ctx->size];
     memset(read_msg, 255, ctx->size);
-    volatile int *post_buf = (volatile int *)write_msg;
-    volatile int *poll_buf = (volatile int *)read_msg;
+    volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
+    volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
 
     if (ctx->attr.cap.max_inline_data >= ctx->size)
         send_flags |= IBV_SEND_INLINE;
@@ -95,7 +95,7 @@ int run_write_lat_server(Context *ctx)
     printf("handshake finished\n");
 
     struct ibv_wc wc;
-    for (int i = 0; i < ctx->num; i++)
+    for (uint32_t i = 0; i < ctx->num; i++)
     {
         while (*poll_buf != i)
             ;

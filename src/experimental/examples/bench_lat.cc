@@ -19,12 +19,12 @@ int main(int argc, char **argv)
     ctx.size = max(ctx.size, (size_t)4);
     if (ctx.num < ctx.warmup)
         ctx.num += ctx.warmup;
-    printf("num: %d, size: %lu, warmup: %d\n", ctx.num, ctx.size, ctx.warmup);
+    printf("num: %u, size: %lu, warmup: %u\n", ctx.num, ctx.size, ctx.warmup);
 
     switch (ctx.opt)
     {
     case SEND:
-        printf("Send data from client to server\n\n");
+        printf("Send data from client to server\n");
         if (ctx.client)
             ret = run_send_lat_client(&ctx);
         else

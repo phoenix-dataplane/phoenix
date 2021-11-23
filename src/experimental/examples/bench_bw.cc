@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     if (ret)
         goto out;
 
-    printf("num: %d, size: %lu\n", ctx.num, ctx.size);
+    printf("num: %u, size: %lu\n", ctx.num, ctx.size);
 
     switch (ctx.opt)
     {
