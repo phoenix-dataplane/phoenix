@@ -168,11 +168,3 @@ impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for interface::ConnParam {
         }
     }
 }
-
-pub fn poll_cq(
-    ctx: &Context,
-    // cq: &CompletionQueue,
-    num_entries: i32,
-) -> Result<Vec<WorkCompletion>, Error> {
-    Ok(vec![])
-}

@@ -1,37 +1,37 @@
 #pragma once
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <getopt.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include "get_clock.h"
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <errno.h>
+#include <getopt.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
-#include "get_clock.h"
+#include <string>
+#include <sys/time.h>
+#include <unistd.h>
+using namespace std;
 
 #define CTX_POLL_BATCH 16
 
-#define MAX(a, b) ((a) > (b)) ? (a) : (b);
-
-#define error_handler_ret(cond, str, v, label) \
-    if (cond)                                  \
-    {                                          \
-        perror(str);                           \
-        ret = v;                               \
-        goto label;                            \
+#define error_handler_ret(cond, str, v, label)                                                     \
+    if (cond)                                                                                      \
+    {                                                                                              \
+        perror(str);                                                                               \
+        ret = v;                                                                                   \
+        goto label;                                                                                \
     }
 
-#define error_handler(cond, str, label) \
-    if (cond)                           \
-    {                                   \
-        perror(str);                    \
-        goto label;                     \
+#define error_handler(cond, str, label)                                                            \
+    if (cond)                                                                                      \
+    {                                                                                              \
+        perror(str);                                                                               \
+        goto label;                                                                                \
     }
 
-uint64_t get_timestamp_us() //microseconds
+uint64_t get_timestamp_us() // microseconds
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -48,7 +48,8 @@ enum Operation
 typedef struct
 {
     enum Operation opt;
-    int size, num, warmup;
+    uint32_t num, warmup;
+    size_t size;
     char *ip, *port;
     bool client;
     struct rdma_cm_id *id, *listen_id;
@@ -56,9 +57,13 @@ typedef struct
     struct rdma_addrinfo *ai;
 } Context;
 
+char SERVER_IP[] = "0.0.0.0";
+char SERVER_PORT[] = "5000";
+
 void parse(Context *ctx, int argc, char **argv)
 {
     int op;
+    ctx->ip = SERVER_IP, ctx->port = SERVER_PORT;
 
     while ((op = getopt(argc, argv, "c:p:n:s:")) != -1)
     {
@@ -106,6 +111,11 @@ int set_params(Context *ctx)
     attr->cap.max_inline_data = 236;
     attr->qp_context = ctx->id;
     attr->sq_sig_all = 0;
+
+    if (ctx->client)
+        printf("client\n");
+    else
+        printf("server\n");
     return 0;
 }
 
@@ -131,7 +141,8 @@ int handshake(Context *ctx, struct ibv_mr *mr, struct ibv_mr *remote_mr)
         error_handler(ret, "rdma_accpet", out);
     }
 
-    ret = rdma_post_send(ctx->id, NULL, mr, sizeof(struct ibv_mr), hsk_send_mr, IBV_SEND_INLINE | IBV_SEND_SIGNALED);
+    ret = rdma_post_send(ctx->id, NULL, mr, sizeof(struct ibv_mr), hsk_send_mr,
+                         IBV_SEND_INLINE | IBV_SEND_SIGNALED);
     error_handler(ret, "rdma_post_send", out);
 
     struct ibv_wc wc;
@@ -149,12 +160,16 @@ out:
     return ret;
 }
 
-static int cmp(const void *a, const void *b)
+int poll_cq_and_check(ibv_cq *cq, int ne, ibv_wc *wc)
 {
-    if (*(uint64_t *)a < *(uint64_t *)b)
-        return -1;
-    if (*(uint64_t *)a > *(uint64_t *)b)
-        return 1;
+    int n = 0;
+    do
+    {
+        n = ibv_poll_cq(cq, ne, wc);
+        for (int i = 0; i < n; i++)
+            if (wc[i].status != IBV_WC_SUCCESS)
+                return -1;
+    } while (n == 0);
     return 0;
 }
 
@@ -162,18 +177,22 @@ static int cmp(const void *a, const void *b)
 void print_lat(Context *ctx, uint64_t times[])
 {
     int num = ctx->num - ctx->warmup;
-    uint64_t delta[num];
-    for (int i = 0; i < num; i++)
-        delta[i] = times[i + 1 + ctx->warmup] - times[i + ctx->warmup];
-
+    assert(num > 0);
     double factor = get_cpu_mhz(1) * ((ctx->opt == READ) ? 1 : 2);
-    qsort(delta, num, sizeof(uint64_t), cmp);
+
+    double delta[num];
+    for (int i = 0; i < num; i++)
+        delta[i] = (times[i + 1 + ctx->warmup] - times[i + ctx->warmup]) / factor;
+    sort(delta, delta + num);
 
     int cnt = num - LAT_MEASURE_TAIL;
     double sum = 0;
     for (int i = 0; i < cnt; i++)
-        sum += delta[i] / factor;
-    printf("sum: %.2lf, avg lat: %.2lf\n", sum, sum / cnt);
+        sum += delta[i];
+    printf("duration: %.2lf, avg: %.2lf min: %.2lf, median: %.2lf, p95: %.2lf, p99: %.2lf, max: "
+           "%.2lf\n",
+           sum, sum / cnt, delta[0], delta[cnt / 2], delta[(int)(cnt * 0.95)],
+           delta[(int)(cnt * 0.99)], delta[cnt - 1]);
 }
 
 void print_bw(Context *ctx, uint64_t tposted[], uint64_t tcompleted[])

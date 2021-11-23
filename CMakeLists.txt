@@ -15,6 +15,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # include_directories(${GLOG_INCLUDE_DIRS})
 # link_directories(${GLOG_LINK_DIRS})
 
-find_package(dpdk REQUIRED)
+# find_package(dpdk REQUIRED)
 
 add_subdirectory(src/experimental)
