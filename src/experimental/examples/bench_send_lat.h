@@ -110,13 +110,13 @@ int run_send_lat_server(Context *ctx)
         poll_cq_and_check(ctx->id->recv_cq, 1, &wc);
         error_handler(ret, "poll_cq", out_disconnect);
 
-        if (i == ctx->num - 1)
-            send_flags |= IBV_SEND_SIGNALED;
-        else
+        if (i < ctx->num - 1)
         {
             ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
             error_handler(ret, "rdma_post_recv", out_disconnect);
         }
+        
+        send_flags |= IBV_SEND_SIGNALED;
         ret = rdma_post_send(ctx->id, NULL, send_msg, ctx->size, send_mr, send_flags);
         error_handler(ret, "rdma_post_send", out_disconnect);
         ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);

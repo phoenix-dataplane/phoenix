@@ -165,8 +165,8 @@ int poll_cq_and_check(ibv_cq *cq, int ne, ibv_wc *wc)
     int n = 0;
     do
     {
-        n = ibv_poll_cq(cq, ne, wc) == 0;
-        for (int i = 0; i < ne; i++)
+        n = ibv_poll_cq(cq, ne, wc);
+        for (int i = 0; i < n; i++)
             if (wc[i].status != IBV_WC_SUCCESS)
                 return -1;
     } while (n == 0);
