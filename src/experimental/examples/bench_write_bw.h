@@ -11,7 +11,7 @@ int run_write_bw_client(Context *ctx)
     char read_msg[ctx->size];
     memset(write_msg, 0, ctx->size);
     memset(read_msg, 255, ctx->size);
-    volatile int *post_buf = (volatile int *)write_msg;
+    volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
 
     send_flags |= IBV_SEND_SIGNALED;
 
@@ -84,7 +84,7 @@ int run_write_bw_server(Context *ctx)
     char read_msg[ctx->size];
     // char write_msg[ctx->size];
     memset(read_msg, 255, sizeof(read_msg));
-    volatile int *poll_buf = (volatile int *)read_msg;
+    volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
