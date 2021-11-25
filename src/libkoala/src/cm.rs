@@ -5,7 +5,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use ipc::buf;
 use ipc::cmd::{Request, ResponseKind};
 
-use crate::{verbs, Error, FromBorrow, KL_CTX};
+use crate::{verbs, Error, FromBorrow, KL_CTX, rx_recv_impl};
 
 // Re-exports
 pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
@@ -32,30 +32,6 @@ pub fn getaddrinfo(
     })
 }
 
-macro_rules! rx_recv_impl {
-    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(Error::from(e)),
-            _ => panic!(""),
-        }
-    };
-    ($rx:expr, $resp:path, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => $ok_block,
-            Err(e) => Err(Error::from(e)),
-            _ => panic!(""),
-        }
-    };
-    ($rx:expr, $resp:path) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => Ok(()),
-            Err(e) => Err(Error::from(e)),
-            _ => panic!(""),
-        }
-    };
-}
-
 pub struct CmId {
     pub(crate) handle: interface::CmId,
     // it could be empty for listener QP.
@@ -71,8 +47,8 @@ impl Drop for CmId {
             // for listener CmId, no need to call disconnect
             (|| {
                 KL_CTX.with(|ctx| {
-                    let disconnect_req = Request::Disconnect(self.handle);
-                    ctx.cmd_tx.send(disconnect_req)?;
+                    let req = Request::Disconnect(self.handle);
+                    ctx.cmd_tx.send(req)?;
                     rx_recv_impl!(ctx.cmd_rx, ResponseKind::Disconnect)?;
                     Ok(())
                 })
@@ -81,8 +57,8 @@ impl Drop for CmId {
         }
         (|| {
             KL_CTX.with(|ctx| {
-                let destroy_req = Request::DestroyId(self.handle);
-                ctx.cmd_tx.send(destroy_req)?;
+                let req = Request::DestroyId(self.handle);
+                ctx.cmd_tx.send(req)?;
                 rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
                 Ok(())
             })
@@ -109,7 +85,7 @@ impl CmId {
             match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
                 Ok(ResponseKind::CreateEp(cmid)) => Ok(CmId {
                     handle: cmid.handle,
-                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::open(qp)).transpose()?,
                 }),
                 Err(e) => Err(e.into()),
                 _ => panic!(""),
@@ -133,7 +109,7 @@ impl CmId {
             match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
                 Ok(ResponseKind::GetRequest(cmid)) => Ok(CmId {
                     handle: cmid.handle,
-                    qp: cmid.qp.map(|qp| verbs::QueuePair::from(qp)),
+                    qp: cmid.qp.map(|qp| verbs::QueuePair::open(qp)).transpose()?,
                 }),
                 Err(e) => Err(e.into()),
                 _ => panic!(""),

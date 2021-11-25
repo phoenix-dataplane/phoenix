@@ -10,21 +10,11 @@ use interface::returned;
 use interface::Handle;
 use ipc::cmd::{Request, ResponseKind};
 
-use crate::{Error, FromBorrow, KL_CTX};
+use crate::{rx_recv_impl, Error, FromBorrow, KL_CTX};
 
 // Re-exports
 pub use interface::{QpCapability, QpType};
 pub use interface::{SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
-
-macro_rules! rx_recv_impl {
-    ($rx:expr, $resp:path) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => Ok(()),
-            Err(e) => Err(Error::from(e)),
-            _ => panic!("unexpected response"),
-        }
-    };
-}
 
 pub struct ProtectionDomain {
     pub(crate) inner: interface::ProtectionDomain,
@@ -40,6 +30,19 @@ impl Drop for ProtectionDomain {
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
+    }
+}
+
+impl ProtectionDomain {
+    pub(crate) fn open(h: Handle) -> Result<Self, Error> {
+        KL_CTX.with(|ctx| {
+            let inner = interface::ProtectionDomain(h);
+            let req = Request::OpenPd(inner);
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeallocPd, {
+                Ok(ProtectionDomain { inner })
+            })
+        })
     }
 }
 
@@ -93,21 +96,26 @@ impl Drop for CompletionQueue {
 }
 
 impl CompletionQueue {
-    fn new(other: returned::CompletionQueue) -> Self {
+    pub(crate) fn open(returned_cq: returned::CompletionQueue) -> Result<Self, Error> {
         // allocate a buffer in the thread local context
-        let shared = KL_CTX.with(|ctx| {
-            Rc::clone(
+        KL_CTX.with(|ctx| {
+            let shared = Rc::clone(
                 &ctx.cq_buffers
                     .borrow_mut()
-                    .entry(other.handle)
+                    .entry(returned_cq.handle)
                     .or_insert_with(CqBuffer::new)
                     .shared,
-            )
-        });
-        CompletionQueue {
-            inner: other.handle,
-            buffer: CqBuffer { shared },
-        }
+            );
+            let inner = returned_cq.handle;
+            let req = Request::OpenCq(inner);
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, {
+                Ok(CompletionQueue {
+                    inner,
+                    buffer: CqBuffer { shared },
+                })
+            })
+        })
     }
 }
 
@@ -140,13 +148,20 @@ pub struct QueuePair {
     pub recv_cq: CompletionQueue,
 }
 
-impl From<returned::QueuePair> for QueuePair {
-    fn from(other: returned::QueuePair) -> Self {
-        QueuePair {
-            inner: other.handle,
-            send_cq: CompletionQueue::new(other.send_cq),
-            recv_cq: CompletionQueue::new(other.recv_cq),
-        }
+impl QueuePair {
+    pub(crate) fn open(returned_qp: returned::QueuePair) -> Result<Self, Error> {
+        KL_CTX.with(|ctx| {
+            let inner = returned_qp.handle;
+            let req = Request::OpenQp(inner);
+            ctx.cmd_tx.send(req)?;
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenQp, {
+                Ok(QueuePair {
+                    inner,
+                    send_cq: CompletionQueue::open(returned_qp.send_cq)?,
+                    recv_cq: CompletionQueue::open(returned_qp.recv_cq)?,
+                })
+            })
+        })
     }
 }
 
