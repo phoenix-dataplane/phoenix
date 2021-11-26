@@ -2,12 +2,10 @@ use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::fs::File;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::io::FromRawFd;
 use std::rc::Rc;
 use std::slice;
 use std::sync::atomic::AtomicBool;
@@ -67,12 +65,12 @@ impl ProtectionDomain {
 
             assert_eq!(fds.len(), 1);
 
-            let file = unsafe { File::from_raw_fd(fds[0]) };
-            let file_len = file.metadata()?.len() as usize;
+            let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
+            let file_len = memfd.as_file().metadata()?.len() as usize;
             assert_eq!(file_len, nbytes);
 
             rx_recv_impl!(ctx.cmd_rx, ResponseKind::RegMr, mr, {
-                MemoryRegion::new(mr.handle, mr.rkey, file)
+                MemoryRegion::new(mr.handle, mr.rkey, memfd)
             })
         })
     }
@@ -163,7 +161,7 @@ pub struct SharedReceiveQueue {
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
     mmap: MmapRaw,
-    memfd: Memfd,
+    _memfd: Memfd,
     rkey: RemoteKey,
     _marker: PhantomData<T>,
 }
@@ -193,23 +191,25 @@ impl<T> DerefMut for MemoryRegion<T> {
 
 impl<T> Drop for MemoryRegion<T> {
     fn drop(&mut self) {
-        (|| KL_CTX.with(|ctx| {
-            let req = Request::DeregMr(self.inner);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeregMr)
-        }))().unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
+        (|| {
+            KL_CTX.with(|ctx| {
+                let req = Request::DeregMr(self.inner);
+                ctx.cmd_tx.send(req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeregMr)
+            })
+        })()
+        .unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
     }
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(inner: interface::MemoryRegion, rkey: RemoteKey, file: File) -> Result<Self, Error> {
-        let memfd = Memfd::try_from_file(file).map_err(|_| io::Error::last_os_error())?;
+    fn new(inner: interface::MemoryRegion, rkey: RemoteKey, memfd: Memfd) -> Result<Self, Error> {
         let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,
             mmap,
-            memfd,
+            _memfd: memfd,
             _marker: PhantomData,
         })
     }
