@@ -23,7 +23,6 @@ pub enum Request {
     GetRequest(Handle),
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
-    // RegMsgs(Handle, Buffer),
 
     Disconnect(interface::CmId),
     DestroyId(interface::CmId),
@@ -60,7 +59,6 @@ pub enum ResponseKind {
     GetRequest(returned::CmId),
     Accept,
     Connect,
-    // RegMsgs(Handle),
 
     Disconnect,
     DestroyId,

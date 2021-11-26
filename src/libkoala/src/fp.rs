@@ -22,11 +22,9 @@ impl CmId {
     where
         R: SliceIndex<[T], Output = [T]>
     {
-        // let buffer = range.index(mr);
         let req = WorkRequest::PostRecv(
             self.handle.0,
             context,
-            // buf::Buffer::from(buffer),
             buf::Range::new(mr, range),
             mr.inner.0,
         );
@@ -58,11 +56,9 @@ impl CmId {
     where
         R: SliceIndex<[T], Output = [T]>
     {
-        // let buffer = range.index(mr);
         let req = WorkRequest::PostSend(
             self.handle.0,
             context,
-            // buf::Buffer::from(buffer),
             buf::Range::new(mr, range),
             mr.inner.0,
             flags,
