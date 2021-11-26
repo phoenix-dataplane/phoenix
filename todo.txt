@@ -18,6 +18,7 @@ Memory Registration
 - Couple memory allocation and registration
 	- Owned MemoryRegion
 	- Type-safe memory region and post_send/recv
+- Check if it is possible to avoid rounding up to page
 
 libkoala interface
     - CmId::connect()

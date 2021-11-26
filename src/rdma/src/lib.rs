@@ -85,3 +85,5 @@ pub mod rdmacm;
 /// convert types from and to koala interface.
 #[allow(missing_docs)]
 pub mod convert;
+#[allow(missing_docs)]
+pub mod mr;

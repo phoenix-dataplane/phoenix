@@ -21,4 +21,4 @@ bincode = "1.3.3"
 engine = { path = "../engine" }
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
-rdma = { path = "../rdma" }
+rdma = { path = "../rdma", features = ["koala"] }
