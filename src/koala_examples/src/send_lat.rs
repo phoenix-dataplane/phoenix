@@ -3,8 +3,7 @@ use std::time;
 use structopt::StructOpt;
 
 use libkoala::cm;
-use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
-use libkoala::verbs::MemoryRegion;
+use libkoala::verbs::{MemoryRegion, QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: &str = "5000";
 
@@ -33,38 +32,21 @@ pub struct Opts {
 }
 
 fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
-    use libkoala::cm::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace};
-
-    let hints = AddrInfoHints::new(
-        AddrInfoFlags::PASSIVE,
-        Some(AddrFamily::Inet),
-        QpType::RC,
-        PortSpace::TCP,
-    );
-
-    let ai =
-        cm::getaddrinfo(None, Some(&opts.port.to_string()), Some(&hints)).expect("getaddrinfo");
-
-    eprintln!("ai: {:?}", ai);
+    let listener = cm::CmIdListener::bind(("0.0.0.0", opts.port)).expect("Listener bind failed");
+    eprintln!("listen_id created");
 
     let qp_init_attr = QpInitAttr {
-        qp_context: Some(&3),
-        send_cq: None,
-        recv_cq: None,
-        srq: None,
         cap: QpCapability {
-            max_send_wr: (opts.warm_iters + opts.total_iters) as _,
-            max_recv_wr: (opts.warm_iters + opts.total_iters) as _,
+            max_send_wr: (opts.total_iters + opts.warm_iters) as u32,
+            max_recv_wr: (opts.total_iters + opts.warm_iters) as u32,
             max_send_sge: 1,
             max_recv_sge: 1,
             max_inline_data: 128,
         },
         qp_type: QpType::RC,
         sq_sig_all: false,
+        ..Default::default()
     };
-
-    let listener = cm::CmIdListener::bind(("0.0.0.0", opts.port)).expect("Listener bind failed");
-    eprintln!("listen_id created");
 
     let mut builder = listener.get_request().expect("Get request failed!");
     eprintln!("Get a connect request");
@@ -125,37 +107,14 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
-    let ai = cm::getaddrinfo(
-        Some(&opts.connect.as_deref().unwrap()),
-        Some(&opts.port.to_string()),
-        None,
-    )?;
+    let builder = cm::CmIdBuilder::new()
+        .set_max_send_wr((opts.total_iters + opts.warm_iters) as _)
+        .set_max_recv_wr((opts.total_iters + opts.warm_iters) as _)
+        .resolve_route((opts.connect.as_deref().unwrap(), opts.port))
+        .expect("Route resolve failed!");
+    eprintln!("Route resolved");
 
-    eprintln!("ai: {:?}", ai);
-
-    let qp_init_attr = QpInitAttr {
-        qp_context: Some(&3),
-        send_cq: None,
-        recv_cq: None,
-        srq: None,
-        cap: QpCapability {
-            max_send_wr: (opts.warm_iters + opts.total_iters) as _,
-            max_recv_wr: (opts.warm_iters + opts.total_iters) as _,
-            max_send_sge: 1,
-            max_recv_sge: 1,
-            max_inline_data: 128,
-        },
-        qp_type: QpType::RC,
-        sq_sig_all: false,
-    };
-
-    let mut builder = cm::CmId::resolve_addr((opts.connect.as_deref().unwrap(), opts.port)).expect("Connect failed!");
-    eprintln!("Address resolved");
-
-    let pre_id = builder
-        .set_qp_init_attr(&qp_init_attr)
-        .build()
-        .expect("Create QP failed!");
+    let pre_id = builder.build().expect("Create QP failed!");
     eprintln!("QP created");
 
     let id = pre_id.connect(None).expect("Connect failed!");

@@ -297,6 +297,26 @@ pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     pub sq_sig_all: bool,
 }
 
+impl<'ctx, 'scq, 'rcq, 'srq> Default for QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
+    fn default() -> Self {
+        QpInitAttr {
+            qp_context: None,
+            send_cq: None,
+            recv_cq: None,
+            srq: None,
+            cap: QpCapability {
+                max_send_wr: 1,
+                max_recv_wr: 1,
+                max_send_sge: 1,
+                max_recv_sge: 1,
+                max_inline_data: 128,
+            },
+            qp_type: QpType::RC,
+            sq_sig_all: false,
+        }
+    }
+}
+
 impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
     for interface::QpInitAttr
 {

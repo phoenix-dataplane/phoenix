@@ -130,9 +130,9 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let mut builder = cm::CmId::resolve_addr((opts.connect.as_deref().unwrap(), opts.port))
-        .expect("Connect failed!");
-    eprintln!("Address resolved");
+    let mut builder = cm::CmId::resolve_route((opts.connect.as_deref().unwrap(), opts.port))
+        .expect("Route resolve failed!");
+    eprintln!("Route resolved");
 
     let pre_id = builder
         .set_qp_init_attr(&qp_init_attr)

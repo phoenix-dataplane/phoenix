@@ -89,7 +89,7 @@ pub enum QpType {
     UD,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct QpCapability {
     pub max_send_wr: u32,
     pub max_recv_wr: u32,

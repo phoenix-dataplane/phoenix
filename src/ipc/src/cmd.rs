@@ -37,7 +37,7 @@ pub enum Request {
     CmCreateQp(
         Handle,
         Option<interface::ProtectionDomain>,
-        Option<QpInitAttr>,
+        QpInitAttr,
     ),
 
     Disconnect(interface::CmId),

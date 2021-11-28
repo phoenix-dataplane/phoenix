@@ -546,7 +546,7 @@ impl<'ctx> TransportEngine<'ctx> {
     fn get_qp_params<'a>(
         &'a self,
         pd_handle: &Option<interface::ProtectionDomain>,
-        qp_init_attr: &Option<interface::QpInitAttr>,
+        qp_init_attr: Option<&interface::QpInitAttr>,
     ) -> Result<
         (
             Option<&'a ibv::ProtectionDomain<'a>>,
@@ -617,7 +617,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     qp_init_attr
                 );
 
-                let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr)?;
+                let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr.as_ref())?;
                 // let pd = if let Some(h) = pd_handle {
                 //     Some(self.resource.pd_table.get(h)?)
                 // } else {
@@ -798,7 +798,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     qp_init_attr
                 );
                 let cmid = self.resource.cmid_table.get(cmid_handle)?;
-                let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr)?;
+                let (pd, qp_init_attr) = self.get_qp_params(pd, Some(qp_init_attr))?;
                 cmid.create_qp(pd, qp_init_attr.as_ref())
                     .map_err(Error::RdmaCm)?;
                 let qp = cmid.qp().unwrap();
