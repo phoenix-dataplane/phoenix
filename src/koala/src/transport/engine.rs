@@ -593,7 +593,7 @@ impl<'ctx> TransportEngine<'ctx> {
             &Request::Hello(number) => Ok(ResponseKind::HelloBack(number)),
             Request::GetAddrInfo(node, service, hints) => {
                 trace!(
-                    "node: {:?}, service: {:?}, hints: {:?}",
+                    "GetAddrInfo, node: {:?}, service: {:?}, hints: {:?}",
                     node,
                     service,
                     hints,
@@ -611,62 +611,17 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::CreateEp(ai, pd, qp_init_attr) => {
                 trace!(
-                    "ai: {:?}, pd: {:?}, qp_init_attr: {:?}",
+                    "CreateEp, ai: {:?}, pd: {:?}, qp_init_attr: {:?}",
                     ai,
                     pd,
                     qp_init_attr
                 );
 
                 let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr.as_ref())?;
-                // let pd = if let Some(h) = pd_handle {
-                //     Some(self.resource.pd_table.get(h)?)
-                // } else {
-                //     None
-                // };
-                // let qp_init_attr = if let Some(a) = qp_init_attr {
-                //     let send_cq = if let Some(ref h) = a.send_cq {
-                //         Some(self.resource.cq_table.get(&h.0)?)
-                //     } else {
-                //         None
-                //     };
-                //     let recv_cq = if let Some(ref h) = a.recv_cq {
-                //         Some(self.resource.cq_table.get(&h.0)?)
-                //     } else {
-                //         None
-                //     };
-                //     let attr = ibv::QpInitAttr {
-                //         qp_context: 0,
-                //         send_cq: send_cq,
-                //         recv_cq: recv_cq,
-                //         cap: a.cap.clone().into(),
-                //         qp_type: a.qp_type.into(),
-                //         sq_sig_all: a.sq_sig_all,
-                //     };
-                //     Some(attr.to_ibv_qp_init_attr())
-                // } else {
-                //     None
-                // };
-
                 match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
                         let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
                         let ret_qp = prepare_returned_qp(handles);
-                        //     if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
-                        //         Some(returned::QueuePair {
-                        //             handle: interface::QueuePair(qp_handle),
-                        //             pd: returned::ProtectionDomain {
-                        //                 handle: interface::ProtectionDomain(pd_handle),
-                        //             },
-                        //             send_cq: returned::CompletionQueue {
-                        //                 handle: interface::CompletionQueue(scq_handle),
-                        //             },
-                        //             recv_cq: returned::CompletionQueue {
-                        //                 handle: interface::CompletionQueue(rcq_handle),
-                        //             },
-                        //         })
-                        //     } else {
-                        //         None
-                        //     };
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
                             qp: ret_qp,
@@ -677,12 +632,13 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
             }
             Request::Listen(cmid_handle, backlog) => {
-                trace!("cmid_handle: {:?}, backlog: {}", cmid_handle, backlog);
-
+                trace!(
+                    "Listen, cmid_handle: {:?}, backlog: {}",
+                    cmid_handle,
+                    backlog
+                );
                 let listener = self.resource.cmid_table.get(cmid_handle)?;
-
                 listener.listen(*backlog).map_err(Error::RdmaCm)?;
-
                 Ok(ResponseKind::Listen)
             }
             Request::GetRequest(cmid_handle) => {
@@ -693,22 +649,6 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
                 let ret_qp = prepare_returned_qp(handles);
-                // let ret_qp = if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
-                //     Some(returned::QueuePair {
-                //         handle: interface::QueuePair(qp_handle),
-                //         pd: returned::ProtectionDomain {
-                //             handle: interface::ProtectionDomain(pd_handle),
-                //         },
-                //         send_cq: returned::CompletionQueue {
-                //             handle: interface::CompletionQueue(scq_handle),
-                //         },
-                //         recv_cq: returned::CompletionQueue {
-                //             handle: interface::CompletionQueue(rcq_handle),
-                //         },
-                //     })
-                // } else {
-                //     None
-                // };
                 let ret_cmid = returned::CmId {
                     handle: interface::CmId(new_cmid_handle),
                     qp: ret_qp,
@@ -717,7 +657,7 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::Accept(cmid_handle, conn_param) => {
                 trace!(
-                    "cmid_handle: {:?}, conn_param: {:?}",
+                    "Accept, cmid_handle: {:?}, conn_param: {:?}",
                     cmid_handle,
                     conn_param
                 );
@@ -729,7 +669,7 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::Connect(cmid_handle, conn_param) => {
                 trace!(
-                    "cmid_handle: {:?}, conn_param: {:?}",
+                    "Connect, cmid_handle: {:?}, conn_param: {:?}",
                     cmid_handle,
                     conn_param
                 );

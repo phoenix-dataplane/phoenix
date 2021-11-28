@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::net::ToSocketAddrs;
+use std::mem;
 
 use ipc::cmd::{Request, ResponseKind};
 
@@ -125,6 +126,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             ctx.cmd_tx.send(req)?;
             let cmid = rx_recv_impl!(ctx.cmd_rx, ResponseKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
+            // auto drop if any of the following step failed
+            let drop_cmid = DropCmId(cmid.handle);
             // bind_addr
             let req = Request::BindAddr(cmid.handle.0, listen_addr);
             ctx.cmd_tx.send(req)?;
@@ -133,6 +136,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             let req = Request::Listen(cmid.handle.0, 512);
             ctx.cmd_tx.send(req)?;
             rx_recv_impl!(ctx.cmd_rx, ResponseKind::Listen)?;
+            mem::forget(drop_cmid);
             Ok(CmIdListener {
                 handle: cmid.handle,
                 builder: self.clone(),
@@ -151,6 +155,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             ctx.cmd_tx.send(req)?;
             let cmid = rx_recv_impl!(ctx.cmd_rx, ResponseKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
+            // auto drop if any of the following step failed
+            let drop_cmid = DropCmId(cmid.handle);
             // resolve_addr
             let req = Request::ResolveAddr(cmid.handle.0, connect_addr);
             ctx.cmd_tx.send(req)?;
@@ -162,6 +168,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             assert!(cmid.qp.is_none());
             let mut builder = self.clone();
             builder.handle = cmid.handle;
+            mem::forget(drop_cmid);
             Ok(builder)
         })
     }
@@ -187,6 +194,22 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     }
 }
 
+struct DropCmId(interface::CmId);
+
+impl Drop for DropCmId {
+    fn drop(&mut self) {
+        (|| {
+            KL_CTX.with(|ctx| {
+                let req = Request::DestroyId(self.0);
+                ctx.cmd_tx.send(req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
+                Ok(())
+            })
+        })()
+        .unwrap_or_else(|e: Error| eprintln!("Destroying CmId: {}", e));
+    }
+}
+
 pub struct CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub(crate) handle: interface::CmId,
     builder: CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>,
@@ -194,15 +217,7 @@ pub struct CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
 
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Drop for CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     fn drop(&mut self) {
-        (|| {
-            KL_CTX.with(|ctx| {
-                let req = Request::DestroyId(self.handle);
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
-                Ok(())
-            })
-        })()
-        .unwrap_or_else(|e: Error| eprintln!("Destroying CmIdListener: {}", e));
+        let _drop_cmid = DropCmId(self.handle);
     }
 }
 
@@ -330,15 +345,7 @@ unsafe impl Sync for Inner {}
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        (|| {
-            KL_CTX.with(|ctx| {
-                let req = Request::DestroyId(self.handle);
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyId)?;
-                Ok(())
-            })
-        })()
-        .unwrap_or_else(|e: Error| eprintln!("Destroying CmId: {}", e));
+        let _drop_cmid = DropCmId(self.handle);
     }
 }
 
