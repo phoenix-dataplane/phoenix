@@ -30,6 +30,11 @@ pub enum Request {
     Disconnect(interface::CmId),
     DestroyId(interface::CmId),
 
+    // reference counting
+    OpenPd(interface::ProtectionDomain),
+    OpenCq(interface::CompletionQueue),
+    OpenQp(interface::QueuePair),
+
     // ibverbs
     DeallocPd(interface::ProtectionDomain),
     DestroyCq(interface::CompletionQueue),
@@ -57,6 +62,11 @@ pub enum ResponseKind {
 
     Disconnect,
     DestroyId,
+
+    // reference counting
+    OpenPd,
+    OpenCq,
+    OpenQp,
 
     // ibverbs
     DeallocPd,

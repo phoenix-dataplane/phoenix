@@ -3,9 +3,10 @@ use thiserror::Error;
 
 pub mod engine;
 pub mod module;
+pub mod resource;
 
 #[derive(Debug, Error)]
-enum Error {
+pub(crate) enum Error {
     #[error("rdmacm internal error: {0}.")]
     RdmaCm(io::Error),
     #[error("ibv internal error: {0}.")]
@@ -33,7 +34,7 @@ impl From<Error> for interface::Error {
 }
 
 #[derive(Error, Debug)]
-enum DatapathError {
+pub(crate) enum DatapathError {
     #[error("Resource not found in table.")]
     NotFound,
     #[error("User buffer out of the range.")]
@@ -49,7 +50,7 @@ enum DatapathError {
 }
 
 impl DatapathError {
-    fn as_vendor_err(self) -> u32 {
+    pub(crate) fn as_vendor_err(self) -> u32 {
         match self {
             Self::NotFound => 1024,
             Self::OutOfRange => 1025,
