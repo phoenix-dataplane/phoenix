@@ -1030,7 +1030,7 @@ pub struct AccessFlags(pub ffi::ibv_access_flags);
 
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
-    _phantom: PhantomData<&'ctx ()>,
+    pub(crate) _phantom: PhantomData<&'ctx ()>,
     pub(crate) pd: *mut ffi::ibv_pd,
 }
 

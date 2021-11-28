@@ -1,4 +1,6 @@
 //! Control path commands.
+use std::net::SocketAddr;
+
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 
@@ -18,11 +20,21 @@ pub enum Request {
         Option<String>,
         Option<addrinfo::AddrInfoHints>,
     ),
-    CreateEp(addrinfo::AddrInfo, Option<Handle>, Option<QpInitAttr>),
+    CreateEp(
+        addrinfo::AddrInfo,
+        Option<interface::ProtectionDomain>,
+        Option<QpInitAttr>,
+    ),
     Listen(Handle, i32),
     GetRequest(Handle),
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
+
+    CreateId(Option<interface::EventChannel>, addrinfo::PortSpace),
+    BindAddr(Handle, SocketAddr),
+    ResolveAddr(Handle, SocketAddr),
+    ResolveRoute(Handle, i32),
+    CmCreateQp(Handle, Option<interface::ProtectionDomain>, QpInitAttr),
 
     Disconnect(interface::CmId),
     DestroyId(interface::CmId),
@@ -54,11 +66,17 @@ pub enum ResponseKind {
     // rdmacm
     GetAddrInfo(addrinfo::AddrInfo),
     // handle of cmid, handle of inner qp
-    CreateEp(returned::CmId), // TODO(lsh): Handle to CmIdOwned
+    CreateEp(returned::CmId),
     Listen,
     GetRequest(returned::CmId),
     Accept,
     Connect,
+
+    CreateId(returned::CmId),
+    BindAddr,
+    ResolveAddr,
+    ResolveRoute,
+    CmCreateQp(returned::QueuePair),
 
     Disconnect,
     DestroyId,
