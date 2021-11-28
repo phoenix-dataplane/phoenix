@@ -27,6 +27,6 @@ path = "src/receiver.rs"
 name = "send_bw"
 path = "src/send_bw.rs"
 
-# [[bin]]
-# name = "send_lat"
-# path = "src/send_lat.rs"
+[[bin]]
+name = "send_lat"
+path = "src/send_lat.rs"

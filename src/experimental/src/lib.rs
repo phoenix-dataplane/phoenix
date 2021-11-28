@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![feature(allocator_api)]
 #![feature(unix_socket_ancillary_data)]
+#![feature(nonnull_slice_from_raw_parts)]
 use std::io;
 use structopt::StructOpt;
 
@@ -13,6 +14,7 @@ pub mod shm;
 // pub mod ipc;
 mod regmr;
 mod shmalloc;
+mod aligned_alloc;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

@@ -1,15 +1,10 @@
-#![feature(nonnull_slice_from_raw_parts)]
-#![feature(allocator_api)]
 use std::time;
-
-use std::alloc::{AllocError, Allocator, Layout};
-use std::ptr;
-use std::ptr::NonNull;
 
 use structopt::StructOpt;
 
 use libkoala::cm;
 use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
+use libkoala::verbs::MemoryRegion;
 
 const SERVER_PORT: &str = "5000";
 
@@ -35,25 +30,6 @@ pub struct Opts {
     /// Message size.
     #[structopt(short, long, default_value = "8")]
     pub msg_size: usize,
-}
-
-struct AlignedAllocator;
-
-unsafe impl Allocator for AlignedAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, std::alloc::AllocError> {
-        let mut addr = ptr::null_mut();
-        let err = unsafe { libc::posix_memalign(&mut addr as *mut _ as _, 4096, layout.size()) };
-        if err != 0 {
-            return Err(AllocError);
-        }
-
-        let ptr = NonNull::new(addr).unwrap();
-        Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-        libc::free(ptr.as_ptr() as _);
-    }
 }
 
 fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
@@ -87,33 +63,41 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let listen_id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
-
+    let listener = cm::CmIdListener::bind(("0.0.0.0", opts.port)).expect("Listener bind failed");
     eprintln!("listen_id created");
 
-    listen_id.listen(16)?;
-    let id = listen_id.get_request()?;
+    let mut builder = listener.get_request().expect("Get request failed!");
+    eprintln!("Get a connect request");
+    let pre_id = builder
+        .set_qp_init_attr(&qp_init_attr)
+        .build()
+        .expect("Create QP failed!");
+    eprintln!("QP created");
 
-    let mut recv_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
-    recv_msg.resize(opts.msg_size, 0u8);
-    let recv_mr = id.reg_msgs(&recv_msg)?;
+    let mut recv_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(opts.msg_size)
+        .expect("Memory registration failed!");
 
-    let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
-    send_msg.resize(opts.msg_size, 42u8);
-    let send_mr = id.reg_msgs(&send_msg)?;
+    let send_mr = {
+        let mut mr = pre_id
+            .alloc_msgs(opts.msg_size)
+            .expect("Memory registration failed!");
+        mr.fill(42u8);
+        mr
+    };
 
     for _ in 0..opts.warm_iters + opts.total_iters {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr)?;
+            pre_id.post_recv(&mut recv_mr, .., 0)?;
         }
     }
 
-    id.accept(None)?;
-    eprintln!("accepted a connection");
+    let id = pre_id.accept(None).expect("Accept failed!");
+    eprintln!("Accepted a connection");
 
     // busy poll
     let mut wc = Vec::with_capacity(32);
-    let cq = &id.qp.as_ref().unwrap().recv_cq;
+    let cq = &id.qp().recv_cq;
     let mut rcnt = 0;
     while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
@@ -126,7 +110,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 SendFlags::INLINE
             };
-            id.post_send(0, &send_msg, &send_mr, send_flags)?;
+            id.post_send(&send_mr, .., 0, send_flags)?;
         }
     }
 
@@ -134,9 +118,9 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("get_send_comp, wc: {:?}", send_wc);
     assert_eq!(send_wc.status, WcStatus::Success);
 
-    println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
+    println!("{:?}", &recv_mr[..100.min(opts.msg_size)]);
 
-    assert_eq!(recv_msg.as_slice(), vec![42u8; opts.msg_size].as_slice());
+    assert_eq!(recv_mr.as_slice(), &vec![42u8; opts.msg_size]);
     Ok(())
 }
 
@@ -165,38 +149,47 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
+    let mut builder = cm::CmId::resolve_addr((opts.connect.as_deref().unwrap(), opts.port)).expect("Connect failed!");
+    eprintln!("Address resolved");
 
-    eprintln!("cmid created");
+    let pre_id = builder
+        .set_qp_init_attr(&qp_init_attr)
+        .build()
+        .expect("Create QP failed!");
+    eprintln!("QP created");
 
-    id.connect(None)?;
-    eprintln!("connected to remote side");
+    let id = pre_id.connect(None).expect("Connect failed!");
+    eprintln!("Connected to remote side");
 
     // post receives in advance
-    let mut recv_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
-    recv_msg.resize(opts.msg_size, 0u8);
-    let recv_mr = id.reg_msgs(&recv_msg)?;
+    let mut recv_mr: MemoryRegion<u8> = id
+        .alloc_msgs(opts.msg_size)
+        .expect("Memory registration failed!");
 
     for _ in 0..opts.warm_iters + opts.total_iters {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr)?;
+            id.post_recv(&mut recv_mr, .., 0)?;
         }
     }
 
     let no_signal = SendFlags::INLINE;
-    let mut send_msg = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
-    send_msg.resize(opts.msg_size, 42u8);
-    let send_mr = id.reg_msgs(&send_msg)?;
+    let send_mr = {
+        let mut mr = id
+            .alloc_msgs(opts.msg_size)
+            .expect("Memory registration failed!");
+        mr.fill(42u8);
+        mr
+    };
 
     // start sending
-    id.post_send(0, &send_msg, &send_mr, no_signal)?;
+    id.post_send(&send_mr, .., 0, no_signal)?;
 
     let start_ts = time::Instant::now();
     let mut ts = time::Instant::now();
-    let mut stats = Vec::with_capacity_in(opts.total_iters, AlignedAllocator);
+    let mut stats = Vec::with_capacity(opts.total_iters);
 
     let mut wc = Vec::with_capacity(1);
-    let cq = &id.qp.as_ref().unwrap().recv_cq;
+    let cq = &id.qp().recv_cq;
     let mut scnt = 1;
     let mut rcnt = 0;
     while rcnt < opts.warm_iters + opts.total_iters {
@@ -224,7 +217,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 no_signal
             };
-            id.post_send(0, &send_msg, &send_mr, send_flags)?;
+            id.post_send(&send_mr, .., 0, send_flags)?;
             scnt += 1;
         }
     }
