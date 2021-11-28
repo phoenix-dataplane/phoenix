@@ -34,11 +34,7 @@ pub enum Request {
     BindAddr(Handle, SocketAddr),
     ResolveAddr(Handle, SocketAddr),
     ResolveRoute(Handle, i32),
-    CmCreateQp(
-        Handle,
-        Option<interface::ProtectionDomain>,
-        QpInitAttr,
-    ),
+    CmCreateQp(Handle, Option<interface::ProtectionDomain>, QpInitAttr),
 
     Disconnect(interface::CmId),
     DestroyId(interface::CmId),

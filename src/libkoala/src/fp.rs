@@ -1,7 +1,7 @@
 //! Fast path operations.
 use std::mem;
-use std::sync::atomic::Ordering;
 use std::slice::SliceIndex;
+use std::sync::atomic::Ordering;
 
 use ipc::buf;
 use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
@@ -21,7 +21,7 @@ impl cm::Inner {
         context: u64,
     ) -> Result<(), Error>
     where
-        R: SliceIndex<[T], Output = [T]>
+        R: SliceIndex<[T], Output = [T]>,
     {
         let req = WorkRequest::PostRecv(
             self.handle.0,
@@ -56,7 +56,7 @@ impl PreparedCmId {
         context: u64,
     ) -> Result<(), Error>
     where
-        R: SliceIndex<[T], Output = [T]>
+        R: SliceIndex<[T], Output = [T]>,
     {
         self.inner.post_recv(mr, range, context)
     }
@@ -70,7 +70,7 @@ impl CmId {
         context: u64,
     ) -> Result<(), Error>
     where
-        R: SliceIndex<[T], Output = [T]>
+        R: SliceIndex<[T], Output = [T]>,
     {
         self.inner.post_recv(mr, range, context)
     }
@@ -83,7 +83,7 @@ impl CmId {
         flags: verbs::SendFlags,
     ) -> Result<(), Error>
     where
-        R: SliceIndex<[T], Output = [T]>
+        R: SliceIndex<[T], Output = [T]>,
     {
         let req = WorkRequest::PostSend(
             self.inner.handle.0,

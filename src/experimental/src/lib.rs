@@ -12,9 +12,9 @@ extern crate log;
 pub mod ringbuffer;
 pub mod shm;
 // pub mod ipc;
+mod aligned_alloc;
 mod regmr;
 mod shmalloc;
-mod aligned_alloc;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

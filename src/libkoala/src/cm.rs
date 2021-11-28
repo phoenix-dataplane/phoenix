@@ -1,6 +1,6 @@
 use std::any::Any;
-use std::net::ToSocketAddrs;
 use std::mem;
+use std::net::ToSocketAddrs;
 
 use ipc::cmd::{Request, ResponseKind};
 
