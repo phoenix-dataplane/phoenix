@@ -15,9 +15,9 @@ Resource releasing
 Performance & CPU efficiency
 -[x] Use FnvHashMap in transport/engine
 -[x] Change to Ordering::Relaxed
+-[x] Control path is too slow
 - GetSendComp() is currently busy spinning
 - Save CPU cycles in TransportEngine::run()
-- Control path is too slow
 -[x] balance poll_cq and post_send/recv, reduce redundant poll_cq
     - <s>use seperate queues can work, but still can cause HOL among
       multiple CQs</s>
