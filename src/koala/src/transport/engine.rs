@@ -24,49 +24,8 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
+use crate::transport::resource::ResourceTable;
 use crate::transport::{DatapathError, Error};
-
-/// A variety of tables map a `Handle` to a kind of RNIC resource.
-#[derive(Default)]
-struct Resource<'ctx> {
-    cmid_cnt: usize,
-    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
-    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
-    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
-    cmid_table: ResourceTable<CmId>,
-    mr_table: ResourceTable<rdmacm::MemoryRegion>,
-}
-
-#[derive(Debug)]
-struct ResourceTable<R> {
-    table: HashMap<Handle, R>,
-}
-
-impl<R> Default for ResourceTable<R> {
-    fn default() -> Self {
-        ResourceTable {
-            table: HashMap::new(),
-        }
-    }
-}
-
-impl<R> ResourceTable<R> {
-    fn insert(&mut self, h: Handle, r: R) -> Result<(), Error> {
-        match self.table.insert(h, r) {
-            Some(_) => Err(Error::Exists),
-            None => Ok(()),
-        }
-    }
-    fn get(&self, h: &Handle) -> Result<&R, Error> {
-        self.table.get(h).ok_or(Error::NotFound)
-    }
-    fn get_dp(&self, h: &Handle) -> Result<&R, DatapathError> {
-        self.table.get(h).ok_or(DatapathError::NotFound)
-    }
-    fn remove(&mut self, h: &Handle) -> Result<R, Error> {
-        self.table.remove(h).ok_or(Error::NotFound)
-    }
-}
 
 /// This table should be shared between multiple transport engines, it must allow concurrent access
 /// and modification. But for now, we implement it without considering synchronization.
@@ -108,6 +67,17 @@ impl MemoryTranslationTable {
     }
 }
 
+/// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
+#[derive(Default)]
+struct Resource<'ctx> {
+    cmid_cnt: usize,
+    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
+    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
+    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
+    cmid_table: ResourceTable<CmId>,
+    mr_table: ResourceTable<rdmacm::MemoryRegion>,
+}
+
 impl<'ctx> Resource<'ctx> {
     fn new() -> Self {
         Default::default()
@@ -131,10 +101,12 @@ impl<'ctx> Resource<'ctx> {
             let rcq_handle = recv_cq.handle().into();
             let qp_handle = qp.handle().into();
             self.cmid_table.insert(cmid_handle, cmid)?;
-            self.qp_table.insert(qp_handle, qp)?;
-            // safely ignore the error if the cq has already been created.
-            let _ = self.cq_table.insert(scq_handle, send_cq);
-            let _ = self.cq_table.insert(rcq_handle, recv_cq);
+            // qp, cqs, and other associated resources are supposed to be open by the user
+            // explicited
+            // self.qp_table.insert(qp_handle, qp)?;
+            // // safely ignore the error if the cq has already been created.
+            // self.cq_table.open_or_create_resource(scq_handle, send_cq);
+            // self.cq_table.open_or_create_resource(rcq_handle, recv_cq);
             let handles = Some((qp_handle, scq_handle, rcq_handle));
             Ok((cmid_handle, handles))
         } else {
@@ -806,20 +778,17 @@ impl<'ctx> TransportEngine<'ctx> {
 
             Request::DeallocPd(pd) => {
                 trace!("DeallocPd, pd: {:?}", pd);
-                let pd = self.resource.pd_table.remove(&pd.0)?;
-                drop(pd);
+                self.resource.pd_table.close_resource(&pd.0)?;
                 Ok(ResponseKind::DeallocPd)
             }
             Request::DestroyCq(cq) => {
                 trace!("DestroyQp, cq: {:?}", cq);
-                let cq = self.resource.cq_table.remove(&cq.0)?;
-                drop(cq);
+                self.resource.cq_table.close_resource(&cq.0)?;
                 Ok(ResponseKind::DestroyCq)
             }
             Request::DestroyQp(qp) => {
                 trace!("DestroyQp, qp: {:?}", qp);
-                let qp = self.resource.qp_table.remove(&qp.0)?;
-                drop(qp);
+                self.resource.qp_table.close_resource(&qp.0)?;
                 Ok(ResponseKind::DestroyQp)
             }
             Request::Disconnect(cmid) => {
@@ -830,9 +799,24 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::DestroyId(cmid) => {
                 trace!("DestroyId, cmid: {:?}", cmid);
-                let cmid = self.resource.cmid_table.remove(&cmid.0)?;
-                drop(cmid);
+                self.resource.cmid_table.close_resource(&cmid.0)?;
                 Ok(ResponseKind::DestroyId)
+            }
+
+            Request::OpenPd(pd) => {
+                trace!("OpenPd, pd: {:?}", pd);
+                self.resource.pd_table.open_resource(&pd.0)?;
+                Ok(ResponseKind::OpenPd)
+            }
+            Request::OpenCq(cq) => {
+                trace!("OpenCq, cq: {:?}", cq);
+                self.resource.pd_table.open_resource(&cq.0)?;
+                Ok(ResponseKind::OpenCq)
+            }
+            Request::OpenQp(qp) => {
+                trace!("OpenQp, qp: {:?}", qp);
+                self.resource.pd_table.open_resource(&qp.0)?;
+                Ok(ResponseKind::OpenQp)
             }
         }
     }

@@ -134,6 +134,34 @@ impl Context {
     }
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _rx_recv_impl {
+    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp($inst)) => $ok_block,
+            Err(e) => Err(Error::from(e)),
+            _ => panic!("unexpected response"),
+        }
+    };
+    ($rx:expr, $resp:path, $ok_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => $ok_block,
+            Err(e) => Err(Error::from(e)),
+            _ => panic!("unexpected response"),
+        }
+    };
+    ($rx:expr, $resp:path) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => Ok(()),
+            Err(e) => Err(Error::from(e)),
+            _ => panic!("unexpected response"),
+        }
+    };
+}
+
+pub(crate) use _rx_recv_impl as rx_recv_impl;
+
 // Get an owned structure from a borrow
 pub trait FromBorrow<Borrowed> {
     fn from_borrow<T: Borrow<Borrowed>>(borrow: &T) -> Self;
