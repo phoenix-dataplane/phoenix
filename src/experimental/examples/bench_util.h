@@ -38,16 +38,23 @@ uint64_t get_timestamp_us() // microseconds
     return tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
 }
 
-enum Operation
+enum VerbType
 {
     SEND,
     WRITE,
     READ
 };
 
+enum TestType
+{
+    BW,
+    LAT
+};
+
 typedef struct
 {
-    enum Operation opt;
+    enum VerbType verb;
+    enum TestType tst;
     uint32_t num, warmup;
     size_t size;
     char *ip, *port;
@@ -87,9 +94,9 @@ void parse(Context *ctx, int argc, char **argv)
     if (optind < argc)
     {
         if (strcmp(argv[optind], "write") == 0)
-            ctx->opt = WRITE;
+            ctx->verb = WRITE;
         else if (strcmp(argv[optind], "read") == 0)
-            ctx->opt = READ;
+            ctx->verb = READ;
     }
 }
 
@@ -106,7 +113,8 @@ int set_params(Context *ctx)
 
     struct ibv_qp_init_attr *attr = &ctx->attr;
     memset(attr, 0, sizeof(struct ibv_qp_init_attr));
-    attr->cap.max_send_wr = attr->cap.max_recv_wr = 1024;
+    attr->cap.max_send_wr = (ctx->tst == BW) ? 128 : 1;
+    attr->cap.max_recv_wr = 512;
     attr->cap.max_send_sge = attr->cap.max_recv_sge = 1;
     attr->cap.max_inline_data = 236;
     attr->qp_context = ctx->id;
@@ -178,7 +186,7 @@ void print_lat(Context *ctx, uint64_t times[])
 {
     int num = ctx->num - ctx->warmup;
     assert(num > 0);
-    double factor = get_cpu_mhz(1) * ((ctx->opt == READ) ? 1 : 2);
+    double factor = get_cpu_mhz(1) * ((ctx->verb == READ) ? 1 : 2);
 
     double delta[num];
     for (int i = 0; i < num; i++)

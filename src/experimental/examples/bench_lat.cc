@@ -8,7 +8,8 @@
 int main(int argc, char **argv)
 {
     Context ctx;
-    ctx.opt = SEND;
+    ctx.tst = LAT;
+    ctx.verb = SEND;
     ctx.num = 1000, ctx.warmup = 100, ctx.size = 4, ctx.client = false;
 
     parse(&ctx, argc, argv);
@@ -21,7 +22,7 @@ int main(int argc, char **argv)
         ctx.num += ctx.warmup;
     printf("num: %u, size: %lu, warmup: %u\n", ctx.num, ctx.size, ctx.warmup);
 
-    switch (ctx.opt)
+    switch (ctx.verb)
     {
     case SEND:
         printf("Send data from client to server\n");
