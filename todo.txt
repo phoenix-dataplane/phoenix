@@ -2,9 +2,9 @@ TODO
 
 RAII
 - implement resource release (partially done)
-- Finally find a solution to deal with Fd/Handle that can come from
-  everywhere: use explicit open/close call to update the reference 
-  count of the corresponding object at the backend.
+-[x] Finally find a solution to deal with Fd/Handle that can come from
+     everywhere: use explicit open/close call to update the reference 
+     count of the corresponding object at the backend.
 - Clean and release the resource after detected a user app is
   disconnected.
 	- shmem-ipc
@@ -13,18 +13,18 @@ RAII
 		-[x] expose current available count to read/write
 
 Memory Registration
-- Overlapped memory registration (two non-overlapped regions sharing one
-  virtual page), currently, we just avoid this in the example code.
-- Couple memory allocation and registration
-	- Owned MemoryRegion
-	- Type-safe memory region and post_send/recv
-- Check if it is possible to avoid rounding up to page
+-[x] Overlapped memory registration (two non-overlapped regions sharing
+     one virtual page), currently, we just avoid this in the example code.
+-[x] Couple memory allocation and registration
+	-[x] Owned MemoryRegion
+	-[x] Type-safe memory region and post_send/recv
+-[x] Check if it is possible to avoid rounding up to page
 
 libkoala interface
-    - CmId::connect()
-    - CmIdListener::bind()
-    - CmIdListener::incoming()
-    - CmIdListener::accept()
+    -[x] CmId::connect()
+    -[x] CmIdListener::bind()
+    -[x] CmIdListener::incoming()
+    -[x] CmIdListener::accept()
 
 Thread-safety
 - Add spinlock to QueuePair, CompletionQueue... in libkoala
@@ -39,6 +39,7 @@ Performance
 - Change to Ordering::Relaxed
 - GetSendComp() is currently busy spinning
 - Save CPU cycles in TransportEngine::run()
+- Control path is too slow
 -[x] balance poll_cq and post_send/recv, reduce redundant poll_cq
     - <s>use seperate queues can work, but still can cause HOL among
       multiple CQs</s>
