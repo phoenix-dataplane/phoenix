@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 use interface::returned;
 use interface::{addrinfo, ConnParam, Handle, QpInitAttr};
 
-use crate::buf::Buffer;
-
 type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Serialize, Deserialize)]
@@ -25,7 +23,6 @@ pub enum Request {
     GetRequest(Handle),
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
-    RegMsgs(Handle, Buffer),
 
     Disconnect(interface::CmId),
     DestroyId(interface::CmId),
@@ -36,9 +33,13 @@ pub enum Request {
     OpenQp(interface::QueuePair),
 
     // ibverbs
+    RegMr(interface::ProtectionDomain, usize, interface::AccessFlags),
+
     DeallocPd(interface::ProtectionDomain),
     DestroyCq(interface::CompletionQueue),
     DestroyQp(interface::QueuePair),
+
+    DeregMr(interface::MemoryRegion),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,7 +59,6 @@ pub enum ResponseKind {
     GetRequest(returned::CmId),
     Accept,
     Connect,
-    RegMsgs(Handle),
 
     Disconnect,
     DestroyId,
@@ -69,9 +69,13 @@ pub enum ResponseKind {
     OpenQp,
 
     // ibverbs
+    RegMr(returned::MemoryRegion),
+
     DeallocPd,
     DestroyCq,
     DestroyQp,
+
+    DeregMr,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

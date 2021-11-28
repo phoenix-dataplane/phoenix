@@ -1,5 +1,5 @@
 use libkoala::cm::{AddrFamily, AddrInfoFlags, AddrInfoHints, PortSpace};
-use libkoala::verbs::{QpType, SendFlags, WcStatus};
+use libkoala::verbs::{MemoryRegion, QpType, SendFlags, WcStatus};
 use libkoala::{cm, verbs};
 
 const SERVER_PORT: u16 = 5000;
@@ -40,11 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     listen_id.listen(16).expect("Listen failed!");
     let id = listen_id.get_request().expect("Get request failed!");
 
-    let mut recv_msg = vec![0u8; 128];
-    let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");
+    let mut recv_mr: MemoryRegion<u8> = id.alloc_msgs(128).expect("Memory registration failed!");
 
     unsafe {
-        id.post_recv(0, &mut recv_msg, &recv_mr)
+        id.post_recv(&mut recv_mr, .., 0)
             .expect("Post recv failed!");
     }
 
@@ -53,22 +52,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_recv = id.get_recv_comp().expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
 
-    let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala client!";
-    let send_mr = id
-        .reg_msgs(send_msg.as_bytes())
-        .expect("Memory registration failed!");
-    id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
+    let send_mr = {
+        let mut mr = id
+            .alloc_msgs(send_msg.len())
+            .expect("Memory registration failed!");
+        mr.copy_from_slice(send_msg.as_bytes());
+        mr
+    };
+    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
         .expect("Post send failed!");
 
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc_send.status, WcStatus::Success);
 
-    println!("{:?}", recv_msg);
+    println!("{:?}", recv_mr);
 
-    assert_eq!(
-        &recv_msg[..send_msg.len()],
-        "Hello koala server!".as_bytes()
-    );
+    assert_eq!(&recv_mr[..send_mr.len()], "Hello koala server!".as_bytes());
     Ok(())
 }

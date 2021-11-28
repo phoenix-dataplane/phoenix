@@ -21,5 +21,7 @@ dns-lookup = "1.0.8"
 libc = "0.2.103"
 nix = "0.23.0"
 fnv = "1.0.7"
+memfd = "0.4.1"
+memmap2 = "0.5.0"
 
 [features]

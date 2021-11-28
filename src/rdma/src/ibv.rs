@@ -207,8 +207,6 @@ impl<'devlist> Device<'devlist> {
 /// An RDMA context bound to a device.
 pub struct Context {
     ctx: *mut ffi::ibv_context,
-    port_attr: ffi::ibv_port_attr,
-    gid: Gid,
 }
 
 unsafe impl Sync for Context {}
@@ -227,6 +225,11 @@ impl Context {
             ));
         }
 
+        Ok(Context { ctx })
+    }
+
+    /// Returns the port_attr for the given context.
+    fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
         // TODO: from http://www.rdmamojo.com/2012/07/21/ibv_query_port/
         //
         //   Most of the port attributes, returned by ibv_query_port(), aren't constant and may be
@@ -237,7 +240,7 @@ impl Context {
         let mut port_attr = ffi::ibv_port_attr::default();
         let errno = unsafe {
             ffi::ibv_query_port(
-                ctx,
+                self.ctx,
                 PORT_NUM,
                 &mut port_attr as *mut ffi::ibv_port_attr as *mut _,
             )
@@ -262,18 +265,17 @@ impl Context {
             }
         }
 
-        // let mut gid = ffi::ibv_gid::default();
+        Ok(port_attr)
+    }
+
+    /// Returns the GID of the given context.
+    fn gid(&self) -> io::Result<Gid> {
         let mut gid = Gid::default();
-        let ok = unsafe { ffi::ibv_query_gid(ctx, PORT_NUM, 0, gid.as_mut()) };
+        let ok = unsafe { ffi::ibv_query_gid(self.ctx, PORT_NUM, 0, gid.as_mut()) };
         if ok != 0 {
             return Err(io::Error::last_os_error());
         }
-
-        Ok(Context {
-            ctx,
-            port_attr,
-            gid,
-        })
+        Ok(gid)
     }
 
     /// Create a completion queue (CQ).
@@ -328,7 +330,10 @@ impl Context {
         if pd.is_null() {
             Err(())
         } else {
-            Ok(ProtectionDomain { ctx: self, pd })
+            Ok(ProtectionDomain {
+                _phantom: PhantomData,
+                pd,
+            })
         }
     }
 }
@@ -731,7 +736,8 @@ impl<'res> QueuePairBuilder<'res> {
             Err(io::Error::last_os_error())
         } else {
             Ok(PreparedQueuePair {
-                ctx: self.pd.ctx,
+                port_attr: self.pd.context().port_attr()?,
+                gid: self.pd.context().gid()?,
                 qp: QueuePair {
                     _phantom: PhantomData,
                     qp,
@@ -771,7 +777,8 @@ impl<'res> QueuePairBuilder<'res> {
 /// let qp = pqp.handshake(host1end);
 /// ```
 pub struct PreparedQueuePair<'res> {
-    ctx: &'res Context,
+    port_attr: ffi::ibv_port_attr,
+    gid: Gid,
     qp: QueuePair<'res>,
 
     // carried from builder
@@ -872,8 +879,8 @@ impl<'res> PreparedQueuePair<'res> {
 
         QueuePairEndpoint {
             num,
-            lid: self.ctx.port_attr.lid,
-            gid: self.ctx.gid,
+            lid: self.port_attr.lid,
+            gid: self.gid,
         }
     }
 
@@ -927,7 +934,7 @@ impl<'res> PreparedQueuePair<'res> {
         // set ready to receive
         let mut attr = ffi::ibv_qp_attr::default();
         attr.qp_state = ffi::ibv_qp_state::IBV_QPS_RTR;
-        attr.path_mtu = self.ctx.port_attr.active_mtu;
+        attr.path_mtu = self.port_attr.active_mtu;
         attr.dest_qp_num = remote.num;
         attr.rq_psn = 0;
         attr.max_dest_rd_atomic = 1;
@@ -1017,9 +1024,13 @@ impl<T> Drop for MemoryRegion<T> {
     }
 }
 
+/// Flags of memory region access.
+#[derive(Debug, Clone, Copy)]
+pub struct AccessFlags(pub ffi::ibv_access_flags);
+
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
-    ctx: &'ctx Context,
+    _phantom: PhantomData<&'ctx ()>,
     pub(crate) pd: *mut ffi::ibv_pd,
 }
 
@@ -1027,6 +1038,22 @@ unsafe impl<'a> Sync for ProtectionDomain<'a> {}
 unsafe impl<'a> Send for ProtectionDomain<'a> {}
 
 impl<'ctx> ProtectionDomain<'ctx> {
+    /// Returns the context of the protection domain.
+    #[inline]
+    pub fn context(&self) -> Context {
+        assert!(!self.pd.is_null());
+        Context {
+            ctx: unsafe { &*self.pd }.context,
+        }
+    }
+
+    /// Returns the inner handle of this protection domain.
+    #[inline]
+    pub fn handle(&self) -> u32 {
+        assert!(!self.pd.is_null());
+        unsafe { &*self.pd }.handle
+    }
+
     /// Creates a queue pair builder associated with this protection domain.
     ///
     /// `send` and `recv` are the device `Context` to associate with the send and receive queues
@@ -1151,12 +1178,26 @@ unsafe impl<'a> Sync for QueuePair<'a> {}
 
 impl<'res> QueuePair<'res> {
     /// Returns the inner handle of this QP.
+    #[inline]
     pub fn handle(&self) -> u32 {
         assert!(!self.qp.is_null());
         unsafe { &*self.qp }.handle
     }
 
+    /// Returns the protection domain of this QP.
+    #[inline]
+    pub fn pd(&self) -> ProtectionDomain<'res> {
+        assert!(!self.qp.is_null());
+        let pd = unsafe { &*self.qp }.pd;
+        assert!(!pd.is_null());
+        ProtectionDomain {
+            _phantom: PhantomData,
+            pd,
+        }
+    }
+
     /// Returns the send_cq that this QP assocates with.
+    #[inline]
     pub fn send_cq(&self) -> CompletionQueue<'res> {
         assert!(!self.qp.is_null());
         let cq = unsafe { &*self.qp }.send_cq;
@@ -1168,6 +1209,7 @@ impl<'res> QueuePair<'res> {
     }
 
     /// Returns the recv_cq that this QP assocates with.
+    #[inline]
     pub fn recv_cq(&self) -> CompletionQueue<'res> {
         assert!(!self.qp.is_null());
         let cq = unsafe { &*self.qp }.recv_cq;

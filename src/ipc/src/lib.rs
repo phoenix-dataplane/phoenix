@@ -1,4 +1,5 @@
 #![feature(unix_socket_ancillary_data)]
+#![feature(slice_index_methods)]
 pub use ipc_channel::ipc::{
     channel, IpcError, IpcOneShotServer as OneShotServer, IpcReceiver,
     IpcReceiverSet as ReceiverSet, IpcSelectionResult, IpcSender, IpcSharedMemory, TryRecvError,

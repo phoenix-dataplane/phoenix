@@ -1,5 +1,5 @@
 //! Convert ibv types and rdmacm types from and to koala types.
-#![cfg(feature = "convert")]
+#![cfg(feature = "koala")]
 use std::num::NonZeroU32;
 
 use socket2::SockAddr;
@@ -17,19 +17,6 @@ mod sa {
     const_assert_eq!(AddrInfoFlags::NUMERICHOST.bits(), ffi::RAI_NUMERICHOST);
     const_assert_eq!(AddrInfoFlags::NOROUTE.bits(), ffi::RAI_NOROUTE);
     const_assert_eq!(AddrInfoFlags::FAMILY.bits(), ffi::RAI_FAMILY);
-    // let mut flags: u32 = 0;
-    // if h.flags.contains(AddrInfoFlags::PASSIVE) {
-    //     flags |= ffi::RAI_PASSIVE;
-    // }
-    // if h.flags.contains(AddrInfoFlags::NUMERICHOST) {
-    //     flags |= ffi::RAI_NUMERICHOST;
-    // }
-    // if h.flags.contains(AddrInfoFlags::NOROUTE) {
-    //     flags |= ffi::RAI_NOROUTE;
-    // }
-    // if h.flags.contains(AddrInfoFlags::FAMILY) {
-    //     flags |= ffi::RAI_FAMILY;
-    // }
     use interface::WcFlags;
     const_assert_eq!(WcFlags::GRH.bits(), ffi::ibv_wc_flags::IBV_WC_GRH.0);
     const_assert_eq!(
@@ -53,6 +40,24 @@ mod sa {
     const_assert_eq!(
         SendFlags::INLINE.bits(),
         ffi::ibv_send_flags::IBV_SEND_INLINE.0
+    );
+
+    use interface::AccessFlags;
+    const_assert_eq!(
+        AccessFlags::LOCAL_WRITE.bits(),
+        ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE.0
+    );
+    const_assert_eq!(
+        AccessFlags::REMOTE_WRITE.bits(),
+        ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE.0
+    );
+    const_assert_eq!(
+        AccessFlags::REMOTE_READ.bits(),
+        ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ.0
+    );
+    const_assert_eq!(
+        AccessFlags::REMOTE_ATOMIC.bits(),
+        ffi::ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC.0
     );
 }
 
@@ -231,5 +236,11 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
 impl From<interface::SendFlags> for ibv::SendFlags {
     fn from(other: interface::SendFlags) -> Self {
         ibv::SendFlags(ffi::ibv_send_flags(other.bits()))
+    }
+}
+
+impl From<interface::AccessFlags> for ibv::AccessFlags {
+    fn from(other: interface::AccessFlags) -> Self {
+        ibv::AccessFlags(ffi::ibv_access_flags(other.bits()))
     }
 }
