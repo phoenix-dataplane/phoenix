@@ -3,6 +3,7 @@ use std::time;
 use structopt::StructOpt;
 
 use libkoala::cm;
+use libkoala::verbs::MemoryRegion;
 use libkoala::verbs::{QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: &str = "5000";
@@ -62,28 +63,33 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let listen_id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
-
+    let listener = cm::CmIdListener::bind(("0.0.0.0", opts.port)).expect("Listener bind failed");
     eprintln!("listen_id created");
 
-    listen_id.listen(16)?;
-    let id = listen_id.get_request()?;
+    let mut builder = listener.get_request().expect("Get request failed!");
+    eprintln!("Get a connect request");
+    let pre_id = builder
+        .set_qp_init_attr(&qp_init_attr)
+        .build()
+        .expect("Create QP failed!");
+    eprintln!("QP created");
 
-    let mut recv_msg = vec![0u8; opts.msg_size];
-    let recv_mr = id.reg_msgs(&recv_msg)?;
+    let mut recv_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(opts.msg_size)
+        .expect("Memory registration failed!");
 
     for _ in 0..opts.warm_iters + opts.total_iters {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr)?;
+            pre_id.post_recv(&mut recv_mr, .., 0)?;
         }
     }
 
-    id.accept(None)?;
-    eprintln!("accepted a connection");
+    let id = pre_id.accept(None).expect("Accept failed!");
+    eprintln!("Accepted a connection");
 
     // busy poll
     let mut wc = Vec::with_capacity(32);
-    let cq = &id.qp.as_ref().unwrap().recv_cq;
+    let cq = &id.qp().recv_cq;
     let mut cqe = 0;
     while cqe < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
@@ -93,9 +99,9 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("{:?}", &recv_msg[..100.min(opts.msg_size)]);
+    println!("{:?}", &recv_mr[..100.min(opts.msg_size)]);
 
-    assert_eq!(&recv_msg, &vec![42u8; opts.msg_size],);
+    assert_eq!(recv_mr.as_slice(), &vec![42u8; opts.msg_size],);
     Ok(())
 }
 
@@ -124,22 +130,34 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
+    let mut builder = cm::CmId::resolve_addr((opts.connect.as_deref().unwrap(), opts.port))
+        .expect("Connect failed!");
+    eprintln!("Address resolved");
 
-    eprintln!("cmid created");
+    let pre_id = builder
+        .set_qp_init_attr(&qp_init_attr)
+        .build()
+        .expect("Create QP failed!");
+    eprintln!("QP created");
 
-    id.connect(None)?;
-    eprintln!("connected to remote side");
+    let id = pre_id.connect(None).expect("Connect failed!");
+    eprintln!("Connected to remote side");
 
     let send_flags = SendFlags::SIGNALED;
-    let send_msg = vec![42u8; opts.msg_size];
-    let send_mr = id.reg_msgs(&send_msg)?;
+    let send_mr = {
+        let mut mr = id
+            .alloc_msgs(opts.msg_size)
+            .expect("Memory registration failed!");
+        mr.fill(42u8);
+        mr
+    };
+
     for _ in 0..opts.warm_iters {
-        id.post_send(0, &send_msg, &send_mr, send_flags)?;
+        id.post_send(&send_mr, .., 0, send_flags)?;
     }
 
     let mut wc = Vec::with_capacity(32);
-    let cq = &id.qp.as_ref().unwrap().send_cq;
+    let cq = &id.qp().send_cq;
     let mut cqe = 0;
     while cqe < opts.warm_iters {
         cq.poll_cq(&mut wc)?;
@@ -152,7 +170,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let ts = time::Instant::now();
 
     for _ in 0..opts.total_iters {
-        id.post_send(0, &send_msg, &send_mr, send_flags)?;
+        id.post_send(&send_mr, .., 0, send_flags)?;
     }
 
     let dura = ts.elapsed();

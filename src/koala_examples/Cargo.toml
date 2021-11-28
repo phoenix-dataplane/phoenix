@@ -23,10 +23,10 @@ path = "src/sender.rs"
 name = "receiver"
 path = "src/receiver.rs"
  
-# [[bin]]
-# name = "send_bw"
-# path = "src/send_bw.rs"
-# 
+[[bin]]
+name = "send_bw"
+path = "src/send_bw.rs"
+
 # [[bin]]
 # name = "send_lat"
 # path = "src/send_lat.rs"
