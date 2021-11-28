@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fnv::FnvHashMap as HashMap;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -14,7 +14,7 @@ pub(crate) struct ResourceTable<R> {
 impl<R> Default for ResourceTable<R> {
     fn default() -> Self {
         ResourceTable {
-            table: HashMap::new(),
+            table: HashMap::default(),
         }
     }
 }

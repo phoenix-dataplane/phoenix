@@ -13,7 +13,7 @@ Resource releasing
 		-[x] expose current available count to read/write
 
 Performance & CPU efficiency
-- Use FnvHashMap in transport/engine
+-[x] Use FnvHashMap in transport/engine
 -[x] Change to Ordering::Relaxed
 - GetSendComp() is currently busy spinning
 - Save CPU cycles in TransportEngine::run()

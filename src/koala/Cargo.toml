@@ -22,3 +22,4 @@ engine = { path = "../engine" }
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
 rdma = { path = "../rdma", features = ["koala"] }
+fnv = "1.0.7"
