@@ -46,6 +46,11 @@ pub mod returned {
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct ProtectionDomain {
+        pub handle: super::ProtectionDomain,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct CompletionQueue {
         pub handle: super::CompletionQueue,
     }
@@ -53,6 +58,7 @@ pub mod returned {
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct QueuePair {
         pub handle: super::QueuePair,
+        pub pd: ProtectionDomain,
         pub send_cq: CompletionQueue,
         pub recv_cq: CompletionQueue,
     }
@@ -62,6 +68,12 @@ pub mod returned {
         pub handle: super::CmId,
         // could be empty for passive CmId (listener).
         pub qp: Option<QueuePair>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct MemoryRegion {
+        pub handle: super::MemoryRegion,
+        pub rkey: super::RemoteKey,
     }
 }
 
@@ -106,8 +118,12 @@ pub struct ConnParam {
     pub qp_num: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MemoryRegion(pub Handle);
+
+/// A key that authorizes direct memory access to a memory region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RemoteKey(pub u32);
 
 // NOTE(cjr): do not annotate this structure with any repr, use repr(Rust)
 // and static assert.
@@ -161,6 +177,20 @@ bitflags! {
         /// Send data in given gather list as inline data in a send WQE.  Valid only for Send and
         /// RDMA Write.  The L_Key will not be checked.
         const INLINE = 0b00001000;
+    }
+
+    /// Access flags of a memory region.
+    #[repr(C)]
+    #[derive(Serialize, Deserialize)]
+    pub struct AccessFlags: u32 {
+        /// Enables Local Write Access.
+        const LOCAL_WRITE = 0b00000001;
+        /// Enables Remote Write Access.
+        const REMOTE_WRITE = 0b00000010;
+        /// Enables Remote Read Access.
+        const REMOTE_READ = 0b00000100;
+        /// Enables Remote Atomic Operation Access.
+        const REMOTE_ATOMIC = 0b00001000;
     }
 }
 

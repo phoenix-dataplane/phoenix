@@ -1,6 +1,7 @@
 //! Fast path operations.
 use std::mem;
 use std::sync::atomic::Ordering;
+use std::slice::SliceIndex;
 
 use ipc::buf;
 use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
@@ -12,16 +13,19 @@ use crate::verbs;
 use crate::verbs::{CompletionQueue, WorkCompletion};
 
 impl CmId {
-    pub unsafe fn post_recv<T>(
+    pub unsafe fn post_recv<T, R>(
         &self,
+        mr: &mut verbs::MemoryRegion<T>,
+        range: R,
         context: u64,
-        buffer: &mut [T],
-        mr: &verbs::MemoryRegion,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>
+    {
         let req = WorkRequest::PostRecv(
             self.handle.0,
             context,
-            buf::Buffer::from(buffer),
+            buf::Range::new(mr, range),
             mr.inner.0,
         );
         KL_CTX.with(|ctx| {
@@ -42,17 +46,20 @@ impl CmId {
         })
     }
 
-    pub fn post_send<T>(
+    pub fn post_send<T, R>(
         &self,
+        mr: &verbs::MemoryRegion<T>,
+        range: R,
         context: u64,
-        buffer: &[T],
-        mr: &verbs::MemoryRegion,
         flags: verbs::SendFlags,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>
+    {
         let req = WorkRequest::PostSend(
             self.handle.0,
             context,
-            buf::Buffer::from(buffer),
+            buf::Range::new(mr, range),
             mr.inner.0,
             flags,
         );

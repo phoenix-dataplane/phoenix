@@ -18,6 +18,7 @@ Memory Registration
 - Couple memory allocation and registration
 	- Owned MemoryRegion
 	- Type-safe memory region and post_send/recv
+- Check if it is possible to avoid rounding up to page
 
 libkoala interface
     - CmId::connect()
@@ -30,6 +31,7 @@ Thread-safety
 - Most of the resources in transport/engine should be per-user, lock
   or concurrent data structure is needed
 - Move CqBuffer from thread_local to lazy_static
+- Write a multi-threaded program to test the correctness
 
 
 Performance

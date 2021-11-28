@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
-use std::fs::File;
 use std::io;
 use std::mem;
-use std::os::unix::io::FromRawFd;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::slice;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -16,7 +13,7 @@ use uuid::Uuid;
 
 use interface::returned;
 use interface::Handle;
-use ipc::{self, buf, cmd, dp};
+use ipc::{self, cmd, dp};
 
 use engine::{Engine, SchedulingMode, Upgradable, Version};
 
@@ -27,46 +24,6 @@ use rdma::rdmacm::CmId;
 use crate::transport::resource::ResourceTable;
 use crate::transport::{DatapathError, Error};
 
-/// This table should be shared between multiple transport engines, it must allow concurrent access
-/// and modification. But for now, we implement it without considering synchronization.
-#[derive(Debug)]
-struct MemoryTranslationTable {
-    // mr_handle -> SharedMemoryFile
-    table: HashMap<Handle, SharedMemoryFile>,
-}
-
-/// A piece of memory region that is both mmap shared and registered in the NIC.
-#[derive(Debug)]
-struct SharedMemoryFile {
-    ubuf: buf::Buffer,
-    kbuf: &'static mut [u8],
-    memfile: File,
-    path: PathBuf,
-}
-
-impl SharedMemoryFile {
-    fn new<P: AsRef<Path>>(ubuf: buf::Buffer, buffer: &mut [u8], memfile: File, path: P) -> Self {
-        SharedMemoryFile {
-            ubuf,
-            kbuf: unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len()) },
-            memfile,
-            path: path.as_ref().to_owned(),
-        }
-    }
-}
-
-impl MemoryTranslationTable {
-    fn new() -> Self {
-        MemoryTranslationTable {
-            table: Default::default(),
-        }
-    }
-
-    fn allocate(&mut self, mr_handle: Handle, smf: SharedMemoryFile) {
-        self.table.insert(mr_handle, smf).ok_or(()).unwrap_err();
-    }
-}
-
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
 struct Resource<'ctx> {
@@ -75,7 +32,7 @@ struct Resource<'ctx> {
     cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
     qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
     cmid_table: ResourceTable<CmId>,
-    mr_table: ResourceTable<rdmacm::MemoryRegion>,
+    mr_table: ResourceTable<rdma::mr::MemoryRegion>,
 }
 
 impl<'ctx> Resource<'ctx> {
@@ -92,22 +49,25 @@ impl<'ctx> Resource<'ctx> {
     fn insert_cmid(
         &mut self,
         cmid: CmId,
-    ) -> Result<(Handle, Option<(Handle, Handle, Handle)>), Error> {
+    ) -> Result<(Handle, Option<(Handle, Handle, Handle, Handle)>), Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
         if let Some(qp) = cmid.qp() {
+            let pd = qp.pd();
             let send_cq = qp.send_cq();
             let recv_cq = qp.recv_cq();
+            let pd_handle = pd.handle().into();
             let scq_handle = send_cq.handle().into();
             let rcq_handle = recv_cq.handle().into();
             let qp_handle = qp.handle().into();
             self.cmid_table.insert(cmid_handle, cmid)?;
             // qp, cqs, and other associated resources are supposed to be open by the user
-            // explicited
-            // self.qp_table.insert(qp_handle, qp)?;
-            // // safely ignore the error if the cq has already been created.
-            // self.cq_table.open_or_create_resource(scq_handle, send_cq);
-            // self.cq_table.open_or_create_resource(rcq_handle, recv_cq);
-            let handles = Some((qp_handle, scq_handle, rcq_handle));
+            // explicited, the error should be safely ignored if the resource has already been
+            // created.
+            self.qp_table.occupy(qp_handle, qp);
+            self.pd_table.occupy(pd_handle, pd);
+            self.cq_table.occupy(scq_handle, send_cq);
+            self.cq_table.occupy(rcq_handle, recv_cq);
+            let handles = Some((qp_handle, pd_handle, scq_handle, rcq_handle));
             Ok((cmid_handle, handles))
         } else {
             // passive cmid, no QP associated.
@@ -133,7 +93,6 @@ pub struct TransportEngine<'ctx> {
     backoff: usize,
 
     resource: Resource<'ctx>,
-    mtt: MemoryTranslationTable,
 }
 
 impl<'ctx> TransportEngine<'ctx> {
@@ -167,7 +126,6 @@ impl<'ctx> TransportEngine<'ctx> {
             dp_spin_cnt: 0,
             backoff: 1,
             resource: Resource::new(),
-            mtt: MemoryTranslationTable::new(), // it should be passed in from the transport module
         }
     }
 }
@@ -459,7 +417,7 @@ impl<'ctx> TransportEngine<'ctx> {
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use ipc::dp::WorkRequest;
         match req {
-            WorkRequest::PostRecv(cmid_handle, wr_id, user_buf, mr_handle) => {
+            WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 // trace!(
                 //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}",
                 //     cmid_handle,
@@ -468,26 +426,15 @@ impl<'ctx> TransportEngine<'ctx> {
                 //     mr_handle
                 // );
                 let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_dp(mr_handle)?;
-                let smf = self
-                    .mtt
-                    .table
-                    .get_mut(mr_handle)
-                    .ok_or(DatapathError::NotFound)?;
+                let mr = self.resource.mr_table.get_mut_dp(mr_handle)?;
 
-                if smf.ubuf.addr > user_buf.addr
-                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
-                {
-                    return Err(DatapathError::OutOfRange);
-                }
+                let rdma_mr = mr.into();
+                let buf = &mut mr[range.offset as usize..(range.offset + range.len) as usize];
 
-                let offset = (user_buf.addr - smf.ubuf.addr) as usize;
-                let len = user_buf.len as usize;
-                let buf = &mut smf.kbuf[offset..offset + len];
-                unsafe { cmid.post_recv(*wr_id, buf, mr) }.map_err(DatapathError::RdmaCm)?;
+                unsafe { cmid.post_recv(*wr_id, buf, &rdma_mr) }.map_err(DatapathError::RdmaCm)?;
                 Ok(())
             }
-            WorkRequest::PostSend(cmid_handle, wr_id, user_buf, mr_handle, send_flags) => {
+            WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
                 // trace!(
                 //     "cmid_handle: {:?}, wr_id: {:?}, user_buf: {:x?}, mr_handle: {:?}, send_flags: {:?}",
                 //     cmid_handle,
@@ -498,23 +445,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 // );
                 let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
                 let mr = self.resource.mr_table.get_dp(mr_handle)?;
-                let smf = self
-                    .mtt
-                    .table
-                    .get_mut(mr_handle)
-                    .ok_or(DatapathError::NotFound)?;
 
-                if smf.ubuf.addr > user_buf.addr
-                    || smf.ubuf.addr + smf.ubuf.len < user_buf.addr + user_buf.len
-                {
-                    return Err(DatapathError::OutOfRange);
-                }
+                let rdma_mr = mr.into();
+                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
-                let offset = (user_buf.addr - smf.ubuf.addr) as usize;
-                let len = user_buf.len as usize;
-                let buf = &smf.kbuf[offset..offset + len];
                 let flags: ibv::SendFlags = (*send_flags).into();
-                unsafe { cmid.post_send(*wr_id, buf, mr, flags.0) }
+                unsafe { cmid.post_send(*wr_id, buf, &rdma_mr, flags.0) }
                     .map_err(DatapathError::RdmaCm)?;
                 Ok(())
             }
@@ -642,19 +578,23 @@ impl<'ctx> TransportEngine<'ctx> {
                 match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
                         let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
-                        let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
-                            Some(returned::QueuePair {
-                                handle: interface::QueuePair(qp_handle),
-                                send_cq: returned::CompletionQueue {
-                                    handle: interface::CompletionQueue(scq_handle),
-                                },
-                                recv_cq: returned::CompletionQueue {
-                                    handle: interface::CompletionQueue(rcq_handle),
-                                },
-                            })
-                        } else {
-                            None
-                        };
+                        let ret_qp =
+                            if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
+                                Some(returned::QueuePair {
+                                    handle: interface::QueuePair(qp_handle),
+                                    pd: returned::ProtectionDomain {
+                                        handle: interface::ProtectionDomain(pd_handle),
+                                    },
+                                    send_cq: returned::CompletionQueue {
+                                        handle: interface::CompletionQueue(scq_handle),
+                                    },
+                                    recv_cq: returned::CompletionQueue {
+                                        handle: interface::CompletionQueue(rcq_handle),
+                                    },
+                                })
+                            } else {
+                                None
+                            };
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
                             qp: ret_qp,
@@ -680,9 +620,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
 
                 let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
-                let ret_qp = if let Some((qp_handle, scq_handle, rcq_handle)) = handles {
+                let ret_qp = if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
                     Some(returned::QueuePair {
                         handle: interface::QueuePair(qp_handle),
+                        pd: returned::ProtectionDomain {
+                            handle: interface::ProtectionDomain(pd_handle),
+                        },
                         send_cq: returned::CompletionQueue {
                             handle: interface::CompletionQueue(scq_handle),
                         },
@@ -723,57 +666,30 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 Ok(ResponseKind::Connect)
             }
-            Request::RegMsgs(cmid_handle, user_buf) => {
-                trace!("cmid_handle: {:?}, user_buf: {:x?}", cmid_handle, user_buf);
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
-                // 1. create/open shared memory file
-                use nix::fcntl::OFlag;
-                use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
-                use nix::sys::stat::Mode;
-                // just randomly pick an string and use that for now
-                let shm_path = PathBuf::from(format!("koala-{}", Uuid::new_v4())); // no /dev/shm prefix is needed
-                let fd = shm_open(
-                    &shm_path,
-                    OFlag::O_CREAT | OFlag::O_RDWR | OFlag::O_EXCL,
-                    Mode::S_IRUSR | Mode::S_IWUSR,
-                )
-                .map_err(Error::ShmOpen)?;
-                // 2. mmap the user's vaddr into koala's address space through
-                // __linear__ mapping (this is necessary) (actually, maybe not)
-                let uaddr = user_buf.addr as usize;
-                let ulen = user_buf.len as usize;
-                let page_size = 4096;
-                let aligned_end = (uaddr + ulen + page_size - 1) / page_size * page_size;
-                let aligned_begin = uaddr - uaddr % page_size;
-                let aligned_len = aligned_end - aligned_begin;
-                // ftruncate the file
-                let memfile = unsafe { File::from_raw_fd(fd) };
-                memfile.set_len(aligned_len as _).map_err(Error::Truncate)?;
-                let kaddr = unsafe {
-                    mmap(
-                        ptr::null_mut(),
-                        aligned_len,
-                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                        MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE,
-                        fd,
-                        0,
-                    )
-                    .map_err(Error::Mmap)?
-                };
-                // 3. send fd back
+            Request::RegMr(pd, nbytes, access) => {
+                trace!(
+                    "RegMr, pd: {:?}, nbytes: {}, access: {:?}",
+                    pd,
+                    nbytes,
+                    access
+                );
+                let pd = self.resource.pd_table.get(&pd.0)?;
+                let mr = rdma::mr::MemoryRegion::new(pd, *nbytes, *access)
+                    .map_err(Error::MemoryRegion)?;
+                let fd = mr.memfd().as_raw_fd();
                 ipc::send_fd(&self.sock, &self.client_path, &[fd][..]).map_err(Error::SendFd)?;
-                // 4. register kaddr with ibv_reg_mr
-                let buf = unsafe { slice::from_raw_parts_mut(kaddr as *mut u8, aligned_len) };
-                let mr = cmid.reg_msgs(&buf).map_err(Error::RdmaCm)?;
-                // 5. allocate mr handle
+                let rkey = mr.rkey();
                 let new_mr_handle = mr.handle().into();
                 self.resource.mr_table.insert(new_mr_handle, mr)?;
-                // 6. allocate entry in MTT (mr -> SharedMemoryFile)
-                let kbuf = &mut buf[uaddr - aligned_begin..uaddr - aligned_begin + ulen];
-                let smf = SharedMemoryFile::new(*user_buf, kbuf, memfile, &shm_path);
-                self.mtt.allocate(new_mr_handle, smf);
-                // 7. send mr handle back
-                Ok(ResponseKind::RegMsgs(new_mr_handle))
+                Ok(ResponseKind::RegMr(returned::MemoryRegion {
+                    handle: interface::MemoryRegion(new_mr_handle),
+                    rkey,
+                }))
+            }
+            Request::DeregMr(mr) => {
+                trace!("DeregMr, mr: {:?}", mr);
+                self.resource.mr_table.close_resource(&mr.0)?;
+                Ok(ResponseKind::DeregMr)
             }
 
             Request::DeallocPd(pd) => {
@@ -810,12 +726,12 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::OpenCq(cq) => {
                 trace!("OpenCq, cq: {:?}", cq);
-                self.resource.pd_table.open_resource(&cq.0)?;
+                self.resource.cq_table.open_resource(&cq.0)?;
                 Ok(ResponseKind::OpenCq)
             }
             Request::OpenQp(qp) => {
                 trace!("OpenQp, qp: {:?}", qp);
-                self.resource.pd_table.open_resource(&qp.0)?;
+                self.resource.qp_table.open_resource(&qp.0)?;
                 Ok(ResponseKind::OpenQp)
             }
         }

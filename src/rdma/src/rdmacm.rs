@@ -269,7 +269,7 @@ impl Drop for EventChannel {
 }
 
 #[derive(Debug)]
-pub struct MemoryRegion(*mut ffi::ibv_mr);
+pub struct MemoryRegion(pub(crate) *mut ffi::ibv_mr);
 
 unsafe impl Send for MemoryRegion {}
 unsafe impl Sync for MemoryRegion {}

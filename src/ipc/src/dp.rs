@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use interface::{Handle, SendFlags, WorkCompletion};
 
-use crate::buf::Buffer;
+use crate::buf::Range;
 
 pub type WorkRequestSlot = [u8; 64];
 
@@ -12,8 +12,8 @@ pub type WorkRequestSlot = [u8; 64];
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
-    PostRecv(Handle, u64, Buffer, Handle),
-    PostSend(Handle, u64, Buffer, Handle, SendFlags),
+    PostRecv(Handle, u64, Range, Handle),
+    PostSend(Handle, u64, Range, Handle, SendFlags),
     PollCq(interface::CompletionQueue),
 }
 

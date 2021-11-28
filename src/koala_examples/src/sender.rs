@@ -1,4 +1,4 @@
-use libkoala::verbs::{SendFlags, WcStatus};
+use libkoala::verbs::{MemoryRegion, SendFlags, WcStatus};
 use libkoala::{cm, verbs};
 
 const SERVER_ADDR: &str = "192.168.211.194";
@@ -30,24 +30,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("cmid created");
 
-    let mut recv_msg = vec![0u8; 128];
-    let recv_mr = id.reg_msgs(&recv_msg).expect("Memory registration failed!");
+    let mut recv_mr: MemoryRegion<u8> = id.alloc_msgs(128).expect("Memory registration failed!");
 
     unsafe {
-        // Should I force the post_send/recv to take an memory region (or a slice of memory region)
-        // as its input to make sure the memory is registered?
-        id.post_recv(0, &mut recv_msg, &recv_mr)
+        id.post_recv(&mut recv_mr, .., 0)
             .expect("Post recv failed!");
     }
 
     id.connect(None).expect("Connect failed!");
 
-    let send_flags = SendFlags::SIGNALED;
     let send_msg = "Hello koala server!";
-    let send_mr = id
-        .reg_msgs(send_msg.as_bytes())
-        .expect("Memory registration failed!");
-    id.post_send(0, send_msg.as_bytes(), &send_mr, send_flags)
+    let send_mr = {
+        let mut mr = id
+            .alloc_msgs(send_msg.len())
+            .expect("Memory registration failed!");
+        mr.copy_from_slice(send_msg.as_bytes());
+        mr
+    };
+    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
         .expect("Post send failed!");
 
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
@@ -55,11 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_recv = id.get_recv_comp().expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
 
-    println!("{:?}", recv_msg);
+    println!("{:?}", recv_mr);
 
-    assert_eq!(
-        &recv_msg[..send_msg.len()],
-        "Hello koala client!".as_bytes()
-    );
+    assert_eq!(&recv_mr[..send_mr.len()], "Hello koala client!".as_bytes());
     Ok(())
 }

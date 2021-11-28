@@ -26,9 +26,9 @@ pub(crate) struct Entry<R> {
 }
 
 impl<R> Entry<R> {
-    fn new(data: R) -> Self {
+    fn new(data: R, refcnt: usize) -> Self {
         Entry {
-            refcnt: AtomicUsize::new(1),
+            refcnt: AtomicUsize::new(refcnt),
             data,
         }
     }
@@ -38,7 +38,12 @@ impl<R> Entry<R> {
         &self.data
     }
 
-    /// `Open` means increment the reference count.
+    #[inline]
+    fn data_mut(&mut self) -> &mut R {
+        &mut self.data
+    }
+
+    /// `Open` means to increment the reference count.
     #[inline]
     fn open(&self) {
         self.refcnt.fetch_add(1, Ordering::AcqRel);
@@ -53,7 +58,7 @@ impl<R> Entry<R> {
 
 impl<R> ResourceTable<R> {
     pub(crate) fn insert(&mut self, h: Handle, r: R) -> Result<(), Error> {
-        match self.table.insert(h, Entry::new(r)) {
+        match self.table.insert(h, Entry::new(r, 1)) {
             Some(_) => Err(Error::Exists),
             None => Ok(()),
         }
@@ -70,12 +75,24 @@ impl<R> ResourceTable<R> {
             .ok_or(DatapathError::NotFound)
     }
 
+    pub(crate) fn get_mut_dp(&mut self, h: &Handle) -> Result<&mut R, DatapathError> {
+        self.table
+            .get_mut(h)
+            .map(|r| r.data_mut())
+            .ok_or(DatapathError::NotFound)
+    }
+
+    /// Occupy en entry by only inserting a value but not incrementing the reference count.
+    pub(crate) fn occupy(&mut self, h: Handle, r: R) {
+        self.table.entry(h).or_insert(Entry::new(r, 0));
+    }
+
     pub(crate) fn open_or_create_resource(&mut self, h: Handle, r: R) {
         // TODO(cjr): check if they have the same handle
         self.table
             .entry(h)
             .and_modify(|e| e.open())
-            .or_insert(Entry::new(r));
+            .or_insert(Entry::new(r, 1));
     }
 
     pub(crate) fn open_resource(&mut self, h: &Handle) -> Result<(), Error> {
