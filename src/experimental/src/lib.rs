@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![feature(allocator_api)]
 #![feature(unix_socket_ancillary_data)]
+#![feature(nonnull_slice_from_raw_parts)]
 use std::io;
 use structopt::StructOpt;
 
@@ -11,6 +12,7 @@ extern crate log;
 pub mod ringbuffer;
 pub mod shm;
 // pub mod ipc;
+mod aligned_alloc;
 mod regmr;
 mod shmalloc;
 

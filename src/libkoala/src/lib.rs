@@ -44,6 +44,8 @@ pub enum Error {
     ShmRingbuf(#[from] ipc::ShmRingbufError),
     #[error("ShmObject error: {0}")]
     ShmObj(#[from] ipc::shm::Error),
+    #[error("No address is resolved")]
+    NoAddrResolved,
 }
 
 thread_local! {

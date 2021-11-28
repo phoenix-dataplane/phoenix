@@ -30,6 +30,9 @@ impl From<u32> for Handle {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct EventChannel(pub Handle);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
@@ -86,7 +89,7 @@ pub enum QpType {
     UD,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct QpCapability {
     pub max_send_wr: u32,
     pub max_recv_wr: u32,
