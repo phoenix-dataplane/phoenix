@@ -9,7 +9,7 @@ use interface::{addrinfo, ConnParam, Handle, QpInitAttr};
 
 type IResult<T> = Result<T, interface::Error>;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
     NewClient(SchedulingMode),
     Hello(i32),
@@ -30,7 +30,7 @@ pub enum Request {
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
 
-    CreateId(Option<interface::EventChannel>, addrinfo::PortSpace),
+    CreateId(addrinfo::PortSpace),
     BindAddr(Handle, SocketAddr),
     ResolveAddr(Handle, SocketAddr),
     ResolveRoute(Handle, i32),

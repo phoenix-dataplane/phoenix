@@ -98,7 +98,7 @@ pub struct QpCapability {
     pub max_inline_data: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QpInitAttr {
     // no need to serialize qp_context
     pub send_cq: Option<CompletionQueue>,
@@ -109,7 +109,7 @@ pub struct QpInitAttr {
     pub sq_sig_all: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnParam {
     pub private_data: Option<Vec<u8>>,
     pub responder_resources: u8,

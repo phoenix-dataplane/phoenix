@@ -1,6 +1,8 @@
 modules = ["transport"]
 
 [transport]
-path = "/tmp/koala/koala-transport.sock"
+prefix = "/tmp/koala"
+module_path = "koala-transport.sock"
+engine_basename = "koala-transport-engine"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
