@@ -1,39 +1,14 @@
 use libkoala::verbs::{MemoryRegion, SendFlags, WcStatus};
-use libkoala::{cm, verbs};
 
 const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ai = cm::getaddrinfo(Some(&SERVER_ADDR), Some(&SERVER_PORT.to_string()), None)
-        .expect("getaddrinfo");
-
-    eprintln!("ai: {:?}", ai);
-
-    let qp_init_attr = verbs::QpInitAttr {
-        qp_context: Some(&3),
-        send_cq: None,
-        recv_cq: None,
-        srq: None,
-        cap: verbs::QpCapability {
-            max_send_wr: 1024,
-            max_recv_wr: 128,
-            max_send_sge: 1,
-            max_recv_sge: 1,
-            max_inline_data: 128,
-        },
-        qp_type: verbs::QpType::RC,
-        sq_sig_all: false,
-    };
-
-    let mut builder =
-        cm::CmId::resolve_route((SERVER_ADDR, SERVER_PORT)).expect("Route resolve failed!");
+    let builder = libkoala::cm::CmId::resolve_route((SERVER_ADDR, SERVER_PORT))
+        .expect("Route resolve failed!");
     eprintln!("Route resolved");
 
-    let pre_id = builder
-        .set_qp_init_attr(&qp_init_attr)
-        .build()
-        .expect("Create QP failed!");
+    let pre_id = builder.build().expect("Create QP failed!");
     eprintln!("QP created");
 
     let mut recv_mr: MemoryRegion<u8> =
