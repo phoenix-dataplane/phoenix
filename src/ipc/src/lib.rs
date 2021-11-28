@@ -36,7 +36,7 @@ impl<T: Serialize> IpcSenderNotify<T> {
 
     pub fn send(&self, data: T) -> Result<(), bincode::Error> {
         self.inner.send(data)?;
-        self.entries.fetch_add(1, Ordering::AcqRel);
+        self.entries.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 }
