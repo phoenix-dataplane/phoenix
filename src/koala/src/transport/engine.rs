@@ -259,11 +259,12 @@ impl<'ctx> TransportEngine<'ctx> {
         const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
-        let mut count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
-        if count == 0 {
+        let max_count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
+        if max_count == 0 {
             return Ok(0);
         }
 
+        let mut count = 0;
         let mut buffer = Vec::with_capacity(BUF_LEN);
 
         self.dp_wq
@@ -271,8 +272,8 @@ impl<'ctx> TransportEngine<'ctx> {
             .recv(|ptr, read_count| unsafe {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
-                debug_assert!(count <= BUF_LEN);
-                count = count.min(read_count);
+                debug_assert!(max_count <= BUF_LEN);
+                count = max_count.min(read_count);
                 for i in 0..count {
                     buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
