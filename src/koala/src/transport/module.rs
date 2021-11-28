@@ -114,7 +114,7 @@ impl TransportModule {
             dp_wq,
             dp_cq,
             mode,
-        );
+        )?;
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
 

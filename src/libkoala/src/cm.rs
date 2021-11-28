@@ -122,7 +122,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             .ok_or(Error::NoAddrResolved)?;
         KL_CTX.with(|ctx| {
             // create_id
-            let req = Request::CreateId(None, PortSpace::TCP);
+            let req = Request::CreateId(PortSpace::TCP);
             ctx.cmd_tx.send(req)?;
             let cmid = rx_recv_impl!(ctx.cmd_rx, ResponseKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
@@ -151,7 +151,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             .ok_or(Error::NoAddrResolved)?;
         KL_CTX.with(|ctx| {
             // create_id
-            let req = Request::CreateId(None, PortSpace::TCP);
+            let req = Request::CreateId(PortSpace::TCP);
             ctx.cmd_tx.send(req)?;
             let cmid = rx_recv_impl!(ctx.cmd_rx, ResponseKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());

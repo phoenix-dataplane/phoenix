@@ -1,4 +1,5 @@
 use fnv::FnvHashMap as HashMap;
+use std::collections::hash_map;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -89,10 +90,15 @@ impl<R> ResourceTable<R> {
 
     pub(crate) fn open_or_create_resource(&mut self, h: Handle, r: R) {
         // TODO(cjr): check if they have the same handle
-        self.table
-            .entry(h)
-            .and_modify(|e| e.open())
-            .or_insert(Entry::new(r, 1));
+        match self.table.entry(h) {
+            hash_map::Entry::Occupied(mut e) => {
+                e.get_mut().open();
+                mem::forget(r);
+            }
+            hash_map::Entry::Vacant(e) => {
+                e.insert(Entry::new(r, 1));
+            }
+        }
     }
 
     pub(crate) fn open_resource(&mut self, h: &Handle) -> Result<(), Error> {

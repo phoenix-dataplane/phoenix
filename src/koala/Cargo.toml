@@ -23,3 +23,4 @@ interface = { path = "../interface" }
 ipc = { path = "../ipc" }
 rdma = { path = "../rdma", features = ["koala"] }
 fnv = "1.0.7"
+mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }

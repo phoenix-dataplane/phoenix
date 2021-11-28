@@ -6,6 +6,7 @@ use std::mem;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::os::raw::{c_char, c_void};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr;
 use std::slice;
 
@@ -241,11 +242,52 @@ impl fmt::Display for CmEvent {
     }
 }
 
+impl CmEvent {
+    #[inline]
+    pub fn status(&self) -> i32 {
+        assert!(!self.0.is_null());
+        unsafe { &*self.0 }.status
+    }
+
+    #[inline]
+    pub fn event(&self) -> ffi::rdma_cm_event_type::Type {
+        assert!(!self.0.is_null());
+        unsafe { &*self.0 }.event
+    }
+
+    #[inline]
+    pub fn id(&self) -> CmId {
+        assert!(!self.0.is_null());
+        let id = unsafe { &*self.0 }.id;
+        assert!(!id.is_null());
+        CmId(id)
+    }
+
+    #[inline]
+    pub fn listen_id(&self) -> Option<CmId> {
+        assert!(!self.0.is_null());
+        let listen_id = unsafe { &*self.0 }.listen_id;
+        if listen_id.is_null() {
+            None
+        } else {
+            Some(CmId(listen_id))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct EventChannel(*mut ffi::rdma_event_channel);
 
 unsafe impl Send for EventChannel {}
 unsafe impl Sync for EventChannel {}
+
+impl AsRawFd for EventChannel {
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        assert!(!self.0.is_null());
+        unsafe { &*self.0 }.fd
+    }
+}
 
 impl EventChannel {
     pub fn create_event_channel() -> io::Result<Self> {
@@ -265,6 +307,36 @@ impl EventChannel {
         } else {
             Ok(CmEvent(event))
         }
+    }
+
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        let mut flags = unsafe { libc::fcntl(self.as_raw_fd(), libc::F_GETFL) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if nonblocking {
+            flags |= libc::O_NONBLOCK;
+        } else {
+            flags &= !libc::O_NONBLOCK;
+        }
+        let rc = unsafe { libc::fcntl(self.as_raw_fd(), libc::F_SETFL, flags) };
+        if rc == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    pub fn is_nonblocking(&self) -> io::Result<bool> {
+        let flags = unsafe { libc::fcntl(self.as_raw_fd(), libc::F_GETFL) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(flags & libc::O_NONBLOCK > 0)
+    }
+
+    #[inline]
+    pub fn handle(&self) -> u32 {
+        self.as_raw_fd() as _
     }
 }
 
@@ -307,6 +379,7 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    #[inline]
     pub fn qp<'res>(&self) -> Option<ibv::QueuePair<'res>> {
         assert!(!self.0.is_null());
         let qp = unsafe { &*self.0 }.qp;
@@ -318,6 +391,14 @@ impl CmId {
                 qp,
             })
         }
+    }
+
+    #[inline]
+    pub fn event_channel(&self) -> EventChannel {
+        assert!(!self.0.is_null());
+        let channel = unsafe { &*self.0 }.channel;
+        assert!(!channel.is_null());
+        EventChannel(channel)
     }
 
     pub fn create_ep<'ctx>(

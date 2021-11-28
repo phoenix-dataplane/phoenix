@@ -21,6 +21,14 @@ pub(crate) enum Error {
     MemoryRegion(rdma::mr::Error),
     #[error("Failed to send file descriptors: {0}.")]
     SendFd(ipc::unix::Error),
+    #[error("Operation in progress.")]
+    InProgress,
+    #[error("Mio error: {0}.")]
+    Mio(io::Error),
+    #[error("No CM event.")]
+    NoCmEvent,
+    #[error("Transport specific error: {0}.")]
+    Transport(i32),
 }
 
 impl From<Error> for interface::Error {
