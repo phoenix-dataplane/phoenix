@@ -187,7 +187,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
         self.dp_spin_cnt = 0;
 
-        if self.cmd_rx_entries.load(Ordering::Acquire) > 0 {
+        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0 {
             self.backoff = std::cmp::max(1, self.backoff / 2);
             if self.flush_dp() {
                 return true;
@@ -314,7 +314,7 @@ impl<'ctx> TransportEngine<'ctx> {
         match self.cmd_rx.try_recv() {
             // handle request
             Ok(req) => {
-                self.cmd_rx_entries.fetch_sub(1, Ordering::AcqRel);
+                self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
                     Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
