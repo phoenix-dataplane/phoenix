@@ -33,6 +33,7 @@ struct Resource<'ctx> {
     qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
     cmid_table: ResourceTable<CmId>,
     mr_table: ResourceTable<rdma::mr::MemoryRegion>,
+    event_channel_table: ResourceTable<rdmacm::EventChannel>,
 }
 
 impl<'ctx> Resource<'ctx> {
@@ -46,31 +47,38 @@ impl<'ctx> Resource<'ctx> {
         ret
     }
 
+    fn insert_qp(
+        &mut self,
+        qp: ibv::QueuePair<'ctx>,
+    ) -> Result<(Handle, Handle, Handle, Handle), Error> {
+        let pd = qp.pd();
+        let send_cq = qp.send_cq();
+        let recv_cq = qp.recv_cq();
+        let pd_handle = pd.handle().into();
+        let scq_handle = send_cq.handle().into();
+        let rcq_handle = recv_cq.handle().into();
+        let qp_handle = qp.handle().into();
+        // qp, cqs, and other associated resources are supposed to be open by the user
+        // explicited, the error should be safely ignored if the resource has already been
+        // created.
+        self.qp_table.occupy(qp_handle, qp);
+        self.pd_table.occupy(pd_handle, pd);
+        self.cq_table.occupy(scq_handle, send_cq);
+        self.cq_table.occupy(rcq_handle, recv_cq);
+        Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
+    }
+
     fn insert_cmid(
         &mut self,
         cmid: CmId,
     ) -> Result<(Handle, Option<(Handle, Handle, Handle, Handle)>), Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
         if let Some(qp) = cmid.qp() {
-            let pd = qp.pd();
-            let send_cq = qp.send_cq();
-            let recv_cq = qp.recv_cq();
-            let pd_handle = pd.handle().into();
-            let scq_handle = send_cq.handle().into();
-            let rcq_handle = recv_cq.handle().into();
-            let qp_handle = qp.handle().into();
             self.cmid_table.insert(cmid_handle, cmid)?;
-            // qp, cqs, and other associated resources are supposed to be open by the user
-            // explicited, the error should be safely ignored if the resource has already been
-            // created.
-            self.qp_table.occupy(qp_handle, qp);
-            self.pd_table.occupy(pd_handle, pd);
-            self.cq_table.occupy(scq_handle, send_cq);
-            self.cq_table.occupy(rcq_handle, recv_cq);
-            let handles = Some((qp_handle, pd_handle, scq_handle, rcq_handle));
+            let handles = Some(self.insert_qp(qp)?);
             Ok((cmid_handle, handles))
         } else {
-            // passive cmid, no QP associated.
+            // listener cmid, no QP associated.
             self.cmid_table.insert(cmid_handle, cmid)?;
             Ok((cmid_handle, None))
         }
@@ -204,6 +212,27 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
     fn check_queue_len(&self) {
         unimplemented!();
+    }
+}
+
+fn prepare_returned_qp(
+    handles: Option<(Handle, Handle, Handle, Handle)>,
+) -> Option<returned::QueuePair> {
+    if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
+        Some(returned::QueuePair {
+            handle: interface::QueuePair(qp_handle),
+            pd: returned::ProtectionDomain {
+                handle: interface::ProtectionDomain(pd_handle),
+            },
+            send_cq: returned::CompletionQueue {
+                handle: interface::CompletionQueue(scq_handle),
+            },
+            recv_cq: returned::CompletionQueue {
+                handle: interface::CompletionQueue(rcq_handle),
+            },
+        })
+    } else {
+        None
     }
 }
 
@@ -514,6 +543,48 @@ impl<'ctx> TransportEngine<'ctx> {
         }
     }
 
+    fn get_qp_params<'a>(
+        &'a self,
+        pd_handle: &Option<interface::ProtectionDomain>,
+        qp_init_attr: &Option<interface::QpInitAttr>,
+    ) -> Result<
+        (
+            Option<&'a ibv::ProtectionDomain<'a>>,
+            Option<rdma::ffi::ibv_qp_init_attr>,
+        ),
+        Error,
+    > {
+        let pd = if let Some(h) = pd_handle {
+            Some(self.resource.pd_table.get(&h.0)?)
+        } else {
+            None
+        };
+        let qp_init_attr = if let Some(a) = qp_init_attr {
+            let send_cq = if let Some(ref h) = a.send_cq {
+                Some(self.resource.cq_table.get(&h.0)?)
+            } else {
+                None
+            };
+            let recv_cq = if let Some(ref h) = a.recv_cq {
+                Some(self.resource.cq_table.get(&h.0)?)
+            } else {
+                None
+            };
+            let attr = ibv::QpInitAttr {
+                qp_context: 0,
+                send_cq: send_cq,
+                recv_cq: recv_cq,
+                cap: a.cap.clone().into(),
+                qp_type: a.qp_type.into(),
+                sq_sig_all: a.sq_sig_all,
+            };
+            Some(attr.to_ibv_qp_init_attr())
+        } else {
+            None
+        };
+        Ok((pd, qp_init_attr))
+    }
+
     /// Process control path operations.
     fn process_cmd(&mut self, req: &cmd::Request) -> Result<cmd::ResponseKind, Error> {
         use ipc::cmd::{Request, ResponseKind};
@@ -538,63 +609,64 @@ impl<'ctx> TransportEngine<'ctx> {
                     Err(e) => Err(Error::GetAddrInfo(e)),
                 }
             }
-            Request::CreateEp(ai, pd_handle, qp_init_attr) => {
+            Request::CreateEp(ai, pd, qp_init_attr) => {
                 trace!(
-                    "ai: {:?}, pd_handle: {:?}, qp_init_attr: {:?}",
+                    "ai: {:?}, pd: {:?}, qp_init_attr: {:?}",
                     ai,
-                    pd_handle,
+                    pd,
                     qp_init_attr
                 );
 
-                let pd = if let Some(h) = pd_handle {
-                    Some(self.resource.pd_table.get(h)?)
-                } else {
-                    None
-                };
-                let qp_init_attr = if let Some(a) = qp_init_attr {
-                    let send_cq = if let Some(ref h) = a.send_cq {
-                        Some(self.resource.cq_table.get(&h.0)?)
-                    } else {
-                        None
-                    };
-                    let recv_cq = if let Some(ref h) = a.recv_cq {
-                        Some(self.resource.cq_table.get(&h.0)?)
-                    } else {
-                        None
-                    };
-                    let attr = ibv::QpInitAttr {
-                        qp_context: 0,
-                        send_cq: send_cq,
-                        recv_cq: recv_cq,
-                        cap: a.cap.clone().into(),
-                        qp_type: a.qp_type.into(),
-                        sq_sig_all: a.sq_sig_all,
-                    };
-                    Some(attr.to_ibv_qp_init_attr())
-                } else {
-                    None
-                };
+                let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr)?;
+                // let pd = if let Some(h) = pd_handle {
+                //     Some(self.resource.pd_table.get(h)?)
+                // } else {
+                //     None
+                // };
+                // let qp_init_attr = if let Some(a) = qp_init_attr {
+                //     let send_cq = if let Some(ref h) = a.send_cq {
+                //         Some(self.resource.cq_table.get(&h.0)?)
+                //     } else {
+                //         None
+                //     };
+                //     let recv_cq = if let Some(ref h) = a.recv_cq {
+                //         Some(self.resource.cq_table.get(&h.0)?)
+                //     } else {
+                //         None
+                //     };
+                //     let attr = ibv::QpInitAttr {
+                //         qp_context: 0,
+                //         send_cq: send_cq,
+                //         recv_cq: recv_cq,
+                //         cap: a.cap.clone().into(),
+                //         qp_type: a.qp_type.into(),
+                //         sq_sig_all: a.sq_sig_all,
+                //     };
+                //     Some(attr.to_ibv_qp_init_attr())
+                // } else {
+                //     None
+                // };
 
                 match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
                     Ok(cmid) => {
                         let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
-                        let ret_qp =
-                            if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
-                                Some(returned::QueuePair {
-                                    handle: interface::QueuePair(qp_handle),
-                                    pd: returned::ProtectionDomain {
-                                        handle: interface::ProtectionDomain(pd_handle),
-                                    },
-                                    send_cq: returned::CompletionQueue {
-                                        handle: interface::CompletionQueue(scq_handle),
-                                    },
-                                    recv_cq: returned::CompletionQueue {
-                                        handle: interface::CompletionQueue(rcq_handle),
-                                    },
-                                })
-                            } else {
-                                None
-                            };
+                        let ret_qp = prepare_returned_qp(handles);
+                        //     if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
+                        //         Some(returned::QueuePair {
+                        //             handle: interface::QueuePair(qp_handle),
+                        //             pd: returned::ProtectionDomain {
+                        //                 handle: interface::ProtectionDomain(pd_handle),
+                        //             },
+                        //             send_cq: returned::CompletionQueue {
+                        //                 handle: interface::CompletionQueue(scq_handle),
+                        //             },
+                        //             recv_cq: returned::CompletionQueue {
+                        //                 handle: interface::CompletionQueue(rcq_handle),
+                        //             },
+                        //         })
+                        //     } else {
+                        //         None
+                        //     };
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
                             qp: ret_qp,
@@ -620,22 +692,23 @@ impl<'ctx> TransportEngine<'ctx> {
                 let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
 
                 let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
-                let ret_qp = if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
-                    Some(returned::QueuePair {
-                        handle: interface::QueuePair(qp_handle),
-                        pd: returned::ProtectionDomain {
-                            handle: interface::ProtectionDomain(pd_handle),
-                        },
-                        send_cq: returned::CompletionQueue {
-                            handle: interface::CompletionQueue(scq_handle),
-                        },
-                        recv_cq: returned::CompletionQueue {
-                            handle: interface::CompletionQueue(rcq_handle),
-                        },
-                    })
-                } else {
-                    None
-                };
+                let ret_qp = prepare_returned_qp(handles);
+                // let ret_qp = if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
+                //     Some(returned::QueuePair {
+                //         handle: interface::QueuePair(qp_handle),
+                //         pd: returned::ProtectionDomain {
+                //             handle: interface::ProtectionDomain(pd_handle),
+                //         },
+                //         send_cq: returned::CompletionQueue {
+                //             handle: interface::CompletionQueue(scq_handle),
+                //         },
+                //         recv_cq: returned::CompletionQueue {
+                //             handle: interface::CompletionQueue(rcq_handle),
+                //         },
+                //     })
+                // } else {
+                //     None
+                // };
                 let ret_cmid = returned::CmId {
                     handle: interface::CmId(new_cmid_handle),
                     qp: ret_qp,
@@ -665,6 +738,73 @@ impl<'ctx> TransportEngine<'ctx> {
                 cmid.connect().map_err(Error::RdmaCm)?;
 
                 Ok(ResponseKind::Connect)
+            }
+            Request::CreateId(event_channel, port_space) => {
+                trace!(
+                    "CreateId, event_channel: {:?}, port_space: {:?}",
+                    event_channel,
+                    port_space
+                );
+                let event_channel = if let Some(ec) = event_channel {
+                    Some(self.resource.event_channel_table.get(&ec.0)?)
+                } else {
+                    None
+                };
+                let ps: rdmacm::PortSpace = (*port_space).into();
+                let cmid = CmId::create_id(event_channel, 0, ps.0).map_err(Error::RdmaCm)?;
+                let (new_cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
+                let ret_qp = prepare_returned_qp(handles);
+                let ret_cmid = returned::CmId {
+                    handle: interface::CmId(new_cmid_handle),
+                    qp: ret_qp,
+                };
+                Ok(ResponseKind::CreateId(ret_cmid))
+            }
+            Request::BindAddr(cmid_handle, sockaddr) => {
+                trace!(
+                    "BindAddr: cmid_handle: {:?}, sockaddr: {:?}",
+                    cmid_handle,
+                    sockaddr
+                );
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                cmid.bind_addr(&sockaddr).map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::BindAddr)
+            }
+            Request::ResolveAddr(cmid_handle, sockaddr) => {
+                trace!(
+                    "ResolveAddr: cmid_handle: {:?}, sockaddr: {:?}",
+                    cmid_handle,
+                    sockaddr
+                );
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                cmid.resolve_addr(&sockaddr).map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::ResolveAddr)
+            }
+            Request::ResolveRoute(cmid_handle, timeout_ms) => {
+                trace!(
+                    "ResolveRoute: cmid_handle: {:?}, timeout_ms: {:?}",
+                    cmid_handle,
+                    timeout_ms
+                );
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                cmid.resolve_route(*timeout_ms).map_err(Error::RdmaCm)?;
+                Ok(ResponseKind::ResolveRoute)
+            }
+            Request::CmCreateQp(cmid_handle, pd, qp_init_attr) => {
+                trace!(
+                    "CmCreateQp: cmid_handle: {:?}, pd: {:?}, qp_init_attr: {:?}",
+                    cmid_handle,
+                    pd,
+                    qp_init_attr
+                );
+                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr)?;
+                cmid.create_qp(pd, qp_init_attr.as_ref())
+                    .map_err(Error::RdmaCm)?;
+                let qp = cmid.qp().unwrap();
+                let handles = self.resource.insert_qp(qp)?;
+                let ret_qp = prepare_returned_qp(Some(handles)).unwrap();
+                Ok(ResponseKind::CmCreateQp(ret_qp))
             }
             Request::RegMr(pd, nbytes, access) => {
                 trace!(

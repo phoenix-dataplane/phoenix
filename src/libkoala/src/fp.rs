@@ -8,11 +8,12 @@ use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
 
 use crate::{Error, KL_CTX};
 
-use crate::cm::CmId;
+use crate::cm;
+use crate::cm::{CmId, PreparedCmId};
 use crate::verbs;
 use crate::verbs::{CompletionQueue, WorkCompletion};
 
-impl CmId {
+impl cm::Inner {
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -45,6 +46,34 @@ impl CmId {
             Ok(())
         })
     }
+}
+
+impl PreparedCmId {
+    pub unsafe fn post_recv<T, R>(
+        &self,
+        mr: &mut verbs::MemoryRegion<T>,
+        range: R,
+        context: u64,
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>
+    {
+        self.inner.post_recv(mr, range, context)
+    }
+}
+
+impl CmId {
+    pub unsafe fn post_recv<T, R>(
+        &self,
+        mr: &mut verbs::MemoryRegion<T>,
+        range: R,
+        context: u64,
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>
+    {
+        self.inner.post_recv(mr, range, context)
+    }
 
     pub fn post_send<T, R>(
         &self,
@@ -57,7 +86,7 @@ impl CmId {
         R: SliceIndex<[T], Output = [T]>
     {
         let req = WorkRequest::PostSend(
-            self.handle.0,
+            self.inner.handle.0,
             context,
             buf::Range::new(mr, range),
             mr.inner.0,
@@ -82,7 +111,7 @@ impl CmId {
 
     pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
-        let cq = &self.qp.as_ref().unwrap().send_cq;
+        let cq = &self.inner.qp.send_cq;
         loop {
             cq.poll_cq(&mut wc)?;
             if wc.len() == 1 {
@@ -94,7 +123,7 @@ impl CmId {
 
     pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
-        let cq = &self.qp.as_ref().unwrap().recv_cq;
+        let cq = &self.inner.qp.recv_cq;
         loop {
             cq.poll_cq(&mut wc)?;
             if wc.len() == 1 {

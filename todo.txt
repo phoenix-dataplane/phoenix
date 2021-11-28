@@ -38,6 +38,7 @@ Performance
 - Use FnvHashMap in transport/engine
 - Change to Ordering::Relaxed
 - GetSendComp() is currently busy spinning
+- Save CPU cycles in TransportEngine::run()
 -[x] balance poll_cq and post_send/recv, reduce redundant poll_cq
     - <s>use seperate queues can work, but still can cause HOL among
       multiple CQs</s>

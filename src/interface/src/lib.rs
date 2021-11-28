@@ -30,6 +30,9 @@ impl From<u32> for Handle {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct EventChannel(pub Handle);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 

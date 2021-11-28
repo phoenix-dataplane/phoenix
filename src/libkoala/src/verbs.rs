@@ -22,6 +22,7 @@ use crate::{rx_recv_impl, Error, FromBorrow, KL_CTX};
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
+#[derive(Debug)]
 pub struct ProtectionDomain {
     pub(crate) inner: interface::ProtectionDomain,
 }
@@ -70,7 +71,7 @@ impl ProtectionDomain {
             assert_eq!(file_len, nbytes);
 
             rx_recv_impl!(ctx.cmd_rx, ResponseKind::RegMr, mr, {
-                MemoryRegion::new(mr.handle, mr.rkey, memfd)
+                MemoryRegion::new(self.inner, mr.handle, mr.rkey, memfd)
             })
         })
     }
@@ -161,8 +162,9 @@ pub struct SharedReceiveQueue {
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
     mmap: MmapRaw,
-    _memfd: Memfd,
     rkey: RemoteKey,
+    _memfd: Memfd,
+    _pd: ProtectionDomain,
     _marker: PhantomData<T>,
 }
 
@@ -203,15 +205,31 @@ impl<T> Drop for MemoryRegion<T> {
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(inner: interface::MemoryRegion, rkey: RemoteKey, memfd: Memfd) -> Result<Self, Error> {
+    fn new(
+        pd: interface::ProtectionDomain,
+        inner: interface::MemoryRegion,
+        rkey: RemoteKey,
+        memfd: Memfd,
+    ) -> Result<Self, Error> {
         let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,
             mmap,
+            _pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
             _memfd: memfd,
             _marker: PhantomData,
         })
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        self
+    }
+
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self
     }
 
     #[inline]
@@ -268,23 +286,26 @@ impl Drop for QueuePair {
     }
 }
 
-pub struct QpInitAttr<'ctx> {
+#[derive(Clone)]
+pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     pub qp_context: Option<&'ctx dyn Any>,
-    pub send_cq: Option<CompletionQueue>,
-    pub recv_cq: Option<CompletionQueue>,
-    pub srq: Option<SharedReceiveQueue>,
+    pub send_cq: Option<&'scq CompletionQueue>,
+    pub recv_cq: Option<&'rcq CompletionQueue>,
+    pub srq: Option<&'srq SharedReceiveQueue>,
     pub cap: QpCapability,
     pub qp_type: QpType,
     pub sq_sig_all: bool,
 }
 
-impl<'ctx> FromBorrow<QpInitAttr<'ctx>> for interface::QpInitAttr {
-    fn from_borrow<T: Borrow<QpInitAttr<'ctx>>>(borrow: &T) -> Self {
+impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
+    for interface::QpInitAttr
+{
+    fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
         interface::QpInitAttr {
-            send_cq: b.send_cq.as_ref().map(|x| x.inner.clone()),
-            recv_cq: b.recv_cq.as_ref().map(|x| x.inner.clone()),
-            srq: b.srq.as_ref().map(|x| x.inner.clone()),
+            send_cq: b.send_cq.map(|x| x.inner.clone()),
+            recv_cq: b.recv_cq.map(|x| x.inner.clone()),
+            srq: b.srq.map(|x| x.inner.clone()),
             cap: b.cap.clone(),
             qp_type: b.qp_type,
             sq_sig_all: b.sq_sig_all,
@@ -292,6 +313,7 @@ impl<'ctx> FromBorrow<QpInitAttr<'ctx>> for interface::QpInitAttr {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ConnParam<'priv_data> {
     pub private_data: Option<&'priv_data [u8]>,
     pub responder_resources: u8,

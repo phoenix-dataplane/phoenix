@@ -33,21 +33,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sq_sig_all: false,
     };
 
-    let listen_id = cm::CmId::create_ep(&ai, None, Some(&qp_init_attr))?;
-
+    let listener = cm::CmIdListener::bind(("0.0.0.0", SERVER_PORT)).expect("Listener bind failed");
     eprintln!("listen_id created");
 
-    listen_id.listen(16).expect("Listen failed!");
-    let id = listen_id.get_request().expect("Get request failed!");
+    let mut builder = listener.get_request().expect("Get request failed!");
+    eprintln!("Get a connect request");
+    let pre_id = builder
+        .set_qp_init_attr(&qp_init_attr)
+        .build()
+        .expect("Create QP failed!");
+    eprintln!("QP created");
 
-    let mut recv_mr: MemoryRegion<u8> = id.alloc_msgs(128).expect("Memory registration failed!");
+    let mut recv_mr: MemoryRegion<u8> =
+        pre_id.alloc_msgs(128).expect("Memory registration failed!");
 
     unsafe {
-        id.post_recv(&mut recv_mr, .., 0)
+        pre_id
+            .post_recv(&mut recv_mr, .., 0)
             .expect("Post recv failed!");
     }
 
-    id.accept(None).expect("Accept failed!");
+    let id = pre_id.accept(None).expect("Accept failed!");
+    eprintln!("Connection established");
 
     let wc_recv = id.get_recv_comp().expect("Get recv comp failed!");
     assert_eq!(wc_recv.status, WcStatus::Success);
@@ -66,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc_send.status, WcStatus::Success);
 
-    println!("{:?}", recv_mr);
+    println!("{:?}", recv_mr.as_slice());
 
     assert_eq!(&recv_mr[..send_mr.len()], "Hello koala server!".as_bytes());
     Ok(())

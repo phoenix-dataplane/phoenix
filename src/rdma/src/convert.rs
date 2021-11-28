@@ -61,10 +61,22 @@ mod sa {
     );
 }
 
+impl From<interface::addrinfo::PortSpace> for rdmacm::PortSpace {
+    fn from(other: interface::addrinfo::PortSpace) -> Self {
+        use interface::addrinfo::PortSpace;
+        let inner = match other {
+            PortSpace::IPOIB => ffi::rdma_port_space::RDMA_PS_IPOIB,
+            PortSpace::TCP => ffi::rdma_port_space::RDMA_PS_TCP,
+            PortSpace::UDP => ffi::rdma_port_space::RDMA_PS_UDP,
+            PortSpace::IB => ffi::rdma_port_space::RDMA_PS_IB,
+        };
+        rdmacm::PortSpace(inner)
+    }
+}
+
 impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
     fn from(h: interface::addrinfo::AddrInfoHints) -> Self {
         use interface::addrinfo::AddrFamily;
-        use interface::addrinfo::PortSpace;
         use interface::QpType;
         let flags = h.flags.bits();
 
@@ -82,18 +94,13 @@ impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
             QpType::UD => ffi::ibv_qp_type::IBV_QPT_UD,
         };
 
-        let port_space = match h.port_space {
-            PortSpace::IPOIB => ffi::rdma_port_space::RDMA_PS_IPOIB,
-            PortSpace::TCP => ffi::rdma_port_space::RDMA_PS_TCP,
-            PortSpace::UDP => ffi::rdma_port_space::RDMA_PS_UDP,
-            PortSpace::IB => ffi::rdma_port_space::RDMA_PS_IB,
-        };
+        let port_space: rdmacm::PortSpace = h.port_space.into();
 
         rdmacm::AddrInfoHints {
             flags: flags as _,
             family: family as _,
             qp_type: qp_type as _,
-            port_space: port_space as _,
+            port_space: port_space.0 as _,
         }
     }
 }

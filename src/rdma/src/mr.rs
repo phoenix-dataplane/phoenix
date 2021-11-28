@@ -1,6 +1,7 @@
 //! Shared memory region.
 #![cfg(feature = "koala")]
 use std::io;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use memfd::{Memfd, MemfdOptions};
@@ -83,18 +84,30 @@ impl MemoryRegion {
     }
 
     #[inline]
+    pub fn memfd(&self) -> &Memfd {
+        &self.memfd
+    }
+
+    #[inline]
     pub fn mr(&self) -> *mut ffi::ibv_mr {
         self.mr
     }
 
     #[inline]
-    pub fn handle(&self) -> u32 {
-        unsafe { &*self.mr }.handle
+    pub fn pd<'a>(&self) -> ibv::ProtectionDomain<'a> {
+        assert!(!self.mr.is_null());
+        let pd = unsafe { &*self.mr }.pd;
+        assert!(!pd.is_null());
+        ibv::ProtectionDomain {
+            _phantom: PhantomData,
+            pd,
+        }
     }
 
     #[inline]
-    pub fn memfd(&self) -> &Memfd {
-        &self.memfd
+    pub fn handle(&self) -> u32 {
+        assert!(!self.mr.is_null());
+        unsafe { &*self.mr }.handle
     }
 
     #[inline]

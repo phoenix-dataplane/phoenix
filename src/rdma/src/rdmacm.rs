@@ -212,6 +212,9 @@ impl<'a> AsMut<ffi::rdma_addrinfo> for AddrInfoTransparent<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PortSpace(pub ffi::rdma_port_space::Type);
+
 #[derive(Debug)]
 pub struct CmEvent(*mut ffi::rdma_cm_event);
 
@@ -240,6 +243,9 @@ impl fmt::Display for CmEvent {
 
 #[derive(Debug)]
 pub struct EventChannel(*mut ffi::rdma_event_channel);
+
+unsafe impl Send for EventChannel {}
+unsafe impl Sync for EventChannel {}
 
 impl EventChannel {
     pub fn create_event_channel() -> io::Result<Self> {
@@ -338,7 +344,7 @@ impl CmId {
     }
 
     pub fn create_id(
-        channel: Option<EventChannel>,
+        channel: Option<&EventChannel>,
         context: usize,
         ps: ffi::rdma_port_space::Type,
     ) -> io::Result<CmId> {
@@ -355,11 +361,11 @@ impl CmId {
         Ok(CmId(cm_id))
     }
 
-    pub fn bind_addr(&self, ai: dns_lookup::AddrInfo) -> io::Result<()> {
+    pub fn bind_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {
         let id = self.0;
-        let addr = match ai.sockaddr {
-            SocketAddr::V4(saddr) => &saddr as *const _ as *mut ffi::sockaddr,
-            SocketAddr::V6(saddr) => &saddr as *const _ as *mut ffi::sockaddr,
+        let addr = match sockaddr {
+            SocketAddr::V4(saddr) => saddr as *const _ as *mut ffi::sockaddr,
+            SocketAddr::V6(saddr) => saddr as *const _ as *mut ffi::sockaddr,
         };
         let rc = unsafe { ffi::rdma_bind_addr(id, addr) };
         if rc != 0 {
@@ -405,12 +411,12 @@ impl CmId {
         Ok(())
     }
 
-    pub fn resolve_addr(&self, ai: dns_lookup::AddrInfo) -> io::Result<()> {
+    pub fn resolve_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {
         let id = self.0;
         let src_addr = ptr::null_mut();
-        let dst_addr = match ai.sockaddr {
-            SocketAddr::V4(saddr) => &saddr as *const _ as *mut ffi::sockaddr,
-            SocketAddr::V6(saddr) => &saddr as *const _ as *mut ffi::sockaddr,
+        let dst_addr = match sockaddr {
+            SocketAddr::V4(saddr) => saddr as *const _ as *mut ffi::sockaddr,
+            SocketAddr::V6(saddr) => saddr as *const _ as *mut ffi::sockaddr,
         };
         let timeout_ms = 1500;
 
@@ -431,25 +437,20 @@ impl CmId {
         Ok(())
     }
 
-    pub fn create_qp(&self) -> io::Result<()> {
+    pub fn create_qp<'ctx>(
+        &self,
+        pd: Option<&ibv::ProtectionDomain<'ctx>>,
+        qp_init_attr: Option<&ffi::ibv_qp_init_attr>,
+    ) -> io::Result<()> {
         let id = self.0;
-        let pd = ptr::null_mut();
-        let qp_init_attr = &mut ffi::ibv_qp_init_attr {
-            qp_context: ptr::null_mut(),
-            send_cq: ptr::null_mut(),
-            recv_cq: ptr::null_mut(),
-            cap: ffi::ibv_qp_cap {
-                max_send_wr: 128,
-                max_recv_wr: 128,
-                max_send_sge: 5,
-                max_recv_sge: 5,
-                max_inline_data: 128,
-            },
-            qp_type: ffi::ibv_qp_type::IBV_QPT_RC,
-            sq_sig_all: 0,
-            ..Default::default()
+        assert!(!id.is_null());
+        let rc = unsafe {
+            ffi::rdma_create_qp(
+                id,
+                pd.map_or(ptr::null_mut(), |pd| pd.pd),
+                qp_init_attr.map_or(ptr::null_mut(), |a| a as *const _ as *mut _),
+            )
         };
-        let rc = unsafe { ffi::rdma_create_qp(id, pd, qp_init_attr) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
