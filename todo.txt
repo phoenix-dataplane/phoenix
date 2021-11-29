@@ -3,7 +3,7 @@ TODO
 Engine Framework
 -[x] Blocking network APIs in transport engine may block the entire
      runtime
-- What should Engine::run() return?
+-[x] What should Engine::run() return?
 - *Change Engine trait to a huge Generator*
 
 Resource Releasing
@@ -11,10 +11,10 @@ Resource Releasing
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 
      count of the corresponding object at the backend.
-- Clean and release the resource after detected a user app is
-  disconnected.
+-[x] Clean and release the resource after detected a user app is
+     disconnected.
 	- shmem-ipc
-		- Error::Disconnected
+		-[x] <s>Error::Disconnected</s> won't fix
 		-[x] remove the blocking send/recv
 		-[x] expose current available count to read/write
 
