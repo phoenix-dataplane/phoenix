@@ -29,6 +29,12 @@ pub(crate) enum Error {
     NoCmEvent,
     #[error("Transport specific error: {0}.")]
     Transport(i32),
+
+    // Below are errors that does not return to the user.
+    #[error("ipc-channel TryRecvError")]
+    IpcTryRecv,
+    #[error("IPC send error: {0}")]
+    IpcSendError(#[from] ipc::Error),
 }
 
 impl From<Error> for interface::Error {

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::slice;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use uuid::Uuid;
 
@@ -16,14 +16,14 @@ use interface::returned;
 use interface::Handle;
 use ipc::{self, cmd, dp};
 
-use engine::{Engine, SchedulingMode, Upgradable, Version};
+use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
 
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::transport::resource::ResourceTable;
-use crate::transport::{DatapathError, Error};
+use super::resource::ResourceTable;
+use super::{DatapathError, Error};
 
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 #[derive(Default)]
@@ -106,6 +106,8 @@ pub struct TransportEngine<'ctx> {
     poll: mio::Poll,
     // bufferred control path request
     cmd_buffer: Option<cmd::Request>,
+    // otherwise, the
+    last_cmd_ts: Instant,
 }
 
 impl<'ctx> TransportEngine<'ctx> {
@@ -141,6 +143,7 @@ impl<'ctx> TransportEngine<'ctx> {
             resource: Resource::new(),
             poll: mio::Poll::new()?,
             cmd_buffer: None,
+            last_cmd_ts: Instant::now(),
         })
     }
 }
@@ -165,64 +168,51 @@ impl<'ctx> Upgradable for TransportEngine<'ctx> {
     fn restore(&mut self) {
         unimplemented!();
     }
-
-    fn resume(&mut self) {
-        unimplemented!();
-    }
 }
 
-impl<'ctx> Engine for TransportEngine<'ctx> {
-    fn init(&mut self) {
-        unimplemented!();
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Progress(usize),
+    Disconnected,
+}
 
-    fn run(&mut self) -> bool {
+use Status::Progress;
+
+impl<'ctx> Engine for TransportEngine<'ctx> {
+    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
-        match self.check_dp() {
-            Ok(n) => {
-                if n > 0 {
-                    self.backoff = DP_LIMIT.min(self.backoff * 2);
-                }
+        const CMD_MAX_INTERVAL_MS: u64 = 1000;
+        if let Progress(n) = self.check_dp()? {
+            if n > 0 {
+                self.backoff = DP_LIMIT.min(self.backoff * 2);
             }
-            Err(_) => return true,
         }
 
         self.dp_spin_cnt += 1;
         if self.dp_spin_cnt < self.backoff {
-            return false;
+            return Ok(EngineStatus::Continue);
         }
 
         self.dp_spin_cnt = 0;
 
-        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0 {
+        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0
+            || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
+        {
+            self.last_cmd_ts = Instant::now();
             self.backoff = std::cmp::max(1, self.backoff / 2);
-            if self.flush_dp() {
-                return true;
-            }
-            if self.check_cmd() {
-                return true;
+            self.flush_dp()?;
+            if let Status::Disconnected = self.check_cmd()? {
+                return Ok(EngineStatus::Complete);
             }
         } else {
             self.backoff = DP_LIMIT.min(self.backoff * 2);
         }
 
         if self.cmd_buffer.is_some() {
-            self.check_cm_event();
+            self.check_cm_event()?;
         }
 
-        false
-    }
-
-    fn shutdown(&mut self) {
-        unimplemented!();
-    }
-
-    fn enqueue(&self) {
-        unimplemented!();
-    }
-
-    fn check_queue_len(&self) {
-        unimplemented!();
+        Ok(EngineStatus::Continue)
     }
 }
 
@@ -248,31 +238,27 @@ fn prepare_returned_qp(
 }
 
 impl<'ctx> TransportEngine<'ctx> {
-    fn flush_dp(&mut self) -> bool {
+    fn flush_dp(&mut self) -> Result<Status, DatapathError> {
         let mut processed = 0;
-        let existing_work = match self.dp_wq.receiver_mut().read_count() {
-            Ok(n) => n,
-            Err(_) => return true,
-        };
+        let existing_work = self.dp_wq.receiver_mut().read_count()?;
 
         while processed < existing_work {
-            match self.check_dp() {
-                Ok(n) => processed += n,
-                Err(_) => return true,
+            if let Progress(n) = self.check_dp()? {
+                processed += n;
             }
         }
 
-        false
+        Ok(Progress(processed))
     }
 
-    fn check_dp(&mut self) -> Result<usize, DatapathError> {
+    fn check_dp(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
         const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
         let max_count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
         if max_count == 0 {
-            return Ok(0);
+            return Ok(Progress(0));
         }
 
         let mut count = 0;
@@ -319,55 +305,55 @@ impl<'ctx> TransportEngine<'ctx> {
 
         self.try_flush_cq_err_buffer().unwrap();
 
-        Ok(count)
+        Ok(Progress(count))
     }
 
-    fn check_cmd(&mut self) -> bool {
+    fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.cmd_rx.try_recv() {
             // handle request
             Ok(req) => {
                 self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
+                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res)))?,
                     Err(Error::InProgress) => {
-                        // do nothing
-                        return false;
+                        // nothing to do, waiting for some network/device response
+                        return Ok(Progress(0));
                     }
-                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into()))),
+                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into())))?,
                 }
-                .map_or_else(|_| true, |_| false)
+                Ok(Progress(1))
             }
             Err(ipc::TryRecvError::Empty) => {
                 // do nothing
-                false
+                Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::IpcError(e)) => {
-                if matches!(e, ipc::IpcError::Disconnected) {
-                    return true;
-                }
-                panic!("recv error: {:?}", e);
+            Err(ipc::TryRecvError::IpcError(ipc::IpcError::Disconnected)) => {
+                Ok(Status::Disconnected)
             }
+            Err(ipc::TryRecvError::IpcError(_e)) => Err(Error::IpcTryRecv),
         }
     }
 
-    fn check_cm_event(&mut self) -> bool {
+    fn check_cm_event(&mut self) -> Result<Status, Error> {
         match self.poll_cm_event_once() {
             Ok(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
-                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res))),
-                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into()))),
+                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res)))?,
+                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into())))?,
                 }
-                .map_or_else(|_| true, |_| false)
+                Ok(Progress(1))
             }
             Err(Error::NoCmEvent) => {
                 // poll again next time
-                false
+                Ok(Progress(0))
             }
-            Err(e) => {
-                panic!("check_cm_event: {:?}", e);
+            Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
+                self.cmd_tx.send(cmd::Response(Err(e.into())))?;
+                Ok(Progress(1))
             }
+            Err(e) => Err(e),
         }
     }
 
@@ -639,7 +625,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     io_event.token(),
                     mio::Interest::READABLE,
                 )
-                .map_err(Error::RdmaCm)?;
+                .map_err(Error::Mio)?;
             return Ok(cm_event);
         }
         Err(Error::NoCmEvent)

@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use log::{error, info};
 use spin::Mutex;
 use thiserror::Error;
 
-use crate::Engine;
+use crate::{Engine, EngineStatus};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -60,11 +61,32 @@ impl Runtime {
     }
 
     pub(crate) fn mainloop(&self) -> Result<()> {
+        let mut shutdown = Vec::new();
         loop {
-            for engine in self.running.borrow().iter() {
-                assert!(!engine.borrow_mut().run());
+            for (index, engine) in self.running.borrow().iter().enumerate() {
+                // assert!(!engine.borrow_mut().resume());
+                match engine.borrow_mut().resume() {
+                    Ok(EngineStatus::NoWork | EngineStatus::Continue) => {}
+                    Ok(EngineStatus::Complete) => {
+                        // drop engine
+                        info!("Engine completed, shutting down.");
+                        shutdown.push(index);
+                    }
+                    Err(e) => {
+                        error!("Engine error: {}", e);
+                        // drop engine
+                    }
+                }
             }
-            // move newly added running to the scheduling queue
+
+            // garbage collect every several rounds, maybe move to another thread.
+            for index in shutdown.drain(..).rev() {
+                let engine = self.running.borrow_mut().swap_remove(index);
+                // make it explicit
+                drop(engine);
+            }
+
+            // move newly added runtime to the scheduling queue
             if self.new_pending.load(Ordering::Acquire) {
                 self.new_pending.store(false, Ordering::Relaxed);
                 self.running.borrow_mut().append(&mut self.pending.lock());

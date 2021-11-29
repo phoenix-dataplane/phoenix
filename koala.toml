@@ -6,3 +6,4 @@ module_path = "koala-transport.sock"
 engine_basename = "koala-transport-engine"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
+command_max_interval_ms = 1000
