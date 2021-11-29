@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use log::{info, error};
+use log::{error, info};
 use spin::Mutex;
 use thiserror::Error;
 
@@ -66,8 +66,7 @@ impl Runtime {
             for (index, engine) in self.running.borrow().iter().enumerate() {
                 // assert!(!engine.borrow_mut().resume());
                 match engine.borrow_mut().resume() {
-                    Ok(EngineStatus::NoWork | EngineStatus::Continue) => {
-                    }
+                    Ok(EngineStatus::NoWork | EngineStatus::Continue) => {}
                     Ok(EngineStatus::Complete) => {
                         // drop engine
                         info!("Engine completed, shutting down.");

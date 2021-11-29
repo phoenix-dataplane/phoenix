@@ -30,7 +30,7 @@ pub trait Engine: Upgradable + Send {
 
 // NoProgress, MayDemandMoreCPU
 pub enum EngineStatus {
-	NoWork,
-	Continue,
-	Complete,
+    NoWork,
+    Continue,
+    Complete,
 }
