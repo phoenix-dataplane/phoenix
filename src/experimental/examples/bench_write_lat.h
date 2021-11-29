@@ -4,10 +4,10 @@ int run_write_lat_client(Context *ctx)
 {
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret = 0;
-    uint64_t times[ctx->num + 1];
 
-    char write_msg[ctx->size];
-    char read_msg[ctx->size];
+    uint64_t *times = ctx->times1_buf;
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
     memset(read_msg, 255, ctx->size);
     volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
     volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
@@ -64,8 +64,9 @@ int run_write_lat_server(Context *ctx)
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     int send_flags = 0, ret;
 
-    char write_msg[ctx->size];
-    char read_msg[ctx->size];
+    uint64_t *times = ctx->times1_buf;
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
     memset(read_msg, 255, ctx->size);
     volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
     volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;

@@ -5,9 +5,10 @@ int run_send_bw_client(Context *ctx)
     struct ibv_mr *send_mr = NULL;
     int send_flags = 0, ret;
     uint32_t scnt = 0, ccnt = 0;
-    uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
-    char send_msg[ctx->size];
+    uint64_t *tposted = ctx->times1_buf;
+    uint64_t *tcompleted = ctx->times2_buf;
+    char *send_msg = ctx->send_buf;
 
     send_flags |= IBV_SEND_SIGNALED;
 
@@ -65,7 +66,7 @@ int run_send_bw_server(Context *ctx)
     int ret = 0;
     uint32_t ccnt = 0, rcnt = 0;
 
-    char recv_msg[ctx->size];
+    char *recv_msg = ctx->recv_buf;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);

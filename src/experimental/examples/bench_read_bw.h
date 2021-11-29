@@ -5,10 +5,11 @@ int run_read_bw_client(Context *ctx)
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret;
     uint32_t scnt = 0, ccnt = 0;
-    uint64_t tposted[ctx->num + 1], tcompleted[ctx->num + 1];
 
-    char write_msg[ctx->size];
-    char read_msg[ctx->size];
+    uint64_t *tposted = ctx->times1_buf;
+    uint64_t *tcompleted = ctx->times2_buf;
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
     memset(write_msg, 0, ctx->size);
     memset(read_msg, 255, ctx->size);
 
@@ -76,9 +77,9 @@ int run_read_bw_server(Context *ctx)
     int send_flags = 0, ret;
     int scnt = 0;
 
-    char read_msg[ctx->size];
-    char write_msg[ctx->size];
-    memset(read_msg, 0, sizeof(read_msg));
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
+    memset(read_msg, 0, ctx->size);
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);

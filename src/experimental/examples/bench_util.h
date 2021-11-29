@@ -62,6 +62,8 @@ typedef struct
     struct rdma_cm_id *id, *listen_id;
     struct ibv_qp_init_attr attr;
     struct rdma_addrinfo *ai;
+    char *send_buf, *recv_buf;
+    uint64_t *times1_buf, *times2_buf;
 } Context;
 
 char SERVER_IP[] = "0.0.0.0";
@@ -124,6 +126,10 @@ int set_params(Context *ctx)
         printf("client\n");
     else
         printf("server\n");
+    ctx->send_buf = (char *)malloc(ctx->size * sizeof(char));
+    ctx->recv_buf = (char *)malloc(ctx->size * sizeof(char));
+    ctx->times1_buf = (uint64_t *)malloc((ctx->num + 1) * sizeof(uint64_t));
+    ctx->times2_buf = (uint64_t *)malloc((ctx->num + 1) * sizeof(uint64_t));
     return 0;
 }
 
@@ -182,7 +188,7 @@ int poll_cq_and_check(ibv_cq *cq, int ne, ibv_wc *wc)
 }
 
 #define LAT_MEASURE_TAIL (2)
-void print_lat(Context *ctx, uint64_t times[])
+void print_lat(Context *ctx, uint64_t *times)
 {
     int num = ctx->num - ctx->warmup;
     assert(num > 0);
@@ -203,11 +209,23 @@ void print_lat(Context *ctx, uint64_t times[])
            delta[(int)(cnt * 0.99)], delta[cnt - 1]);
 }
 
-void print_bw(Context *ctx, uint64_t tposted[], uint64_t tcompleted[])
+void print_bw(Context *ctx, uint64_t *tposted, uint64_t *tcompleted)
 {
     double tus = (tcompleted[ctx->num - 1] - tposted[0]) / get_cpu_mhz(1);
     double MBs = ctx->size * ctx->num / tus;
     double GBs = MBs / 1000;
     double Mpps = ctx->num / tus;
     printf("avg bw: %.2lfGB/s, %.2lfGbps, %.5lfMpps\n", GBs, GBs * 8, Mpps);
+}
+
+void free_ctx(Context *ctx)
+{
+    if (ctx->send_buf)
+        free(ctx->send_buf);
+    if (ctx->recv_buf)
+        free(ctx->recv_buf);
+    if (ctx->times1_buf)
+        free(ctx->times1_buf);
+    if (ctx->times2_buf)
+        free(ctx->times2_buf);
 }

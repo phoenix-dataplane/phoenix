@@ -46,6 +46,7 @@ int main(int argc, char **argv)
             ret = run_read_lat_server(&ctx);
     }
 
+    free_ctx(&ctx);
 out:
     if (ret)
         printf("error %d\n", ret);
