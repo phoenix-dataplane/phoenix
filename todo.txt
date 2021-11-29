@@ -1,8 +1,10 @@
 TODO
 
 Engine Framework
-- Blocking network APIs in transport engine may block the entire runtime
+-[x] Blocking network APIs in transport engine may block the entire
+     runtime
 - What should Engine::run() return?
+- *Change Engine trait to a huge Generator*
 
 Resource Releasing
 - implement resource release (partially done)
@@ -15,6 +17,14 @@ Resource Releasing
 		- Error::Disconnected
 		-[x] remove the blocking send/recv
 		-[x] expose current available count to read/write
+
+Misc
+- Remove repeatitive code in libkoala/cm.rs
+- Add AsHandle Trait so that open_or_create_resource can do sanity check
+- Also implement handle for CmId, use the pointer as the identifier.
+- Handle conn_param
+- Add lifetime constraint to CmId in rdmacm library
+- update all `trace!`s in TransportEngine::process_cmd
 
 Performance & CPU efficiency
 -[x] Use FnvHashMap in transport/engine
@@ -32,14 +42,6 @@ Thread-safety
   or concurrent data structure is needed
 - Move CqBuffer from thread_local to lazy_static
 - Write a multi-threaded program to test the correctness
-
-Misc
-- Remove repeatitive code in libkoala/cm.rs
-- Add AsHandle Trait so that open_or_create_resource can do sanity check
-- Also implement handle for CmId, use the pointer as the identifier.
-- Handle conn_param
-- Add lifetime constraint to CmId in rdmacm library
-- update all `trace!`s in TransportEngine::process_cmd
 
 Memory Registration
 -[x] Overlapped memory registration (two non-overlapped regions sharing

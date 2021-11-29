@@ -21,14 +21,16 @@ pub trait Upgradable {
     fn suspend(&mut self);
     fn dump(&self);
     fn restore(&mut self);
-    fn resume(&mut self);
 }
 
 pub trait Engine: Upgradable + Send {
-    fn init(&mut self);
-    /// `run()` mush be non-blocking and short.
-    fn run(&mut self) -> bool;
-    fn shutdown(&mut self);
-    fn enqueue(&self);
-    fn check_queue_len(&self);
+    /// `resume()` mush be non-blocking and short.
+    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
+}
+
+// NoProgress, MayDemandMoreCPU
+pub enum EngineStatus {
+	NoWork,
+	Continue,
+	Complete,
 }
