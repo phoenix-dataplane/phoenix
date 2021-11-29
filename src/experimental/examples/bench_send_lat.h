@@ -4,13 +4,13 @@ int run_send_lat_client(Context *ctx)
 {
     struct ibv_mr *recv_mr = NULL, *send_mr = NULL;
     int send_flags = 0, ret;
-    uint64_t times[ctx->num + 1];
+
+    uint64_t *times = ctx->times1_buf;
+    char *recv_msg = ctx->recv_buf;
+    char *send_msg = ctx->send_buf;
 
     if (ctx->attr.cap.max_inline_data >= ctx->size)
         send_flags |= IBV_SEND_INLINE;
-
-    char recv_msg[ctx->size];
-    char send_msg[ctx->size];
 
     ret = rdma_create_ep(&ctx->id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -21,15 +21,18 @@ int run_send_lat_client(Context *ctx)
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
     error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_destroy_ep);
 
+    for (uint32_t i = 0; i < min(ctx->num, ctx->attr.cap.max_recv_wr); i++)
+    {
+        ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
+        error_handler(ret, "rdma_post_recv", out_destroy_ep);
+    }
+
     ret = rdma_connect(ctx->id, NULL);
     error_handler(ret, "rdma_connect", out_destroy_ep);
 
     struct ibv_wc wc;
     for (uint32_t i = 0; i < ctx->num; i++)
     {
-        ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
-        error_handler(ret, "rdma_post_recv", out_disconnect);
-
         times[i] = get_cycles();
 
         send_flags |= IBV_SEND_SIGNALED;
@@ -40,6 +43,11 @@ int run_send_lat_client(Context *ctx)
 
         ret = poll_cq_and_check(ctx->id->recv_cq, 1, &wc);
         error_handler(ret, "poll_cq", out_disconnect);
+        if (i + ctx->attr.cap.max_recv_wr < ctx->num)
+        {
+            ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
+            error_handler(ret, "rdma_post_recv", out_disconnect);
+        }
     }
 
     times[ctx->num] = get_cycles();
@@ -62,13 +70,12 @@ int run_send_lat_server(Context *ctx)
 {
     struct ibv_mr *recv_mr = NULL, *send_mr = NULL;
     int send_flags = 0, ret;
-    // uint64_t t1, t2;
+
+    char *recv_msg = ctx->recv_buf;
+    char *send_msg = ctx->send_buf;
 
     if (ctx->attr.cap.max_inline_data >= ctx->size)
         send_flags |= IBV_SEND_INLINE;
-
-    char recv_msg[ctx->size];
-    char send_msg[ctx->size];
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -85,8 +92,11 @@ int run_send_lat_server(Context *ctx)
     send_mr = rdma_reg_msgs(ctx->id, send_msg, ctx->size);
     error_handler_ret(!send_mr, "rdma_reg_msgs for send_msg", -1, out_destroy_accept_ep);
 
-    ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
-    error_handler(ret, "rdma_post_recv", out_disconnect);
+    for (uint32_t i = 0; i < min(ctx->num, ctx->attr.cap.max_recv_wr); i++)
+    {
+        ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
+        error_handler(ret, "rdma_post_recv", out_destroy_accept_ep);
+    }
 
     ret = rdma_accept(ctx->id, NULL);
     error_handler(ret, "rdma_accpet", out_destroy_accept_ep);
@@ -96,8 +106,7 @@ int run_send_lat_server(Context *ctx)
     {
         poll_cq_and_check(ctx->id->recv_cq, 1, &wc);
         error_handler(ret, "poll_cq", out_disconnect);
-
-        if (i < ctx->num - 1)
+        if (i + ctx->attr.cap.max_recv_wr < ctx->num)
         {
             ret = rdma_post_recv(ctx->id, NULL, recv_msg, ctx->size, recv_mr);
             error_handler(ret, "rdma_post_recv", out_disconnect);

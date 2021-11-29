@@ -8,7 +8,8 @@
 int main(int argc, char **argv)
 {
     Context ctx;
-    ctx.opt = SEND;
+    ctx.tst = LAT;
+    ctx.verb = SEND;
     ctx.num = 1000, ctx.warmup = 100, ctx.size = 4, ctx.client = false;
 
     parse(&ctx, argc, argv);
@@ -16,12 +17,9 @@ int main(int argc, char **argv)
     if (ret)
         goto out;
 
-    ctx.size = max(ctx.size, (size_t)4);
-    if (ctx.num < ctx.warmup)
-        ctx.num += ctx.warmup;
     printf("num: %u, size: %lu, warmup: %u\n", ctx.num, ctx.size, ctx.warmup);
 
-    switch (ctx.opt)
+    switch (ctx.verb)
     {
     case SEND:
         printf("Send data from client to server\n");
@@ -45,6 +43,7 @@ int main(int argc, char **argv)
             ret = run_read_lat_server(&ctx);
     }
 
+    free_ctx(&ctx);
 out:
     if (ret)
         printf("error %d\n", ret);

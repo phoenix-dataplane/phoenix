@@ -38,16 +38,23 @@ uint64_t get_timestamp_us() // microseconds
     return tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
 }
 
-enum Operation
+enum VerbType
 {
     SEND,
     WRITE,
     READ
 };
 
+enum TestType
+{
+    BW,
+    LAT
+};
+
 typedef struct
 {
-    enum Operation opt;
+    enum VerbType verb;
+    enum TestType tst;
     uint32_t num, warmup;
     size_t size;
     char *ip, *port;
@@ -55,6 +62,8 @@ typedef struct
     struct rdma_cm_id *id, *listen_id;
     struct ibv_qp_init_attr attr;
     struct rdma_addrinfo *ai;
+    char *send_buf, *recv_buf;
+    uint64_t *times1_buf, *times2_buf;
 } Context;
 
 char SERVER_IP[] = "0.0.0.0";
@@ -87,9 +96,9 @@ void parse(Context *ctx, int argc, char **argv)
     if (optind < argc)
     {
         if (strcmp(argv[optind], "write") == 0)
-            ctx->opt = WRITE;
+            ctx->verb = WRITE;
         else if (strcmp(argv[optind], "read") == 0)
-            ctx->opt = READ;
+            ctx->verb = READ;
     }
 }
 
@@ -106,7 +115,8 @@ int set_params(Context *ctx)
 
     struct ibv_qp_init_attr *attr = &ctx->attr;
     memset(attr, 0, sizeof(struct ibv_qp_init_attr));
-    attr->cap.max_send_wr = attr->cap.max_recv_wr = 1024;
+    attr->cap.max_send_wr = (ctx->tst == BW) ? 128 : 1;
+    attr->cap.max_recv_wr = 512;
     attr->cap.max_send_sge = attr->cap.max_recv_sge = 1;
     attr->cap.max_inline_data = 236;
     attr->qp_context = ctx->id;
@@ -116,6 +126,15 @@ int set_params(Context *ctx)
         printf("client\n");
     else
         printf("server\n");
+    ctx->size = max(ctx->size, (size_t)4);
+    if (ctx->tst == BW && ctx->num < ctx->warmup)
+        ctx->num += ctx->warmup;
+    if (ctx->num == 0)
+        ctx->num = (ctx->tst == BW && ctx->verb == WRITE) ? 5000 : 1000;
+    ctx->send_buf = (char *)malloc(ctx->size * sizeof(char));
+    ctx->recv_buf = (char *)malloc(ctx->size * sizeof(char));
+    ctx->times1_buf = (uint64_t *)malloc((ctx->num + 1) * sizeof(uint64_t));
+    ctx->times2_buf = (uint64_t *)malloc((ctx->num + 1) * sizeof(uint64_t));
     return 0;
 }
 
@@ -174,11 +193,11 @@ int poll_cq_and_check(ibv_cq *cq, int ne, ibv_wc *wc)
 }
 
 #define LAT_MEASURE_TAIL (2)
-void print_lat(Context *ctx, uint64_t times[])
+void print_lat(Context *ctx, uint64_t *times)
 {
     int num = ctx->num - ctx->warmup;
     assert(num > 0);
-    double factor = get_cpu_mhz(1) * ((ctx->opt == READ) ? 1 : 2);
+    double factor = get_cpu_mhz(1) * ((ctx->verb == READ) ? 1 : 2);
 
     double delta[num];
     for (int i = 0; i < num; i++)
@@ -195,11 +214,23 @@ void print_lat(Context *ctx, uint64_t times[])
            delta[(int)(cnt * 0.99)], delta[cnt - 1]);
 }
 
-void print_bw(Context *ctx, uint64_t tposted[], uint64_t tcompleted[])
+void print_bw(Context *ctx, uint64_t *tposted, uint64_t *tcompleted)
 {
     double tus = (tcompleted[ctx->num - 1] - tposted[0]) / get_cpu_mhz(1);
     double MBs = ctx->size * ctx->num / tus;
     double GBs = MBs / 1000;
     double Mpps = ctx->num / tus;
     printf("avg bw: %.2lfGB/s, %.2lfGbps, %.5lfMpps\n", GBs, GBs * 8, Mpps);
+}
+
+void free_ctx(Context *ctx)
+{
+    if (ctx->send_buf)
+        free(ctx->send_buf);
+    if (ctx->recv_buf)
+        free(ctx->recv_buf);
+    if (ctx->times1_buf)
+        free(ctx->times1_buf);
+    if (ctx->times2_buf)
+        free(ctx->times2_buf);
 }

@@ -4,10 +4,10 @@ int run_write_lat_client(Context *ctx)
 {
     struct ibv_mr *read_mr = NULL, *write_mr = NULL, remote_mr;
     int send_flags = 0, ret = 0;
-    uint64_t times[ctx->num + 1];
 
-    char write_msg[ctx->size];
-    char read_msg[ctx->size];
+    uint64_t *times = ctx->times1_buf;
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
     memset(read_msg, 255, ctx->size);
     volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
     volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
@@ -38,9 +38,8 @@ int run_write_lat_client(Context *ctx)
         ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags,
                               (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_write", out_disconnect);
-        while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
         while (*poll_buf != i)
             ;
     }
@@ -65,8 +64,9 @@ int run_write_lat_server(Context *ctx)
     struct ibv_mr *read_mr, *write_mr, remote_mr;
     int send_flags = 0, ret;
 
-    char write_msg[ctx->size];
-    char read_msg[ctx->size];
+    uint64_t *times = ctx->times1_buf;
+    char *write_msg = ctx->send_buf;
+    char *read_msg = ctx->recv_buf;
     memset(read_msg, 255, ctx->size);
     volatile uint32_t *post_buf = (volatile uint32_t *)write_msg;
     volatile uint32_t *poll_buf = (volatile uint32_t *)read_msg;
@@ -103,9 +103,8 @@ int run_write_lat_server(Context *ctx)
         ret = rdma_post_write(ctx->id, NULL, write_msg, ctx->size, write_mr, send_flags,
                               (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_write", out_disconnect);
-        while (ibv_poll_cq(ctx->id->send_cq, 1, &wc) == 0)
-            ;
-        error_handler_ret(wc.status != IBV_WC_SUCCESS, "ibv_poll_cq", -1, out_disconnect);
+        ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
     }
 
 out_disconnect:
