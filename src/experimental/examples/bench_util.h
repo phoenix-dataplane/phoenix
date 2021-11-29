@@ -126,6 +126,11 @@ int set_params(Context *ctx)
         printf("client\n");
     else
         printf("server\n");
+    ctx->size = max(ctx->size, (size_t)4);
+    if (ctx->tst == BW && ctx->num < ctx->warmup)
+        ctx->num += ctx->warmup;
+    if (ctx->num == 0)
+        ctx->num = (ctx->tst == BW && ctx->verb == WRITE) ? 5000 : 1000;
     ctx->send_buf = (char *)malloc(ctx->size * sizeof(char));
     ctx->recv_buf = (char *)malloc(ctx->size * sizeof(char));
     ctx->times1_buf = (uint64_t *)malloc((ctx->num + 1) * sizeof(uint64_t));

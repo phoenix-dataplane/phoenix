@@ -13,8 +13,6 @@ int main(int argc, char **argv)
     int ret = set_params(&ctx);
     if (ret)
         goto out;
-    if (ctx.num == 0)
-        ctx.num = (ctx.verb == WRITE) ? 5000 : 1000;
 
     printf("num: %u, size: %lu\n", ctx.num, ctx.size);
 

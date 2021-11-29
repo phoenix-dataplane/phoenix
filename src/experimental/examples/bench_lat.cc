@@ -17,9 +17,6 @@ int main(int argc, char **argv)
     if (ret)
         goto out;
 
-    ctx.size = max(ctx.size, (size_t)4);
-    if (ctx.num < ctx.warmup)
-        ctx.num += ctx.warmup;
     printf("num: %u, size: %lu, warmup: %u\n", ctx.num, ctx.size, ctx.warmup);
 
     switch (ctx.verb)
