@@ -269,25 +269,6 @@ impl PreparedCmId {
             Ok(CmId { inner: self.inner })
         })
     }
-
-    pub fn qp(&self) -> &verbs::QueuePair {
-        &self.inner.qp
-    }
-
-    pub fn alloc_msgs<T: Sized + Copy>(&self, len: usize) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_msgs(len)
-    }
-
-    pub fn alloc_write<T: Sized + Copy>(
-        &self,
-        len: usize,
-    ) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_write(len)
-    }
-
-    pub fn alloc_read<T: Sized + Copy>(&self, len: usize) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_read(len)
-    }
 }
 
 pub struct CmId {
@@ -314,26 +295,41 @@ impl CmId {
     ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
         CmIdBuilder::new().resolve_route(addr)
     }
-
-    pub fn qp(&self) -> &verbs::QueuePair {
-        &self.inner.qp
-    }
-
-    pub fn alloc_msgs<T: Sized + Copy>(&self, len: usize) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_msgs(len)
-    }
-
-    pub fn alloc_write<T: Sized + Copy>(
-        &self,
-        len: usize,
-    ) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_write(len)
-    }
-
-    pub fn alloc_read<T: Sized + Copy>(&self, len: usize) -> Result<verbs::MemoryRegion<T>, Error> {
-        self.inner.alloc_read(len)
-    }
 }
+
+macro_rules! impl_for_cmid {
+    ($type:ty, $member:ident) => {
+        impl $type {
+            pub fn qp(&self) -> &verbs::QueuePair {
+                &self.$member.qp
+            }
+
+            pub fn alloc_msgs<T: Sized + Copy>(
+                &self,
+                len: usize,
+            ) -> Result<verbs::MemoryRegion<T>, Error> {
+                self.$member.alloc_msgs(len)
+            }
+
+            pub fn alloc_write<T: Sized + Copy>(
+                &self,
+                len: usize,
+            ) -> Result<verbs::MemoryRegion<T>, Error> {
+                self.$member.alloc_write(len)
+            }
+
+            pub fn alloc_read<T: Sized + Copy>(
+                &self,
+                len: usize,
+            ) -> Result<verbs::MemoryRegion<T>, Error> {
+                self.$member.alloc_read(len)
+            }
+        }
+    };
+}
+
+impl_for_cmid!(CmId, inner);
+impl_for_cmid!(PreparedCmId, inner);
 
 pub(crate) struct Inner {
     pub(crate) handle: interface::CmId,
