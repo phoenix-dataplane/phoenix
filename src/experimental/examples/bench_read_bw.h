@@ -12,6 +12,7 @@ int run_read_bw_client(Context *ctx)
     char *read_msg = ctx->recv_buf;
     memset(write_msg, 0, ctx->size);
     memset(read_msg, 255, ctx->size);
+    volatile int *post_buf = (volatile int *)write_msg;
 
     send_flags |= IBV_SEND_SIGNALED;
 
@@ -54,7 +55,7 @@ int run_read_bw_client(Context *ctx)
             }
         }
     }
-    write_msg[0] = 1; // let server know that read finished
+    *post_buf = ctx->num; // let server know that read finished
 
     print_bw(ctx, tposted, tcompleted);
 
@@ -80,6 +81,9 @@ int run_read_bw_server(Context *ctx)
     char *write_msg = ctx->send_buf;
     char *read_msg = ctx->recv_buf;
     memset(read_msg, 0, ctx->size);
+    volatile int *poll_buf = (volatile int *)read_msg;
+
+    send_flags |= IBV_SEND_SIGNALED;
 
     ret = rdma_create_ep(&ctx->listen_id, ctx->ai, NULL, &ctx->attr);
     error_handler(ret, "rdma_create_ep", out_free_addrinfo);
@@ -100,13 +104,15 @@ int run_read_bw_server(Context *ctx)
     error_handler(ret, "handshake", out_destroy_accept_ep);
     printf("handshake finished\n");
 
-    while (read_msg[0] != 1)
+    struct ibv_wc wc;
+    while (*poll_buf != ctx->num)
     {
         ret = rdma_post_read(ctx->id, NULL, read_msg, ctx->size, read_mr, send_flags,
                              (uint64_t)remote_mr.addr, remote_mr.rkey);
         error_handler(ret, "rdma_post_read", out_disconnect);
+        ret = poll_cq_and_check(ctx->id->send_cq, 1, &wc);
+        error_handler(ret, "poll_cq", out_disconnect);
         scnt += 1;
-        usleep(100);
     }
 
     /*
