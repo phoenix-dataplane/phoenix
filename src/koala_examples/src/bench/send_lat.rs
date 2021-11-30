@@ -1,44 +1,57 @@
+use std::cmp::min;
 use std::time::Instant;
 
-use crate::bench::util::{poll_cq_and_check, print_lat, Context};
+use crate::bench::util::{print_lat, Context};
 use interface::SendFlags;
-use libkoala::{cm, Error};
+use libkoala::verbs::MemoryRegion;
+use libkoala::{cm, verbs::WcStatus, Error};
 
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
-    if ctx.attr.cap.max_inline_data as usize >= ctx.opt.size {
+    if ctx.cap.max_inline_data as usize >= ctx.opt.size {
         send_flags = send_flags | SendFlags::INLINE;
     }
+    send_flags |= SendFlags::SIGNALED;
 
-    let mut recv_msg = vec![0; ctx.opt.size];
-    let send_msg = vec![0; ctx.opt.size];
+    let mut builder = cm::CmId::resolve_route((ctx.opt.ip.to_owned(), ctx.opt.port))
+        .expect("Route resolve failed!");
+    let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
 
-    let id = cm::CmId::create_ep(&ctx.ai, None, Some(&ctx.attr))?;
-    let recv_mr = id.reg_msgs(&recv_msg)?;
-    let send_mr = id.reg_msgs(&send_msg)?;
+    let mut recv_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(ctx.opt.size)
+        .expect("Memory registration failed!");
+    let send_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(ctx.opt.size)
+        .expect("Memory registration failed!");
 
-    for _i in 0..ctx.opt.num {
+    for _i in 0..min(ctx.opt.num, ctx.cap.max_recv_wr as usize) {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr)?;
+            pre_id
+                .post_recv(&mut recv_mr, .., 0)
+                .expect("Post recv failed!");
         }
     }
-    id.connect(None)?;
+    let id = pre_id.connect(None).expect("Connect failed!");
 
-    let mut times = Vec::new();
-    let mut wcs = Vec::with_capacity(1);
-    let recv_cq = &id.qp.as_ref().unwrap().recv_cq;
-    let send_cq = &id.qp.as_ref().unwrap().send_cq;
+    let mut times = Vec::with_capacity(ctx.opt.num + 1);
     for i in 0..ctx.opt.num {
         times.push(Instant::now());
-        if i == ctx.opt.num - 1 {
-            send_flags |= SendFlags::SIGNALED;
-        }
-        id.post_send(0, &send_msg, &send_mr, send_flags)?;
-        poll_cq_and_check(recv_cq, &mut wcs)?;
-    }
-    poll_cq_and_check(send_cq, &mut wcs)?;
-    times.push(Instant::now());
 
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+            .expect("Post send failed!");
+        let wc = id.get_send_comp().expect("Get send comp failed!");
+        assert_eq!(wc.status, WcStatus::Success);
+
+        let wc = id.get_send_comp().expect("Get recv comp failed!");
+        assert_eq!(wc.status, WcStatus::Success);
+        if (i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32) {
+            unsafe {
+                id.post_recv(&mut recv_mr, .., 0)
+                    .expect("Post recv failed!");
+            }
+        }
+    }
+    times.push(Instant::now());
     print_lat(ctx, times);
 
     Ok(())
@@ -46,37 +59,49 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 
 pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
-    if ctx.attr.cap.max_inline_data as usize >= ctx.opt.size {
+    if ctx.cap.max_inline_data as usize >= ctx.opt.size {
         send_flags = send_flags | SendFlags::INLINE;
     }
+    send_flags |= SendFlags::SIGNALED;
 
-    let mut recv_msg = vec![0; ctx.opt.size];
-    let send_msg = vec![0; ctx.opt.size];
+    let listener = libkoala::cm::CmIdListener::bind((ctx.opt.ip.to_owned(), ctx.opt.port))
+        .expect("Listener bind failed");
 
-    let listen_id = cm::CmId::create_ep(&ctx.ai, None, Some(&ctx.attr))?;
-    listen_id.listen(1)?;
-    let id = listen_id.get_request()?;
-    let recv_mr = id.reg_msgs(&recv_msg)?;
-    let send_mr = id.reg_msgs(&send_msg)?;
+    let mut builder = listener.get_request().expect("Get request failed!");
+    let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
 
-    for _i in 0..ctx.opt.num {
+    let mut recv_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(ctx.opt.size)
+        .expect("Memory registration failed!");
+    let send_mr: MemoryRegion<u8> = pre_id
+        .alloc_msgs(ctx.opt.size)
+        .expect("Memory registration failed!");
+
+    for _i in 0..min(ctx.opt.num, ctx.cap.max_recv_wr as usize) {
         unsafe {
-            id.post_recv(0, &mut recv_msg, &recv_mr)?;
+            pre_id
+                .post_recv(&mut recv_mr, .., 0)
+                .expect("Post recv failed!");
         }
     }
-    id.accept(None)?;
 
-    let mut wcs = Vec::with_capacity(1);
-    let recv_cq = &id.qp.as_ref().unwrap().recv_cq;
-    let send_cq = &id.qp.as_ref().unwrap().send_cq;
+    let id = pre_id.accept(None).expect("Accept failed!");
+
     for i in 0..ctx.opt.num {
-        poll_cq_and_check(recv_cq, &mut wcs)?;
-        if i == ctx.opt.num - 1 {
-            send_flags |= SendFlags::SIGNALED;
+        let wc = id.get_send_comp().expect("Get recv comp failed!");
+        assert_eq!(wc.status, WcStatus::Success);
+        if (i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32) {
+            unsafe {
+                id.post_recv(&mut recv_mr, .., 0)
+                    .expect("Post recv failed!");
+            }
         }
-        id.post_send(0, &send_msg, &send_mr, send_flags)?;
+
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+            .expect("Post send failed!");
+        let wc = id.get_send_comp().expect("Get send comp failed!");
+        assert_eq!(wc.status, WcStatus::Success);
     }
-    poll_cq_and_check(send_cq, &mut wcs)?;
 
     Ok(())
 }

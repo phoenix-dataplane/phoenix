@@ -30,3 +30,7 @@ path = "src/send_bw.rs"
 [[bin]]
 name = "send_lat"
 path = "src/send_lat.rs"
+
+[[bin]]
+name = "bench_lat"
+path = "src/bench_lat.rs"
