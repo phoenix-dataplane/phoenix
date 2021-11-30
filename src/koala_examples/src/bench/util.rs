@@ -81,7 +81,7 @@ impl Context {
         Context {
             client: opt.ip != "0.0.0.0",
             opt: opt,
-            tst:tst,
+            tst: tst,
             cap: cap,
         }
     }
@@ -125,7 +125,7 @@ pub fn print_lat(ctx: &Context, times: Vec<Instant>) {
         lat.push(t);
     }
     println!(
-        "duration: {}, avg: {}, min: {}, median: {}, p95: {}, p99: {}, max: {}",
+        "duration: {:.2}, avg: {:.2}, min: {:.2}, median: {:.2}, p95: {:.2}, p99: {:.2}, max: {:.2}",
         duration,
         duration / cnt as f64,
         lat[0],
