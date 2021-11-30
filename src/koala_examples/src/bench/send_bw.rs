@@ -1,10 +1,12 @@
 use std::cmp::min;
 use std::time::Instant;
 
-use crate::bench::util::{print_lat, Context};
+use crate::bench::util::{print_bw, Context};
 use interface::SendFlags;
 use libkoala::verbs::MemoryRegion;
 use libkoala::{cm, verbs::WcStatus, Error};
+
+const CTX_POLL_BATCH: usize = 16;
 
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
@@ -19,43 +21,39 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
     eprintln!("QP created");
 
-    let mut recv_mr: MemoryRegion<u8> = pre_id
-        .alloc_msgs(ctx.opt.size)
-        .expect("Memory registration failed!");
     let send_mr: MemoryRegion<u8> = pre_id
         .alloc_msgs(ctx.opt.size)
         .expect("Memory registration failed!");
 
-    for _i in 0..min(ctx.opt.num, ctx.cap.max_recv_wr as usize) {
-        unsafe {
-            pre_id
-                .post_recv(&mut recv_mr, .., 0)
-                .expect("Post recv failed!");
-        }
-    }
     let id = pre_id.connect(None).expect("Connect failed!");
     eprintln!("Connection established");
 
-    let mut times = Vec::with_capacity(ctx.opt.num + 1);
-    for i in 0..ctx.opt.num {
-        times.push(Instant::now());
-
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
-            .expect("Post send failed!");
-        let wc = id.get_send_comp().expect("Get send comp failed!");
-        assert_eq!(wc.status, WcStatus::Success);
-
-        let wc = id.get_recv_comp().expect("Get recv comp failed!");
-        assert_eq!(wc.status, WcStatus::Success);
-        if i + (ctx.cap.max_recv_wr as usize) < ctx.opt.num {
-            unsafe {
-                id.post_recv(&mut recv_mr, .., 0)
-                    .expect("Post recv failed!");
+    let mut tposted = Vec::with_capacity(ctx.opt.num);
+    let mut tcompleted = Vec::with_capacity(ctx.opt.num);
+    let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
+    let mut scnt = 0;
+    let mut ccnt = 0;
+    let cq = &id.qp().send_cq;
+    while scnt < ctx.opt.num || ccnt < ctx.opt.num {
+        if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
+            tposted.push(Instant::now());
+            id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+                .expect("Post send failed!");
+            scnt += 1;
+        }
+        if ccnt < ctx.opt.num {
+            cq.poll_cq(&mut wcs).expect("Poll cq failed!");
+            if !wcs.is_empty() {
+                for wc in &wcs {
+                    assert_eq!(wc.status, WcStatus::Success);
+                    ccnt += 1;
+                    tcompleted.push(Instant::now());
+                }
             }
         }
     }
-    times.push(Instant::now());
-    print_lat(ctx, &times);
+
+    print_bw(ctx, &tposted, &tcompleted);
 
     Ok(())
 }
@@ -77,35 +75,40 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let mut recv_mr: MemoryRegion<u8> = pre_id
         .alloc_msgs(ctx.opt.size)
         .expect("Memory registration failed!");
-    let send_mr: MemoryRegion<u8> = pre_id
-        .alloc_msgs(ctx.opt.size)
-        .expect("Memory registration failed!");
 
+    let mut rcnt = 0;
+    let mut ccnt = 0;
     for _i in 0..min(ctx.opt.num, ctx.cap.max_recv_wr as usize) {
         unsafe {
             pre_id
                 .post_recv(&mut recv_mr, .., 0)
                 .expect("Post recv failed!");
         }
+        rcnt += 1;
     }
 
     let id = pre_id.accept(None).expect("Accept failed!");
     eprintln!("Connection established");
 
-    for i in 0..ctx.opt.num {
-        let wc = id.get_recv_comp().expect("Get recv comp failed!");
-        assert_eq!(wc.status, WcStatus::Success);
-        if i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32 {
+    let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
+    let cq = &id.qp().recv_cq;
+    while rcnt < ctx.opt.num || ccnt < ctx.opt.num {
+        if rcnt < ctx.opt.num && rcnt - ccnt < ctx.cap.max_recv_wr as usize {
             unsafe {
                 id.post_recv(&mut recv_mr, .., 0)
                     .expect("Post recv failed!");
             }
+            rcnt += 1;
         }
-
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
-            .expect("Post send failed!");
-        let wc = id.get_send_comp().expect("Get send comp failed!");
-        assert_eq!(wc.status, WcStatus::Success);
+        if ccnt < ctx.opt.num {
+            cq.poll_cq(&mut wcs).expect("Poll cq failed!");
+            if !wcs.is_empty() {
+                for wc in &wcs {
+                    assert_eq!(wc.status, WcStatus::Success);
+                    ccnt += 1;
+                }
+            }
+        }
     }
 
     Ok(())
