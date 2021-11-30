@@ -1,15 +1,20 @@
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
+use std::marker::PhantomPinned;
 use std::mem;
+use std::mem::ManuallyDrop;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::slice;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+use lazy_static::lazy_static;
 use uuid::Uuid;
 
 use interface::returned;
@@ -25,10 +30,42 @@ use rdma::rdmacm::CmId;
 use super::resource::ResourceTable;
 use super::{DatapathError, Error};
 
+lazy_static! {
+    static ref DEFAULT_CTXS: Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)> =
+        open_default_verbs().expect("Open default RDMA context failed.");
+}
+
+/// Open default verbs contexts
+fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)>> {
+    let mut default_ctxs = Vec::new();
+    let ctx_list = rdmacm::get_devices()?;
+    for ctx in ctx_list.into_iter() {
+        let result: io::Result<_> = (|| {
+            let max_index = ctx.port_attr()?.gid_tbl_len as usize;
+            let gid_table: io::Result<_> = (0..max_index).map(|index| ctx.gid(index)).collect();
+            Ok((ctx, gid_table?))
+        })();
+        match result {
+            Ok((ctx, gid_table)) => {
+                default_ctxs.push((Box::pin(PinnedContext::new(ctx)), gid_table));
+            }
+            Err(e) => {
+                warn!("Skip device due to: {}", e);
+                continue;
+            }
+        }
+    }
+
+    if default_ctxs.is_empty() {
+        warn!("No active RDMA device found.");
+    }
+    Ok(default_ctxs)
+}
+
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
-#[derive(Default)]
 struct Resource<'ctx> {
     cmid_cnt: usize,
+    default_pds: HashMap<ibv::Gid, interface::ProtectionDomain>,
     pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
     cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
     qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
@@ -38,8 +75,30 @@ struct Resource<'ctx> {
 }
 
 impl<'ctx> Resource<'ctx> {
-    fn new() -> Self {
-        Default::default()
+    fn new() -> io::Result<Self> {
+        let mut default_pds = HashMap::new();
+        let mut pd_table = ResourceTable::default();
+        for (ctx, gid_table) in DEFAULT_CTXS.iter() {
+            let pd = match ctx.verbs.alloc_pd() {
+                Ok(pd) => pd,
+                Err(_) => continue,
+            };
+            let pd_handle = pd.handle().into();
+            pd_table.insert(pd_handle, pd).unwrap();
+            for gid in gid_table {
+                default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
+            }
+        }
+        Ok(Resource {
+            cmid_cnt: 0,
+            default_pds,
+            pd_table,
+            cq_table: ResourceTable::default(),
+            qp_table: ResourceTable::default(),
+            cmid_table: ResourceTable::default(),
+            mr_table: ResourceTable::default(),
+            event_channel_table: ResourceTable::default(),
+        })
     }
 
     fn allocate_new_cmid_handle(&mut self) -> Handle {
@@ -62,10 +121,10 @@ impl<'ctx> Resource<'ctx> {
         // qp, cqs, and other associated resources are supposed to be open by the user
         // explicited, the error should be safely ignored if the resource has already been
         // created.
-        self.qp_table.occupy(qp_handle, qp);
-        self.pd_table.occupy(pd_handle, pd);
-        self.cq_table.occupy(scq_handle, send_cq);
-        self.cq_table.occupy(rcq_handle, recv_cq);
+        self.qp_table.occupy_or_create_resource(qp_handle, qp);
+        self.pd_table.occupy_or_create_resource(pd_handle, pd);
+        self.cq_table.occupy_or_create_resource(scq_handle, send_cq);
+        self.cq_table.occupy_or_create_resource(rcq_handle, recv_cq);
         Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
     }
 
@@ -82,6 +141,20 @@ impl<'ctx> Resource<'ctx> {
             // listener cmid, no QP associated.
             self.cmid_table.insert(cmid_handle, cmid)?;
             Ok((cmid_handle, None))
+        }
+    }
+}
+
+struct PinnedContext {
+    verbs: ManuallyDrop<ibv::Context>,
+    _pin: PhantomPinned,
+}
+
+impl PinnedContext {
+    fn new(ctx: ManuallyDrop<ibv::Context>) -> Self {
+        PinnedContext {
+            verbs: ctx,
+            _pin: PhantomPinned,
         }
     }
 }
@@ -128,6 +201,7 @@ impl<'ctx> TransportEngine<'ctx> {
             fs::remove_file(&sock_path)?;
         }
         let sock = UnixDatagram::bind(&sock_path)?;
+
         Ok(TransportEngine {
             client_path: client_path.as_ref().to_owned(),
             sock,
@@ -140,7 +214,7 @@ impl<'ctx> TransportEngine<'ctx> {
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: mode,
-            resource: Resource::new(),
+            resource: Resource::new()?,
             poll: mio::Poll::new()?,
             cmd_buffer: None,
             last_cmd_ts: Instant::now(),
@@ -869,7 +943,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     qp_init_attr
                 );
                 let cmid = self.resource.cmid_table.get(cmid_handle)?;
-                let (pd, qp_init_attr) = self.get_qp_params(pd, Some(qp_init_attr))?;
+
+                let pd = pd.or_else(|| {
+                    // use the default pd of the corresponding device
+                    let sgid = cmid.sgid();
+                    Some(self.resource.default_pds[&sgid])
+                });
+
+                let (pd, qp_init_attr) = self.get_qp_params(&pd, Some(qp_init_attr))?;
                 cmid.create_qp(pd, qp_init_attr.as_ref())
                     .map_err(Error::RdmaCm)?;
                 let qp = cmid.qp().unwrap();

@@ -11,11 +11,11 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::Result;
 
+use engine::{manager::RuntimeManager, SchedulingMode};
 use ipc::{self, cmd, dp};
 
+use super::engine::TransportEngine;
 use crate::module::Module;
-use crate::transport::engine::TransportEngine;
-use engine::{manager::RuntimeManager, SchedulingMode};
 
 // TODO(cjr): make these configurable, see koala.toml
 const KOALA_PATH: &'static str = "/tmp/koala/koala-transport.sock";

@@ -206,7 +206,7 @@ impl<'devlist> Device<'devlist> {
 
 /// An RDMA context bound to a device.
 pub struct Context {
-    ctx: *mut ffi::ibv_context,
+    pub(crate) ctx: *mut ffi::ibv_context,
 }
 
 unsafe impl Sync for Context {}
@@ -214,7 +214,7 @@ unsafe impl Send for Context {}
 
 impl Context {
     /// Opens a context for the given device, and queries its port and gid.
-    fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
+    pub fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
         assert!(!dev.is_null());
 
         let ctx = unsafe { ffi::ibv_open_device(dev) };
@@ -229,7 +229,7 @@ impl Context {
     }
 
     /// Returns the port_attr for the given context.
-    fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
+    pub fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
         // TODO: from http://www.rdmamojo.com/2012/07/21/ibv_query_port/
         //
         //   Most of the port attributes, returned by ibv_query_port(), aren't constant and may be
@@ -269,9 +269,9 @@ impl Context {
     }
 
     /// Returns the GID of the given context.
-    fn gid(&self) -> io::Result<Gid> {
+    pub fn gid(&self, index: usize) -> io::Result<Gid> {
         let mut gid = Gid::default();
-        let ok = unsafe { ffi::ibv_query_gid(self.ctx, PORT_NUM, 0, gid.as_mut()) };
+        let ok = unsafe { ffi::ibv_query_gid(self.ctx, PORT_NUM, index as _, gid.as_mut()) };
         if ok != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -737,7 +737,7 @@ impl<'res> QueuePairBuilder<'res> {
         } else {
             Ok(PreparedQueuePair {
                 port_attr: self.pd.context().port_attr()?,
-                gid: self.pd.context().gid()?,
+                gid: self.pd.context().gid(0)?,
                 qp: QueuePair {
                     _phantom: PhantomData,
                     qp,
@@ -811,7 +811,7 @@ pub struct PreparedQueuePair<'res> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
-struct Gid {
+pub struct Gid {
     raw: [u8; 16],
 }
 

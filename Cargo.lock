@@ -639,6 +639,7 @@ dependencies = [
  "fnv",
  "interface",
  "ipc",
+ "lazy_static",
  "libc",
  "log",
  "mio 0.7.14",
