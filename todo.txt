@@ -28,11 +28,13 @@ Performance & CPU efficiency
       multiple CQs</s>
 
 Thread-safety
+- Move Resource struct of transport engine up a level.
 - Add spinlock to QueuePair, CompletionQueue... in libkoala
 - Most of the resources in transport/engine should be per-user, lock
   or concurrent data structure is needed
 - Move CqBuffer from thread_local to lazy_static
 - Write a multi-threaded program to test the correctness
+- Per process resource management.
 
 Engine Framework
 -[x] Blocking network APIs in transport engine may block the entire
