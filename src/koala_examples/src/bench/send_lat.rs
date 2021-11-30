@@ -45,9 +45,9 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
 
-        let wc = id.get_send_comp().expect("Get recv comp failed!");
+        let wc = id.get_recv_comp().expect("Get recv comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
-        if (i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32) {
+        if i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32 {
             unsafe {
                 id.post_recv(&mut recv_mr, .., 0)
                     .expect("Post recv failed!");
@@ -93,9 +93,9 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     eprintln!("Connection established");
 
     for i in 0..ctx.opt.num {
-        let wc = id.get_send_comp().expect("Get recv comp failed!");
+        let wc = id.get_recv_comp().expect("Get recv comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
-        if (i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32) {
+        if i as u32 + ctx.cap.max_recv_wr < ctx.opt.num as u32 {
             unsafe {
                 id.post_recv(&mut recv_mr, .., 0)
                     .expect("Post recv failed!");

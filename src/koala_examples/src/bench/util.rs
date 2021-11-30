@@ -3,8 +3,7 @@ use std::convert::From;
 use std::time::Instant;
 use structopt::StructOpt;
 
-use interface::{addrinfo, WcStatus};
-use libkoala::{cm, verbs, Error};
+use libkoala::verbs;
 
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Verb {
@@ -67,16 +66,16 @@ pub struct Context {
 impl Context {
     pub fn new(mut opt: Opts, tst: Test) -> Self {
         opt.size = max(opt.size, 4);
-        if (tst == Test::BW && opt.num < opt.warmup) {
+        if tst == Test::BW && opt.num < opt.warmup {
             opt.num += opt.warmup;
         }
 
         let cap = verbs::QpCapability {
-            max_send_wr: if (tst == Test::BW) { 128 } else { 1 },
+            max_send_wr: if tst == Test::BW { 128 } else { 1 },
             max_recv_wr: 512,
             max_send_sge: 1,
             max_recv_sge: 1,
-            max_inline_data: if (tst == Test::BW) { 0 } else { 236 },
+            max_inline_data: if tst == Test::BW { 0 } else { 236 },
         };
 
         Context {
