@@ -14,6 +14,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+use lazy_static::lazy_static;
 use uuid::Uuid;
 
 use interface::returned;
@@ -29,6 +30,38 @@ use rdma::rdmacm::CmId;
 use super::resource::ResourceTable;
 use super::{DatapathError, Error};
 
+lazy_static! {
+    static ref DEFAULT_CTXS: Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)> =
+        open_default_verbs().expect("Open default RDMA context failed.");
+}
+
+/// Open default verbs contexts
+fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)>> {
+    let mut default_ctxs = Vec::new();
+    let ctx_list = rdmacm::get_devices()?;
+    for ctx in ctx_list.into_iter() {
+        let result: io::Result<_> = (|| {
+            let max_index = ctx.port_attr()?.gid_tbl_len as usize;
+            let gid_table: io::Result<_> = (0..max_index).map(|index| ctx.gid(index)).collect();
+            Ok((ctx, gid_table?))
+        })();
+        match result {
+            Ok((ctx, gid_table)) => {
+                default_ctxs.push((Box::pin(PinnedContext::new(ctx)), gid_table));
+            }
+            Err(e) => {
+                warn!("Skip device due to: {}", e);
+                continue;
+            }
+        }
+    }
+
+    if default_ctxs.is_empty() {
+        warn!("No active RDMA device found.");
+    }
+    Ok(default_ctxs)
+}
+
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 struct Resource<'ctx> {
     cmid_cnt: usize,
@@ -42,17 +75,19 @@ struct Resource<'ctx> {
 }
 
 impl<'ctx> Resource<'ctx> {
-    fn new(default_ctxs: &'ctx HashMap<ibv::Gid, Pin<Box<PinnedContext>>>) -> io::Result<Self> {
+    fn new() -> io::Result<Self> {
         let mut default_pds = HashMap::new();
         let mut pd_table = ResourceTable::default();
-        for (gid, ctx) in default_ctxs.iter() {
+        for (ctx, gid_table) in DEFAULT_CTXS.iter() {
             let pd = match ctx.verbs.alloc_pd() {
                 Ok(pd) => pd,
                 Err(_) => continue,
             };
             let pd_handle = pd.handle().into();
             pd_table.insert(pd_handle, pd).unwrap();
-            default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
+            for gid in gid_table {
+                default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
+            }
         }
         Ok(Resource {
             cmid_cnt: 0,
@@ -110,7 +145,7 @@ impl<'ctx> Resource<'ctx> {
     }
 }
 
-pub struct PinnedContext {
+struct PinnedContext {
     verbs: ManuallyDrop<ibv::Context>,
     _pin: PhantomPinned,
 }
@@ -149,37 +184,6 @@ pub struct TransportEngine<'ctx> {
 }
 
 impl<'ctx> TransportEngine<'ctx> {
-    // Open default verbs contexts
-    pub fn open_default_verbs() -> io::Result<HashMap<ibv::Gid, Pin<Box<PinnedContext>>>> {
-        let mut default_ctxs = HashMap::new();
-        // TODO(cjr): Change to rdma_get_devices()
-        // let dev_list = ibv::devices()?;
-        let ctx_list = rdmacm::get_devices()?;
-        for ctx in ctx_list.into_iter() {
-            let result: io::Result<_> = (|| {
-                // let max_index = ctx.port_attr()?.gid_tbl_len;
-                // let gid_table = (0..max_index).map(|index| ctx.gid(index)?).collect().into();
-                // TODO(cjr): Query gids
-                let gid = ctx.gid(3)?;
-                Ok((gid, ctx))
-            })();
-            match result {
-                Ok((gid, ctx)) => {
-                    default_ctxs.insert(gid, Box::pin(PinnedContext::new(ctx)));
-                }
-                Err(e) => {
-                    warn!("Skip device due to: {}", e);
-                    continue;
-                }
-            }
-        }
-
-        if default_ctxs.is_empty() {
-            warn!("No active RDMA device found.");
-        }
-        Ok(default_ctxs)
-    }
-
     pub fn new<P: AsRef<Path>>(
         client_path: P,
         cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
@@ -188,7 +192,6 @@ impl<'ctx> TransportEngine<'ctx> {
         dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
         dp_cq: ipc::ShmSender<dp::CompletionSlot>,
         mode: SchedulingMode,
-        default_ctxs: &'ctx HashMap<ibv::Gid, Pin<Box<PinnedContext>>>,
     ) -> io::Result<Self> {
         let uuid = Uuid::new_v4();
         let sock_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
@@ -198,8 +201,7 @@ impl<'ctx> TransportEngine<'ctx> {
             fs::remove_file(&sock_path)?;
         }
         let sock = UnixDatagram::bind(&sock_path)?;
-        // let default_ctxs = Arc::new(TransportEngine::open_default_verbs()?);
-        let resource = Resource::new(&default_ctxs)?;
+
         Ok(TransportEngine {
             client_path: client_path.as_ref().to_owned(),
             sock,
@@ -212,8 +214,7 @@ impl<'ctx> TransportEngine<'ctx> {
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: mode,
-            // default_ctxs,
-            resource,
+            resource: Resource::new()?,
             poll: mio::Poll::new()?,
             cmd_buffer: None,
             last_cmd_ts: Instant::now(),
