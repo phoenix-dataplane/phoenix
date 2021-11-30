@@ -217,7 +217,7 @@ void print_lat(Context *ctx, uint64_t *times)
 void print_bw(Context *ctx, uint64_t *tposted, uint64_t *tcompleted)
 {
     double tus = (tcompleted[ctx->num - 1] - tposted[0]) / get_cpu_mhz(1);
-    double MBs = ctx->size * ctx->num / tus;
+    double MBs = ctx->size * ((uint64_t)ctx->num) / tus;
     double GBs = MBs / 1000;
     double Mpps = ctx->num / tus;
     printf("avg bw: %.2lfGB/s, %.2lfGbps, %.5lfMpps\n", GBs, GBs * 8, Mpps);

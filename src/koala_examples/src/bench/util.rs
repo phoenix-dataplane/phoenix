@@ -101,7 +101,7 @@ impl Context {
 }
 
 const LAT_MEASURE_TAIL: usize = 2;
-pub fn print_lat(ctx: &Context, times: Vec<Instant>) {
+pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
     let num = ctx.opt.num - ctx.opt.warmup;
     assert!(num > 0);
     let mut delta = Vec::new();
@@ -133,5 +133,20 @@ pub fn print_lat(ctx: &Context, times: Vec<Instant>) {
         lat[(cnt as f64 * 0.95) as usize],
         lat[(cnt as f64 * 0.99) as usize],
         lat[cnt - 1]
+    );
+}
+
+pub fn print_bw(ctx: &Context, tposted: &Vec<Instant>, tcompleted: &Vec<Instant>) {
+    let tus = tcompleted[ctx.opt.num - 1]
+        .duration_since(tposted[0])
+        .as_micros() as f64;
+    let mbytes = (ctx.opt.size * ctx.opt.num) as f64 / tus; // MB=10^6B
+    let gbytes = mbytes / 1000.0; // 1GB=10^9B
+    let mpps = ctx.opt.num as f64 / tus;
+    println!(
+        "avg bw: {:.2}GB/s, {:.2}Gbps, {:.5}Mpps",
+        gbytes,
+        gbytes * 8.0,
+        mpps
     );
 }
