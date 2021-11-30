@@ -247,10 +247,7 @@ impl IntoIterator for ContextList {
     type Item = <ContextListDrain as Iterator>::Item;
     type IntoIter = ContextListDrain;
     fn into_iter(self) -> Self::IntoIter {
-        ContextListDrain {
-            list: self,
-            i: 0,
-        }
+        ContextListDrain { list: self, i: 0 }
     }
 }
 
@@ -261,7 +258,7 @@ impl Iterator for ContextListDrain {
         if e.is_some() {
             self.i += 1;
         }
-        e.map(|e| ManuallyDrop::new(ibv::Context{ctx: e.ctx}))
+        e.map(|e| ManuallyDrop::new(ibv::Context { ctx: e.ctx }))
     }
 }
 
