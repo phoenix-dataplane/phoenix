@@ -1,22 +1,13 @@
 TODO
 
-Engine Framework
--[x] Blocking network APIs in transport engine may block the entire
-     runtime
--[x] What should Engine::run() return?
-- *Change Engine trait to a huge Generator*
+RPC
+- zero-copy RPC interface
 
-Resource Releasing
-- implement resource release (partially done)
--[x] Finally find a solution to deal with Fd/Handle that can come from
-     everywhere: use explicit open/close call to update the reference 
-     count of the corresponding object at the backend.
--[x] Clean and release the resource after detected a user app is
-     disconnected.
-	- shmem-ipc
-		-[x] <s>Error::Disconnected</s> won't fix
-		-[x] remove the blocking send/recv
-		-[x] expose current available count to read/write
+Policy
+- Implement more engines for global policy
+
+Socket
+- Implement a socket datapath
 
 Misc
 -[x] Remove repeatitive code in libkoala/cm.rs
@@ -42,6 +33,24 @@ Thread-safety
   or concurrent data structure is needed
 - Move CqBuffer from thread_local to lazy_static
 - Write a multi-threaded program to test the correctness
+
+Engine Framework
+-[x] Blocking network APIs in transport engine may block the entire
+     runtime
+-[x] What should Engine::run() return?
+- *Change Engine trait to a huge Generator*
+
+Resource Releasing
+-[x] implement resource release
+-[x] Finally find a solution to deal with Fd/Handle that can come from
+     everywhere: use explicit open/close call to update the reference 
+     count of the corresponding object at the backend.
+-[x] Clean and release the resource after detected a user app is
+     disconnected.
+	- shmem-ipc
+		-[x] <s>Error::Disconnected</s> won't fix
+		-[x] remove the blocking send/recv
+		-[x] expose current available count to read/write
 
 Memory Registration
 -[x] Overlapped memory registration (two non-overlapped regions sharing
