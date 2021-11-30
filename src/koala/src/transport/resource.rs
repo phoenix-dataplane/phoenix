@@ -84,14 +84,22 @@ impl<R> ResourceTable<R> {
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
-    pub(crate) fn occupy(&mut self, h: Handle, r: R) {
-        self.table.entry(h).or_insert(Entry::new(r, 0));
+    pub(crate) fn occupy_or_create_resource(&mut self, h: Handle, r: R) {
+        match self.table.entry(h) {
+            hash_map::Entry::Occupied(_e) => {
+                // TODO(cjr): check if they have the same handle
+                mem::forget(r);
+            }
+            hash_map::Entry::Vacant(e) => {
+                e.insert(Entry::new(r, 0));
+            }
+        }
     }
 
     pub(crate) fn open_or_create_resource(&mut self, h: Handle, r: R) {
-        // TODO(cjr): check if they have the same handle
         match self.table.entry(h) {
             hash_map::Entry::Occupied(mut e) => {
+                // TODO(cjr): check if they have the same handle
                 e.get_mut().open();
                 mem::forget(r);
             }

@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
-use std::mem::MaybeUninit;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::SocketAddr;
 use std::os::raw::{c_char, c_void};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -213,6 +213,74 @@ impl<'a> AsMut<ffi::rdma_addrinfo> for AddrInfoTransparent<'a> {
     }
 }
 
+pub struct ContextList(&'static mut [ManuallyDrop<ibv::Context>]);
+
+unsafe impl Sync for ContextList {}
+unsafe impl Send for ContextList {}
+
+impl Drop for ContextList {
+    fn drop(&mut self) {
+        unsafe { ffi::rdma_free_devices(self.0.as_mut_ptr() as _) };
+    }
+}
+
+use std::ops::Deref;
+impl Deref for ContextList {
+    type Target = [ManuallyDrop<ibv::Context>];
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl ContextList {
+    pub fn drain(self) -> ContextListDrain {
+        self.into_iter()
+    }
+}
+
+pub struct ContextListDrain {
+    list: ContextList,
+    i: usize,
+}
+
+impl IntoIterator for ContextList {
+    type Item = <ContextListDrain as Iterator>::Item;
+    type IntoIter = ContextListDrain;
+    fn into_iter(self) -> Self::IntoIter {
+        ContextListDrain {
+            list: self,
+            i: 0,
+        }
+    }
+}
+
+impl Iterator for ContextListDrain {
+    type Item = ManuallyDrop<ibv::Context>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let e = self.list.get(self.i);
+        if e.is_some() {
+            self.i += 1;
+        }
+        e.map(|e| ManuallyDrop::new(ibv::Context{ctx: e.ctx}))
+    }
+}
+
+pub fn get_devices() -> io::Result<ContextList> {
+    // use rdma_get_devices(), the ibv_context* will remain valid after
+    // rdma_free_deivces is called.
+    let mut n = 0i32;
+    let contexts = unsafe { ffi::rdma_get_devices(&mut n) };
+    if contexts.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    assert_eq!(
+        mem::size_of::<ibv::Context>(),
+        mem::size_of::<*mut ffi::ibv_context>()
+    );
+    let contexts = unsafe { slice::from_raw_parts_mut(contexts as _, n as usize) };
+    Ok(ContextList(contexts))
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PortSpace(pub ffi::rdma_port_space::Type);
 
@@ -228,7 +296,7 @@ impl Drop for CmEvent {
         let rc = unsafe { ffi::rdma_ack_cm_event(self.0) };
         if rc != 0 {
             warn!(
-                "error occured ack_cm_event: {:?}",
+                "An error occurred on ack_cm_event: {:?}",
                 io::Error::last_os_error()
             );
         }
@@ -399,6 +467,14 @@ impl CmId {
         let channel = unsafe { &*self.0 }.channel;
         assert!(!channel.is_null());
         EventChannel(channel)
+    }
+
+    #[inline]
+    pub fn sgid(&self) -> ibv::Gid {
+        assert!(!self.0.is_null());
+        let route = unsafe { &*self.0 }.route;
+        let sgid = unsafe { route.addr.addr.ibaddr.sgid }.into();
+        sgid
     }
 
     pub fn create_ep<'ctx>(

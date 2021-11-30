@@ -1,27 +1,36 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{SocketAddr, UnixDatagram};
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use lazy_static::lazy_static;
 
-use ipc::{self, cmd, dp};
-
-use crate::module::Module;
-use crate::transport::engine::TransportEngine;
 use engine::{manager::RuntimeManager, SchedulingMode};
+use ipc::{self, cmd, dp};
+use rdma::ibv;
+
+use super::engine::{PinnedContext, TransportEngine};
+use crate::module::Module;
 
 // TODO(cjr): make these configurable, see koala.toml
 const KOALA_PATH: &'static str = "/tmp/koala/koala-transport.sock";
 
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
+
+lazy_static! {
+    static ref DEFAULT_CTXS: HashMap<ibv::Gid, Pin<Box<PinnedContext>>> =
+        TransportEngine::open_default_verbs().unwrap();
+}
 
 pub struct TransportModule {
     runtime_manager: Arc<RuntimeManager>,
@@ -114,6 +123,7 @@ impl TransportModule {
             dp_wq,
             dp_cq,
             mode,
+            &DEFAULT_CTXS,
         )?;
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
