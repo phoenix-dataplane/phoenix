@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::convert::From;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -10,6 +11,12 @@ pub enum Verb {
     Send,
     Read,
     Write,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Test {
+    BW,
+    LAT,
 }
 
 impl From<&str> for Verb {
@@ -42,8 +49,8 @@ pub struct Opts {
     pub num: usize,
 
     /// Number of warmup iterations.
-    #[structopt(short = "w", long = "warm", default_value = "100")]
-    pub warm: usize,
+    #[structopt(short = "w", long = "warmup", default_value = "100")]
+    pub warmup: usize,
 
     /// Message size.
     #[structopt(short = "s", long = "size", default_value = "8")]
@@ -52,28 +59,30 @@ pub struct Opts {
 
 pub struct Context {
     pub opt: Opts,
+    pub tst: Test,
     pub client: bool,
-    pub ai: addrinfo::AddrInfo,
     pub cap: verbs::QpCapability,
 }
 
 impl Context {
-    pub fn new(opt: Opts) -> Self {
-        let ai =
-            cm::getaddrinfo(Some(&opt.ip), Some(&opt.port.to_string()), None).expect("getaddrinfo");
+    pub fn new(mut opt: Opts, tst: Test) -> Self {
+        opt.size = max(opt.size, 4);
+        if (tst == Test::BW && opt.num < opt.warmup) {
+            opt.num += opt.warmup;
+        }
 
         let cap = verbs::QpCapability {
-            max_send_wr: 1024,
-            max_recv_wr: 1024,
+            max_send_wr: if (tst == Test::BW) { 128 } else { 1 },
+            max_recv_wr: 512,
             max_send_sge: 1,
             max_recv_sge: 1,
-            max_inline_data: 236,
+            max_inline_data: if (tst == Test::BW) { 0 } else { 236 },
         };
 
         Context {
             client: opt.ip != "0.0.0.0",
             opt: opt,
-            ai: ai,
+            tst:tst,
             cap: cap,
         }
     }
@@ -82,7 +91,7 @@ impl Context {
         println!("machine: {}", if self.client { "client" } else { "sever" });
         println!(
             "num:{}, size:{}, warmup:{}",
-            self.opt.num, self.opt.size, self.opt.warm
+            self.opt.num, self.opt.size, self.opt.warmup
         );
         match self.opt.verb {
             Verb::Send => println!("Send data from client to server"),
@@ -92,16 +101,15 @@ impl Context {
     }
 }
 
-
 const LAT_MEASURE_TAIL: usize = 2;
 pub fn print_lat(ctx: &Context, times: Vec<Instant>) {
-    let num = ctx.opt.num - ctx.opt.warm;
+    let num = ctx.opt.num - ctx.opt.warmup;
     assert!(num > 0);
     let mut delta = Vec::new();
     for i in 0..num {
         delta.push(
-            times[i + ctx.opt.warm + 1]
-                .duration_since(times[i + ctx.opt.warm])
+            times[i + ctx.opt.warmup + 1]
+                .duration_since(times[i + ctx.opt.warmup])
                 .as_micros(),
         );
     }

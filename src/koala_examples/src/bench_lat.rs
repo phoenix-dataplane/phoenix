@@ -3,13 +3,13 @@ use structopt::StructOpt;
 use libkoala::Error;
 
 mod bench;
-use bench::util::{Context, Verb, Opts};
+use bench::util::{Context, Opts, Test, Verb};
 // use bench::read_lat;
 use bench::send_lat;
 use bench::write_lat;
 
 fn main() -> Result<(), Error> {
-    let ctx = Context::new(Opts::from_args());
+    let ctx = Context::new(Opts::from_args(), Test::LAT);
     ctx.print();
 
     match ctx.opt.verb {
