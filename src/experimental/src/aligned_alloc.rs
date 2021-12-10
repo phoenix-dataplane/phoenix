@@ -30,7 +30,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_usage() {
-        let v = Vec::with_capacity_in(opts.msg_size, AlignedAllocator);
+        let v = Vec::with_capacity_in(4096, AlignedAllocator);
         assert!((v.as_ptr() as usize) % PAGE_SIZE == 0);
     }
 }

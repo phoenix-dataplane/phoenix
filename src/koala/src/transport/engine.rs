@@ -17,8 +17,7 @@ use std::time::{Duration, Instant};
 use lazy_static::lazy_static;
 use uuid::Uuid;
 
-use interface::returned;
-use interface::Handle;
+use interface::{returned, Handle};
 use ipc::{self, cmd, dp};
 
 use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
@@ -64,7 +63,7 @@ fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid
 
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 struct Resource<'ctx> {
-    cmid_cnt: usize,
+    cmid_cnt: u32,
     default_pds: HashMap<ibv::Gid, interface::ProtectionDomain>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
@@ -178,6 +177,7 @@ pub struct TransportEngine<'ctx> {
     _mode: SchedulingMode,
 
     resource: Resource<'ctx>,
+
     poll: mio::Poll,
     // bufferred control path request
     cmd_buffer: Option<cmd::Request>,
@@ -468,6 +468,36 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
             }
             WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
+
+            WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
+                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                    if let Some(qp) = cmid.qp() {
+                        (
+                            interface::CompletionQueue(qp.send_cq().handle().into()),
+                            *wr_id,
+                        )
+                    } else {
+                        (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                    }
+                } else {
+                    (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                }
+            }
+
+            WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
+                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                    if let Some(qp) = cmid.qp() {
+                        (
+                            interface::CompletionQueue(qp.send_cq().handle().into()),
+                            *wr_id,
+                        )
+                    } else {
+                        (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                    }
+                } else {
+                    (interface::CompletionQueue(Handle::INVALID), *wr_id)
+                }
+            }
         }
     }
 
@@ -581,6 +611,50 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map_err(DatapathError::RdmaCm)?;
                 Ok(())
             }
+            WorkRequest::PostWrite(
+                cmid_handle,
+                mr_handle,
+                wr_id,
+                range,
+                remote_offset,
+                rkey,
+                send_flags,
+            ) => {
+                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
+                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+
+                let rdma_mr = mr.into();
+                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+                let remote_addr = rkey.addr + remote_offset;
+
+                let flags: ibv::SendFlags = (*send_flags).into();
+                unsafe { cmid.post_write(*wr_id, buf, &rdma_mr, flags.0, remote_addr, rkey.rkey) }
+                    .map_err(DatapathError::RdmaCm)?;
+
+                Ok(())
+            }
+            WorkRequest::PostRead(
+                cmid_handle,
+                mr_handle,
+                wr_id,
+                range,
+                remote_offset,
+                rkey,
+                send_flags,
+            ) => {
+                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
+                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+
+                let rdma_mr = mr.into();
+                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+                let remote_addr = rkey.addr + remote_offset;
+
+                let flags: ibv::SendFlags = (*send_flags).into();
+                unsafe { cmid.post_read(*wr_id, buf, &rdma_mr, flags.0, remote_addr, rkey.rkey) }
+                    .map_err(DatapathError::RdmaCm)?;
+
+                Ok(())
+            }
             WorkRequest::PollCq(cq_handle) => {
                 // trace!("cq_handle: {:?}", cq_handle);
                 self.try_flush_cq_err_buffer()?;
@@ -689,7 +763,7 @@ impl<'ctx> TransportEngine<'ctx> {
             .poll(&mut events, Some(Duration::from_millis(1)))
             .map_err(Error::Mio)?;
         for io_event in &events {
-            let handle = Handle(io_event.token().0);
+            let handle = Handle(io_event.token().0 as u32);
             let event_channel = self.resource.event_channel_table.get(&handle)?;
             // read one event
             let cm_event = event_channel.get_cm_event().map_err(Error::RdmaCm)?;
@@ -885,7 +959,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     .registry()
                     .register(
                         &mut mio::unix::SourceFd(&channel.as_raw_fd()),
-                        mio::Token(channel_handle.0),
+                        mio::Token(channel_handle.0 as usize),
                         mio::Interest::READABLE,
                     )
                     .map_err(Error::Mio)?;
@@ -985,7 +1059,6 @@ impl<'ctx> TransportEngine<'ctx> {
                 self.resource.mr_table.close_resource(&mr.0)?;
                 Ok(ResponseKind::DeregMr)
             }
-
             Request::DeallocPd(pd) => {
                 trace!("DeallocPd, pd: {:?}", pd);
                 self.resource.pd_table.close_resource(&pd.0)?;

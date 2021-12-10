@@ -699,6 +699,80 @@ impl CmId {
     }
 
     #[inline]
+    pub unsafe fn post_write(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+        remote_addr: u64,
+        rkey: u32,
+    ) -> io::Result<()> {
+        let id = self.0;
+        let context = wr_id as _;
+        let addr = buf.as_ptr();
+        let length = buf.len();
+
+        let mr = mr.0;
+        assert!(!mr.is_null());
+        assert!(
+            (&*mr).addr as *const _ <= addr
+                && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
+        );
+        let rc = ffi::rdma_post_write_real(
+            id,
+            context,
+            addr as *mut _,
+            length as u64,
+            mr,
+            flags.0 as _,
+            remote_addr,
+            rkey,
+        );
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn post_read(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+        remote_addr: u64,
+        rkey: u32,
+    ) -> io::Result<()> {
+        let id = self.0;
+        let context = wr_id as _;
+        let addr = buf.as_ptr();
+        let length = buf.len();
+
+        let mr = mr.0;
+        assert!(!mr.is_null());
+        assert!(
+            (&*mr).addr as *const _ <= addr
+                && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
+        );
+        let rc = ffi::rdma_post_read_real(
+            id,
+            context,
+            addr as *mut _,
+            length as u64,
+            mr,
+            flags.0 as _,
+            remote_addr,
+            rkey,
+        );
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[inline]
     pub fn get_send_comp(&self) -> io::Result<ffi::ibv_wc> {
         let id = self.0;
         let mut wc = MaybeUninit::uninit();

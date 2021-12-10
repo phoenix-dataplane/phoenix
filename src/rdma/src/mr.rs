@@ -112,7 +112,12 @@ impl MemoryRegion {
 
     #[inline]
     pub fn rkey(&self) -> RemoteKey {
-        RemoteKey(unsafe { &*self.mr }.rkey)
+        unsafe {
+            RemoteKey {
+                rkey: (&*self.mr).rkey,
+                addr: (&*self.mr).addr as u64,
+            }
+        }
     }
 }
 
