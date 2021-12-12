@@ -195,6 +195,7 @@ impl AddrInfo {
     }
 }
 
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct AddrInfoTransparent<'a> {
     inner: ffi::rdma_addrinfo,
@@ -281,8 +282,12 @@ pub fn get_devices() -> io::Result<ContextList> {
 #[derive(Debug, Clone, Copy)]
 pub struct PortSpace(pub ffi::rdma_port_space::Type);
 
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct CmEvent(*mut ffi::rdma_cm_event);
+
+unsafe impl Send for CmEvent {}
+unsafe impl Sync for CmEvent {}
 
 /// All events which are allocated by rdma_get_cm_event must be released, there
 /// should be a one-to-one correspondence  between  successful  gets  and  acks.
@@ -340,6 +345,7 @@ impl CmEvent {
     }
 }
 
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct EventChannel(*mut ffi::rdma_event_channel);
 
@@ -411,6 +417,7 @@ impl Drop for EventChannel {
     }
 }
 
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct MemoryRegion(pub(crate) *mut ffi::ibv_mr);
 
@@ -425,6 +432,7 @@ impl MemoryRegion {
     }
 }
 
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct CmId(*mut ffi::rdma_cm_id);
 
@@ -444,6 +452,7 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    // TODO(cjr): fix this bug.
     #[inline]
     pub fn qp<'res>(&self) -> Option<ibv::QueuePair<'res>> {
         assert!(!self.0.is_null());

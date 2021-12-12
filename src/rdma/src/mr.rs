@@ -122,14 +122,14 @@ impl MemoryRegion {
     }
 }
 
-impl From<&MemoryRegion> for rdmacm::MemoryRegion {
-    fn from(other: &MemoryRegion) -> rdmacm::MemoryRegion {
-        rdmacm::MemoryRegion(other.mr)
-    }
-}
-
-impl From<&mut MemoryRegion> for rdmacm::MemoryRegion {
-    fn from(other: &mut MemoryRegion) -> rdmacm::MemoryRegion {
-        rdmacm::MemoryRegion(other.mr)
+// TODO(cjr): Add lifetime annotation to both structure.
+// This is unsound. The MemoryRegion could be immediately dropped after the conversion,
+// the mr would become a dangling pointer. FIXME.
+impl<A> From<&A> for rdmacm::MemoryRegion
+where
+    A: AsRef<MemoryRegion>,
+{
+    fn from(a: &A) -> rdmacm::MemoryRegion {
+        rdmacm::MemoryRegion(a.as_ref().mr)
     }
 }

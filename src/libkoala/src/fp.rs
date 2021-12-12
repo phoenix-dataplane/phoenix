@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use ipc::buf;
 use ipc::dp::{Completion, WorkRequest, WorkRequestSlot};
 
-use crate::{Error, KL_CTX};
+use crate::{Error, CQ_BUFFERS, KL_CTX};
 
 use crate::cm;
 use crate::cm::{CmId, PreparedCmId};
@@ -214,18 +214,19 @@ impl CompletionQueue {
     pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         // poll local buffer first
         unsafe { wc.set_len(0) };
-        if !self.buffer.shared.queue.borrow().is_empty() {
-            let count = wc.capacity().min(self.buffer.shared.queue.borrow().len());
-            // eprintln!("before: buffer_len: {}, count: {}", self.buffer.queue.borrow().len(), count);
-            for c in self.buffer.shared.queue.borrow_mut().drain(..count) {
+        let mut local_buffer = self.buffer.queue.lock();
+        if !local_buffer.is_empty() {
+            let count = wc.capacity().min(local_buffer.len());
+            for c in local_buffer.drain(..count) {
                 wc.push(c);
             }
-            // eprintln!("after: buffer_len: {}, count: {}", self.buffer.queue.borrow().len(), count);
             return Ok(());
         }
+        drop(local_buffer);
+
         // if local buffer is empty,
         KL_CTX.with(|ctx| {
-            if !self.buffer.shared.outstanding.load(Ordering::Acquire) {
+            if !self.outstanding.load(Ordering::Acquire) {
                 // 1. Send a poll_cq command to the koala server. This poll_cq command does not have
                 // to be sent successfully. Because the user would keep retrying until they get what
                 // they expect.
@@ -235,10 +236,7 @@ impl CompletionQueue {
                     .sender_mut()
                     .send(|ptr, _count| unsafe {
                         ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
-                        self.buffer
-                            .shared
-                            .outstanding
-                            .store(true, Ordering::Release);
+                        self.outstanding.store(true, Ordering::Release);
                         1
                     })?;
             }
@@ -249,13 +247,14 @@ impl CompletionQueue {
                 .receiver_mut()
                 .recv(|ptr, count| unsafe {
                     // iterate and dispatch
+                    let cq_buffers = CQ_BUFFERS.lock();
                     for i in 0..count {
                         let c = ptr.add(i).cast::<Completion>().read();
-                        if let Some(buffer) = ctx.cq_buffers.borrow().get(&c.cq_handle) {
-                            buffer.shared.outstanding.store(false, Ordering::Release);
+                        if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
+                            self.outstanding.store(false, Ordering::Release);
                             // this is just a notification that outstanding flag should be flapped
                             if c.wc.status != interface::WcStatus::AGAIN {
-                                buffer.shared.queue.borrow_mut().push_back(c.wc);
+                                buffer.queue.lock().push_back(c.wc);
                             }
                         } else {
                             eprintln!("no corresponding entry for {:?}", c);

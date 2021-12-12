@@ -1,14 +1,13 @@
 use std::any::Any;
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 use std::slice;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
@@ -16,7 +15,7 @@ use memmap2::{MmapOptions, MmapRaw};
 use interface::returned;
 use ipc::cmd::{Request, ResponseKind};
 
-use crate::{rx_recv_impl, Error, FromBorrow, KL_CTX};
+use crate::{rx_recv_impl, Context, Error, FromBorrow, CQ_BUFFERS, KL_CTX};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
@@ -62,8 +61,9 @@ impl ProtectionDomain {
         let req = Request::RegMr(self.inner, nbytes, access);
         KL_CTX.with(|ctx| {
             ctx.cmd_tx.send(req)?;
-            let fds = ipc::recv_fd(&ctx.sock)?;
+            let (fds, cred) = ctx.sock.recv_fd()?;
 
+            Context::check_credential(&ctx.sock, cred)?;
             assert_eq!(fds.len(), 1);
 
             let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
@@ -77,49 +77,55 @@ impl ProtectionDomain {
     }
 }
 
+#[derive(Debug)]
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
+    pub(crate) outstanding: AtomicBool,
     pub(crate) buffer: CqBuffer,
 }
 
 #[derive(Debug)]
-pub(crate) struct CqBufferShared {
-    pub(crate) outstanding: AtomicBool,
-    pub(crate) queue: RefCell<VecDeque<WorkCompletion>>,
+pub(crate) struct CqBuffer {
+    pub(crate) queue: Arc<spin::Mutex<VecDeque<WorkCompletion>>>,
 }
 
-#[derive(Debug)]
-pub(crate) struct CqBuffer {
-    pub(crate) shared: Rc<CqBufferShared>,
+impl Clone for CqBuffer {
+    fn clone(&self) -> Self {
+        CqBuffer {
+            queue: Arc::clone(&self.queue),
+        }
+    }
 }
 
 impl CqBuffer {
     fn new() -> Self {
         CqBuffer {
-            shared: Rc::new(CqBufferShared {
-                outstanding: AtomicBool::new(false),
-                queue: RefCell::new(VecDeque::new()),
-            }),
+            queue: Arc::new(spin::Mutex::new(VecDeque::new())),
         }
+    }
+
+    #[inline]
+    fn refcnt(&self) -> usize {
+        Arc::strong_count(&self.queue)
     }
 }
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
         (|| {
-            KL_CTX.with(|ctx| {
-                let ref_cnt = Rc::strong_count(&ctx.cq_buffers.borrow()[&self.inner].shared);
-                if ref_cnt == 2 {
-                    // this is the last CQ
-                    // should I flush the remaining completions in the buffer?
-                    ctx.cq_buffers.borrow_mut().remove(&self.inner);
-                }
+            let mut cq_buffers = CQ_BUFFERS.lock();
+            let ref_cnt = cq_buffers[&self.inner].refcnt();
+            if ref_cnt == 2 {
+                // this is the last CQ
+                // should I flush the remaining completions in the buffer?
+                cq_buffers.remove(&self.inner);
+            }
+            drop(cq_buffers);
 
-                let req = Request::DestroyCq(self.inner);
-                KL_CTX.with(|ctx| {
-                    ctx.cmd_tx.send(req)?;
-                    rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyCq)
-                })
+            let req = Request::DestroyCq(self.inner);
+            KL_CTX.with(|ctx| {
+                ctx.cmd_tx.send(req)?;
+                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyCq)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
@@ -130,29 +136,24 @@ impl CompletionQueue {
     pub(crate) fn open(returned_cq: returned::CompletionQueue) -> Result<Self, Error> {
         // allocate a buffer in the thread local context
         KL_CTX.with(|ctx| {
-            let shared = Rc::clone(
-                &ctx.cq_buffers
-                    .borrow_mut()
-                    .entry(returned_cq.handle)
-                    .or_insert_with(CqBuffer::new)
-                    .shared,
-            );
+            let buffer = CQ_BUFFERS
+                .lock()
+                .entry(returned_cq.handle)
+                .or_insert_with(CqBuffer::new)
+                .clone();
             let inner = returned_cq.handle;
             let req = Request::OpenCq(inner);
             ctx.cmd_tx.send(req)?;
             rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, {
                 Ok(CompletionQueue {
                     inner,
-                    buffer: CqBuffer { shared },
+                    outstanding: AtomicBool::new(false),
+                    buffer,
                 })
             })
         })
     }
 }
-
-// TODO(cjr): For the moment, we disallow `Send` for CompletionQueue.
-impl !Send for CompletionQueue {}
-impl !Sync for CompletionQueue {}
 
 pub struct SharedReceiveQueue {
     pub(crate) inner: interface::SharedReceiveQueue,
@@ -248,6 +249,7 @@ impl<T: Sized + Copy> MemoryRegion<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct QueuePair {
     pub(crate) inner: interface::QueuePair,
     pub pd: ProtectionDomain,

@@ -1,5 +1,6 @@
 //! Control path commands.
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
@@ -56,11 +57,13 @@ pub enum Request {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ResponseKind {
+    /// path of the engine's domain socket
+    NewClient(PathBuf),
     /// .0: the requested scheduling mode
     /// .1: name of the OneShotServer
     /// .2: data path work queue capacity
     /// .3: data path completion queue capacity
-    NewClient(SchedulingMode, String, usize, usize),
+    ConnectEngine(SchedulingMode, String, usize, usize),
     HelloBack(i32),
 
     // rdmacm

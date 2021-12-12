@@ -1,4 +1,5 @@
 #![feature(unix_socket_ancillary_data)]
+#![feature(peer_credentials_unix_socket)]
 #![feature(slice_index_methods)]
 pub use ipc_channel::ipc::{
     channel, IpcError, IpcOneShotServer as OneShotServer, IpcReceiver,
@@ -16,7 +17,6 @@ pub mod cmd;
 pub mod dp;
 
 pub mod unix;
-pub use unix::{recv_fd, send_fd};
 
 pub mod shm;
 pub use shm::ShmObject;
