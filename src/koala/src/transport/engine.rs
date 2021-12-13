@@ -66,12 +66,14 @@ fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid
 struct Resource<'ctx> {
     cmid_cnt: usize,
     default_pds: HashMap<ibv::Gid, interface::ProtectionDomain>,
-    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
-    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
-    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
+    // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
+    // failures in the underlying library.
     cmid_table: ResourceTable<CmId>,
-    mr_table: ResourceTable<rdma::mr::MemoryRegion>,
     event_channel_table: ResourceTable<rdmacm::EventChannel>,
+    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
+    mr_table: ResourceTable<rdma::mr::MemoryRegion>,
+    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
+    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
 }
 
 impl<'ctx> Resource<'ctx> {
@@ -92,12 +94,12 @@ impl<'ctx> Resource<'ctx> {
         Ok(Resource {
             cmid_cnt: 0,
             default_pds,
-            pd_table,
-            cq_table: ResourceTable::default(),
-            qp_table: ResourceTable::default(),
             cmid_table: ResourceTable::default(),
-            mr_table: ResourceTable::default(),
             event_channel_table: ResourceTable::default(),
+            qp_table: ResourceTable::default(),
+            mr_table: ResourceTable::default(),
+            cq_table: ResourceTable::default(),
+            pd_table,
         })
     }
 
