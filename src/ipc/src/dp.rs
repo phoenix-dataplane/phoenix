@@ -25,6 +25,7 @@ pub type CompletionSlot = [u8; 64];
 #[derive(Debug)]
 pub struct Completion {
     pub cq_handle: interface::CompletionQueue,
+    pub _padding: [u8; 4],
     pub wc: WorkCompletion,
 }
 

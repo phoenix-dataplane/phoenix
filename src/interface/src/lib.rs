@@ -125,7 +125,7 @@ pub struct ConnParam {
 pub struct MemoryRegion(pub Handle);
 
 /// A key that authorizes direct memory access to a memory region.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RemoteKey {
     pub addr: u64,

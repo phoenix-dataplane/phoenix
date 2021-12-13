@@ -15,6 +15,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
+use memoffset;
 use uuid::Uuid;
 
 use interface::{returned, Handle};
@@ -509,6 +510,7 @@ impl<'ctx> TransportEngine<'ctx> {
         let (cq_handle, wr_id) = self.get_dp_error_info(wr);
         dp::Completion {
             cq_handle,
+            _padding: Default::default(),
             wc: WorkCompletion::new_vendor_err(
                 wr_id,
                 WcStatus::Error(NonZeroU32::new(ibv_wc_status::IBV_WC_GENERAL_ERR).unwrap()),
@@ -686,7 +688,10 @@ impl<'ctx> TransportEngine<'ctx> {
                             // In these ways, the CQ can be polled in batch.
                             let handle_ptr: *mut interface::CompletionQueue = ptr.add(cnt).cast();
                             handle_ptr.write(*cq_handle);
-                            let mut wc = slice::from_raw_parts_mut(handle_ptr.add(1).cast(), 1);
+                            let mut wc = slice::from_raw_parts_mut(
+                                memoffset::raw_field!(handle_ptr, dp::Completion, wc) as _,
+                                1,
+                            );
                             match cq.poll(&mut wc) {
                                 Ok(completions) if !completions.is_empty() => cnt += 1,
                                 Ok(_) => {
