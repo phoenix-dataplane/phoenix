@@ -73,6 +73,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
 
     let mut builder = listener.get_request().expect("Get request failed!");
     let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
+    eprintln!("QP created");
 
     let mut recv_mr: MemoryRegion<u8> = pre_id
         .alloc_msgs(ctx.opt.size)
