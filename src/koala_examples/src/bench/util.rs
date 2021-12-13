@@ -1,9 +1,12 @@
 use std::cmp::max;
-use std::convert::From;
+use std::convert::{From, TryInto};
+use std::mem;
 use std::time::Instant;
 use structopt::StructOpt;
 
-use libkoala::verbs;
+use interface::{RemoteKey, SendFlags, WcStatus};
+use libkoala::Error;
+use libkoala::{cm, verbs};
 
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Verb {
@@ -98,6 +101,74 @@ impl Context {
             Verb::Write => println!("Write data from client to server"),
         }
     }
+}
+
+macro_rules! unsafe_write_bytes {
+    ($ty:ty, $n:expr, $buf:expr) => {
+        assert!(std::mem::size_of::<$ty>() <= $buf.len());
+        unsafe {
+            let bytes = *(&$n.to_be() as *const _ as *const [u8; std::mem::size_of::<$ty>()]);
+            std::ptr::copy_nonoverlapping(
+                (&bytes).as_ptr(),
+                ($buf).as_mut_ptr(),
+                std::mem::size_of::<$ty>(),
+            );
+        }
+    };
+}
+
+macro_rules! read_bytes {
+    ($ty:ty, $buf:expr) => {
+        <$ty>::from_be_bytes($buf.try_into().unwrap())
+    };
+}
+
+macro_rules! unsafe_read_volatile {
+    ($addr:expr) => {
+        unsafe { std::ptr::read_volatile($addr) }
+    };
+}
+
+pub fn handshake(
+    pre_id: cm::PreparedCmId,
+    ctx: &Context,
+    rkey: &RemoteKey,
+) -> Result<(cm::CmId, RemoteKey), Error> {
+    let mut send_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
+    let mut recv_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
+
+    let (addr_buf, rkey_buf) = send_mr.as_mut_slice().split_at_mut(mem::size_of::<u64>());
+    unsafe_write_bytes!(u64, rkey.addr, addr_buf);
+    unsafe_write_bytes!(u32, rkey.rkey, rkey_buf);
+
+    unsafe {
+        pre_id
+            .post_recv(&mut recv_mr, .., 0)
+            .expect("Post recv failed!");
+    }
+
+    let id = if ctx.client {
+        pre_id.connect(None).expect("Connect failed!")
+    } else {
+        pre_id.accept(None).expect("Accept failed!")
+    };
+
+    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED | SendFlags::INLINE)?;
+
+    let wc = id.get_send_comp()?;
+    assert_eq!(wc.status, WcStatus::Success);
+
+    let wc = id.get_recv_comp()?;
+    assert_eq!(wc.status, WcStatus::Success);
+
+    let (addr, rkey) = recv_mr.as_slice().split_at(mem::size_of::<u64>());
+    Ok((
+        id,
+        RemoteKey {
+            addr: read_bytes!(u64, addr),
+            rkey: read_bytes!(u32, rkey),
+        },
+    ))
 }
 
 const LAT_MEASURE_TAIL: usize = 2;

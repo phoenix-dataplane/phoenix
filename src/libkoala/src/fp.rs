@@ -115,6 +115,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: verbs::SendFlags,
+        rkey: interface::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where
@@ -126,7 +127,7 @@ impl CmId {
             context,
             buf::Range::new(mr, range),
             remote_offset,
-            mr.rkey(),
+            rkey,
             flags,
         );
         KL_CTX.with(|ctx| {
@@ -152,6 +153,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: verbs::SendFlags,
+        rkey: interface::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where
@@ -163,7 +165,7 @@ impl CmId {
             context,
             buf::Range::new(mr, range),
             remote_offset,
-            mr.rkey(),
+            rkey,
             flags,
         );
         KL_CTX.with(|ctx| {

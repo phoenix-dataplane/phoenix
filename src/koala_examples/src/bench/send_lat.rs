@@ -40,7 +40,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     for i in 0..ctx.opt.num {
         times.push(Instant::now());
 
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+        id.post_send(&send_mr, .., 0, send_flags)
             .expect("Post send failed!");
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
@@ -102,7 +102,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
             }
         }
 
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+        id.post_send(&send_mr, .., 0, send_flags)
             .expect("Post send failed!");
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);

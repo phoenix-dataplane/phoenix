@@ -4,8 +4,8 @@ use libkoala::Error;
 
 // use bench::read_lat;
 use koala_examples::bench::send_lat;
-// use bench::write_lat;
 use koala_examples::bench::util::{Context, Opts, Test, Verb};
+use koala_examples::bench::write_lat;
 
 fn main() -> Result<(), Error> {
     let ctx = Context::new(Opts::from_args(), Test::LAT);
@@ -28,9 +28,9 @@ fn main() -> Result<(), Error> {
         }
         Verb::Write => {
             if ctx.client {
-                // write_lat::run_client(&ctx)?;
+                write_lat::run_client(&ctx)?;
             } else {
-                // write_lat::run_server(&ctx)?;
+                write_lat::run_server(&ctx)?;
             }
         }
     };
