@@ -124,8 +124,8 @@ macro_rules! read_bytes {
 }
 
 macro_rules! unsafe_read_volatile {
-    ($addr:expr) => {
-        unsafe { std::ptr::read_volatile($addr) }
+    ($ty:ty,$addr:expr) => {
+        <$ty>::from_be(unsafe { std::ptr::read_volatile($addr) })
     };
 }
 

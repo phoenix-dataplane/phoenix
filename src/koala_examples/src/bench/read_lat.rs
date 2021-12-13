@@ -63,7 +63,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     eprintln!("Handshake finished");
 
     loop {
-        if unsafe_read_volatile!(read_mr.as_ptr() as *const u32) == ctx.opt.num as u32 {
+        if unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) == ctx.opt.num as u32 {
             break;
         }
 
