@@ -25,3 +25,4 @@ rdma = { path = "../rdma", features = ["koala"] }
 fnv = "1.0.7"
 mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 lazy_static = "1.4.0"
+memoffset = "0.6.5"

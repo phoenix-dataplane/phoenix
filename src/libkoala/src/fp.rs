@@ -63,7 +63,7 @@ impl PreparedCmId {
 }
 
 impl CmId {
-    pub unsafe fn post_recv<T, R>(
+    pub unsafe fn post_recv<T: Sized + Copy, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
         range: R,
@@ -90,6 +90,82 @@ impl CmId {
             context,
             buf::Range::new(mr, range),
             mr.inner.0,
+            flags,
+        );
+        KL_CTX.with(|ctx| {
+            let mut sent = false;
+            while !sent {
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, count| unsafe {
+                        debug_assert!(count >= 1);
+                        ptr.cast::<WorkRequest>().write(req);
+                        sent = true;
+                        1
+                    })?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn post_write<T: Sized + Copy, R>(
+        &self,
+        mr: &verbs::MemoryRegion<T>,
+        range: R,
+        context: u64,
+        flags: verbs::SendFlags,
+        rkey: interface::RemoteKey,
+        remote_offset: u64,
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>,
+    {
+        let req = WorkRequest::PostWrite(
+            self.inner.handle.0,
+            mr.inner.0,
+            context,
+            buf::Range::new(mr, range),
+            remote_offset,
+            rkey,
+            flags,
+        );
+        KL_CTX.with(|ctx| {
+            let mut sent = false;
+            while !sent {
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, count| unsafe {
+                        debug_assert!(count >= 1);
+                        ptr.cast::<WorkRequest>().write(req);
+                        sent = true;
+                        1
+                    })?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn post_read<T: Sized + Copy, R>(
+        &self,
+        mr: &verbs::MemoryRegion<T>,
+        range: R,
+        context: u64,
+        flags: verbs::SendFlags,
+        rkey: interface::RemoteKey,
+        remote_offset: u64,
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>,
+    {
+        let req = WorkRequest::PostRead(
+            self.inner.handle.0,
+            mr.inner.0,
+            context,
+            buf::Range::new(mr, range),
+            remote_offset,
+            rkey,
             flags,
         );
         KL_CTX.with(|ctx| {

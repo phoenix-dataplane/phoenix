@@ -40,7 +40,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     for i in 0..ctx.opt.num {
         times.push(Instant::now());
 
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+        id.post_send(&send_mr, .., 0, send_flags)
             .expect("Post send failed!");
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
@@ -56,7 +56,6 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     }
     times.push(Instant::now());
     print_lat(ctx, &times);
-
     Ok(())
 }
 
@@ -73,6 +72,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
 
     let mut builder = listener.get_request().expect("Get request failed!");
     let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
+    eprintln!("QP created");
 
     let mut recv_mr: MemoryRegion<u8> = pre_id
         .alloc_msgs(ctx.opt.size)
@@ -102,7 +102,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
             }
         }
 
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+        id.post_send(&send_mr, .., 0, send_flags)
             .expect("Post send failed!");
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);

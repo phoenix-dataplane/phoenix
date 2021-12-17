@@ -13,10 +13,10 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Handle(pub usize);
+pub struct Handle(pub u32);
 
 impl Handle {
-    pub const INVALID: Handle = Handle(usize::MAX);
+    pub const INVALID: Handle = Handle(u32::MAX);
 }
 
 impl From<u32> for Handle {
@@ -125,8 +125,12 @@ pub struct ConnParam {
 pub struct MemoryRegion(pub Handle);
 
 /// A key that authorizes direct memory access to a memory region.
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct RemoteKey(pub u32);
+pub struct RemoteKey {
+    pub addr: u64,
+    pub rkey: u32,
+}
 
 // NOTE(cjr): do not annotate this structure with any repr, use repr(Rust)
 // and static assert.

@@ -551,14 +551,14 @@ impl CmId {
         Ok(CmId(new_id))
     }
 
-    pub fn accept(&self) -> io::Result<()> {
+    pub fn accept(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
-        let conn_param = &mut ffi::rdma_conn_param {
-            retry_count: 0,
-            rnr_retry_count: 0,
-            ..Default::default()
+        let rc = unsafe {
+            ffi::rdma_accept(
+                id,
+                conn_param.map_or(ptr::null_mut(), |param| param as *const _ as *mut _),
+            )
         };
-        let rc = unsafe { ffi::rdma_accept(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -611,14 +611,14 @@ impl CmId {
         Ok(())
     }
 
-    pub fn connect(&self) -> io::Result<()> {
+    pub fn connect(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
-        let conn_param = &mut ffi::rdma_conn_param {
-            retry_count: 0,
-            rnr_retry_count: 0,
-            ..Default::default()
+        let rc = unsafe {
+            ffi::rdma_connect(
+                id,
+                conn_param.map_or(ptr::null_mut(), |param| param as *const _ as *mut _),
+            )
         };
-        let rc = unsafe { ffi::rdma_connect(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -692,6 +692,80 @@ impl CmId {
                 && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
         );
         let rc = ffi::rdma_post_recv_real(id, context, addr as *mut _, length as u64, mr);
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn post_write(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+        remote_addr: u64,
+        rkey: u32,
+    ) -> io::Result<()> {
+        let id = self.0;
+        let context = wr_id as _;
+        let addr = buf.as_ptr();
+        let length = buf.len();
+
+        let mr = mr.0;
+        assert!(!mr.is_null());
+        assert!(
+            (&*mr).addr as *const _ <= addr
+                && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
+        );
+        let rc = ffi::rdma_post_write_real(
+            id,
+            context,
+            addr as *mut _,
+            length as u64,
+            mr,
+            flags.0 as _,
+            remote_addr,
+            rkey,
+        );
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn post_read(
+        &self,
+        wr_id: u64,
+        buf: &mut [u8],
+        mr: &MemoryRegion,
+        flags: ffi::ibv_send_flags,
+        remote_addr: u64,
+        rkey: u32,
+    ) -> io::Result<()> {
+        let id = self.0;
+        let context = wr_id as _;
+        let addr = buf.as_ptr();
+        let length = buf.len();
+
+        let mr = mr.0;
+        assert!(!mr.is_null());
+        assert!(
+            (&*mr).addr as *const _ <= addr
+                && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
+        );
+        let rc = ffi::rdma_post_read_real(
+            id,
+            context,
+            addr as *mut _,
+            length as u64,
+            mr,
+            flags.0 as _,
+            remote_addr,
+            rkey,
+        );
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }

@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Post send failed!");
 
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
-    assert_eq!(wc_send.status, WcStatus::Success);
+    assert_eq!(wc_send.status, WcStatus::Success, "{:?}", wc_send);
 
     println!("{:?}", recv_mr.as_slice());
 
