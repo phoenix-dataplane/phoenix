@@ -950,7 +950,6 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     conn_param
                 );
-                warn!("TODO: conn_param is ignored for now");
                 let cmid = self.resource.cmid_table.get(&cmid_handle)?;
                 cmid.accept(self.get_conn_param(conn_param))
                     .map_err(Error::RdmaCm)?;
