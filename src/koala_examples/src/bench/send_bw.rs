@@ -19,12 +19,13 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
     eprintln!("QP created");
 
-    let send_mr: MemoryRegion<u8> = pre_id
-        .alloc_msgs(ctx.opt.size)
-        .expect("Memory registration failed!");
-
     let id = pre_id.connect(None).expect("Connect failed!");
     eprintln!("Connection established");
+
+    let mut send_mr: MemoryRegion<u8> = id
+        .alloc_msgs(ctx.opt.size)
+        .expect("Memory registration failed!");
+    send_mr.fill(1u8);
 
     let mut tposted = Vec::with_capacity(ctx.opt.num);
     let mut tcompleted = Vec::with_capacity(ctx.opt.num);

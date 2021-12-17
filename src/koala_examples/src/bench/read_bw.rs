@@ -24,10 +24,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut write_mr: MemoryRegion<u8> = pre_id
         .alloc_read(ctx.opt.size)
         .expect("Memory registration failed!");
-    unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
     let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
+    read_mr.fill(0u8);
 
     let mut tposted = Vec::with_capacity(ctx.opt.num);
     let mut tcompleted = Vec::with_capacity(ctx.opt.num);
@@ -38,7 +38,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     while scnt < ctx.opt.num || ccnt < ctx.opt.num {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
-            unsafe_write_bytes!(u32, scnt as u32, write_mr.as_mut_slice());
+            // unsafe_write_bytes!(u32, scnt as u32, write_mr.as_mut_slice());
             id.post_read(&read_mr, .., 0, send_flags, rkey, 0)
                 .expect("Post write failed!");
             scnt += 1;
@@ -82,10 +82,10 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let write_mr: MemoryRegion<u8> = pre_id
         .alloc_read(ctx.opt.size)
         .expect("Memory registration failed!");
-    unsafe_write_bytes!(u32, 0 as u32, read_mr.as_mut_slice());
 
     let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
+    read_mr.fill(0u8);
 
     while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != ctx.opt.num as u32 {
         id.post_read(&read_mr, .., 0, send_flags, rkey, 0)

@@ -28,6 +28,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 
     let (id, rkey) = handshake(pre_id, &ctx, &read_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
+    write_mr.fill(0u8);
 
     let mut tposted = Vec::with_capacity(ctx.opt.num);
     let mut tcompleted = Vec::with_capacity(ctx.opt.num);
