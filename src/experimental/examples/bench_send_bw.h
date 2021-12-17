@@ -20,6 +20,7 @@ int run_send_bw_client(Context *ctx)
 
     ret = rdma_connect(ctx->id, NULL);
     error_handler(ret, "rdma_connect", out_destroy_ep);
+    memset(send_msg, 1, ctx->size); //It seems 1 is better than 0
 
     struct ibv_wc wc[CTX_POLL_BATCH];
     while (scnt < ctx->num || ccnt < ctx->num)

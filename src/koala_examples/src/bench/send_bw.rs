@@ -42,12 +42,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         }
         if ccnt < ctx.opt.num {
             cq.poll_cq(&mut wcs).expect("Poll cq failed!");
-            if !wcs.is_empty() {
-                for wc in &wcs {
-                    assert_eq!(wc.status, WcStatus::Success);
-                    ccnt += 1;
-                    tcompleted.push(Instant::now());
-                }
+            ccnt += wcs.len();
+            for wc in &wcs {
+                assert_eq!(wc.status, WcStatus::Success);
+                tcompleted.push(Instant::now());
             }
         }
     }
@@ -94,11 +92,10 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         }
         if ccnt < ctx.opt.num {
             cq.poll_cq(&mut wcs).expect("Poll cq failed!");
-            if !wcs.is_empty() {
-                for wc in &wcs {
-                    assert_eq!(wc.status, WcStatus::Success);
-                    ccnt += 1;
-                }
+            ccnt += wcs.len();
+            for wc in &wcs {
+                assert_eq!(wc.status, WcStatus::Success);
+                ccnt += 1;
             }
         }
     }
