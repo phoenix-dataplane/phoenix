@@ -48,7 +48,6 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
             ccnt += wcs.len();
             for wc in &wcs {
                 assert_eq!(wc.status, WcStatus::Success);
-                ccnt += 1;
                 tcompleted.push(Instant::now());
             }
         }
