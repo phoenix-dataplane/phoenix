@@ -551,12 +551,12 @@ impl CmId {
         Ok(CmId(new_id))
     }
 
-    pub fn accept(&self, conn_param: Option<ffi::rdma_conn_param>) -> io::Result<()> {
+    pub fn accept(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
         let rc = unsafe {
             ffi::rdma_accept(
                 id,
-                conn_param.map_or(ptr::null_mut(), |mut param| ptr::addr_of_mut!(param)),
+                conn_param.map_or(ptr::null_mut(), |param| param as *const _ as *mut _),
             )
         };
         if rc != 0 {
@@ -611,12 +611,12 @@ impl CmId {
         Ok(())
     }
 
-    pub fn connect(&self, conn_param: Option<ffi::rdma_conn_param>) -> io::Result<()> {
+    pub fn connect(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
         let rc = unsafe {
             ffi::rdma_connect(
                 id,
-                conn_param.map_or(ptr::null_mut(), |mut param| ptr::addr_of_mut!(param)),
+                conn_param.map_or(ptr::null_mut(), |param| param as *const _ as *mut _),
             )
         };
         if rc != 0 {
@@ -739,7 +739,7 @@ impl CmId {
     pub unsafe fn post_read(
         &self,
         wr_id: u64,
-        buf: &[u8],
+        buf: &mut [u8],
         mr: &MemoryRegion,
         flags: ffi::ibv_send_flags,
         remote_addr: u64,

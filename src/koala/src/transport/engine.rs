@@ -645,10 +645,10 @@ impl<'ctx> TransportEngine<'ctx> {
                 send_flags,
             ) => {
                 let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+                let mr = self.resource.mr_table.get_mut_dp(mr_handle)?;
 
                 let rdma_mr = mr.into();
-                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+                let buf = &mut mr[range.offset as usize..(range.offset + range.len) as usize];
                 let remote_addr = rkey.addr + remote_offset;
 
                 let flags: ibv::SendFlags = (*send_flags).into();
@@ -951,7 +951,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 let cmid = self.resource.cmid_table.get(&cmid_handle)?;
-                cmid.accept(self.get_conn_param(conn_param))
+                cmid.accept(self.get_conn_param(conn_param).as_ref())
                     .map_err(Error::RdmaCm)?;
 
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
@@ -965,7 +965,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     conn_param
                 );
                 let cmid = self.resource.cmid_table.get(cmid_handle)?;
-                cmid.connect(self.get_conn_param(conn_param))
+                cmid.connect(self.get_conn_param(conn_param).as_ref())
                     .map_err(Error::RdmaCm)?;
 
                 // Respond the user after cm event connection established

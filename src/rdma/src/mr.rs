@@ -112,6 +112,7 @@ impl MemoryRegion {
 
     #[inline]
     pub fn rkey(&self) -> RemoteKey {
+        assert!(!self.mr.is_null());
         unsafe {
             RemoteKey {
                 rkey: (&*self.mr).rkey,
