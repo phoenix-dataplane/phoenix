@@ -41,7 +41,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 
         while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != i as u32 {}
     }
-    
+
     times.push(Instant::now());
     print_lat(ctx, &times);
     Ok(())
