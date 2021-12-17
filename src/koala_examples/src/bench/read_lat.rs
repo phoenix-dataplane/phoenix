@@ -38,7 +38,6 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 
     times.push(Instant::now());
     print_lat(ctx, &times);
-
     Ok(())
 }
 

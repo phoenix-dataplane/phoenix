@@ -3,6 +3,7 @@ use structopt::StructOpt;
 
 use koala_examples::bench::util::{Context, Opts, Test, Verb};
 
+use koala_examples::bench::read_bw;
 use koala_examples::bench::send_bw;
 use koala_examples::bench::write_bw;
 
@@ -20,9 +21,9 @@ fn main() -> Result<(), Error> {
         }
         Verb::Read => {
             if ctx.client {
-                // run_read_lat_client();
+                read_bw::run_client(&ctx)?;
             } else {
-                // run_read_lat_server();
+                read_bw::run_server(&ctx)?;
             }
         }
         Verb::Write => {

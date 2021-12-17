@@ -1,12 +1,9 @@
-use std::cmp::min;
 use std::time::Instant;
 
-use crate::bench::util::{handshake, print_bw, Context};
+use crate::bench::util::{handshake, print_bw, Context, CTX_POLL_BATCH};
 use interface::SendFlags;
 use libkoala::verbs::MemoryRegion;
 use libkoala::{cm, verbs::WcStatus, Error};
-
-const CTX_POLL_BATCH: usize = 16;
 
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
@@ -57,15 +54,14 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
             }
         }
     }
-    
+
     unsafe_write_bytes!(u32, ctx.opt.num as u32, write_mr.as_mut_slice());
     id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
         .expect("Post write failed!");
-    let wc = id.get_send_comp().expect("Get write comp failed!");
+    let wc = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc.status, WcStatus::Success);
 
     print_bw(ctx, &tposted, &tcompleted);
-
     Ok(())
 }
 

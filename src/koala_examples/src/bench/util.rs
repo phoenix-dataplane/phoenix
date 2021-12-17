@@ -8,6 +8,8 @@ use interface::{RemoteKey, SendFlags, WcStatus};
 use libkoala::Error;
 use libkoala::{cm, verbs};
 
+pub const CTX_POLL_BATCH: usize = 16;
+
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Verb {
     Send,
