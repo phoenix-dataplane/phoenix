@@ -6,3 +6,4 @@ pub mod send_lat;
 pub mod write_lat;
 
 pub mod send_bw;
+pub mod write_bw;

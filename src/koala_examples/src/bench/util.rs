@@ -55,7 +55,7 @@ pub struct Opts {
     pub warmup: usize,
 
     /// Message size.
-    #[structopt(short = "s", long = "size", default_value = "8")]
+    #[structopt(short = "s", long = "size", default_value = "4")]
     pub size: usize,
 }
 

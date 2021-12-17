@@ -1,9 +1,10 @@
+use libkoala::Error;
 use structopt::StructOpt;
 
-use libkoala::Error;
+use koala_examples::bench::util::{Context, Opts, Test, Verb};
 
 use koala_examples::bench::send_bw;
-use koala_examples::bench::util::{Context, Opts, Test, Verb};
+use koala_examples::bench::write_bw;
 
 fn main() -> Result<(), Error> {
     let ctx = Context::new(Opts::from_args(), Test::BW);
@@ -26,9 +27,9 @@ fn main() -> Result<(), Error> {
         }
         Verb::Write => {
             if ctx.client {
-                // write_bw::run_client(&ctx)?;
+                write_bw::run_client(&ctx)?;
             } else {
-                // write_bw::run_server(&ctx)?;
+                write_bw::run_server(&ctx)?;
             }
         }
     };
