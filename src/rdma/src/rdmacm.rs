@@ -551,14 +551,14 @@ impl CmId {
         Ok(CmId(new_id))
     }
 
-    pub fn accept(&self) -> io::Result<()> {
+    pub fn accept(&self, conn_param: Option<ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
-        let conn_param = &mut ffi::rdma_conn_param {
-            retry_count: 0,
-            rnr_retry_count: 0,
-            ..Default::default()
+        let rc = unsafe {
+            ffi::rdma_accept(
+                id,
+                conn_param.map_or(ptr::null_mut(), |mut param| ptr::addr_of_mut!(param)),
+            )
         };
-        let rc = unsafe { ffi::rdma_accept(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -611,14 +611,14 @@ impl CmId {
         Ok(())
     }
 
-    pub fn connect(&self) -> io::Result<()> {
+    pub fn connect(&self, conn_param: Option<ffi::rdma_conn_param>) -> io::Result<()> {
         let id = self.0;
-        let conn_param = &mut ffi::rdma_conn_param {
-            retry_count: 0,
-            rnr_retry_count: 0,
-            ..Default::default()
+        let rc = unsafe {
+            ffi::rdma_connect(
+                id,
+                conn_param.map_or(ptr::null_mut(), |mut param| ptr::addr_of_mut!(param)),
+            )
         };
-        let rc = unsafe { ffi::rdma_connect(id, conn_param) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }

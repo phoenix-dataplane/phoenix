@@ -762,6 +762,27 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok((pd, qp_init_attr))
     }
 
+    fn get_conn_param<'a>(
+        &'a self,
+        conn_param: &Option<interface::ConnParam>,
+    ) -> Option<rdma::ffi::rdma_conn_param> {
+        conn_param.as_ref().map(|param| rdma::ffi::rdma_conn_param {
+            private_data: param
+                .private_data
+                .as_ref()
+                .map_or(std::ptr::null(), |data| data.as_ptr())
+                as *const _,
+            private_data_len: param.private_data.as_ref().map_or(0, |data| data.len()) as u8,
+            responder_resources: param.responder_resources,
+            initiator_depth: param.initiator_depth,
+            flow_control: param.flow_control,
+            retry_count: param.retry_count,
+            rnr_retry_count: param.rnr_retry_count,
+            srq: param.srq,
+            qp_num: param.qp_num,
+        })
+    }
+
     fn poll_cm_event_once(&mut self) -> Result<rdmacm::CmEvent, Error> {
         let mut events = mio::Events::with_capacity(1);
         self.poll
@@ -931,7 +952,8 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
                 warn!("TODO: conn_param is ignored for now");
                 let cmid = self.resource.cmid_table.get(&cmid_handle)?;
-                cmid.accept().map_err(Error::RdmaCm)?;
+                cmid.accept(self.get_conn_param(conn_param))
+                    .map_err(Error::RdmaCm)?;
 
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
@@ -943,9 +965,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     conn_param
                 );
-                warn!("TODO: conn_param is ignored for now");
                 let cmid = self.resource.cmid_table.get(cmid_handle)?;
-                cmid.connect().map_err(Error::RdmaCm)?;
+                cmid.connect(self.get_conn_param(conn_param))
+                    .map_err(Error::RdmaCm)?;
 
                 // Respond the user after cm event connection established
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
