@@ -205,6 +205,7 @@ impl<'devlist> Device<'devlist> {
 }
 
 /// An RDMA context bound to a device.
+#[repr(transparent)]
 pub struct Context {
     pub(crate) ctx: *mut ffi::ibv_context,
 }
@@ -346,6 +347,7 @@ impl Drop for Context {
 }
 
 /// A completion queue that allows subscribing to the completion of queued sends and receives.
+#[repr(transparent)]
 pub struct CompletionQueue<'ctx> {
     _phantom: PhantomData<&'ctx ()>,
     cq: *mut ffi::ibv_cq,
@@ -1029,6 +1031,7 @@ impl<T> Drop for MemoryRegion<T> {
 pub struct AccessFlags(pub ffi::ibv_access_flags);
 
 /// A protection domain for a device's context.
+#[repr(transparent)]
 pub struct ProtectionDomain<'ctx> {
     pub(crate) _phantom: PhantomData<&'ctx ()>,
     pub(crate) pd: *mut ffi::ibv_pd,
@@ -1168,6 +1171,7 @@ impl<'a> Drop for ProtectionDomain<'a> {
 /// which is maintained by the network stack and doesn't have a physical resource behind it. A QP
 /// is a resource of an RDMA device and a QP number can be used by one process at the same time
 /// (similar to a socket that is associated with a specific TCP or UDP port number)
+#[repr(transparent)]
 pub struct QueuePair<'res> {
     pub(crate) _phantom: PhantomData<&'res ()>,
     pub(crate) qp: *mut ffi::ibv_qp,

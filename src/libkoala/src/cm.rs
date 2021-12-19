@@ -27,7 +27,7 @@ pub fn getaddrinfo(
         ctx.cmd_tx.send(req)?;
         match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
             Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(Error::InterfaceError("getaddrinfo", e)),
             _ => panic!(""),
         }
     })
@@ -239,6 +239,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     }
 }
 
+#[derive(Debug)]
 pub struct PreparedCmId {
     pub(crate) inner: Inner,
 }
@@ -265,12 +266,18 @@ impl PreparedCmId {
                 conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
             );
             ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::Connect)?;
-            Ok(CmId { inner: self.inner })
+            rx_recv_impl!(
+                ctx.cmd_rx,
+                ResponseKind::Connect,
+                { Ok(CmId { inner: self.inner }) },
+                e,
+                { Err(Error::Connect(e)) }
+            )
         })
     }
 }
 
+#[derive(Debug)]
 pub struct CmId {
     pub(crate) inner: Inner,
 }
@@ -331,6 +338,7 @@ macro_rules! impl_for_cmid {
 impl_for_cmid!(CmId, inner);
 impl_for_cmid!(PreparedCmId, inner);
 
+#[derive(Debug)]
 pub(crate) struct Inner {
     pub(crate) handle: interface::CmId,
     pub(crate) qp: verbs::QueuePair,

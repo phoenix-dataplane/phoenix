@@ -1,24 +1,17 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::fs;
 use std::io;
-use std::marker::PhantomPinned;
 use std::mem;
 use std::mem::ManuallyDrop;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixDatagram;
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
+use std::path::PathBuf;
 use std::slice;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use lazy_static::lazy_static;
-use memoffset;
-use uuid::Uuid;
-
 use interface::{returned, Handle};
+use ipc::unix::DomainSocket;
 use ipc::{self, cmd, dp};
 
 use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
@@ -27,202 +20,30 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use super::resource::ResourceTable;
+use super::state::State;
 use super::{DatapathError, Error};
-
-lazy_static! {
-    static ref DEFAULT_CTXS: Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)> =
-        open_default_verbs().expect("Open default RDMA context failed.");
-}
-
-/// Open default verbs contexts
-fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)>> {
-    let mut default_ctxs = Vec::new();
-    let ctx_list = rdmacm::get_devices()?;
-    for ctx in ctx_list.into_iter() {
-        let result: io::Result<_> = (|| {
-            let max_index = ctx.port_attr()?.gid_tbl_len as usize;
-            let gid_table: io::Result<_> = (0..max_index).map(|index| ctx.gid(index)).collect();
-            Ok((ctx, gid_table?))
-        })();
-        match result {
-            Ok((ctx, gid_table)) => {
-                default_ctxs.push((Box::pin(PinnedContext::new(ctx)), gid_table));
-            }
-            Err(e) => {
-                warn!("Skip device due to: {}", e);
-                continue;
-            }
-        }
-    }
-
-    if default_ctxs.is_empty() {
-        warn!("No active RDMA device found.");
-    }
-    Ok(default_ctxs)
-}
-
-/// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
-struct Resource<'ctx> {
-    cmid_cnt: u32,
-    default_pds: HashMap<ibv::Gid, interface::ProtectionDomain>,
-    // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
-    // failures in the underlying library.
-    cmid_table: ResourceTable<CmId>,
-    event_channel_table: ResourceTable<rdmacm::EventChannel>,
-    qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
-    mr_table: ResourceTable<rdma::mr::MemoryRegion>,
-    cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
-    pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
-}
-
-impl<'ctx> Resource<'ctx> {
-    fn new() -> io::Result<Self> {
-        let mut default_pds = HashMap::new();
-        let mut pd_table = ResourceTable::default();
-        for (ctx, gid_table) in DEFAULT_CTXS.iter() {
-            let pd = match ctx.verbs.alloc_pd() {
-                Ok(pd) => pd,
-                Err(_) => continue,
-            };
-            let pd_handle = pd.handle().into();
-            pd_table.insert(pd_handle, pd).unwrap();
-            for gid in gid_table {
-                default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
-            }
-        }
-        Ok(Resource {
-            cmid_cnt: 0,
-            default_pds,
-            cmid_table: ResourceTable::default(),
-            event_channel_table: ResourceTable::default(),
-            qp_table: ResourceTable::default(),
-            mr_table: ResourceTable::default(),
-            cq_table: ResourceTable::default(),
-            pd_table,
-        })
-    }
-
-    fn allocate_new_cmid_handle(&mut self) -> Handle {
-        let ret = Handle(self.cmid_cnt);
-        self.cmid_cnt += 1;
-        ret
-    }
-
-    fn insert_qp(
-        &mut self,
-        qp: ibv::QueuePair<'ctx>,
-    ) -> Result<(Handle, Handle, Handle, Handle), Error> {
-        let pd = qp.pd();
-        let send_cq = qp.send_cq();
-        let recv_cq = qp.recv_cq();
-        let pd_handle = pd.handle().into();
-        let scq_handle = send_cq.handle().into();
-        let rcq_handle = recv_cq.handle().into();
-        let qp_handle = qp.handle().into();
-        // qp, cqs, and other associated resources are supposed to be open by the user
-        // explicited, the error should be safely ignored if the resource has already been
-        // created.
-        self.qp_table.occupy_or_create_resource(qp_handle, qp);
-        self.pd_table.occupy_or_create_resource(pd_handle, pd);
-        self.cq_table.occupy_or_create_resource(scq_handle, send_cq);
-        self.cq_table.occupy_or_create_resource(rcq_handle, recv_cq);
-        Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
-    }
-
-    fn insert_cmid(
-        &mut self,
-        cmid: CmId,
-    ) -> Result<(Handle, Option<(Handle, Handle, Handle, Handle)>), Error> {
-        let cmid_handle = self.allocate_new_cmid_handle();
-        if let Some(qp) = cmid.qp() {
-            self.cmid_table.insert(cmid_handle, cmid)?;
-            let handles = Some(self.insert_qp(qp)?);
-            Ok((cmid_handle, handles))
-        } else {
-            // listener cmid, no QP associated.
-            self.cmid_table.insert(cmid_handle, cmid)?;
-            Ok((cmid_handle, None))
-        }
-    }
-}
-
-struct PinnedContext {
-    verbs: ManuallyDrop<ibv::Context>,
-    _pin: PhantomPinned,
-}
-
-impl PinnedContext {
-    fn new(ctx: ManuallyDrop<ibv::Context>) -> Self {
-        PinnedContext {
-            verbs: ctx,
-            _pin: PhantomPinned,
-        }
-    }
-}
 
 pub struct TransportEngine<'ctx> {
     /// This is the path of the domain socket which is client side is listening on.
     /// The mainly purpose of keeping is to send file descriptors to the client.
-    client_path: PathBuf,
-    sock: UnixDatagram,
-    cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-    cmd_tx: ipc::IpcSender<cmd::Response>,
-    cmd_rx: ipc::IpcReceiver<cmd::Request>,
-    dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
-    dp_cq: ipc::ShmSender<dp::CompletionSlot>,
-    cq_err_buffer: VecDeque<dp::Completion>,
+    pub(crate) client_path: PathBuf,
+    pub(crate) sock: DomainSocket,
+    pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
+    pub(crate) cmd_tx: ipc::IpcSender<cmd::Response>,
+    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Request>,
+    pub(crate) dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
+    pub(crate) dp_cq: ipc::ShmSender<dp::CompletionSlot>,
+    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
-    dp_spin_cnt: usize,
-    backoff: usize,
-    _mode: SchedulingMode,
+    pub(crate) dp_spin_cnt: usize,
+    pub(crate) backoff: usize,
+    pub(crate) _mode: SchedulingMode,
 
-    resource: Resource<'ctx>,
-
-    poll: mio::Poll,
+    pub(crate) state: State<'ctx>,
     // bufferred control path request
-    cmd_buffer: Option<cmd::Request>,
+    pub(crate) cmd_buffer: Option<cmd::Request>,
     // otherwise, the
-    last_cmd_ts: Instant,
-}
-
-impl<'ctx> TransportEngine<'ctx> {
-    pub fn new<P: AsRef<Path>>(
-        client_path: P,
-        cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-        cmd_tx: ipc::IpcSender<cmd::Response>,
-        cmd_rx: ipc::IpcReceiver<cmd::Request>,
-        dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
-        dp_cq: ipc::ShmSender<dp::CompletionSlot>,
-        mode: SchedulingMode,
-    ) -> io::Result<Self> {
-        let uuid = Uuid::new_v4();
-        let sock_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
-
-        if sock_path.exists() {
-            // This is impossible using uuid.
-            fs::remove_file(&sock_path)?;
-        }
-        let sock = UnixDatagram::bind(&sock_path)?;
-
-        Ok(TransportEngine {
-            client_path: client_path.as_ref().to_owned(),
-            sock,
-            cmd_rx_entries,
-            cmd_tx,
-            cmd_rx,
-            dp_wq,
-            dp_cq,
-            cq_err_buffer: VecDeque::new(),
-            dp_spin_cnt: 0,
-            backoff: 1,
-            _mode: mode,
-            resource: Resource::new()?,
-            poll: mio::Poll::new()?,
-            cmd_buffer: None,
-            last_cmd_ts: Instant::now(),
-        })
-    }
+    pub(crate) last_cmd_ts: Instant,
 }
 
 impl<'ctx> Upgradable for TransportEngine<'ctx> {
@@ -366,7 +187,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     // koala engine and the user in some circumstance.
                     //
                     // The work queue and completion queue are both bounded. The bound is set by
-                    // koala system rather than the specified by the user. Image that the user is
+                    // koala system rather than the specified by the user. Imagine that the user is
                     // trying to post_send without polling for completion timely. The completion
                     // queue is full and koala will spin here without make any other progress (e.g.
                     // drain the work queue).
@@ -413,8 +234,35 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     fn check_cm_event(&mut self) -> Result<Status, Error> {
-        match self.poll_cm_event_once() {
-            Ok(cm_event) => {
+        match self.state.poll_cm_event_once() {
+            Ok(()) => {}
+            Err(Error::NoCmEvent) => {}
+            Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
+                self.cmd_tx.send(cmd::Response(Err(e.into())))?;
+                return Ok(Progress(1));
+            }
+            Err(e) => return Err(e),
+        }
+
+        use ipc::cmd::Request;
+        assert!(self.cmd_buffer.is_some());
+        let req = self.cmd_buffer.as_ref().unwrap();
+        let cmd_handle = match req {
+            Request::ResolveAddr(h, ..) => h,
+            Request::ResolveRoute(h, ..) => h,
+            Request::Connect(h, ..) => h,
+            Request::GetRequest(h) => h,
+            Request::Accept(h, ..) => h,
+            Request::Disconnect(h) => &h.0,
+            _ => panic!("Unexpected CM type: {:?}", req),
+        };
+
+        let cmid = self.state.resource().cmid_table.get(cmd_handle)?;
+        let event_channel = ManuallyDrop::new(cmid.event_channel());
+        let event_channel_handle = event_channel.handle().into();
+
+        match self.state.get_one_cm_event(&event_channel_handle) {
+            Some(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
                     Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res)))?,
@@ -422,15 +270,10 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
                 Ok(Progress(1))
             }
-            Err(Error::NoCmEvent) => {
-                // poll again next time
+            None => {
+                // try again next time
                 Ok(Progress(0))
             }
-            Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
-                self.cmd_tx.send(cmd::Response(Err(e.into())))?;
-                Ok(Progress(1))
-            }
-            Err(e) => Err(e),
         }
     }
 
@@ -441,7 +284,7 @@ impl<'ctx> TransportEngine<'ctx> {
             WorkRequest::PostSend(cmid_handle, wr_id, ..) => {
                 // if the cq_handle does not exists at all, set it to
                 // Handle::INVALID.
-                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (
                             interface::CompletionQueue(qp.send_cq().handle().into()),
@@ -455,7 +298,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
             }
             WorkRequest::PostRecv(cmid_handle, wr_id, ..) => {
-                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (
                             interface::CompletionQueue(qp.recv_cq().handle().into()),
@@ -471,7 +314,7 @@ impl<'ctx> TransportEngine<'ctx> {
             WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
 
             WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (
                             interface::CompletionQueue(qp.send_cq().handle().into()),
@@ -486,7 +329,7 @@ impl<'ctx> TransportEngine<'ctx> {
             }
 
             WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.resource.cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (
                             interface::CompletionQueue(qp.send_cq().handle().into()),
@@ -584,13 +427,20 @@ impl<'ctx> TransportEngine<'ctx> {
                 //     user_buf,
                 //     mr_handle
                 // );
-                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_mut_dp(mr_handle)?;
+                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
+                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
 
-                let rdma_mr = mr.into();
-                let buf = &mut mr[range.offset as usize..(range.offset + range.len) as usize];
-
-                unsafe { cmid.post_recv(*wr_id, buf, &rdma_mr) }.map_err(DatapathError::RdmaCm)?;
+                unsafe {
+                    // since post_recv itself is already unsafe, it is the user's responsibility to
+                    // make sure the received data is valid. The user must avoid post_recv a same
+                    // buffer multiple times (e.g. from a single thread or from multiple threads)
+                    // without any synchronization.
+                    let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                    let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+                    let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
+                    cmid.post_recv(*wr_id, buf_mut, &rdma_mr)
+                        .map_err(DatapathError::RdmaCm)?;
+                };
                 Ok(())
             }
             WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
@@ -602,10 +452,10 @@ impl<'ctx> TransportEngine<'ctx> {
                 //     mr_handle,
                 //     send_flags,
                 // );
-                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
+                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
 
-                let rdma_mr = mr.into();
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
                 let flags: ibv::SendFlags = (*send_flags).into();
@@ -622,10 +472,10 @@ impl<'ctx> TransportEngine<'ctx> {
                 rkey,
                 send_flags,
             ) => {
-                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_dp(mr_handle)?;
+                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
+                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
 
-                let rdma_mr = mr.into();
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
                 let remote_addr = rkey.addr + remote_offset;
 
@@ -644,23 +494,25 @@ impl<'ctx> TransportEngine<'ctx> {
                 rkey,
                 send_flags,
             ) => {
-                let cmid = self.resource.cmid_table.get_dp(cmid_handle)?;
-                let mr = self.resource.mr_table.get_mut_dp(mr_handle)?;
+                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
+                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
 
-                let rdma_mr = mr.into();
-                let buf = &mut mr[range.offset as usize..(range.offset + range.len) as usize];
                 let remote_addr = rkey.addr + remote_offset;
-
                 let flags: ibv::SendFlags = (*send_flags).into();
-                unsafe { cmid.post_read(*wr_id, buf, &rdma_mr, flags.0, remote_addr, rkey.rkey) }
-                    .map_err(DatapathError::RdmaCm)?;
 
+                unsafe {
+                    let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                    let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+                    let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
+                    cmid.post_read(*wr_id, buf_mut, &rdma_mr, flags.0, remote_addr, rkey.rkey)
+                        .map_err(DatapathError::RdmaCm)?;
+                };
                 Ok(())
             }
             WorkRequest::PollCq(cq_handle) => {
                 // trace!("cq_handle: {:?}", cq_handle);
                 self.try_flush_cq_err_buffer()?;
-                let cq = self.resource.cq_table.get_dp(&cq_handle.0)?;
+                let cq = self.state.resource().cq_table.get_dp(&cq_handle.0)?;
 
                 // Poll the completions and put them directly into the shared memory queue.
                 //
@@ -726,31 +578,31 @@ impl<'ctx> TransportEngine<'ctx> {
         qp_init_attr: Option<&interface::QpInitAttr>,
     ) -> Result<
         (
-            Option<&'a ibv::ProtectionDomain<'a>>,
+            Option<Arc<ibv::ProtectionDomain<'a>>>,
             Option<rdma::ffi::ibv_qp_init_attr>,
         ),
         Error,
     > {
         let pd = if let Some(h) = pd_handle {
-            Some(self.resource.pd_table.get(&h.0)?)
+            Some(self.state.resource().pd_table.get(&h.0)?)
         } else {
             None
         };
         let qp_init_attr = if let Some(a) = qp_init_attr {
             let send_cq = if let Some(ref h) = a.send_cq {
-                Some(self.resource.cq_table.get(&h.0)?)
+                Some(self.state.resource().cq_table.get(&h.0)?)
             } else {
                 None
             };
             let recv_cq = if let Some(ref h) = a.recv_cq {
-                Some(self.resource.cq_table.get(&h.0)?)
+                Some(self.state.resource().cq_table.get(&h.0)?)
             } else {
                 None
             };
             let attr = ibv::QpInitAttr {
                 qp_context: 0,
-                send_cq: send_cq,
-                recv_cq: recv_cq,
+                send_cq: send_cq.as_deref(),
+                recv_cq: recv_cq.as_deref(),
                 cap: a.cap.clone().into(),
                 qp_type: a.qp_type.into(),
                 sq_sig_all: a.sq_sig_all,
@@ -783,30 +635,6 @@ impl<'ctx> TransportEngine<'ctx> {
         })
     }
 
-    fn poll_cm_event_once(&mut self) -> Result<rdmacm::CmEvent, Error> {
-        let mut events = mio::Events::with_capacity(1);
-        self.poll
-            .poll(&mut events, Some(Duration::from_millis(1)))
-            .map_err(Error::Mio)?;
-        for io_event in &events {
-            let handle = Handle(io_event.token().0 as u32);
-            let event_channel = self.resource.event_channel_table.get(&handle)?;
-            // read one event
-            let cm_event = event_channel.get_cm_event().map_err(Error::RdmaCm)?;
-            // reregister everytime to simulate level-trigger
-            self.poll
-                .registry()
-                .reregister(
-                    &mut mio::unix::SourceFd(&event_channel.as_raw_fd()),
-                    io_event.token(),
-                    mio::Interest::READABLE,
-                )
-                .map_err(Error::Mio)?;
-            return Ok(cm_event);
-        }
-        Err(Error::NoCmEvent)
-    }
-
     fn process_cm_event(&mut self, event: rdmacm::CmEvent) -> Result<cmd::ResponseKind, Error> {
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.take().unwrap();
@@ -829,14 +657,14 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             RDMA_CM_EVENT_CONNECT_REQUEST => match req {
                 Request::GetRequest(_listener_handle) => {
-                    // let listener = self.resource.cmid_table.get(listener_handle)?;
+                    // let listener = self.state.resource().cmid_table.get(listener_handle)?;
                     // assert_eq!(
                     //     listener_handle,
                     //     &Handle::from(event.listen_id().unwrap().handle())
                     // );
                     let new_cmid = event.id();
 
-                    let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
+                    let (new_cmid_handle, handles) = self.state.resource().insert_cmid(new_cmid)?;
                     let ret_qp = prepare_returned_qp(handles);
                     let ret_cmid = returned::CmId {
                         handle: interface::CmId(new_cmid_handle),
@@ -904,9 +732,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
 
                 let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr.as_ref())?;
-                match CmId::create_ep(&ai.clone().into(), pd, qp_init_attr.as_ref()) {
+                match CmId::create_ep(&ai.clone().into(), pd.as_deref(), qp_init_attr.as_ref()) {
                     Ok(cmid) => {
-                        let (cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
+                        let (cmid_handle, handles) = self.state.resource().insert_cmid(cmid)?;
                         let ret_qp = prepare_returned_qp(handles);
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
@@ -923,7 +751,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     backlog
                 );
-                let listener = self.resource.cmid_table.get(cmid_handle)?;
+                let listener = self.state.resource().cmid_table.get(cmid_handle)?;
                 listener.listen(*backlog).map_err(Error::RdmaCm)?;
                 Ok(ResponseKind::Listen)
             }
@@ -933,10 +761,10 @@ impl<'ctx> TransportEngine<'ctx> {
                 // Respond after cm event connect request
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // let listener = self.resource.cmid_table.get(listener_handle)?;
+                // let listener = self.state.resource().cmid_table.get(listener_handle)?;
                 // let new_cmid = listener.get_request().map_err(Error::RdmaCm)?;
 
-                // let (new_cmid_handle, handles) = self.resource.insert_cmid(new_cmid)?;
+                // let (new_cmid_handle, handles) = self.state.resource().insert_cmid(new_cmid)?;
                 // let ret_qp = prepare_returned_qp(handles);
                 // let ret_cmid = returned::CmId {
                 //     handle: interface::CmId(new_cmid_handle),
@@ -950,7 +778,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     conn_param
                 );
-                let cmid = self.resource.cmid_table.get(&cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(&cmid_handle)?;
                 cmid.accept(self.get_conn_param(conn_param).as_ref())
                     .map_err(Error::RdmaCm)?;
 
@@ -964,7 +792,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     conn_param
                 );
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.connect(self.get_conn_param(conn_param).as_ref())
                     .map_err(Error::RdmaCm)?;
 
@@ -981,19 +809,14 @@ impl<'ctx> TransportEngine<'ctx> {
                 // set nonblocking
                 channel.set_nonblocking(true).map_err(Error::RdmaCm)?;
                 let channel_handle: Handle = channel.handle().into();
-                self.poll
-                    .registry()
-                    .register(
-                        &mut mio::unix::SourceFd(&channel.as_raw_fd()),
-                        mio::Token(channel_handle.0 as usize),
-                        mio::Interest::READABLE,
-                    )
-                    .map_err(Error::Mio)?;
+                self.state
+                    .register_event_channel(channel_handle, &channel)?;
                 let ps: rdmacm::PortSpace = (*port_space).into();
                 let cmid = CmId::create_id(Some(&channel), 0, ps.0).map_err(Error::RdmaCm)?;
-                let (new_cmid_handle, handles) = self.resource.insert_cmid(cmid)?;
+                let (new_cmid_handle, handles) = self.state.resource().insert_cmid(cmid)?;
                 // insert event_channel
-                self.resource
+                self.state
+                    .resource()
                     .event_channel_table
                     .insert(channel_handle, channel)?;
                 let ret_qp = prepare_returned_qp(handles);
@@ -1009,7 +832,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     sockaddr
                 );
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.bind_addr(&sockaddr).map_err(Error::RdmaCm)?;
                 Ok(ResponseKind::BindAddr)
             }
@@ -1019,7 +842,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     sockaddr
                 );
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.resolve_addr(&sockaddr).map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
@@ -1031,7 +854,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     timeout_ms
                 );
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.resolve_route(*timeout_ms).map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
@@ -1044,19 +867,19 @@ impl<'ctx> TransportEngine<'ctx> {
                     pd,
                     qp_init_attr
                 );
-                let cmid = self.resource.cmid_table.get(cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
 
                 let pd = pd.or_else(|| {
                     // use the default pd of the corresponding device
                     let sgid = cmid.sgid();
-                    Some(self.resource.default_pds[&sgid])
+                    Some(self.state.resource().default_pd(&sgid))
                 });
 
                 let (pd, qp_init_attr) = self.get_qp_params(&pd, Some(qp_init_attr))?;
-                cmid.create_qp(pd, qp_init_attr.as_ref())
+                cmid.create_qp(pd.as_deref(), qp_init_attr.as_ref())
                     .map_err(Error::RdmaCm)?;
                 let qp = cmid.qp().unwrap();
-                let handles = self.resource.insert_qp(qp)?;
+                let handles = self.state.resource().insert_qp(qp)?;
                 let ret_qp = prepare_returned_qp(Some(handles)).unwrap();
                 Ok(ResponseKind::CmCreateQp(ret_qp))
             }
@@ -1067,14 +890,16 @@ impl<'ctx> TransportEngine<'ctx> {
                     nbytes,
                     access
                 );
-                let pd = self.resource.pd_table.get(&pd.0)?;
-                let mr = rdma::mr::MemoryRegion::new(pd, *nbytes, *access)
+                let pd = self.state.resource().pd_table.get(&pd.0)?;
+                let mr = rdma::mr::MemoryRegion::new(&pd, *nbytes, *access)
                     .map_err(Error::MemoryRegion)?;
                 let fd = mr.memfd().as_raw_fd();
-                ipc::send_fd(&self.sock, &self.client_path, &[fd][..]).map_err(Error::SendFd)?;
+                self.sock
+                    .send_fd(&self.client_path, &[fd][..])
+                    .map_err(Error::SendFd)?;
                 let rkey = mr.rkey();
                 let new_mr_handle = mr.handle().into();
-                self.resource.mr_table.insert(new_mr_handle, mr)?;
+                self.state.resource().mr_table.insert(new_mr_handle, mr)?;
                 Ok(ResponseKind::RegMr(returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
                     rkey,
@@ -1082,27 +907,27 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::DeregMr(mr) => {
                 trace!("DeregMr, mr: {:?}", mr);
-                self.resource.mr_table.close_resource(&mr.0)?;
+                self.state.resource().mr_table.close_resource(&mr.0)?;
                 Ok(ResponseKind::DeregMr)
             }
             Request::DeallocPd(pd) => {
                 trace!("DeallocPd, pd: {:?}", pd);
-                self.resource.pd_table.close_resource(&pd.0)?;
+                self.state.resource().pd_table.close_resource(&pd.0)?;
                 Ok(ResponseKind::DeallocPd)
             }
             Request::DestroyCq(cq) => {
                 trace!("DestroyQp, cq: {:?}", cq);
-                self.resource.cq_table.close_resource(&cq.0)?;
+                self.state.resource().cq_table.close_resource(&cq.0)?;
                 Ok(ResponseKind::DestroyCq)
             }
             Request::DestroyQp(qp) => {
                 trace!("DestroyQp, qp: {:?}", qp);
-                self.resource.qp_table.close_resource(&qp.0)?;
+                self.state.resource().qp_table.close_resource(&qp.0)?;
                 Ok(ResponseKind::DestroyQp)
             }
             Request::Disconnect(cmid) => {
                 trace!("Disconnect, cmid: {:?}", cmid);
-                let cmid = self.resource.cmid_table.get(&cmid.0)?;
+                let cmid = self.state.resource().cmid_table.get(&cmid.0)?;
                 cmid.disconnect().map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
@@ -1110,23 +935,23 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             Request::DestroyId(cmid) => {
                 trace!("DestroyId, cmid: {:?}", cmid);
-                self.resource.cmid_table.close_resource(&cmid.0)?;
+                self.state.resource().cmid_table.close_resource(&cmid.0)?;
                 Ok(ResponseKind::DestroyId)
             }
 
             Request::OpenPd(pd) => {
                 trace!("OpenPd, pd: {:?}", pd);
-                self.resource.pd_table.open_resource(&pd.0)?;
+                self.state.resource().pd_table.open_resource(&pd.0)?;
                 Ok(ResponseKind::OpenPd)
             }
             Request::OpenCq(cq) => {
                 trace!("OpenCq, cq: {:?}", cq);
-                self.resource.cq_table.open_resource(&cq.0)?;
+                self.state.resource().cq_table.open_resource(&cq.0)?;
                 Ok(ResponseKind::OpenCq)
             }
             Request::OpenQp(qp) => {
                 trace!("OpenQp, qp: {:?}", qp);
-                self.resource.qp_table.open_resource(&qp.0)?;
+                self.state.resource().qp_table.open_resource(&qp.0)?;
                 Ok(ResponseKind::OpenQp)
             }
         }

@@ -1,4 +1,5 @@
 #![feature(negative_impls)]
+#![feature(peer_credentials_unix_socket)]
 use fnv::FnvHashMap as HashMap;
 use std::borrow::Borrow;
 use std::cell::RefCell;
@@ -6,13 +7,15 @@ use std::env;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::FromRawFd;
-use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UCred;
 use std::path::Path;
 
+use lazy_static::lazy_static;
 use thiserror::Error;
 use uuid::Uuid;
 
 use engine::SchedulingMode;
+use ipc::unix::DomainSocket;
 use ipc::{self, cmd, dp};
 
 pub mod cm;
@@ -20,7 +23,7 @@ mod fp;
 pub mod verbs;
 
 // TODO(cjr): make this configurable, see koala.toml
-const KOALA_TRANSPORT_PATH: &str = "/tmp/koala/koala-transport.sock";
+const KOALA_TRANSPORT_PATH: &str = "/tmp/cjr/koala/koala-transport.sock";
 
 const MAX_MSG_LEN: usize = 65536;
 
@@ -34,10 +37,10 @@ pub enum Error {
     IpcSendError(ipc::Error),
     #[error("IPC recv error")]
     IpcRecvError(ipc::IpcError),
-    #[error("Internal error: {0}")]
-    InternalError(#[from] interface::Error),
-    #[error("{0}")]
-    SendFd(#[from] ipc::unix::Error),
+    #[error("Interface error {0}: {1}")]
+    InterfaceError(&'static str, interface::Error),
+    #[error("DomainSocket error: {0}")]
+    UnixDomainSocket(#[from] ipc::unix::Error),
     #[error("Shared memory queue error: {0}")]
     ShmIpc(#[from] ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}")]
@@ -46,44 +49,85 @@ pub enum Error {
     ShmObj(#[from] ipc::shm::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
+    #[error("Expect a credential from the peer")]
+    EmptyCredential,
+    #[error("Credential mismatch {0:?} vs {1:?}")]
+    CredentialMismatch(UCred, UCred),
+    #[error("Connect failed: {0}")]
+    Connect(interface::Error),
 }
 
 thread_local! {
     pub(crate) static KL_CTX: Context = Context::register().expect("koala transport register failed");
 }
 
+// NOTE(cjr): Will lazy_static affects the performance?
+lazy_static! {
+    // A cq can be created by calling create_cq, but it can also come from create_ep
+    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<interface::CompletionQueue, verbs::CqBuffer>> =
+        spin::Mutex::new(HashMap::default());
+}
+
 pub struct Context {
-    sock: UnixDatagram,
+    sock: DomainSocket,
     cmd_tx: ipc::IpcSenderNotify<cmd::Request>,
     cmd_rx: ipc::IpcReceiver<cmd::Response>,
     dp_wq: RefCell<ipc::ShmSender<dp::WorkRequestSlot>>,
     dp_cq: RefCell<ipc::ShmReceiver<dp::CompletionSlot>>,
-    // A cq can be created by calling create_cq, but it can also come from create_ep
-    cq_buffers: RefCell<HashMap<interface::CompletionQueue, verbs::CqBuffer>>,
+    // cq_buffers: RefCell<HashMap<interface::CompletionQueue, verbs::CqBuffer>>,
 }
 
 impl Context {
+    fn check_credential(sock: &DomainSocket, cred: Option<UCred>) -> Result<(), Error> {
+        let peer_cred = sock.peer_cred()?;
+        match cred {
+            Some(cred) if peer_cred == cred => Ok(()),
+            Some(cred) => Err(Error::CredentialMismatch(cred, peer_cred)),
+            None => Err(Error::EmptyCredential),
+        }
+    }
+
     fn register() -> Result<Context, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
         let sock_path = format!("/tmp/koala/koala-client-{}_{}.sock", appname, uuid);
-        let sock = UnixDatagram::bind(sock_path)?;
+        let mut sock = DomainSocket::bind(sock_path)?;
 
         let req = cmd::Request::NewClient(SchedulingMode::Dedicate);
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
         sock.send_to(&buf, KOALA_TRANSPORT_PATH)?;
 
+        // receive NewClient response
         let mut buf = vec![0u8; 128];
         let (_, sender) = sock.recv_from(buf.as_mut_slice())?;
         assert_eq!(sender.as_pathname(), Some(Path::new(KOALA_TRANSPORT_PATH)));
         let res: cmd::Response = bincode::deserialize(&buf)?;
 
-        let res = res.0?; // return the internal error
+        // return the internal error
+        let res = res.0.map_err(|e| Error::InterfaceError("NewClient", e))?;
 
         match res {
-            cmd::ResponseKind::NewClient(mode, server_name, wq_cap, cq_cap) => {
+            cmd::ResponseKind::NewClient(engine_path) => {
+                sock.connect(engine_path)?;
+            }
+            _ => panic!("unexpected response: {:?}", res),
+        }
+
+        // connect to the engine, setup a bunch of channels and shared memory queues
+        let mut buf = vec![0u8; 128];
+        let (_nbytes, _sender, cred) = sock.recv_with_credential_from(buf.as_mut_slice())?;
+        Self::check_credential(&sock, cred)?;
+        let res: cmd::Response = bincode::deserialize(&buf)?;
+
+        // return the internal error
+        let res = res
+            .0
+            .map_err(|e| Error::InterfaceError("ConnectEngine", e))?;
+
+        match res {
+            cmd::ResponseKind::ConnectEngine(mode, server_name, wq_cap, cq_cap) => {
                 assert_eq!(mode, SchedulingMode::Dedicate);
                 let (cmd_tx1, cmd_rx1): (
                     ipc::IpcSender<cmd::Request>,
@@ -97,7 +141,8 @@ impl Context {
                 tx0.send((cmd_tx2, cmd_rx1))?;
 
                 // receive file descriptors to attach to the shared memory queues
-                let fds = ipc::recv_fd(&sock)?;
+                let (fds, cred) = sock.recv_fd()?;
+                Self::check_credential(&sock, cred)?;
                 assert_eq!(fds.len(), 7);
                 let (wq_memfd, wq_empty_signal, wq_full_signal) = unsafe {
                     (
@@ -128,7 +173,7 @@ impl Context {
                     cmd_rx: cmd_rx2,
                     dp_wq: RefCell::new(dp_wq),
                     dp_cq: RefCell::new(dp_cq),
-                    cq_buffers: RefCell::new(HashMap::default()),
+                    // cq_buffers: RefCell::new(HashMap::default()),
                 })
             }
             _ => panic!("unexpected response: {:?}", res),
@@ -139,25 +184,32 @@ impl Context {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _rx_recv_impl {
-    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
+    ($rx:expr, $resp:path) => {
         match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(Error::from(e)),
-            _ => panic!("unexpected response"),
+            Ok($resp) => Ok(()),
+            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
+            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
         }
     };
     ($rx:expr, $resp:path, $ok_block:block) => {
         match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
             Ok($resp) => $ok_block,
-            Err(e) => Err(Error::from(e)),
-            _ => panic!("unexpected response"),
+            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
+            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
         }
     };
-    ($rx:expr, $resp:path) => {
+    ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
         match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
-            Ok($resp) => Ok(()),
-            Err(e) => Err(Error::from(e)),
-            _ => panic!("unexpected response"),
+            Ok($resp($inst)) => $ok_block,
+            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
+            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+        }
+    };
+    ($rx:expr, $resp:path, $ok_block:block, $err:ident, $err_block:block) => {
+        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+            Ok($resp) => $ok_block,
+            Err($err) => $err_block,
+            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
         }
     };
 }

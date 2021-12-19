@@ -4,30 +4,31 @@ use thiserror::Error;
 pub mod engine;
 pub mod module;
 pub mod resource;
+pub mod state;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    #[error("rdmacm internal error: {0}.")]
+    #[error("rdmacm internal error: {0}")]
     RdmaCm(io::Error),
-    // #[error("ibv internal error: {0}.")]
+    // #[error("ibv internal error: {0}")]
     // Ibv(io::Error),
-    #[error("getaddrinfo error: {0}.")]
+    #[error("getaddrinfo error: {0}")]
     GetAddrInfo(io::Error),
-    #[error("Resource not found in table.")]
+    #[error("Resource not found in table")]
     NotFound,
-    #[error("Resource exists in table.")]
+    #[error("Resource exists in table")]
     Exists,
-    #[error("Fail to create MemoryRegion: {0}.")]
+    #[error("Fail to create MemoryRegion: {0}")]
     MemoryRegion(rdma::mr::Error),
-    #[error("Failed to send file descriptors: {0}.")]
+    #[error("Failed to send file descriptors: {0}")]
     SendFd(ipc::unix::Error),
-    #[error("Operation in progress.")]
+    #[error("Operation in progress")]
     InProgress,
-    #[error("Mio error: {0}.")]
+    #[error("Mio error: {0}")]
     Mio(io::Error),
-    #[error("No CM event.")]
+    #[error("No CM event")]
     NoCmEvent,
-    #[error("Transport specific error: {0}.")]
+    #[error("Transport specific error: {0}")]
     Transport(i32),
 
     // Below are errors that does not return to the user.

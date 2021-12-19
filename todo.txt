@@ -2,12 +2,18 @@ TODO
 
 RPC
 - zero-copy RPC interface
+- RPC Trait
+- Prost codegen
+- Heap allocator
 
 Policy
 - Implement more engines for global policy
 
 Socket
 - Implement a socket datapath
+- Transport Trait
+
+RDMA Read/Write
 
 Misc
 -[x] Remove repeatitive code in libkoala/cm.rs
@@ -16,6 +22,10 @@ Misc
 - Handle conn_param
 - Add lifetime constraint to CmId in rdmacm library
 - update all `trace!`s in TransportEngine::process_cmd
+- get configuration from a file to run multiple backends for developing
+  and testing on the same machine
+-[x] error msg of libkoala
+- update the code and directory structure of koala_examples
 
 Performance & CPU efficiency
 -[x] Use FnvHashMap in transport/engine
@@ -28,13 +38,20 @@ Performance & CPU efficiency
       multiple CQs</s>
 
 Thread-safety
-- Move Resource struct of transport engine up a level.
+-[x] Move Resource struct of transport engine up a level.
 - Add spinlock to QueuePair, CompletionQueue... in libkoala
-- Most of the resources in transport/engine should be per-user, lock
-  or concurrent data structure is needed
+-[x] Most of the resources in transport/engine should be per-user, lock
+     or concurrent data structure is needed
 - Move CqBuffer from thread_local to lazy_static
 - Write a multi-threaded program to test the correctness
-- Per process resource management.
+-[x] Per process resource management.
+
+Testing
+- Test various threading models for koala
+- One thread post_send/recv, another thread poll_cq
+- Multiple threads operate on their own QPs, and poll the CQs associated
+  with those QPs
+- Run those tests simultaneously with multiple processes
 
 Engine Framework
 -[x] Blocking network APIs in transport engine may block the entire
