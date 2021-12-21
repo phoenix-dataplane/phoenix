@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::io;
 use std::mem;
-use std::mem::ManuallyDrop;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::slice;
@@ -253,10 +252,9 @@ impl<'ctx> TransportEngine<'ctx> {
         };
 
         let cmid = self.state.resource().cmid_table.get(cmd_handle)?;
-        let event_channel = ManuallyDrop::new(cmid.event_channel());
-        let event_channel_handle = event_channel.handle().into();
+        let ec_handle = cmid.event_channel().handle().into();
 
-        match self.state.get_one_cm_event(&event_channel_handle) {
+        match self.state.get_one_cm_event(&ec_handle) {
             Some(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
