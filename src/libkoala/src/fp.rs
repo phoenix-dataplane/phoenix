@@ -63,7 +63,7 @@ impl PreparedCmId {
 }
 
 impl CmId {
-    pub unsafe fn post_recv<T: Sized + Copy, R>(
+    pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
         range: R,
@@ -109,7 +109,7 @@ impl CmId {
         })
     }
 
-    pub fn post_write<T: Sized + Copy, R>(
+    pub fn post_write<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
         range: R,
@@ -147,7 +147,7 @@ impl CmId {
         })
     }
 
-    pub fn post_read<T: Sized + Copy, R>(
+    pub fn post_read<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
         range: R,

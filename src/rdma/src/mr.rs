@@ -94,14 +94,9 @@ impl MemoryRegion {
     }
 
     #[inline]
-    pub fn pd<'a>(&self) -> ibv::ProtectionDomain<'a> {
+    pub fn pd<'a>(&'a self) -> &'a ibv::ProtectionDomain<'a> {
         assert!(!self.mr.is_null());
-        let pd = unsafe { &*self.mr }.pd;
-        assert!(!pd.is_null());
-        ibv::ProtectionDomain {
-            _phantom: PhantomData,
-            pd,
-        }
+        unsafe { (&(&*self.mr).pd).as_ref() }
     }
 
     #[inline]
@@ -113,23 +108,19 @@ impl MemoryRegion {
     #[inline]
     pub fn rkey(&self) -> RemoteKey {
         assert!(!self.mr.is_null());
-        unsafe {
-            RemoteKey {
-                rkey: (&*self.mr).rkey,
-                addr: (&*self.mr).addr as u64,
-            }
+        let mr = unsafe { &*self.mr };
+        RemoteKey {
+            rkey: mr.rkey,
+            addr: mr.addr as u64,
         }
     }
 }
 
-// TODO(cjr): Add lifetime annotation to both structure.
-// This is unsound. The MemoryRegion could be immediately dropped after the conversion,
-// the mr would become a dangling pointer. FIXME.
-impl<A> From<&A> for rdmacm::MemoryRegion
+impl<'a, A> From<A> for rdmacm::MemoryRegion<'a>
 where
-    A: AsRef<MemoryRegion>,
+    A: AsRef<MemoryRegion> + 'a,
 {
-    fn from(a: &A) -> rdmacm::MemoryRegion {
-        rdmacm::MemoryRegion(a.as_ref().mr)
+    fn from(a: A) -> rdmacm::MemoryRegion<'a> {
+        rdmacm::MemoryRegion(a.as_ref().mr, PhantomData)
     }
 }

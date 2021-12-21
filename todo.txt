@@ -13,38 +13,33 @@ Socket
 - Implement a socket datapath
 - Transport Trait
 
-RDMA Read/Write
+-[x] RDMA Read/Write
 
 Misc
--[x] Remove repeatitive code in libkoala/cm.rs
+- update the code and directory structure of koala_examples
+-[x] Add lifetime constraint to CmId in rdmacm library
 - Add AsHandle Trait so that open_or_create_resource can do sanity check
-- Also implement handle for CmId, use the pointer as the identifier.
-- Handle conn_param
-- Add lifetime constraint to CmId in rdmacm library
-- update all `trace!`s in TransportEngine::process_cmd
 - get configuration from a file to run multiple backends for developing
   and testing on the same machine
+- setup CI (which public CI service has RDMA NIC?)
+-[x] Remove repeatitive code in libkoala/cm.rs
+- Also implement handle for CmId, use the pointer as the identifier.
+-[x] Handle conn_param
+- update all `trace!`s in TransportEngine::process_cmd
 -[x] error msg of libkoala
-- update the code and directory structure of koala_examples
+- simplify ConnParam. Allow to set fields in QpBuilder.
 
 Performance & CPU efficiency
+- Change ResoruceTable to one of the implementations of a concurrent
+  hashmap (e.g., dashmap).
+- GetSendComp() is currently busy spinning
+- Save CPU cycles in TransportEngine::run()
 -[x] Use FnvHashMap in transport/engine
 -[x] Change to Ordering::Relaxed
 -[x] Control path is too slow
-- GetSendComp() is currently busy spinning
-- Save CPU cycles in TransportEngine::run()
 -[x] balance poll_cq and post_send/recv, reduce redundant poll_cq
     - <s>use seperate queues can work, but still can cause HOL among
       multiple CQs</s>
-
-Thread-safety
--[x] Move Resource struct of transport engine up a level.
-- Add spinlock to QueuePair, CompletionQueue... in libkoala
--[x] Most of the resources in transport/engine should be per-user, lock
-     or concurrent data structure is needed
-- Move CqBuffer from thread_local to lazy_static
-- Write a multi-threaded program to test the correctness
--[x] Per process resource management.
 
 Testing
 - Test various threading models for koala
@@ -52,6 +47,15 @@ Testing
 - Multiple threads operate on their own QPs, and poll the CQs associated
   with those QPs
 - Run those tests simultaneously with multiple processes
+
+Thread-safety
+-[x] Move Resource struct of transport engine up a level.
+-[x] Add spinlock to QueuePair, CompletionQueue... in libkoala
+-[x] Most of the resources in transport/engine should be per-user, lock
+     or concurrent data structure is needed
+-[x] Move CqBuffer from thread_local to lazy_static
+- Write a multi-threaded program to test the correctness
+-[x] Per process resource management.
 
 Engine Framework
 -[x] Blocking network APIs in transport engine may block the entire
