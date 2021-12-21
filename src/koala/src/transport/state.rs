@@ -322,10 +322,7 @@ impl<'ctx> Resource<'ctx> {
         Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
     }
 
-    pub(crate) fn insert_cmid(
-        &self,
-        cmid: CmId<'ctx>,
-    ) -> Result<Handle, Error> {
+    pub(crate) fn insert_cmid(&self, cmid: CmId<'ctx>) -> Result<Handle, Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
         self.cmid_table.insert(cmid_handle, cmid)?;
         Ok(cmid_handle)

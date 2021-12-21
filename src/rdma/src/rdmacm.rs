@@ -573,8 +573,7 @@ impl<'res> CmId<'res> {
         channel: Option<&'ec EventChannel>,
         context: usize,
         ps: ffi::rdma_port_space::Type,
-    ) -> io::Result<CmId<'res>>
-    {
+    ) -> io::Result<CmId<'res>> {
         let channel = channel.map_or(ptr::null_mut(), |c| c.0);
         let mut cm_id: *mut ffi::rdma_cm_id = ptr::null_mut();
         let context = context as *mut c_void;
