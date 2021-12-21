@@ -17,7 +17,7 @@ Socket
 
 Misc
 - update the code and directory structure of koala_examples
-- Add lifetime constraint to CmId in rdmacm library
+-[x] Add lifetime constraint to CmId in rdmacm library
 - Add AsHandle Trait so that open_or_create_resource can do sanity check
 - get configuration from a file to run multiple backends for developing
   and testing on the same machine
