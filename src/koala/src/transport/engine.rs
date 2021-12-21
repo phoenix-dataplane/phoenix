@@ -114,24 +114,19 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
     }
 }
 
-fn prepare_returned_qp(
-    handles: Option<(Handle, Handle, Handle, Handle)>,
-) -> Option<returned::QueuePair> {
-    if let Some((qp_handle, pd_handle, scq_handle, rcq_handle)) = handles {
-        Some(returned::QueuePair {
-            handle: interface::QueuePair(qp_handle),
-            pd: returned::ProtectionDomain {
-                handle: interface::ProtectionDomain(pd_handle),
-            },
-            send_cq: returned::CompletionQueue {
-                handle: interface::CompletionQueue(scq_handle),
-            },
-            recv_cq: returned::CompletionQueue {
-                handle: interface::CompletionQueue(rcq_handle),
-            },
-        })
-    } else {
-        None
+fn prepare_returned_qp(handles: (Handle, Handle, Handle, Handle)) -> returned::QueuePair {
+    let (qp_handle, pd_handle, scq_handle, rcq_handle) = handles;
+    returned::QueuePair {
+        handle: interface::QueuePair(qp_handle),
+        pd: returned::ProtectionDomain {
+            handle: interface::ProtectionDomain(pd_handle),
+        },
+        send_cq: returned::CompletionQueue {
+            handle: interface::CompletionQueue(scq_handle),
+        },
+        recv_cq: returned::CompletionQueue {
+            handle: interface::CompletionQueue(rcq_handle),
+        },
     }
 }
 
@@ -572,13 +567,13 @@ impl<'ctx> TransportEngine<'ctx> {
         }
     }
 
-    fn get_qp_params<'a>(
-        &'a self,
+    fn get_qp_params(
+        &self,
         pd_handle: &Option<interface::ProtectionDomain>,
         qp_init_attr: Option<&interface::QpInitAttr>,
     ) -> Result<
         (
-            Option<Arc<ibv::ProtectionDomain<'a>>>,
+            Option<Arc<ibv::ProtectionDomain<'ctx>>>,
             Option<rdma::ffi::ibv_qp_init_attr>,
         ),
         Error,
@@ -662,10 +657,15 @@ impl<'ctx> TransportEngine<'ctx> {
                     //     listener_handle,
                     //     &Handle::from(event.listen_id().unwrap().handle())
                     // );
-                    let new_cmid = event.id();
+                    let (new_cmid, new_qp) = event.id_owned();
 
-                    let (new_cmid_handle, handles) = self.state.resource().insert_cmid(new_cmid)?;
-                    let ret_qp = prepare_returned_qp(handles);
+                    let ret_qp = if let Some(qp) = new_qp {
+                        let handles = self.state.resource().insert_qp(qp)?;
+                        Some(prepare_returned_qp(handles))
+                    } else {
+                        None
+                    };
+                    let new_cmid_handle = self.state.resource().insert_cmid(new_cmid)?;
                     let ret_cmid = returned::CmId {
                         handle: interface::CmId(new_cmid_handle),
                         qp: ret_qp,
@@ -733,9 +733,14 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 let (pd, qp_init_attr) = self.get_qp_params(pd, qp_init_attr.as_ref())?;
                 match CmId::create_ep(&ai.clone().into(), pd.as_deref(), qp_init_attr.as_ref()) {
-                    Ok(cmid) => {
-                        let (cmid_handle, handles) = self.state.resource().insert_cmid(cmid)?;
-                        let ret_qp = prepare_returned_qp(handles);
+                    Ok((cmid, qp)) => {
+                        let cmid_handle = self.state.resource().insert_cmid(cmid)?;
+                        let ret_qp = if let Some(qp) = qp {
+                            let handles = self.state.resource().insert_qp(qp)?;
+                            Some(prepare_returned_qp(handles))
+                        } else {
+                            None
+                        };
                         let ret_cmid = returned::CmId {
                             handle: interface::CmId(cmid_handle),
                             qp: ret_qp,
@@ -812,17 +817,20 @@ impl<'ctx> TransportEngine<'ctx> {
                 self.state
                     .register_event_channel(channel_handle, &channel)?;
                 let ps: rdmacm::PortSpace = (*port_space).into();
-                let cmid = CmId::create_id(Some(&channel), 0, ps.0).map_err(Error::RdmaCm)?;
-                let (new_cmid_handle, handles) = self.state.resource().insert_cmid(cmid)?;
+                // TODO(cjr): this is safe because event_channel will be stored in the
+                // ResourceTable
+                let cmid =
+                    unsafe { CmId::create_id(Some(&channel), 0, ps.0) }.map_err(Error::RdmaCm)?;
                 // insert event_channel
                 self.state
                     .resource()
                     .event_channel_table
                     .insert(channel_handle, channel)?;
-                let ret_qp = prepare_returned_qp(handles);
+                // insert cmid after event_channel is inserted
+                let new_cmid_handle = self.state.resource().insert_cmid(cmid)?;
                 let ret_cmid = returned::CmId {
                     handle: interface::CmId(new_cmid_handle),
-                    qp: ret_qp,
+                    qp: None,
                 };
                 Ok(ResponseKind::CreateId(ret_cmid))
             }
@@ -876,11 +884,11 @@ impl<'ctx> TransportEngine<'ctx> {
                 });
 
                 let (pd, qp_init_attr) = self.get_qp_params(&pd, Some(qp_init_attr))?;
-                cmid.create_qp(pd.as_deref(), qp_init_attr.as_ref())
+                let qp = cmid
+                    .create_qp(pd.as_deref(), qp_init_attr.as_ref())
                     .map_err(Error::RdmaCm)?;
-                let qp = cmid.qp().unwrap();
                 let handles = self.state.resource().insert_qp(qp)?;
-                let ret_qp = prepare_returned_qp(Some(handles)).unwrap();
+                let ret_qp = prepare_returned_qp(handles);
                 Ok(ResponseKind::CmCreateQp(ret_qp))
             }
             Request::RegMr(pd, nbytes, access) => {

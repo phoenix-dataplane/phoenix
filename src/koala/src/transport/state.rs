@@ -256,7 +256,7 @@ pub(crate) struct Resource<'ctx> {
     default_pds: spin::Mutex<HashMap<ibv::Gid, interface::ProtectionDomain>>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
-    pub(crate) cmid_table: ResourceTable<CmId>,
+    pub(crate) cmid_table: ResourceTable<CmId<'ctx>>,
     pub(crate) event_channel_table: ResourceTable<rdmacm::EventChannel>,
     pub(crate) qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
     pub(crate) mr_table: ResourceTable<rdma::mr::MemoryRegion>,
@@ -305,9 +305,9 @@ impl<'ctx> Resource<'ctx> {
         &self,
         qp: ibv::QueuePair<'ctx>,
     ) -> Result<(Handle, Handle, Handle, Handle), Error> {
-        let pd = qp.pd();
-        let send_cq = qp.send_cq();
-        let recv_cq = qp.recv_cq();
+        // This is safe because we did not drop these inner objects immediately. Instead, they are
+        // stored carefully into the resource tables.
+        let (pd, send_cq, recv_cq) = unsafe { qp.take_inner_objects() };
         let pd_handle = pd.handle().into();
         let scq_handle = send_cq.handle().into();
         let rcq_handle = recv_cq.handle().into();
@@ -324,17 +324,10 @@ impl<'ctx> Resource<'ctx> {
 
     pub(crate) fn insert_cmid(
         &self,
-        cmid: CmId,
-    ) -> Result<(Handle, Option<(Handle, Handle, Handle, Handle)>), Error> {
+        cmid: CmId<'ctx>,
+    ) -> Result<Handle, Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
-        if let Some(qp) = cmid.qp() {
-            self.cmid_table.insert(cmid_handle, cmid)?;
-            let handles = Some(self.insert_qp(qp)?);
-            Ok((cmid_handle, handles))
-        } else {
-            // listener cmid, no QP associated.
-            self.cmid_table.insert(cmid_handle, cmid)?;
-            Ok((cmid_handle, None))
-        }
+        self.cmid_table.insert(cmid_handle, cmid)?;
+        Ok(cmid_handle)
     }
 }

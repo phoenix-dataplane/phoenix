@@ -325,22 +325,46 @@ impl CmEvent {
         unsafe { &*self.0 }.event
     }
 
+    /// Only valid for a new connect request.
     #[inline]
-    pub fn id(&self) -> CmId {
+    pub fn id_owned<'a>(&self) -> (CmId<'a>, Option<ibv::QueuePair<'a>>) {
         assert!(!self.0.is_null());
-        let id = unsafe { &*self.0 }.id;
-        assert!(!id.is_null());
-        CmId(id)
+        let event = unsafe { &*self.0 };
+        assert!(event.event == ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST);
+        assert!(!event.id.is_null());
+        let ret_cmid = CmId(event.id, PhantomData);
+        let qp = unsafe { &*event.id }.qp;
+        if qp.is_null() {
+            (ret_cmid, None)
+        } else {
+            (
+                ret_cmid,
+                Some(ibv::QueuePair {
+                    _phantom: PhantomData,
+                    qp,
+                }),
+            )
+        }
     }
 
+    /// Returns a reference to the assocated rdma_cm_id.
     #[inline]
-    pub fn listen_id(&self) -> Option<CmId> {
+    pub fn id<'a>(&self) -> &'a CmId<'a> {
         assert!(!self.0.is_null());
-        let listen_id = unsafe { &*self.0 }.listen_id;
+        let id = &unsafe { &*self.0 }.id;
+        assert!(!id.is_null());
+        id.as_ref()
+    }
+
+    /// Returns a reference to the assocated listener rdma_cm_id.
+    #[inline]
+    pub fn listen_id<'a>(&self) -> Option<&'a CmId<'a>> {
+        assert!(!self.0.is_null());
+        let listen_id = &unsafe { &*self.0 }.listen_id;
         if listen_id.is_null() {
             None
         } else {
-            Some(CmId(listen_id))
+            Some(listen_id.as_ref())
         }
     }
 }
@@ -357,6 +381,14 @@ impl AsRawFd for EventChannel {
     fn as_raw_fd(&self) -> RawFd {
         assert!(!self.0.is_null());
         unsafe { &*self.0 }.fd
+    }
+}
+
+/// __safety__: This conversion is safe as long as the object of rdma_event_channel is valid.
+impl AsRef<EventChannel> for *mut ffi::rdma_event_channel {
+    fn as_ref(&self) -> &EventChannel {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &EventChannel>(self) }
     }
 }
 
@@ -417,14 +449,19 @@ impl Drop for EventChannel {
     }
 }
 
+/// A borrow memory region. It does not destruct the inner ibv_mr on drop.
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct MemoryRegion(pub(crate) *mut ffi::ibv_mr);
+pub struct MemoryRegion<'a>(
+    pub(crate) *mut ffi::ibv_mr,
+    // reference to someone who owns and will drop this ibv_mr
+    pub(crate) PhantomData<&'a ()>,
+);
 
-unsafe impl Send for MemoryRegion {}
-unsafe impl Sync for MemoryRegion {}
+unsafe impl<'a> Send for MemoryRegion<'a> {}
+unsafe impl<'a> Sync for MemoryRegion<'a> {}
 
-impl MemoryRegion {
+impl<'a> MemoryRegion<'a> {
     // TODO(cjr): Replace this with proc macro
     pub fn handle(&self) -> u32 {
         assert!(!self.0.is_null());
@@ -434,12 +471,12 @@ impl MemoryRegion {
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct CmId(*mut ffi::rdma_cm_id);
+pub struct CmId<'res>(*mut ffi::rdma_cm_id, PhantomData<&'res ()>);
 
-unsafe impl Send for CmId {}
-unsafe impl Sync for CmId {}
+unsafe impl<'res> Send for CmId<'res> {}
+unsafe impl<'res> Sync for CmId<'res> {}
 
-impl Drop for CmId {
+impl<'res> Drop for CmId<'res> {
     fn drop(&mut self) {
         let rc = unsafe { ffi::rdma_destroy_id(self.0) };
         if rc != 0 {
@@ -451,28 +488,35 @@ impl Drop for CmId {
     }
 }
 
-impl CmId {
-    // TODO(cjr): fix this bug.
+/// __safety__: The safety of this conversion depends on the validity of rdma_cm_id. That is,
+/// the inner pointers/objects of this rdma_cm_id must also be valid.
+impl<'a> AsRef<CmId<'a>> for *mut ffi::rdma_cm_id {
+    fn as_ref(&self) -> &CmId<'a> {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &CmId<'a>>(self) }
+    }
+}
+
+impl<'res> CmId<'res> {
+    /// Return a borrow of the inner QP. Returns None if the cmid does not have a QP associated
+    /// with.
     #[inline]
-    pub fn qp<'res>(&self) -> Option<ibv::QueuePair<'res>> {
+    pub fn qp(&self) -> Option<&ibv::QueuePair<'res>> {
         assert!(!self.0.is_null());
-        let qp = unsafe { &*self.0 }.qp;
+        let qp = &unsafe { &*self.0 }.qp;
         if qp.is_null() {
             None
         } else {
-            Some(ibv::QueuePair {
-                _phantom: PhantomData,
-                qp,
-            })
+            Some(qp.as_ref())
         }
     }
 
     #[inline]
-    pub fn event_channel(&self) -> EventChannel {
+    pub fn event_channel(&self) -> &EventChannel {
         assert!(!self.0.is_null());
-        let channel = unsafe { &*self.0 }.channel;
+        let channel = &unsafe { &*self.0 }.channel;
         assert!(!channel.is_null());
-        EventChannel(channel)
+        channel.as_ref()
     }
 
     #[inline]
@@ -487,7 +531,10 @@ impl CmId {
         ai: &AddrInfo,
         pd: Option<&ibv::ProtectionDomain<'ctx>>,
         qp_init_attr: Option<&ffi::ibv_qp_init_attr>,
-    ) -> io::Result<CmId> {
+    ) -> io::Result<(CmId<'res>, Option<ibv::QueuePair<'res>>)>
+    where
+        'ctx: 'res,
+    {
         let mut cm_id = ptr::null_mut();
         let mut a = ai.as_addrinfo();
         let rc = unsafe {
@@ -503,25 +550,42 @@ impl CmId {
         }
 
         assert!(!cm_id.is_null());
-        Ok(CmId(cm_id))
+
+        let qp = unsafe { &*cm_id }.qp;
+        let ret_cmid = CmId(cm_id, PhantomData);
+        if qp.is_null() {
+            // passive ep
+            Ok((ret_cmid, None))
+        } else {
+            // active ep
+            Ok((
+                ret_cmid,
+                Some(ibv::QueuePair {
+                    _phantom: PhantomData,
+                    qp: unsafe { &*cm_id }.qp,
+                }),
+            ))
+        }
     }
 
-    pub fn create_id(
-        channel: Option<&EventChannel>,
+    /// __safety__: The user must guarantee that the event_channel lives longer than the CmId.
+    pub unsafe fn create_id<'ec>(
+        channel: Option<&'ec EventChannel>,
         context: usize,
         ps: ffi::rdma_port_space::Type,
-    ) -> io::Result<CmId> {
+    ) -> io::Result<CmId<'res>>
+    {
         let channel = channel.map_or(ptr::null_mut(), |c| c.0);
         let mut cm_id: *mut ffi::rdma_cm_id = ptr::null_mut();
         let context = context as *mut c_void;
 
-        let rc = unsafe { ffi::rdma_create_id(channel, &mut cm_id, context, ps) };
+        let rc = ffi::rdma_create_id(channel, &mut cm_id, context, ps);
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
 
         assert!(!cm_id.is_null());
-        Ok(CmId(cm_id))
+        Ok(CmId(cm_id, PhantomData))
     }
 
     pub fn bind_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {
@@ -548,7 +612,7 @@ impl CmId {
         Ok(())
     }
 
-    pub fn get_request(&self) -> io::Result<CmId> {
+    pub fn get_request(&self) -> io::Result<CmId<'res>> {
         let id = self.0;
         let mut new_id: *mut ffi::rdma_cm_id = ptr::null_mut();
         let rc = unsafe { ffi::rdma_get_request(id, &mut new_id) };
@@ -557,7 +621,7 @@ impl CmId {
         }
 
         assert!(!new_id.is_null());
-        Ok(CmId(new_id))
+        Ok(CmId(new_id, PhantomData))
     }
 
     pub fn accept(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
@@ -600,11 +664,19 @@ impl CmId {
         Ok(())
     }
 
+    /// Create a new QueuePair.
+    /// The returned QueuePair is associated with the ProtectionDomain if it is not None.
+    /// The ProtectionDomain must be bound to the same RDMA device as this CmId.
+    #[must_use = "Ignore the result of this function causes the newly created QueuePair immediately
+        dropped. Please hold it somewhere and drop with the CmId together."]
     pub fn create_qp<'ctx>(
         &self,
         pd: Option<&ibv::ProtectionDomain<'ctx>>,
         qp_init_attr: Option<&ffi::ibv_qp_init_attr>,
-    ) -> io::Result<()> {
+    ) -> io::Result<ibv::QueuePair<'res>>
+    where
+        'ctx: 'res,
+    {
         let id = self.0;
         assert!(!id.is_null());
         let rc = unsafe {
@@ -617,7 +689,10 @@ impl CmId {
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
-        Ok(())
+        Ok(ibv::QueuePair {
+            _phantom: PhantomData,
+            qp: unsafe { &*id }.qp,
+        })
     }
 
     pub fn connect(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
@@ -635,7 +710,7 @@ impl CmId {
     }
 
     #[inline]
-    pub fn reg_msgs(&self, buf: &[u8]) -> io::Result<MemoryRegion> {
+    pub fn reg_msgs<'a>(&self, buf: &'a [u8]) -> io::Result<MemoryRegion<'a>> {
         let id = self.0;
         let addr = buf.as_ptr();
         let length = buf.len();
@@ -643,7 +718,7 @@ impl CmId {
         if mr.is_null() {
             return Err(io::Error::last_os_error());
         }
-        Ok(MemoryRegion(mr))
+        Ok(MemoryRegion(mr, PhantomData))
     }
 
     pub fn disconnect(&self) -> io::Result<()> {
@@ -656,11 +731,11 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_send(
+    pub unsafe fn post_send<'a>(
         &self,
         wr_id: u64,
         buf: &[u8],
-        mr: &MemoryRegion,
+        mr: &MemoryRegion<'a>,
         flags: ffi::ibv_send_flags,
     ) -> io::Result<()> {
         let id = self.0;
@@ -683,11 +758,11 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_recv(
+    pub unsafe fn post_recv<'a>(
         &self,
         wr_id: u64,
         buf: &mut [u8],
-        mr: &MemoryRegion,
+        mr: &MemoryRegion<'a>,
     ) -> io::Result<()> {
         let id = self.0;
         let context = wr_id as _;
@@ -708,11 +783,11 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_write(
+    pub unsafe fn post_write<'a>(
         &self,
         wr_id: u64,
         buf: &[u8],
-        mr: &MemoryRegion,
+        mr: &MemoryRegion<'a>,
         flags: ffi::ibv_send_flags,
         remote_addr: u64,
         rkey: u32,
@@ -745,11 +820,11 @@ impl CmId {
     }
 
     #[inline]
-    pub unsafe fn post_read(
+    pub unsafe fn post_read<'a>(
         &self,
         wr_id: u64,
         buf: &mut [u8],
-        mr: &MemoryRegion,
+        mr: &MemoryRegion<'a>,
         flags: ffi::ibv_send_flags,
         remote_addr: u64,
         rkey: u32,

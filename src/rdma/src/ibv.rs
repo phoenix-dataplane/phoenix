@@ -213,6 +213,14 @@ pub struct Context {
 unsafe impl Sync for Context {}
 unsafe impl Send for Context {}
 
+/// __safety__: The safety of this conversion depends on the validity of ibv_context.
+impl AsRef<Context> for *mut ffi::ibv_context {
+    fn as_ref(&self) -> &Context {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &Context>(self) }
+    }
+}
+
 impl Context {
     /// Opens a context for the given device, and queries its port and gid.
     pub fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
@@ -355,6 +363,15 @@ pub struct CompletionQueue<'ctx> {
 
 unsafe impl<'a> Send for CompletionQueue<'a> {}
 unsafe impl<'a> Sync for CompletionQueue<'a> {}
+
+/// __safety__: The safety of this conversion depends on the validity of ibv_cq. That is,
+/// the inner pointers/objects of this ibv_cq must also be valid.
+impl<'a> AsRef<CompletionQueue<'a>> for *mut ffi::ibv_cq {
+    fn as_ref(&self) -> &CompletionQueue<'a> {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &CompletionQueue<'a>>(self) }
+    }
+}
 
 impl<'ctx> CompletionQueue<'ctx> {
     /// Returns the inner handle of this CompletionQueue.
@@ -1040,14 +1057,25 @@ pub struct ProtectionDomain<'ctx> {
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}
 unsafe impl<'a> Send for ProtectionDomain<'a> {}
 
+impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
+    fn as_ref(&self) -> &ProtectionDomain<'a> {
+        // __safety__: cjr: I'm not sure if this is really sound. It looks like if pd is not
+        // null, and the inner ibv_context has a longer lifetime, it is valid then. But how on the
+        // earth do I know the lifetime of ctx is longer? I can only check if the inner ctx is
+        // valud for now.
+        assert!(!self.is_null());
+        assert!(!unsafe { &**self }.context.is_null());
+        unsafe { mem::transmute::<&*mut ffi::ibv_pd, &ProtectionDomain<'a>>(self) }
+    }
+}
+
 impl<'ctx> ProtectionDomain<'ctx> {
     /// Returns the context of the protection domain.
     #[inline]
-    pub fn context(&self) -> Context {
+    pub fn context(&self) -> &Context {
         assert!(!self.pd.is_null());
-        Context {
-            ctx: unsafe { &*self.pd }.context,
-        }
+        let ctx = &unsafe { &*self.pd }.context;
+        ctx.as_ref()
     }
 
     /// Returns the inner handle of this protection domain.
@@ -1180,6 +1208,15 @@ pub struct QueuePair<'res> {
 unsafe impl<'a> Send for QueuePair<'a> {}
 unsafe impl<'a> Sync for QueuePair<'a> {}
 
+/// __safety__: The safety of this conversion depends on the validity of ibv_qp. That is,
+/// the inner pointers/objects of this ibv_qp must also be valid.
+impl<'a> AsRef<QueuePair<'a>> for *mut ffi::ibv_qp {
+    fn as_ref(&self) -> &QueuePair<'a> {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &QueuePair<'a>>(self) }
+    }
+}
+
 impl<'res> QueuePair<'res> {
     /// Returns the inner handle of this QP.
     #[inline]
@@ -1188,40 +1225,59 @@ impl<'res> QueuePair<'res> {
         unsafe { &*self.qp }.handle
     }
 
+    /// Takes the inner objects of this QP. This function should be only called once right before
+    /// break up the QP into different resources and insert them into the resource tables.
+    /// The purpose of this is to avoid self-referencing in Resource, which would cause a lot of
+    /// trouble.
+    pub unsafe fn take_inner_objects(
+        &self,
+    ) -> (
+        ProtectionDomain<'res>,
+        CompletionQueue<'res>,
+        CompletionQueue<'res>,
+    ) {
+        assert!(!self.qp.is_null());
+        let qp = &*self.qp;
+        assert!(!qp.pd.is_null());
+        assert!(!qp.send_cq.is_null());
+        assert!(!qp.recv_cq.is_null());
+        let pd_ret = ProtectionDomain {
+            _phantom: PhantomData,
+            pd: qp.pd,
+        };
+        let send_cq_ret = CompletionQueue {
+            _phantom: PhantomData,
+            cq: qp.send_cq,
+        };
+        let recv_cq_ret = CompletionQueue {
+            _phantom: PhantomData,
+            cq: qp.recv_cq,
+        };
+        (pd_ret, send_cq_ret, recv_cq_ret)
+    }
+
     /// Returns the protection domain of this QP.
     #[inline]
-    pub fn pd(&self) -> ProtectionDomain<'res> {
+    pub fn pd(&self) -> &ProtectionDomain<'res> {
         assert!(!self.qp.is_null());
-        let pd = unsafe { &*self.qp }.pd;
-        assert!(!pd.is_null());
-        ProtectionDomain {
-            _phantom: PhantomData,
-            pd,
-        }
+        let pd = &unsafe { &*self.qp }.pd;
+        pd.as_ref()
     }
 
     /// Returns the send_cq that this QP assocates with.
     #[inline]
-    pub fn send_cq(&self) -> CompletionQueue<'res> {
+    pub fn send_cq(&self) -> &CompletionQueue<'res> {
         assert!(!self.qp.is_null());
-        let cq = unsafe { &*self.qp }.send_cq;
-        assert!(!cq.is_null());
-        CompletionQueue {
-            _phantom: PhantomData,
-            cq,
-        }
+        let cq = &unsafe { &*self.qp }.send_cq;
+        cq.as_ref()
     }
 
     /// Returns the recv_cq that this QP assocates with.
     #[inline]
-    pub fn recv_cq(&self) -> CompletionQueue<'res> {
+    pub fn recv_cq(&self) -> &CompletionQueue<'res> {
         assert!(!self.qp.is_null());
-        let cq = unsafe { &*self.qp }.recv_cq;
-        assert!(!cq.is_null());
-        CompletionQueue {
-            _phantom: PhantomData,
-            cq,
-        }
+        let cq = &unsafe { &*self.qp }.recv_cq;
+        cq.as_ref()
     }
 }
 
