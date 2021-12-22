@@ -17,28 +17,28 @@ clap = "2.33.3"
 
 [[bin]]
 name = "sender"
-path = "src/sender.rs"
+path = "src/hello/sender.rs"
 
 [[bin]]
 name = "receiver"
-path = "src/receiver.rs"
+path = "src/hello/receiver.rs"
  
 [[bin]]
 name = "send_bw"
-path = "src/send_bw.rs"
+path = "src/send_bw/main.rs"
 
 [[bin]]
 name = "send_lat"
-path = "src/send_lat.rs"
+path = "src/send_lat/main.rs"
 
 [[bin]]
 name = "bench_lat"
-path = "src/bench_lat.rs"
+path = "src/bench/bench_lat.rs"
 
 [[bin]]
 name = "bench_bw"
-path = "src/bench_bw.rs"
+path = "src/bench/bench_bw.rs"
 
 [[bin]]
 name = "alltoall"
-path = "src/alltoall.rs"
+path = "src/alltoall/main.rs"
