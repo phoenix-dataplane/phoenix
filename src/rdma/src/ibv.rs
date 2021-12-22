@@ -17,6 +17,9 @@ pub use ffi::ibv_wc_status;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "koala")]
+use interface::{Handle, AsHandle};
+
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
 
@@ -373,11 +376,12 @@ impl<'a> AsRef<CompletionQueue<'a>> for *mut ffi::ibv_cq {
     }
 }
 
-impl<'ctx> CompletionQueue<'ctx> {
+#[cfg(feature = "koala")]
+impl<'ctx> AsHandle for CompletionQueue<'ctx> {
     /// Returns the inner handle of this CompletionQueue.
-    pub fn handle(&self) -> u32 {
+    fn as_handle(&self) -> Handle {
         assert!(!self.cq.is_null());
-        unsafe { &*self.cq }.handle
+        Handle(unsafe { &*self.cq }.handle)
     }
 }
 
@@ -1069,6 +1073,16 @@ impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
     }
 }
 
+#[cfg(feature = "koala")]
+impl<'ctx> AsHandle for ProtectionDomain<'ctx> {
+    /// Returns the inner handle of this protection domain.
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        assert!(!self.pd.is_null());
+        Handle(unsafe { &*self.pd }.handle)
+    }
+}
+
 impl<'ctx> ProtectionDomain<'ctx> {
     /// Returns the context of the protection domain.
     #[inline]
@@ -1076,13 +1090,6 @@ impl<'ctx> ProtectionDomain<'ctx> {
         assert!(!self.pd.is_null());
         let ctx = &unsafe { &*self.pd }.context;
         ctx.as_ref()
-    }
-
-    /// Returns the inner handle of this protection domain.
-    #[inline]
-    pub fn handle(&self) -> u32 {
-        assert!(!self.pd.is_null());
-        unsafe { &*self.pd }.handle
     }
 
     /// Creates a queue pair builder associated with this protection domain.
@@ -1217,14 +1224,17 @@ impl<'a> AsRef<QueuePair<'a>> for *mut ffi::ibv_qp {
     }
 }
 
-impl<'res> QueuePair<'res> {
+#[cfg(feature = "koala")]
+impl<'res> AsHandle for QueuePair<'res> {
     /// Returns the inner handle of this QP.
     #[inline]
-    pub fn handle(&self) -> u32 {
+    fn as_handle(&self) -> Handle {
         assert!(!self.qp.is_null());
-        unsafe { &*self.qp }.handle
+        Handle(unsafe { &*self.qp }.handle)
     }
+}
 
+impl<'res> QueuePair<'res> {
     /// Takes the inner objects of this QP. This function should be only called once right before
     /// break up the QP into different resources and insert them into the resource tables.
     /// The purpose of this is to avoid self-referencing in Resource, which would cause a lot of

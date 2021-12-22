@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::{ffi, ibv, rdmacm};
 
 use interface::{AccessFlags, RemoteKey};
+use interface::{AsHandle, Handle};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -49,6 +50,14 @@ impl Drop for MemoryRegion {
             let e = io::Error::from_raw_os_error(errno);
             panic!("{}", e);
         }
+    }
+}
+
+impl AsHandle for MemoryRegion {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        assert!(!self.mr.is_null());
+        Handle(unsafe { &*self.mr }.handle)
     }
 }
 
@@ -97,12 +106,6 @@ impl MemoryRegion {
     pub fn pd<'a>(&'a self) -> &'a ibv::ProtectionDomain<'a> {
         assert!(!self.mr.is_null());
         unsafe { (&(&*self.mr).pd).as_ref() }
-    }
-
-    #[inline]
-    pub fn handle(&self) -> u32 {
-        assert!(!self.mr.is_null());
-        unsafe { &*self.mr }.handle
     }
 
     #[inline]

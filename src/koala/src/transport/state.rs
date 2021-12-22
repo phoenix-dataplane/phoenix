@@ -14,7 +14,7 @@ use std::time::Duration;
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
-use interface::Handle;
+use interface::{Handle, AsHandle};
 
 use rdma::ibv;
 use rdma::rdmacm;
@@ -273,7 +273,7 @@ impl<'ctx> Resource<'ctx> {
                 Ok(pd) => pd,
                 Err(_) => continue,
             };
-            let pd_handle = pd.handle().into();
+            let pd_handle = pd.as_handle();
             pd_table.insert(pd_handle, pd).unwrap();
             for gid in gid_table {
                 default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
@@ -308,10 +308,10 @@ impl<'ctx> Resource<'ctx> {
         // This is safe because we did not drop these inner objects immediately. Instead, they are
         // stored carefully into the resource tables.
         let (pd, send_cq, recv_cq) = unsafe { qp.take_inner_objects() };
-        let pd_handle = pd.handle().into();
-        let scq_handle = send_cq.handle().into();
-        let rcq_handle = recv_cq.handle().into();
-        let qp_handle = qp.handle().into();
+        let pd_handle = pd.as_handle();
+        let scq_handle = send_cq.as_handle();
+        let rcq_handle = recv_cq.as_handle();
+        let qp_handle = qp.as_handle();
         // qp, cqs, and other associated resources are supposed to be open by the user
         // explicited, the error should be safely ignored if the resource has already been
         // created.

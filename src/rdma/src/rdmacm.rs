@@ -13,6 +13,9 @@ use std::slice;
 use log::warn;
 use socket2::SockAddr;
 
+#[cfg(feature = "koala")]
+use interface::{AsHandle, Handle};
+
 use crate::ffi;
 use crate::ibv;
 
@@ -327,10 +330,11 @@ impl CmEvent {
 
     /// Only valid for a new connect request.
     #[inline]
-    pub fn id_owned<'a>(&self) -> (CmId<'a>, Option<ibv::QueuePair<'a>>) {
+    pub fn get_request<'a>(&self) -> (CmId<'a>, Option<ibv::QueuePair<'a>>) {
         assert!(!self.0.is_null());
         let event = unsafe { &*self.0 };
         assert!(event.event == ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST);
+        assert_eq!(event.status, 0);
         assert!(!event.id.is_null());
         let ret_cmid = CmId(event.id, PhantomData);
         let qp = unsafe { &*event.id }.qp;
@@ -392,6 +396,14 @@ impl AsRef<EventChannel> for *mut ffi::rdma_event_channel {
     }
 }
 
+#[cfg(feature = "koala")]
+impl AsHandle for EventChannel {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        Handle(self.as_raw_fd() as _)
+    }
+}
+
 impl EventChannel {
     pub fn create_event_channel() -> io::Result<Self> {
         let channel = unsafe { ffi::rdma_create_event_channel() };
@@ -436,11 +448,6 @@ impl EventChannel {
         }
         Ok(flags & libc::O_NONBLOCK > 0)
     }
-
-    #[inline]
-    pub fn handle(&self) -> u32 {
-        self.as_raw_fd() as _
-    }
 }
 
 impl Drop for EventChannel {
@@ -461,15 +468,15 @@ pub struct MemoryRegion<'a>(
 unsafe impl<'a> Send for MemoryRegion<'a> {}
 unsafe impl<'a> Sync for MemoryRegion<'a> {}
 
-impl<'a> MemoryRegion<'a> {
-    // TODO(cjr): Replace this with proc macro
-    pub fn handle(&self) -> u32 {
+#[cfg(feature = "koala")]
+impl<'a> AsHandle for MemoryRegion<'a> {
+    #[inline]
+    fn as_handle(&self) -> Handle {
         assert!(!self.0.is_null());
-        unsafe { &*self.0 }.handle
+        Handle(unsafe { &*self.0 }.handle)
     }
 }
 
-#[repr(transparent)]
 #[derive(Debug)]
 pub struct CmId<'res>(*mut ffi::rdma_cm_id, PhantomData<&'res ()>);
 
