@@ -18,7 +18,7 @@ pub use ffi::ibv_wc_status;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "koala")]
-use interface::{Handle, AsHandle};
+use interface::{AsHandle, Handle};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;

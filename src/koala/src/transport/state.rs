@@ -14,7 +14,7 @@ use std::time::Duration;
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
-use interface::{Handle, AsHandle};
+use interface::{AsHandle, Handle};
 
 use rdma::ibv;
 use rdma::rdmacm;
