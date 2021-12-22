@@ -79,7 +79,7 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     // busy poll
     let mut wc = Vec::with_capacity(32);
-    let cq = &id.qp().recv_cq;
+    let cq = id.qp().recv_cq();
     let mut rcnt = 0;
     while rcnt < opts.warm_iters + opts.total_iters {
         cq.poll_cq(&mut wc)?;
@@ -148,7 +148,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let mut stats = Vec::with_capacity(opts.total_iters);
 
     let mut wc = Vec::with_capacity(1);
-    let cq = &id.qp().recv_cq;
+    let cq = id.qp().recv_cq();
     let mut scnt = 1;
     let mut rcnt = 0;
     while rcnt < opts.warm_iters + opts.total_iters {

@@ -16,18 +16,19 @@ Socket
 -[x] RDMA Read/Write
 
 Misc
-- update the code and directory structure of koala_examples
--[x] Add lifetime constraint to CmId in rdmacm library
-- Add AsHandle Trait so that open_or_create_resource can do sanity check
 - get configuration from a file to run multiple backends for developing
-  and testing on the same machine
 - setup CI (which public CI service has RDMA NIC?)
--[x] Remove repeatitive code in libkoala/cm.rs
+-[x] update the code and directory structure of koala_examples
+-[x] Add lifetime constraint to CmId in rdmacm library
+-[x] Add AsHandle Trait so that open_or_create_resource can do sanity check
+     and testing on the same machine
 - Also implement handle for CmId, use the pointer as the identifier.
+-[x] Remove repeatitive code in libkoala/cm.rs
 -[x] Handle conn_param
 - update all `trace!`s in TransportEngine::process_cmd
 -[x] error msg of libkoala
 - simplify ConnParam. Allow to set fields in QpBuilder.
+-[x] add method to access members by reference in libkoala
 
 Performance & CPU efficiency
 - Change ResoruceTable to one of the implementations of a concurrent

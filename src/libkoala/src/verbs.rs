@@ -252,9 +252,9 @@ impl<T: Sized + Copy> MemoryRegion<T> {
 #[derive(Debug)]
 pub struct QueuePair {
     pub(crate) inner: interface::QueuePair,
-    pub pd: ProtectionDomain,
-    pub send_cq: CompletionQueue,
-    pub recv_cq: CompletionQueue,
+    pub(crate) pd: ProtectionDomain,
+    pub(crate) send_cq: CompletionQueue,
+    pub(crate) recv_cq: CompletionQueue,
 }
 
 impl QueuePair {
@@ -272,6 +272,21 @@ impl QueuePair {
                 })
             })
         })
+    }
+
+    #[inline]
+    pub fn pd(&self) -> &ProtectionDomain {
+        &self.pd
+    }
+
+    #[inline]
+    pub fn send_cq(&self) -> &CompletionQueue {
+        &self.send_cq
+    }
+
+    #[inline]
+    pub fn recv_cq(&self) -> &CompletionQueue {
+        &self.recv_cq
     }
 }
 

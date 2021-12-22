@@ -12,6 +12,7 @@ pub enum Error {
     Generic(String),
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Handle(pub u32);
 
@@ -19,10 +20,9 @@ impl Handle {
     pub const INVALID: Handle = Handle(u32::MAX);
 }
 
-impl From<u32> for Handle {
-    fn from(x: u32) -> Self {
-        Handle(x as _)
-    }
+pub trait AsHandle {
+    #[must_use]
+    fn as_handle(&self) -> Handle;
 }
 
 // These data struct can be `Copy` because they are only for IPC use.

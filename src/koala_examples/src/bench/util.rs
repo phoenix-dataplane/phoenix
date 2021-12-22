@@ -1,5 +1,4 @@
-use std::cmp::max;
-use std::convert::{From, TryInto};
+use std::convert::TryInto;
 use std::mem;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -51,7 +50,7 @@ pub struct Context {
 
 impl Context {
     pub fn new(mut opt: Opts, tst: Test) -> Self {
-        opt.size = max(opt.size, 4);
+        opt.size = std::cmp::max(opt.size, 4);
         if tst == Test::BW && opt.num < opt.warmup {
             opt.num += opt.warmup;
         }
@@ -66,9 +65,9 @@ impl Context {
 
         Context {
             client: opt.ip != "0.0.0.0",
-            opt: opt,
-            tst: tst,
-            cap: cap,
+            opt,
+            tst,
+            cap,
         }
     }
 

@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use interface::{returned, Handle};
+use interface::{returned, AsHandle, Handle};
 use ipc::unix::DomainSocket;
 use ipc::{self, cmd, dp};
 
@@ -252,7 +252,7 @@ impl<'ctx> TransportEngine<'ctx> {
         };
 
         let cmid = self.state.resource().cmid_table.get(cmd_handle)?;
-        let ec_handle = cmid.event_channel().handle().into();
+        let ec_handle = cmid.event_channel().as_handle();
 
         match self.state.get_one_cm_event(&ec_handle) {
             Some(cm_event) => {
@@ -279,10 +279,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 // Handle::INVALID.
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
-                        (
-                            interface::CompletionQueue(qp.send_cq().handle().into()),
-                            *wr_id,
-                        )
+                        (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
                         (interface::CompletionQueue(Handle::INVALID), *wr_id)
                     }
@@ -293,10 +290,7 @@ impl<'ctx> TransportEngine<'ctx> {
             WorkRequest::PostRecv(cmid_handle, wr_id, ..) => {
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
-                        (
-                            interface::CompletionQueue(qp.recv_cq().handle().into()),
-                            *wr_id,
-                        )
+                        (interface::CompletionQueue(qp.recv_cq().as_handle()), *wr_id)
                     } else {
                         (interface::CompletionQueue(Handle::INVALID), *wr_id)
                     }
@@ -309,10 +303,7 @@ impl<'ctx> TransportEngine<'ctx> {
             WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
-                        (
-                            interface::CompletionQueue(qp.send_cq().handle().into()),
-                            *wr_id,
-                        )
+                        (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
                         (interface::CompletionQueue(Handle::INVALID), *wr_id)
                     }
@@ -324,10 +315,7 @@ impl<'ctx> TransportEngine<'ctx> {
             WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
-                        (
-                            interface::CompletionQueue(qp.send_cq().handle().into()),
-                            *wr_id,
-                        )
+                        (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
                         (interface::CompletionQueue(Handle::INVALID), *wr_id)
                     }
@@ -650,12 +638,9 @@ impl<'ctx> TransportEngine<'ctx> {
             }
             RDMA_CM_EVENT_CONNECT_REQUEST => match req {
                 Request::GetRequest(_listener_handle) => {
-                    // let listener = self.state.resource().cmid_table.get(listener_handle)?;
-                    // assert_eq!(
-                    //     listener_handle,
-                    //     &Handle::from(event.listen_id().unwrap().handle())
-                    // );
-                    let (new_cmid, new_qp) = event.id_owned();
+                    // let listener = self.state.resource().cmid_table.get(&listener_handle)?;
+                    // assert_eq!(listener_handle, event.listen_id().unwrap().as_handle());
+                    let (new_cmid, new_qp) = event.get_request();
 
                     let ret_qp = if let Some(qp) = new_qp {
                         let handles = self.state.resource().insert_qp(qp)?;
@@ -676,11 +661,11 @@ impl<'ctx> TransportEngine<'ctx> {
             },
             RDMA_CM_EVENT_ESTABLISHED => match req {
                 Request::Connect(_cmid_handle, ..) => {
-                    // assert_eq!(cmid_handle, Handle::from(event.id().handle()));
+                    // assert_eq!(cmid_handle, event.id().as_handle());
                     Ok(ResponseKind::Connect)
                 }
                 Request::Accept(_cmid_handle, ..) => {
-                    // assert_eq!(cmid_handle, Handle::from(event.id().handle()));
+                    // assert_eq!(cmid_handle, event.id().as_handle());
                     Ok(ResponseKind::Accept)
                 }
                 _ => {
@@ -811,7 +796,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     rdmacm::EventChannel::create_event_channel().map_err(Error::RdmaCm)?;
                 // set nonblocking
                 channel.set_nonblocking(true).map_err(Error::RdmaCm)?;
-                let channel_handle: Handle = channel.handle().into();
+                let channel_handle = channel.as_handle();
                 self.state
                     .register_event_channel(channel_handle, &channel)?;
                 let ps: rdmacm::PortSpace = (*port_space).into();
@@ -904,7 +889,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     .send_fd(&self.client_path, &[fd][..])
                     .map_err(Error::SendFd)?;
                 let rkey = mr.rkey();
-                let new_mr_handle = mr.handle().into();
+                let new_mr_handle = mr.as_handle();
                 self.state.resource().mr_table.insert(new_mr_handle, mr)?;
                 Ok(ResponseKind::RegMr(returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
