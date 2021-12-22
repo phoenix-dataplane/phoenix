@@ -28,6 +28,7 @@ Misc
 - update all `trace!`s in TransportEngine::process_cmd
 -[x] error msg of libkoala
 - simplify ConnParam. Allow to set fields in QpBuilder.
+- add method to access members by reference in libkoala
 
 Performance & CPU efficiency
 - Change ResoruceTable to one of the implementations of a concurrent

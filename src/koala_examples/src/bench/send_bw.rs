@@ -32,7 +32,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
     let mut scnt = 0;
     let mut ccnt = 0;
-    let cq = &id.qp().send_cq;
+    let cq = id.qp().send_cq();
     while scnt < ctx.opt.num || ccnt < ctx.opt.num {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
@@ -81,7 +81,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     eprintln!("Connection established");
 
     let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
-    let cq = &id.qp().recv_cq;
+    let cq = id.qp().recv_cq();
     while rcnt < ctx.opt.num || ccnt < ctx.opt.num {
         if rcnt < ctx.opt.num && rcnt - ccnt < ctx.cap.max_recv_wr as usize {
             unsafe {
