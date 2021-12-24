@@ -35,8 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mr.copy_from_slice(send_msg.as_bytes());
         mr
     };
-    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
-        .expect("Post send failed!");
+    unsafe {
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)
+            .expect("Post send failed!");
+    }
 
     let wc_send = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc_send.status, WcStatus::Success, "{:?}", wc_send);

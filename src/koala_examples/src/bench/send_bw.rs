@@ -36,8 +36,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     while scnt < ctx.opt.num || ccnt < ctx.opt.num {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
-            id.post_send(&send_mr, .., 0, send_flags)
-                .expect("Post send failed!");
+            unsafe {
+                id.post_send(&send_mr, .., 0, send_flags)
+                    .expect("Post send failed!");
+            }
             scnt += 1;
         }
         if ccnt < ctx.opt.num {

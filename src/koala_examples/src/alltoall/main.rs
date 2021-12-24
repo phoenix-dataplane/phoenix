@@ -211,7 +211,9 @@ fn run_single_thread(opts: &Opts, mut comm: Communicator) -> anyhow::Result<()> 
 
         // post send all
         for (i, id) in comm.ids.iter().enumerate() {
-            id.post_send(&comm.send_mrs[i], .., i as u64, SendFlags::SIGNALED)?;
+            unsafe {
+                id.post_send(&comm.send_mrs[i], .., i as u64, SendFlags::SIGNALED)?;
+            }
         }
 
         // poll all completions
@@ -255,7 +257,9 @@ fn run_multi_thread(opts: &Opts, mut comm: Communicator) -> anyhow::Result<()> {
         let h = thread::spawn(move || -> anyhow::Result<()> {
             for _ in 0..opts.warm_iters + opts.total_iters {
                 // post send
-                id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)?;
+                unsafe {
+                    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)?;
+                }
                 // poll completion and post recv
                 let wc = id.get_send_comp()?;
                 assert_eq!(wc.status, WcStatus::Success, "wc: {:?}", wc);

@@ -34,8 +34,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         times.push(Instant::now());
 
         unsafe_write_bytes!(u32, i as u32, write_mr.as_mut_slice());
-        id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
-            .expect("Post write failed!");
+        unsafe {
+            id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
+                .expect("Post write failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
 
@@ -77,8 +79,10 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != i as u32 {}
 
         unsafe_write_bytes!(u32, i as u32, write_mr.as_mut_slice());
-        id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
-            .expect("Post write failed!");
+        unsafe {
+            id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
+                .expect("Post write failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
     }
