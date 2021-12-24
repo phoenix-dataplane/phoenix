@@ -92,7 +92,9 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 SendFlags::INLINE
             };
-            id.post_send(&send_mr, .., 0, send_flags)?;
+            unsafe {
+                id.post_send(&send_mr, .., 0, send_flags)?;
+            }
         }
     }
 
@@ -141,7 +143,9 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // start sending
-    id.post_send(&send_mr, .., 0, no_signal)?;
+    unsafe {
+        id.post_send(&send_mr, .., 0, no_signal)?;
+    }
 
     let start_ts = time::Instant::now();
     let mut ts = time::Instant::now();
@@ -176,7 +180,9 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 no_signal
             };
-            id.post_send(&send_mr, .., 0, send_flags)?;
+            unsafe {
+                id.post_send(&send_mr, .., 0, send_flags)?;
+            }
             scnt += 1;
         }
     }

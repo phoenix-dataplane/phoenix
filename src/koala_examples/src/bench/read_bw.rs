@@ -39,8 +39,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
             // unsafe_write_bytes!(u32, scnt as u32, write_mr.as_mut_slice());
-            id.post_read(&read_mr, .., 0, send_flags, rkey, 0)
-                .expect("Post write failed!");
+            unsafe {
+                id.post_read(&mut read_mr, .., 0, send_flags, rkey, 0)
+                    .expect("Post write failed!");
+            }
             scnt += 1;
         }
         if ccnt < ctx.opt.num {
@@ -86,8 +88,10 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     read_mr.fill(0u8);
 
     while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != ctx.opt.num as u32 {
-        id.post_read(&read_mr, .., 0, send_flags, rkey, 0)
-            .expect("Post write failed!");
+        unsafe {
+            id.post_read(&mut read_mr, .., 0, send_flags, rkey, 0)
+                .expect("Post write failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
     }

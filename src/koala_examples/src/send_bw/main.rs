@@ -97,7 +97,9 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     for _ in 0..opts.warm_iters {
-        id.post_send(&send_mr, .., 0, send_flags)?;
+        unsafe {
+            id.post_send(&send_mr, .., 0, send_flags)?;
+        }
     }
 
     let mut wc = Vec::with_capacity(32);
@@ -114,7 +116,9 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     let ts = time::Instant::now();
 
     for _ in 0..opts.total_iters {
-        id.post_send(&send_mr, .., 0, send_flags)?;
+        unsafe {
+            id.post_send(&send_mr, .., 0, send_flags)?;
+        }
     }
 
     let dura = ts.elapsed();

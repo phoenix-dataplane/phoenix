@@ -75,7 +75,7 @@ impl CmId {
         self.inner.post_recv(mr, range, context)
     }
 
-    pub fn post_send<T, R>(
+    pub unsafe fn post_send<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
         range: R,
@@ -109,7 +109,7 @@ impl CmId {
         })
     }
 
-    pub fn post_write<T, R>(
+    pub unsafe fn post_write<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
         range: R,
@@ -147,9 +147,9 @@ impl CmId {
         })
     }
 
-    pub fn post_read<T, R>(
+    pub unsafe fn post_read<T, R>(
         &self,
-        mr: &verbs::MemoryRegion<T>,
+        mr: &mut verbs::MemoryRegion<T>,
         range: R,
         context: u64,
         flags: verbs::SendFlags,

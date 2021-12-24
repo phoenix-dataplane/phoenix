@@ -135,7 +135,9 @@ pub fn handshake(
         pre_id.accept(None).expect("Accept failed!")
     };
 
-    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED | SendFlags::INLINE)?;
+    unsafe {
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED | SendFlags::INLINE)?;
+    }
 
     let wc = id.get_send_comp()?;
     assert_eq!(wc.status, WcStatus::Success);
