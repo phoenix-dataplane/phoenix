@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-use std::mem;
 use std::time::Instant;
 use structopt::StructOpt;
 
@@ -99,12 +97,6 @@ macro_rules! unsafe_write_bytes {
     };
 }
 
-macro_rules! read_bytes {
-    ($ty:ty, $buf:expr) => {
-        <$ty>::from_be_bytes($buf.try_into().unwrap())
-    };
-}
-
 macro_rules! unsafe_read_volatile {
     ($ty:ty,$addr:expr) => {
         <$ty>::from_be(unsafe { std::ptr::read_volatile($addr) })
@@ -114,14 +106,12 @@ macro_rules! unsafe_read_volatile {
 pub fn handshake(
     pre_id: cm::PreparedCmId,
     ctx: &Context,
-    rkey: &RemoteKey,
+    my_rkey: &RemoteKey,
 ) -> Result<(cm::CmId, RemoteKey), Error> {
-    let mut send_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
-    let mut recv_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
+    let mut send_mr: verbs::MemoryRegion<RemoteKey> = pre_id.alloc_msgs(1)?;
+    let mut recv_mr: verbs::MemoryRegion<RemoteKey> = pre_id.alloc_msgs(1)?;
 
-    let (addr_buf, rkey_buf) = send_mr.as_mut_slice().split_at_mut(mem::size_of::<u64>());
-    unsafe_write_bytes!(u64, rkey.addr, addr_buf);
-    unsafe_write_bytes!(u32, rkey.rkey, rkey_buf);
+    send_mr[0] = *my_rkey;
 
     unsafe {
         pre_id
@@ -130,13 +120,13 @@ pub fn handshake(
     }
 
     let id = if ctx.client {
-        pre_id.connect(None).expect("Connect failed!")
+        pre_id.connect(None)?
     } else {
-        pre_id.accept(None).expect("Accept failed!")
+        pre_id.accept(None)?
     };
 
     unsafe {
-        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED | SendFlags::INLINE)?;
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)?;
     }
 
     let wc = id.get_send_comp()?;
@@ -145,14 +135,7 @@ pub fn handshake(
     let wc = id.get_recv_comp()?;
     assert_eq!(wc.status, WcStatus::Success);
 
-    let (addr, rkey) = recv_mr.as_slice().split_at(mem::size_of::<u64>());
-    Ok((
-        id,
-        RemoteKey {
-            addr: read_bytes!(u64, addr),
-            rkey: read_bytes!(u32, rkey),
-        },
-    ))
+    Ok((id, recv_mr[0]))
 }
 
 const LAT_MEASURE_TAIL: usize = 2;
