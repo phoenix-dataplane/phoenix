@@ -8,7 +8,7 @@ use libkoala::{cm, verbs::WcStatus, Error};
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -64,7 +64,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -83,7 +83,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         .alloc_read(ctx.opt.size)
         .expect("Memory registration failed!");
 
-    let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
     read_mr.fill(0u8);
 

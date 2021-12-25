@@ -8,7 +8,7 @@ use libkoala::{cm, verbs::WcStatus, Error};
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -26,7 +26,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &read_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &read_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     let mut times = Vec::with_capacity(ctx.opt.num + 1);
@@ -52,7 +52,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -72,7 +72,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &read_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &read_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     for i in 0..ctx.opt.num {

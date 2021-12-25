@@ -69,7 +69,7 @@ impl Context {
         }
     }
 
-    pub fn print(self: &Self) {
+    pub fn print(&self) {
         println!("machine: {}", if self.client { "client" } else { "sever" });
         println!(
             "num:{}, size:{}, warmup:{}",
@@ -139,7 +139,7 @@ pub fn handshake(
 }
 
 const LAT_MEASURE_TAIL: usize = 2;
-pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
+pub fn print_lat(ctx: &Context, times: &[Instant]) {
     let num = ctx.opt.num - ctx.opt.warmup;
     assert!(num > 0);
     let mut delta = Vec::new();
@@ -150,16 +150,15 @@ pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
                 .as_micros(),
         );
     }
-    delta.sort();
+    delta.sort_unstable();
 
     let factor = if ctx.opt.verb == Verb::Read { 1.0 } else { 2.0 };
 
     let cnt = num - LAT_MEASURE_TAIL;
     let mut duration = 0.0;
     let mut lat = Vec::new();
-    for i in 0..cnt {
-        let t = delta[i] as f64 / factor;
-        duration += t;
+    for t in delta.into_iter().take(cnt) {
+        duration += t as f64 / factor;
         lat.push(t);
     }
     println!(
@@ -174,7 +173,7 @@ pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
     );
 }
 
-pub fn print_bw(ctx: &Context, tposted: &Vec<Instant>, tcompleted: &Vec<Instant>) {
+pub fn print_bw(ctx: &Context, tposted: &[Instant], tcompleted: &[Instant]) {
     let tus = tcompleted[ctx.opt.num - 1]
         .duration_since(tposted[0])
         .as_micros() as f64;

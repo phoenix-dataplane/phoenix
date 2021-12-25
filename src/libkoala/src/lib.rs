@@ -185,31 +185,31 @@ impl Context {
 #[macro_export]
 macro_rules! _rx_recv_impl {
     ($rx:expr, $resp:path) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecvError)?.0 {
             Ok($resp) => Ok(()),
             Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecvError)?.0 {
             Ok($resp) => $ok_block,
             Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecvError)?.0 {
             Ok($resp($inst)) => $ok_block,
             Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $ok_block:block, $err:ident, $err_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecvError)?.0 {
             Ok($resp) => $ok_block,
             Err($err) => $err_block,
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
 }

@@ -103,7 +103,7 @@ impl MemoryRegion {
     }
 
     #[inline]
-    pub fn pd<'a>(&'a self) -> &'a ibv::ProtectionDomain<'a> {
+    pub fn pd<'a>(&self) -> &ibv::ProtectionDomain<'a> {
         assert!(!self.mr.is_null());
         unsafe { (&(&*self.mr).pd).as_ref() }
     }

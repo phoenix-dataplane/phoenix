@@ -77,7 +77,7 @@ fn get_host_list(opts: &Opts) -> Vec<SocketAddr> {
         content
             .split('\n')
             .map(|x| x.trim())
-            .filter(|x| !x.is_empty() && !x.starts_with("#"))
+            .filter(|x| !x.is_empty() && !x.starts_with('#'))
             .map(String::from)
             .collect()
     };

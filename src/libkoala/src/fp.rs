@@ -49,6 +49,11 @@ impl cm::Inner {
 }
 
 impl PreparedCmId {
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -63,6 +68,11 @@ impl PreparedCmId {
 }
 
 impl CmId {
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -75,6 +85,11 @@ impl CmId {
         self.inner.post_recv(mr, range, context)
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
     pub unsafe fn post_send<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
@@ -109,6 +124,11 @@ impl CmId {
         })
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
     pub unsafe fn post_write<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
@@ -147,6 +167,11 @@ impl CmId {
         })
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
     pub unsafe fn post_read<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,

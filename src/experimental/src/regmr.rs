@@ -13,6 +13,7 @@ use nix::sys::mman::{mmap, msync, munmap, shm_open, shm_unlink, MapFlags, MsFlag
 use nix::sys::stat::Mode;
 use nix::unistd::{sysconf, SysconfVar};
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct SMR<'a> {
     buffer: &'static [u8],
     memfd: File,
@@ -112,7 +113,7 @@ impl<'a> Drop for SMR<'a> {
     fn drop(&mut self) {
         // recovery the pages right after performing munmap
         use std::io::{Read, Seek, SeekFrom};
-        if let Ok(_) = self.memfd.seek(SeekFrom::Start(0)) {
+        if self.memfd.seek(SeekFrom::Start(0)).is_ok() {
             unsafe {
                 // it is safe to call msync, but I'm not quite sure if this is actually necessary
                 msync(

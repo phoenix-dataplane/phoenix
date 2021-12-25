@@ -40,6 +40,12 @@ pub struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
 }
 
+impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub fn new() -> Self {
         CmIdBuilder {

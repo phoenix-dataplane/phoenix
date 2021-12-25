@@ -819,10 +819,10 @@ pub struct PreparedQueuePair<'res> {
 ///
 /// ```c
 /// union ibv_gid {
-///     uint8_t   raw[16];
+///     uint8_t    raw[16];
 ///     struct {
-/// 	    __be64	subnet_prefix;
-/// 	    __be64	interface_id;
+/// 	    __be64    subnet_prefix;
+/// 	    __be64    interface_id;
 ///     } global;
 /// };
 /// ```
@@ -940,11 +940,13 @@ impl<'res> PreparedQueuePair<'res> {
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
     pub fn handshake(self, remote: QueuePairEndpoint) -> io::Result<QueuePair<'res>> {
         // init and associate with port
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_INIT;
-        attr.qp_access_flags = self.access.0;
-        attr.pkey_index = 0;
-        attr.port_num = PORT_NUM;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_INIT,
+            qp_access_flags: self.access.0,
+            pkey_index: 0,
+            port_num: PORT_NUM,
+            ..Default::default()
+        };
         let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
             | ffi::ibv_qp_attr_mask::IBV_QP_PKEY_INDEX
             | ffi::ibv_qp_attr_mask::IBV_QP_PORT
@@ -955,13 +957,15 @@ impl<'res> PreparedQueuePair<'res> {
         }
 
         // set ready to receive
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_RTR;
-        attr.path_mtu = self.port_attr.active_mtu;
-        attr.dest_qp_num = remote.num;
-        attr.rq_psn = 0;
-        attr.max_dest_rd_atomic = 1;
-        attr.min_rnr_timer = self.min_rnr_timer;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_RTR,
+            path_mtu: self.port_attr.active_mtu,
+            dest_qp_num: remote.num,
+            rq_psn: 0,
+            max_dest_rd_atomic: 1,
+            min_rnr_timer: self.min_rnr_timer,
+            ..Default::default()
+        };
         attr.ah_attr.is_global = 1;
         attr.ah_attr.dlid = remote.lid;
         attr.ah_attr.sl = 0;
@@ -982,13 +986,15 @@ impl<'res> PreparedQueuePair<'res> {
         }
 
         // set ready to send
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_RTS;
-        attr.timeout = self.timeout;
-        attr.retry_cnt = self.retry_count;
-        attr.sq_psn = 0;
-        attr.rnr_retry = self.rnr_retry;
-        attr.max_rd_atomic = 1;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_RTS,
+            timeout: self.timeout,
+            retry_cnt: self.retry_count,
+            sq_psn: 0,
+            rnr_retry: self.rnr_retry,
+            max_rd_atomic: 1,
+            ..Default::default()
+        };
         let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
             | ffi::ibv_qp_attr_mask::IBV_QP_TIMEOUT
             | ffi::ibv_qp_attr_mask::IBV_QP_RETRY_CNT
@@ -1235,7 +1241,11 @@ impl<'res> AsHandle for QueuePair<'res> {
 }
 
 impl<'res> QueuePair<'res> {
-    /// Takes the inner objects of this QP. This function should be only called once right before
+    /// Takes the inner objects of this QP.
+    ///
+    /// # Safety
+    ///
+    /// This function should be only called once right before
     /// break up the QP into different resources and insert them into the resource tables.
     /// The purpose of this is to avoid self-referencing in Resource, which would cause a lot of
     /// trouble.
@@ -1339,7 +1349,7 @@ impl<'res> QueuePair<'res> {
             lkey: (&*mr.mr).lkey,
         };
         let mut wr = ffi::ibv_send_wr {
-            wr_id: wr_id,
+            wr_id,
             next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
             sg_list: &mut sge as *mut _,
             num_sge: 1,

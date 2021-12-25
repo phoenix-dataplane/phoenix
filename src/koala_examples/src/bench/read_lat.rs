@@ -62,7 +62,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != ctx.opt.num as u32 {
