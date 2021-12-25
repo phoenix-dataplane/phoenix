@@ -25,7 +25,7 @@ use super::state::StateManager;
 use crate::module::Module;
 
 // TODO(cjr): make these configurable, see koala.toml
-const KOALA_PATH: &'static str = "/tmp/cjr/koala/koala-transport.sock";
+const KOALA_PATH: &str = "/tmp/cjr/koala/koala-transport.sock";
 
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
@@ -115,7 +115,7 @@ impl TransportEngineBuilder {
         // 6. send the file descriptors back to let the client attach to these shared memory queues
         self.sock.send_fd(
             &self.client_path,
-            &vec![
+            &[
                 dp_wq.memfd().as_raw_fd(),
                 dp_wq.empty_signal().as_raw_fd(),
                 dp_wq.full_signal().as_raw_fd(),
@@ -197,7 +197,7 @@ impl TransportModule {
 
         // 2. tell the engine's socket path to the client
         let mut buf = bincode::serialize(&cmd::Response(Ok(cmd::ResponseKind::NewClient(
-            engine_path.clone(),
+            engine_path,
         ))))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {

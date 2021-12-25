@@ -22,7 +22,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     // unsafe_write_bytes!(u32, 0, write_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     let mut times = Vec::with_capacity(ctx.opt.num + 1);

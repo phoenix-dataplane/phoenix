@@ -35,7 +35,7 @@ pub(crate) enum Error {
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     #[error("IPC send error: {0}")]
-    IpcSendError(#[from] ipc::Error),
+    IpcSend(#[from] ipc::Error),
 }
 
 impl From<Error> for interface::Error {
@@ -59,7 +59,7 @@ pub(crate) enum DatapathError {
 }
 
 impl DatapathError {
-    pub(crate) fn as_vendor_err(self) -> u32 {
+    pub(crate) fn into_vendor_err(self) -> u32 {
         match self {
             Self::NotFound => 1024,
             Self::ShmIpc(_) => 1025,

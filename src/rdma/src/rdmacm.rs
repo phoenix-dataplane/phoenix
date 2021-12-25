@@ -66,7 +66,9 @@ pub struct AddrInfo {
     pub ai_connect: Vec<u8>,
 }
 
-/// Safety: Caller must ensure that the address family and length match the type of storage
+/// # Safety
+///
+/// The caller must ensure that the address family and length match the type of storage
 /// address. For example if storage.ss_family is set to AF_INET the storage must be initialised as
 /// sockaddr_in, setting the content and length appropriately.
 unsafe fn sockaddr_from_raw(
@@ -89,7 +91,9 @@ unsafe fn sockaddr_from_raw(
     }
 }
 
-/// Safety: null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
+/// # Safety
+///
+/// Null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
 /// Warning: there's no way to know if the input pointer is valid throughout this invocation.
 unsafe fn from_c_str(cstr: *const c_char) -> Option<CString> {
     cstr.as_ref().map(|s| CStr::from_ptr(s).to_owned())
@@ -122,7 +126,7 @@ impl AddrInfo {
         }
     }
 
-    /// #Safety
+    /// # Safety
     ///
     /// The user must guarantee the passed in raw pointer points to a valid rdma_addrinfo that is
     /// resolved from a successful call to rdma_getaddrinfo().

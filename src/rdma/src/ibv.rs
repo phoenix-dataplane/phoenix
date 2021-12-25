@@ -135,7 +135,7 @@ impl<'devlist> Device<'devlist> {
     ///  - `EMFILE`: Too many files are opened by this process (from `ibv_query_gid`).
     ///  - Other: the device is not in `ACTIVE` or `ARMED` state.
     pub fn open(&self) -> io::Result<Context> {
-        Context::with_device(*self.0)
+        unsafe { Context::with_device(*self.0) }
     }
 
     /// Returns a string of the name, which is associated with this RDMA device.
@@ -226,10 +226,13 @@ impl AsRef<Context> for *mut ffi::ibv_context {
 
 impl Context {
     /// Opens a context for the given device, and queries its port and gid.
-    pub fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
+    ///
+    /// # Safety
+    /// The parameter `dev` must be a valid ibv_context.
+    pub unsafe fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
         assert!(!dev.is_null());
 
-        let ctx = unsafe { ffi::ibv_open_device(dev) };
+        let ctx = ffi::ibv_open_device(dev);
         if ctx.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -337,10 +340,10 @@ impl Context {
     /// A protection domain is a means of protection, and helps you create a group of object that
     /// can work together. If several objects were created using PD1, and others were created using
     /// PD2, working with objects from group1 together with objects from group2 will not work.
-    pub fn alloc_pd(&self) -> Result<ProtectionDomain<'_>, ()> {
+    pub fn alloc_pd(&self) -> Result<ProtectionDomain<'_>, AllocPdError> {
         let pd = unsafe { ffi::ibv_alloc_pd(self.ctx) };
         if pd.is_null() {
-            Err(())
+            Err(AllocPdError)
         } else {
             Ok(ProtectionDomain {
                 _phantom: PhantomData,
@@ -349,6 +352,10 @@ impl Context {
         }
     }
 }
+
+/// Error on allocating a protection domain (PD).
+#[derive(Debug)]
+pub struct AllocPdError;
 
 impl Drop for Context {
     fn drop(&mut self) {
@@ -385,6 +392,10 @@ impl<'ctx> AsHandle for CompletionQueue<'ctx> {
     }
 }
 
+/// Error on polling a completion queue (CQ).
+#[derive(Debug)]
+pub struct PollCqError;
+
 impl<'ctx> CompletionQueue<'ctx> {
     /// Poll for (possibly multiple) work completions.
     ///
@@ -410,7 +421,7 @@ impl<'ctx> CompletionQueue<'ctx> {
     pub fn poll<'c>(
         &self,
         completions: &'c mut [ffi::ibv_wc],
-    ) -> Result<&'c mut [ffi::ibv_wc], ()> {
+    ) -> Result<&'c mut [ffi::ibv_wc], PollCqError> {
         // TODO: from http://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
         //
         //   One should consume Work Completions at a rate that prevents the CQ from being overrun
@@ -428,7 +439,7 @@ impl<'ctx> CompletionQueue<'ctx> {
         };
 
         if n < 0 {
-            Err(())
+            Err(PollCqError)
         } else {
             Ok(&mut completions[0..n as usize])
         }
@@ -821,8 +832,8 @@ pub struct PreparedQueuePair<'res> {
 /// union ibv_gid {
 ///     uint8_t    raw[16];
 ///     struct {
-/// 	    __be64    subnet_prefix;
-/// 	    __be64    interface_id;
+///         __be64    subnet_prefix;
+///         __be64    interface_id;
 ///     } global;
 /// };
 /// ```
@@ -1433,7 +1444,7 @@ impl<'res> QueuePair<'res> {
             lkey: (&*mr.mr).lkey,
         };
         let mut wr = ffi::ibv_recv_wr {
-            wr_id: wr_id,
+            wr_id,
             next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
             sg_list: &mut sge as *mut _,
             num_sge: 1,
