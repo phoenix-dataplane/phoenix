@@ -14,6 +14,7 @@ use crate::verbs;
 use crate::verbs::{CompletionQueue, WorkCompletion};
 
 impl cm::Inner {
+    #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -54,6 +55,7 @@ impl PreparedCmId {
     /// The memory region can only be safely reused or dropped after the request is fully executed
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -73,6 +75,7 @@ impl CmId {
     /// The memory region can only be safely reused or dropped after the request is fully executed
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -90,6 +93,7 @@ impl CmId {
     /// The memory region can only be safely reused or dropped after the request is fully executed
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_send<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
@@ -129,6 +133,7 @@ impl CmId {
     /// The memory region can only be safely reused or dropped after the request is fully executed
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_write<T, R>(
         &self,
         mr: &verbs::MemoryRegion<T>,
@@ -172,6 +177,7 @@ impl CmId {
     /// The memory region can only be safely reused or dropped after the request is fully executed
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_read<T, R>(
         &self,
         mr: &mut verbs::MemoryRegion<T>,
@@ -210,6 +216,7 @@ impl CmId {
         })
     }
 
+    #[inline]
     pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.send_cq;
@@ -222,6 +229,7 @@ impl CmId {
         Ok(wc[0])
     }
 
+    #[inline]
     pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.recv_cq;
@@ -236,6 +244,7 @@ impl CmId {
 }
 
 impl CompletionQueue {
+    #[inline]
     pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         // poll local buffer first
         unsafe { wc.set_len(0) };
