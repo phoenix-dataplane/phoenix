@@ -43,7 +43,7 @@ impl<'ctx> StateManager<'ctx> {
                 Ok(e.get().clone())
             }
             hash_map::Entry::Vacant(e) => {
-                let state = State::new(&self, pid)?;
+                let state = State::new(self, pid)?;
                 // refcount ++
                 let ret = state.clone();
                 e.insert(state);
@@ -160,7 +160,7 @@ impl CmEventManager {
         self.poll
             .poll(&mut events, Some(Duration::from_millis(1)))
             .map_err(Error::Mio)?;
-        for io_event in &events {
+        if let Some(io_event) = events.iter().next() {
             let handle = Handle(io_event.token().0 as _);
             let event_channel = event_channel_table.get(&handle)?;
             // read one event
@@ -200,7 +200,7 @@ pub(crate) struct Shared<'ctx> {
 
 // TODO(cjr): move this to per-process state for better isolation
 lazy_static! {
-    static ref DEFAULT_CTXS: Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)> =
+    static ref DEFAULT_CTXS: Vec<DefaultContext> =
         open_default_verbs().expect("Open default RDMA context failed.");
 }
 
@@ -218,8 +218,13 @@ impl PinnedContext {
     }
 }
 
+struct DefaultContext {
+    pinned_ctx: Pin<Box<PinnedContext>>,
+    gid_table: Vec<ibv::Gid>,
+}
+
 /// Open default verbs contexts
-fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid>)>> {
+fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
     let mut default_ctxs = Vec::new();
     let ctx_list = rdmacm::get_devices()?;
     for ctx in ctx_list.into_iter() {
@@ -230,7 +235,10 @@ fn open_default_verbs() -> io::Result<Vec<(Pin<Box<PinnedContext>>, Vec<ibv::Gid
         })();
         match result {
             Ok((ctx, gid_table)) => {
-                default_ctxs.push((Box::pin(PinnedContext::new(ctx)), gid_table));
+                default_ctxs.push(DefaultContext {
+                    pinned_ctx: Box::pin(PinnedContext::new(ctx)),
+                    gid_table,
+                });
             }
             Err(e) => {
                 warn!("Skip device due to: {}", e);
@@ -268,7 +276,11 @@ impl<'ctx> Resource<'ctx> {
     pub(crate) fn new() -> io::Result<Self> {
         let mut default_pds = HashMap::default();
         let pd_table = ResourceTable::default();
-        for (ctx, gid_table) in DEFAULT_CTXS.iter() {
+        for DefaultContext {
+            pinned_ctx: ctx,
+            gid_table,
+        } in DEFAULT_CTXS.iter()
+        {
             let pd = match ctx.verbs.alloc_pd() {
                 Ok(pd) => pd,
                 Err(_) => continue,

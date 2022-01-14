@@ -25,9 +25,9 @@ pub fn getaddrinfo(
 
     KL_CTX.with(|ctx| {
         ctx.cmd_tx.send(req)?;
-        match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match ctx.cmd_rx.recv().map_err(Error::IpcRecv)?.0 {
             Ok(ResponseKind::GetAddrInfo(ai)) => Ok(ai),
-            Err(e) => Err(Error::InterfaceError("getaddrinfo", e)),
+            Err(e) => Err(Error::Interface("getaddrinfo", e)),
             _ => panic!(""),
         }
     })
@@ -38,6 +38,12 @@ pub struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     handle: interface::CmId,
     pd: Option<&'pd ProtectionDomain>,
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
+}
+
+impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
@@ -176,7 +182,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub fn build(&self) -> Result<PreparedCmId, Error> {
         KL_CTX.with(|ctx| {
             // create_qp
-            let pd = self.pd.map(|pd| pd.inner.clone());
+            let pd = self.pd.map(|pd| pd.inner);
             let req = Request::CmCreateQp(
                 self.handle.0,
                 pd,

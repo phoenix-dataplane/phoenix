@@ -34,11 +34,11 @@ pub enum Error {
     #[error("Bincode error: {0}")]
     Bincode(#[from] bincode::Error),
     #[error("IPC send error: {0}")]
-    IpcSendError(ipc::Error),
+    IpcSend(ipc::Error),
     #[error("IPC recv error")]
-    IpcRecvError(ipc::IpcError),
+    IpcRecv(ipc::IpcError),
     #[error("Interface error {0}: {1}")]
-    InterfaceError(&'static str, interface::Error),
+    Interface(&'static str, interface::Error),
     #[error("DomainSocket error: {0}")]
     UnixDomainSocket(#[from] ipc::unix::Error),
     #[error("Shared memory queue error: {0}")]
@@ -106,7 +106,7 @@ impl Context {
         let res: cmd::Response = bincode::deserialize(&buf)?;
 
         // return the internal error
-        let res = res.0.map_err(|e| Error::InterfaceError("NewClient", e))?;
+        let res = res.0.map_err(|e| Error::Interface("NewClient", e))?;
 
         match res {
             cmd::ResponseKind::NewClient(engine_path) => {
@@ -124,7 +124,7 @@ impl Context {
         // return the internal error
         let res = res
             .0
-            .map_err(|e| Error::InterfaceError("ConnectEngine", e))?;
+            .map_err(|e| Error::Interface("ConnectEngine", e))?;
 
         match res {
             cmd::ResponseKind::ConnectEngine(mode, server_name, wq_cap, cq_cap) => {
@@ -185,31 +185,31 @@ impl Context {
 #[macro_export]
 macro_rules! _rx_recv_impl {
     ($rx:expr, $resp:path) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecv)?.0 {
             Ok($resp) => Ok(()),
-            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            Err(e) => Err(Error::Interface(stringify!($resp), e)),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecv)?.0 {
             Ok($resp) => $ok_block,
-            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            Err(e) => Err(Error::Interface(stringify!($resp), e)),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecv)?.0 {
             Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(Error::InterfaceError(stringify!($resp), e)),
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            Err(e) => Err(Error::Interface(stringify!($resp), e)),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
     ($rx:expr, $resp:path, $ok_block:block, $err:ident, $err_block:block) => {
-        match $rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
+        match $rx.recv().map_err(Error::IpcRecv)?.0 {
             Ok($resp) => $ok_block,
             Err($err) => $err_block,
-            a @ _ => panic!("Expect {}, found {:?}", stringify!($resp), a),
+            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
         }
     };
 }

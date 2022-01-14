@@ -66,7 +66,9 @@ pub struct AddrInfo {
     pub ai_connect: Vec<u8>,
 }
 
-/// Safety: Caller must ensure that the address family and length match the type of storage
+/// # Safety
+///
+/// The caller must ensure that the address family and length match the type of storage
 /// address. For example if storage.ss_family is set to AF_INET the storage must be initialised as
 /// sockaddr_in, setting the content and length appropriately.
 unsafe fn sockaddr_from_raw(
@@ -89,7 +91,9 @@ unsafe fn sockaddr_from_raw(
     }
 }
 
-/// Safety: null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
+/// # Safety
+///
+/// Null pointer is checked. Data is copied to a new place, so lifetime won't be a issue.
 /// Warning: there's no way to know if the input pointer is valid throughout this invocation.
 unsafe fn from_c_str(cstr: *const c_char) -> Option<CString> {
     cstr.as_ref().map(|s| CStr::from_ptr(s).to_owned())
@@ -122,6 +126,10 @@ impl AddrInfo {
         }
     }
 
+    /// # Safety
+    ///
+    /// The user must guarantee the passed in raw pointer points to a valid rdma_addrinfo that is
+    /// resolved from a successful call to rdma_getaddrinfo().
     pub unsafe fn from_ptr(a: *const ffi::rdma_addrinfo) -> io::Result<AddrInfo> {
         if a.is_null() {
             return Err(io::Error::new(
@@ -154,7 +162,7 @@ impl AddrInfo {
         })
     }
 
-    pub fn as_addrinfo<'a>(&'a self) -> AddrInfoTransparent<'a> {
+    pub fn as_addrinfo<'a>(&self) -> AddrInfoTransparent<'a> {
         let mut ai: ffi::rdma_addrinfo = unsafe { mem::zeroed() };
         ai.ai_flags = self.ai_flags;
         ai.ai_family = self.ai_family;
@@ -530,8 +538,7 @@ impl<'res> CmId<'res> {
     pub fn sgid(&self) -> ibv::Gid {
         assert!(!self.0.is_null());
         let route = unsafe { &*self.0 }.route;
-        let sgid = unsafe { route.addr.addr.ibaddr.sgid }.into();
-        sgid
+        unsafe { route.addr.addr.ibaddr.sgid }.into()
     }
 
     pub fn create_ep<'ctx>(
@@ -575,7 +582,9 @@ impl<'res> CmId<'res> {
         }
     }
 
-    /// __safety__: The user must guarantee that the event_channel lives longer than the CmId.
+    /// # Safety
+    ///
+    /// The user must guarantee that the event_channel lives longer than the CmId.
     pub unsafe fn create_id<'ec>(
         channel: Option<&'ec EventChannel>,
         context: usize,
@@ -736,6 +745,11 @@ impl<'res> CmId<'res> {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll` returns a completion for this send).
     #[inline]
     pub unsafe fn post_send<'a>(
         &self,
@@ -763,6 +777,11 @@ impl<'res> CmId<'res> {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll` returns a completion for this send).
     #[inline]
     pub unsafe fn post_recv<'a>(
         &self,
@@ -788,6 +807,11 @@ impl<'res> CmId<'res> {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll` returns a completion for this send).
     #[inline]
     pub unsafe fn post_write<'a>(
         &self,
@@ -825,6 +849,11 @@ impl<'res> CmId<'res> {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll` returns a completion for this send).
     #[inline]
     pub unsafe fn post_read<'a>(
         &self,

@@ -75,7 +75,7 @@ impl<T: Sized, A: Allocator> RingBuffer<T, A> {
                 x = self.try_pop();
             }
         }
-        return x.unwrap();
+        x.unwrap()
     }
 
     pub fn try_push(&self, new_value: T) -> Result<(), T> {

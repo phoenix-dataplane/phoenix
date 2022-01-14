@@ -338,7 +338,7 @@ impl<'ctx> TransportEngine<'ctx> {
             wc: WorkCompletion::new_vendor_err(
                 wr_id,
                 WcStatus::Error(NonZeroU32::new(ibv_wc_status::IBV_WC_GENERAL_ERR).unwrap()),
-                e.as_vendor_err(),
+                e.into_vendor_err(),
             ),
         }
     }
@@ -534,7 +534,7 @@ impl<'ctx> TransportEngine<'ctx> {
                                     cnt += 1;
                                     break;
                                 }
-                                Err(()) => {
+                                Err(rdma::ibv::PollCqError) => {
                                     err = true;
                                     break;
                                 }
@@ -584,7 +584,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 qp_context: 0,
                 send_cq: send_cq.as_deref(),
                 recv_cq: recv_cq.as_deref(),
-                cap: a.cap.clone().into(),
+                cap: a.cap.into(),
                 qp_type: a.qp_type.into(),
                 sq_sig_all: a.sq_sig_all,
             };
@@ -595,8 +595,8 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok((pd, qp_init_attr))
     }
 
-    fn get_conn_param<'a>(
-        &'a self,
+    fn get_conn_param(
+        &self,
         conn_param: &Option<interface::ConnParam>,
     ) -> Option<rdma::ffi::rdma_conn_param> {
         conn_param.as_ref().map(|param| rdma::ffi::rdma_conn_param {
@@ -619,10 +619,13 @@ impl<'ctx> TransportEngine<'ctx> {
     fn process_cm_event(&mut self, event: rdmacm::CmEvent) -> Result<cmd::ResponseKind, Error> {
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.take().unwrap();
-        if event.status() < 0 {
-            return Err(Error::RdmaCm(io::Error::from_raw_os_error(-event.status())));
-        } else if event.status() > 0 {
-            return Err(Error::Transport(event.status()));
+        use std::cmp;
+        match event.status().cmp(&0) {
+            cmp::Ordering::Equal => {}
+            cmp::Ordering::Less => {
+                return Err(Error::RdmaCm(io::Error::from_raw_os_error(-event.status())));
+            }
+            cmp::Ordering::Greater => return Err(Error::Transport(event.status())),
         }
 
         use ipc::cmd::{Request, ResponseKind};
@@ -766,7 +769,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     cmid_handle,
                     conn_param
                 );
-                let cmid = self.state.resource().cmid_table.get(&cmid_handle)?;
+                let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.accept(self.get_conn_param(conn_param).as_ref())
                     .map_err(Error::RdmaCm)?;
 
@@ -824,7 +827,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     sockaddr
                 );
                 let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
-                cmid.bind_addr(&sockaddr).map_err(Error::RdmaCm)?;
+                cmid.bind_addr(sockaddr).map_err(Error::RdmaCm)?;
                 Ok(ResponseKind::BindAddr)
             }
             Request::ResolveAddr(cmid_handle, sockaddr) => {
@@ -834,7 +837,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     sockaddr
                 );
                 let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
-                cmid.resolve_addr(&sockaddr).map_err(Error::RdmaCm)?;
+                cmid.resolve_addr(sockaddr).map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
                 // Ok(ResponseKind::ResolveAddr)

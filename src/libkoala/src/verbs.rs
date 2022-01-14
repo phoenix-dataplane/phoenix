@@ -340,10 +340,10 @@ impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
     fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
         interface::QpInitAttr {
-            send_cq: b.send_cq.map(|x| x.inner.clone()),
-            recv_cq: b.recv_cq.map(|x| x.inner.clone()),
-            srq: b.srq.map(|x| x.inner.clone()),
-            cap: b.cap.clone(),
+            send_cq: b.send_cq.map(|x| x.inner),
+            recv_cq: b.recv_cq.map(|x| x.inner),
+            srq: b.srq.map(|x| x.inner),
+            cap: b.cap,
             qp_type: b.qp_type,
             sq_sig_all: b.sq_sig_all,
         }

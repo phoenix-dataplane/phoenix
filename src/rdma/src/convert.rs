@@ -206,7 +206,7 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
         use interface::WcStatus;
         let status = match other.status {
             ibv_wc_status::IBV_WC_SUCCESS => WcStatus::Success,
-            e @ _ => WcStatus::Error(NonZeroU32::new(e).unwrap()),
+            e => WcStatus::Error(NonZeroU32::new(e).unwrap()),
         };
 
         // If status is ERR, the opcode and some other fields might be invalid.
@@ -218,7 +218,7 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
                 ibv_wc_opcode::IBV_WC_RDMA_READ => WcOpcode::RdmaRead,
                 ibv_wc_opcode::IBV_WC_RECV => WcOpcode::Recv,
                 ibv_wc_opcode::IBV_WC_RECV_RDMA_WITH_IMM => WcOpcode::RecvRdmaWithImm,
-                code @ _ => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
+                code => panic!("unimplemented opcode: {:?}, wc: {:?}", code, other),
             }
         } else {
             WcOpcode::Invalid

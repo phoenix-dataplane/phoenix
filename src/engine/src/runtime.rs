@@ -63,6 +63,11 @@ impl Runtime {
     pub(crate) fn mainloop(&self) -> Result<()> {
         let mut shutdown = Vec::new();
         loop {
+            // TODO(cjr): if there's no active engine on this runtime, call `mwait` to put the CPU
+            // into an optimized state. (the wakeup latency and whether it can be used in user mode
+            // are two concerns)
+
+            // run each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
                 match engine.borrow_mut().resume() {
                     Ok(EngineStatus::NoWork | EngineStatus::Continue) => {}
