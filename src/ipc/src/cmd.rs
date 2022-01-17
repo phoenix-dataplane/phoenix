@@ -53,6 +53,9 @@ pub enum Request {
     DestroyQp(interface::QueuePair),
 
     DeregMr(interface::MemoryRegion),
+
+    // Other
+    GetDefaultPds,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,6 +101,9 @@ pub enum ResponseKind {
     DestroyQp,
 
     DeregMr,
+
+    // Other
+    GetDefaultPds(Vec<returned::ProtectionDomain>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

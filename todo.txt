@@ -96,3 +96,5 @@ libkoala interface
     -[x] CmIdListener::bind()
     -[x] CmIdListener::incoming()
     -[x] CmIdListener::accept()
+
+Multi-NIC

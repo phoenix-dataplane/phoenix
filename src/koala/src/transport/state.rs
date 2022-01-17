@@ -261,7 +261,7 @@ unsafe impl<'ctx> Sync for Resource<'ctx> {}
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 pub(crate) struct Resource<'ctx> {
     cmid_cnt: AtomicU32,
-    default_pds: spin::Mutex<HashMap<ibv::Gid, interface::ProtectionDomain>>,
+    default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
     pub(crate) cmid_table: ResourceTable<CmId<'ctx>>,
@@ -274,7 +274,7 @@ pub(crate) struct Resource<'ctx> {
 
 impl<'ctx> Resource<'ctx> {
     pub(crate) fn new() -> io::Result<Self> {
-        let mut default_pds = HashMap::default();
+        let mut default_pds = Vec::new();
         let pd_table = ResourceTable::default();
         for DefaultContext {
             pinned_ctx: ctx,
@@ -287,9 +287,7 @@ impl<'ctx> Resource<'ctx> {
             };
             let pd_handle = pd.as_handle();
             pd_table.insert(pd_handle, pd).unwrap();
-            for gid in gid_table {
-                default_pds.insert(*gid, interface::ProtectionDomain(pd_handle));
-            }
+            default_pds.push((interface::ProtectionDomain(pd_handle), gid_table.clone()));
         }
         Ok(Resource {
             cmid_cnt: AtomicU32::new(0),
@@ -303,8 +301,11 @@ impl<'ctx> Resource<'ctx> {
         })
     }
 
-    pub(crate) fn default_pd(&self, gid: &ibv::Gid) -> interface::ProtectionDomain {
-        self.default_pds.lock()[gid]
+    pub(crate) fn default_pd(&self, gid: &ibv::Gid) -> Option<interface::ProtectionDomain> {
+        self.default_pds
+            .lock()
+            .iter()
+            .find_map(|(pd, gids)| if gids.contains(&gid) { Some(*pd) } else { None })
     }
 
     pub(crate) fn allocate_new_cmid_handle(&self) -> Handle {

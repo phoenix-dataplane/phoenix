@@ -9,6 +9,7 @@ use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use lazy_static::lazy_static;
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 
@@ -20,6 +21,25 @@ use crate::{rx_recv_impl, Context, Error, FromBorrow, CQ_BUFFERS, KL_CTX};
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
+
+lazy_static! {
+    pub static ref DEFAULT_PDS: Vec<ProtectionDomain> =
+        get_default_pds().expect("Failed to get default PDs");
+}
+
+fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
+    // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
+    // already been initialized.
+    KL_CTX.with(|ctx| {
+        let req = Request::GetDefaultPds;
+        ctx.cmd_tx.send(req)?;
+        rx_recv_impl!(ctx.cmd_rx, ResponseKind::GetDefaultPds, pds, {
+            pds.into_iter()
+                .map(|pd| ProtectionDomain::open(pd))
+                .collect::<Result<Vec<_>, Error>>()
+        })
+    })
+}
 
 #[derive(Debug)]
 pub struct ProtectionDomain {
@@ -74,6 +94,11 @@ impl ProtectionDomain {
                 MemoryRegion::new(self.inner, mr.handle, mr.rkey, memfd)
             })
         })
+    }
+
+    #[inline]
+    pub fn default_pds() -> &'static [ProtectionDomain] {
+        &DEFAULT_PDS
     }
 }
 

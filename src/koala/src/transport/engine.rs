@@ -914,7 +914,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 let pd = pd.or_else(|| {
                     // use the default pd of the corresponding device
                     let sgid = cmid.sgid();
-                    Some(self.state.resource().default_pd(&sgid))
+                    Some(
+                        self.state
+                            .resource()
+                            .default_pd(&sgid)
+                            .expect("Something is wrong"),
+                    )
                 });
 
                 let (pd, qp_init_attr) = self.get_qp_params(&pd, Some(qp_init_attr))?;
@@ -996,6 +1001,17 @@ impl<'ctx> TransportEngine<'ctx> {
                 trace!("OpenQp, qp: {:?}", qp);
                 self.state.resource().qp_table.open_resource(&qp.0)?;
                 Ok(ResponseKind::OpenQp)
+            }
+            Requset::GetDefaultPds => {
+                trace!("GetDefaultPds");
+                let pds = self
+                    .state
+                    .resource()
+                    .default_pds
+                    .iter()
+                    .map(|(pd, _gids)| *pd)
+                    .collect();
+                Ok(ResponseKind::GetDefaultPds(pds))
             }
         }
     }

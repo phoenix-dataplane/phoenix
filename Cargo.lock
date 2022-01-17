@@ -661,11 +661,14 @@ dependencies = [
  "anyhow",
  "clap",
  "dns-lookup",
+ "fnv",
  "interface",
  "libc",
  "libkoala",
  "scheduler",
+ "slabmalloc",
  "structopt",
+ "thiserror",
 ]
 
 [[package]]

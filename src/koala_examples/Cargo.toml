@@ -14,6 +14,9 @@ structopt = "0.3.23"
 anyhow = "1.0.44"
 scheduler = "0.1.3"
 clap = "2.33.3"
+slabmalloc = "0.10.0"
+fnv = "1.0.7"
+thiserror = "1.0.29"
 
 [[bin]]
 name = "sender"
@@ -42,3 +45,11 @@ path = "src/bench/bench_bw.rs"
 [[bin]]
 name = "alltoall"
 path = "src/alltoall/main.rs"
+
+[[bin]]
+name = "rpc_hello_client"
+path = "src/rpc_hello/client.rs"
+
+[[bin]]
+name = "rpc_hello_server"
+path = "src/rpc_hello/server.rs"
