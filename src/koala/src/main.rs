@@ -3,11 +3,8 @@ use std::sync::Arc;
 #[macro_use]
 extern crate log;
 use anyhow::Result;
-use crossbeam::thread;
 
-use koala::module::Module;
-use koala::transport::module::TransportModule;
-
+use koala::control::Control;
 use engine::manager::RuntimeManager;
 
 fn main() -> Result<()> {
@@ -16,17 +13,9 @@ fn main() -> Result<()> {
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
 
-    // start transport module
-    thread::scope(|s| {
-        let handle = s.spawn(|_| {
-            TransportModule::new(runtime_manager).bootstrap().unwrap();
-        });
-
-        handle.join().unwrap();
-    })
-    .unwrap();
-
-    Ok(())
+    // the Control now takes over
+    let mut control = Control::new(runtime_manager);
+    control.mainloop()
 }
 
 fn init_env_log(filter_env: &str, default_level: &str) {

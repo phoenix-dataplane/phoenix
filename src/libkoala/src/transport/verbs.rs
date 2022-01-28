@@ -14,9 +14,10 @@ use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 
 use interface::returned;
-use ipc::cmd::{Request, ResponseKind};
+use ipc::transport::cmd::{Command, CompletionKind};
 
-use crate::{rx_recv_impl, Context, Error, FromBorrow, CQ_BUFFERS, KL_CTX};
+use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
+use crate::{rx_recv_impl, FromBorrow};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
@@ -31,9 +32,9 @@ fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
     KL_CTX.with(|ctx| {
-        let req = Request::GetDefaultPds;
+        let req = Command::GetDefaultPds;
         ctx.cmd_tx.send(req)?;
-        rx_recv_impl!(ctx.cmd_rx, ResponseKind::GetDefaultPds, pds, {
+        rx_recv_impl!(ctx.cmd_rx, CompletionKind::GetDefaultPds, pds, {
             pds.into_iter()
                 .map(|pd| ProtectionDomain::open(pd))
                 .collect::<Result<Vec<_>, Error>>()
@@ -49,10 +50,10 @@ pub struct ProtectionDomain {
 impl Drop for ProtectionDomain {
     fn drop(&mut self) {
         (|| {
-            let req = Request::DeallocPd(self.inner);
+            let req = Command::DeallocPd(self.inner);
             KL_CTX.with(|ctx| {
                 ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeallocPd)
+                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DeallocPd)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
@@ -63,9 +64,9 @@ impl ProtectionDomain {
     pub(crate) fn open(pd: returned::ProtectionDomain) -> Result<Self, Error> {
         KL_CTX.with(|ctx| {
             let inner = pd.handle;
-            let req = Request::OpenPd(inner);
+            let req = Command::OpenPd(inner);
             ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenPd, {
+            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenPd, {
                 Ok(ProtectionDomain { inner })
             })
         })
@@ -78,7 +79,7 @@ impl ProtectionDomain {
     ) -> Result<MemoryRegion<T>, Error> {
         let nbytes = len * mem::size_of::<T>();
         assert!(nbytes > 0);
-        let req = Request::RegMr(self.inner, nbytes, access);
+        let req = Command::RegMr(self.inner, nbytes, access);
         KL_CTX.with(|ctx| {
             ctx.cmd_tx.send(req)?;
             let (fds, cred) = ctx.sock.recv_fd()?;
@@ -90,7 +91,7 @@ impl ProtectionDomain {
             let file_len = memfd.as_file().metadata()?.len() as usize;
             assert_eq!(file_len, nbytes);
 
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::RegMr, mr, {
+            rx_recv_impl!(ctx.cmd_rx, CompletionKind::RegMr, mr, {
                 MemoryRegion::new(self.inner, mr.handle, mr.rkey, memfd)
             })
         })
@@ -105,71 +106,19 @@ impl ProtectionDomain {
 #[derive(Debug)]
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
+    pub(crate) outstanding: AtomicBool,
     pub(crate) buffer: CqBuffer,
 }
 
 #[derive(Debug)]
 pub(crate) struct CqBuffer {
-    pub(crate) shared: Arc<CqBufferShared>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BoundedVecDeque<T> {
-    queue: VecDeque<T>,
-    max_bound: usize,
-}
-
-impl<T> BoundedVecDeque<T> {
-    fn new() -> Self {
-        BoundedVecDeque {
-            queue: VecDeque::new(),
-            max_bound: 0,
-        }
-    }
-
-    pub fn set_bound(&mut self, max_bound: usize) {
-        self.max_bound = max_bound;
-    }
-
-    pub(crate) fn push_back_checked(&mut self, val: T) -> Result<(), T> {
-        if self.queue.len() < self.max_bound {
-            self.queue.push_back(val);
-            Ok(())
-        } else {
-            Err(val)
-        }
-    }
-}
-
-impl<T> Default for BoundedVecDeque<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T> Deref for BoundedVecDeque<T> {
-    type Target = VecDeque<T>;
-    fn deref(&self) -> &Self::Target {
-        &self.queue
-    }
-}
-
-impl<T> DerefMut for BoundedVecDeque<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.queue
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct CqBufferShared {
-    pub(crate) queue: spin::Mutex<BoundedVecDeque<WorkCompletion>>,
-    pub(crate) outstanding: AtomicBool,
+    pub(crate) queue: Arc<spin::Mutex<VecDeque<WorkCompletion>>>,
 }
 
 impl Clone for CqBuffer {
     fn clone(&self) -> Self {
         CqBuffer {
-            shared: Arc::clone(&self.shared),
+            queue: Arc::clone(&self.queue),
         }
     }
 }
@@ -177,16 +126,13 @@ impl Clone for CqBuffer {
 impl CqBuffer {
     fn new() -> Self {
         CqBuffer {
-            shared: Arc::new(CqBufferShared {
-                queue: spin::Mutex::new(BoundedVecDeque::new()),
-                outstanding: AtomicBool::new(false),
-            }),
+            queue: Arc::new(spin::Mutex::new(VecDeque::new())),
         }
     }
 
     #[inline]
     fn refcnt(&self) -> usize {
-        Arc::strong_count(&self.shared)
+        Arc::strong_count(&self.queue)
     }
 }
 
@@ -202,10 +148,10 @@ impl Drop for CompletionQueue {
             }
             drop(cq_buffers);
 
-            let req = Request::DestroyCq(self.inner);
+            let req = Command::DestroyCq(self.inner);
             KL_CTX.with(|ctx| {
                 ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyCq)
+                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DestroyCq)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
@@ -222,11 +168,14 @@ impl CompletionQueue {
                 .or_insert_with(CqBuffer::new)
                 .clone();
             let inner = returned_cq.handle;
-            let req = Request::OpenCq(inner);
+            let req = Command::OpenCq(inner);
             ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, cap, {
-                buffer.shared.queue.lock().set_bound(cap);
-                Ok(CompletionQueue { inner, buffer })
+            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenCq, {
+                Ok(CompletionQueue {
+                    inner,
+                    outstanding: AtomicBool::new(false),
+                    buffer,
+                })
             })
         })
     }
@@ -273,9 +222,9 @@ impl<T> Drop for MemoryRegion<T> {
     fn drop(&mut self) {
         (|| {
             KL_CTX.with(|ctx| {
-                let req = Request::DeregMr(self.inner);
+                let req = Command::DeregMr(self.inner);
                 ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DeregMr)
+                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DeregMr)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
@@ -338,9 +287,9 @@ impl QueuePair {
     pub(crate) fn open(returned_qp: returned::QueuePair) -> Result<Self, Error> {
         KL_CTX.with(|ctx| {
             let inner = returned_qp.handle;
-            let req = Request::OpenQp(inner);
+            let req = Command::OpenQp(inner);
             ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenQp, {
+            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenQp, {
                 Ok(QueuePair {
                     inner,
                     pd: ProtectionDomain::open(returned_qp.pd)?,
@@ -370,10 +319,10 @@ impl QueuePair {
 impl Drop for QueuePair {
     fn drop(&mut self) {
         (|| {
-            let req = Request::DestroyQp(self.inner);
+            let req = Command::DestroyQp(self.inner);
             KL_CTX.with(|ctx| {
                 ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, ResponseKind::DestroyQp)
+                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DestroyQp)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));

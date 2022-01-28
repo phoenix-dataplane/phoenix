@@ -1,6 +1,9 @@
+use std::net::ToSocketAddrs;
+
+use koala_examples::rpc_hello::mrpc;
+
 const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
-use koala_examples::rpc_hello::mrpc;
 
 // TODO(cjr): Put the code into rpc_hello.rs // generated code, used by both client.rs and
 // server.rs

@@ -5,3 +5,4 @@ extern crate log;
 
 pub mod module;
 pub mod transport;
+pub mod control;

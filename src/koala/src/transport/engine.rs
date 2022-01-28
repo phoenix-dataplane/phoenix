@@ -10,8 +10,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use interface::{returned, AsHandle, Handle};
+use ipc;
 use ipc::unix::DomainSocket;
-use ipc::{self, cmd, dp};
+use ipc::transport::{cmd, dp};
 
 use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
 
@@ -28,11 +29,11 @@ pub struct TransportEngine<'ctx> {
     pub(crate) client_path: PathBuf,
     pub(crate) sock: DomainSocket,
     pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-    pub(crate) cmd_tx: ipc::IpcSender<cmd::Response>,
-    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Request>,
+    pub(crate) cmd_tx: ipc::IpcSender<cmd::Completion>,
+    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Command>,
     pub(crate) dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
     pub(crate) dp_cq: ipc::ShmSender<dp::CompletionSlot>,
-    pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
+    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -40,7 +41,7 @@ pub struct TransportEngine<'ctx> {
 
     pub(crate) state: State<'ctx>,
     // bufferred control path request
-    pub(crate) cmd_buffer: Option<cmd::Request>,
+    pub(crate) cmd_buffer: Option<cmd::Command>,
     // otherwise, the
     pub(crate) last_cmd_ts: Instant,
 }
@@ -79,7 +80,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Progress(n) = self.check_dp(false)? {
+        if let Progress(n) = self.check_dp()? {
             if n > 0 {
                 self.backoff = DP_LIMIT.min(self.backoff * 2);
             }
@@ -92,7 +93,6 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
         self.dp_spin_cnt = 0;
 
-        // COMMENT(cjr): these two conditions should be connected with ||
         if self.cmd_rx_entries.load(Ordering::Relaxed) > 0
             || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
         {
@@ -136,7 +136,7 @@ impl<'ctx> TransportEngine<'ctx> {
         let existing_work = self.dp_wq.receiver_mut().read_count()?;
 
         while processed < existing_work {
-            if let Progress(n) = self.check_dp(true)? {
+            if let Progress(n) = self.check_dp()? {
                 processed += n;
             }
         }
@@ -144,16 +144,12 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(Progress(processed))
     }
 
-    fn check_dp(&mut self, flushing: bool) -> Result<Status, DatapathError> {
+    fn check_dp(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
         const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
-        let max_count = if !flushing {
-            BUF_LEN.min(self.dp_cq.sender_mut().write_count()?)
-        } else {
-            BUF_LEN
-        };
+        let max_count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
         if max_count == 0 {
             return Ok(Progress(0));
         }
@@ -177,7 +173,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
         // Process the work requests.
         for wr in &buffer {
-            let result = self.process_dp(wr, flushing);
+            let result = self.process_dp(wr);
             match result {
                 Ok(()) => {}
                 Err(e) => {
@@ -186,13 +182,13 @@ impl<'ctx> TransportEngine<'ctx> {
                     // koala engine and the user in some circumstance.
                     //
                     // The work queue and completion queue are both bounded. The bound is set by
-                    // koala system rather than specified by the user. Imagine that the user is
+                    // koala system rather than the specified by the user. Imagine that the user is
                     // trying to post_send without polling for completion timely. The completion
-                    // queue is full and koala will spin here without making any progress (e.g.
+                    // queue is full and koala will spin here without make any other progress (e.g.
                     // drain the work queue).
                     //
                     // Therefore, we put the error into a local buffer. Whenever we want to put
-                    // stuff in the shared memory completion queue, we put from the local buffer
+                    // things in the shared memory completion queue, we put from the local buffer
                     // first. This way seems perfect. It can guarantee progress. The backpressure
                     // is also not broken.
                     let _sent = self.process_dp_error(wr, e).unwrap();
@@ -212,12 +208,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res)))?,
+                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
                     Err(Error::InProgress) => {
                         // nothing to do, waiting for some network/device response
                         return Ok(Progress(0));
                     }
-                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into())))?,
+                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -237,22 +233,22 @@ impl<'ctx> TransportEngine<'ctx> {
             Ok(()) => {}
             Err(Error::NoCmEvent) => {}
             Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
-                self.cmd_tx.send(cmd::Response(Err(e.into())))?;
+                self.cmd_tx.send(cmd::Completion(Err(e.into())))?;
                 return Ok(Progress(1));
             }
             Err(e) => return Err(e),
         }
 
-        use ipc::cmd::Request;
+        use ipc::transport::cmd::Command;
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.as_ref().unwrap();
         let cmd_handle = match req {
-            Request::ResolveAddr(h, ..) => h,
-            Request::ResolveRoute(h, ..) => h,
-            Request::Connect(h, ..) => h,
-            Request::GetRequest(h) => h,
-            Request::Accept(h, ..) => h,
-            Request::Disconnect(h) => &h.0,
+            Command::ResolveAddr(h, ..) => h,
+            Command::ResolveRoute(h, ..) => h,
+            Command::Connect(h, ..) => h,
+            Command::GetRequest(h) => h,
+            Command::Accept(h, ..) => h,
+            Command::Disconnect(h) => &h.0,
             _ => panic!("Unexpected CM type: {:?}", req),
         };
 
@@ -263,8 +259,8 @@ impl<'ctx> TransportEngine<'ctx> {
             Some(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
-                    Ok(res) => self.cmd_tx.send(cmd::Response(Ok(res)))?,
-                    Err(e) => self.cmd_tx.send(cmd::Response(Err(e.into())))?,
+                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
+                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -379,39 +375,6 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(sent)
     }
 
-    fn poll_cq_to_backup_buffer(
-        &mut self,
-        cq_handle: &interface::CompletionQueue,
-        cq: &ibv::CompletionQueue,
-    ) -> Result<(), DatapathError> {
-        let mut wc: [rdma::ffi::ibv_wc; 1] = Default::default();
-        loop {
-            match cq.poll(&mut wc) {
-                Ok(completions) if !completions.is_empty() => {
-                    for w in completions {
-                        self.cq_err_buffer.push_back(dp::Completion {
-                            cq_handle: *cq_handle,
-                            _padding: Default::default(),
-                            wc: unsafe { mem::transmute_copy(w) },
-                        });
-                    }
-                }
-                Ok(_) => {
-                    self.cq_err_buffer.push_back(dp::Completion {
-                        cq_handle: *cq_handle,
-                        _padding: Default::default(),
-                        wc: interface::WorkCompletion::again(),
-                    });
-                    break;
-                }
-                Err(rdma::ibv::PollCqError) => {
-                    return Err(DatapathError::Ibv(io::Error::last_os_error()));
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn try_flush_cq_err_buffer(&mut self) -> Result<(), DatapathError> {
         if self.cq_err_buffer.is_empty() {
             return Ok(());
@@ -435,8 +398,8 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     /// Process data path operations.
-    fn process_dp(&mut self, req: &dp::WorkRequest, flushing: bool) -> Result<(), DatapathError> {
-        use ipc::dp::WorkRequest;
+    fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
+        use ipc::transport::dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 // trace!(
@@ -540,22 +503,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 //
                 // This send must be successful because the libkoala uses an outstanding flag to
                 // reduce the busy polling from the user appliation. If the shared memory cq is
-                // full of completions from cq A, and the shared memory wq only has one poll_cq,
-                // and the poll_cq is not really executed because the shmcq is full. Then
+                // full of completion from another cq, and the shared memory wq only has one
+                // poll_cq, and the poll_cq is not really executed because the shmcq is full. Then
                 // the outstanding flag will never be flipped and that user cq is thus dead.
-                //
-                // This while loop will not be forever only when we have a guard that checks the
-                // write_count of dp_cq is non-zero at the entry of check_dp().
                 let mut err = false;
                 let mut sent = false;
                 while !sent {
-                    if flushing {
-                        let write_count = self.dp_cq.sender_mut().write_count()?;
-                        if write_count == 0 {
-                            // unlikely
-                            self.poll_cq_to_backup_buffer(cq_handle, &cq)?;
-                        }
-                    }
                     self.dp_cq.sender_mut().send(|ptr, count| unsafe {
                         sent = true;
                         let mut cnt = 0;
@@ -664,7 +617,7 @@ impl<'ctx> TransportEngine<'ctx> {
         })
     }
 
-    fn process_cm_event(&mut self, event: rdmacm::CmEvent) -> Result<cmd::ResponseKind, Error> {
+    fn process_cm_event(&mut self, event: rdmacm::CmEvent) -> Result<cmd::CompletionKind, Error> {
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.take().unwrap();
         use std::cmp;
@@ -676,19 +629,19 @@ impl<'ctx> TransportEngine<'ctx> {
             cmp::Ordering::Greater => return Err(Error::Transport(event.status())),
         }
 
-        use ipc::cmd::{Request, ResponseKind};
+        use ipc::transport::cmd::{Command, CompletionKind};
         use rdma::ffi::rdma_cm_event_type::*;
         match event.event() {
             RDMA_CM_EVENT_ADDR_RESOLVED => {
-                assert!(matches!(req, Request::ResolveAddr(..)), "{:?}", req);
-                Ok(ResponseKind::ResolveAddr)
+                assert!(matches!(req, Command::ResolveAddr(..)), "{:?}", req);
+                Ok(CompletionKind::ResolveAddr)
             }
             RDMA_CM_EVENT_ROUTE_RESOLVED => {
-                assert!(matches!(req, Request::ResolveRoute(..)), "{:?}", req);
-                Ok(ResponseKind::ResolveRoute)
+                assert!(matches!(req, Command::ResolveRoute(..)), "{:?}", req);
+                Ok(CompletionKind::ResolveRoute)
             }
             RDMA_CM_EVENT_CONNECT_REQUEST => match req {
-                Request::GetRequest(_listener_handle) => {
+                Command::GetRequest(_listener_handle) => {
                     // let listener = self.state.resource().cmid_table.get(&listener_handle)?;
                     // assert_eq!(listener_handle, event.listen_id().unwrap().as_handle());
                     let (new_cmid, new_qp) = event.get_request();
@@ -704,28 +657,28 @@ impl<'ctx> TransportEngine<'ctx> {
                         handle: interface::CmId(new_cmid_handle),
                         qp: ret_qp,
                     };
-                    Ok(ResponseKind::GetRequest(ret_cmid))
+                    Ok(CompletionKind::GetRequest(ret_cmid))
                 }
                 _ => {
                     panic!("Expect GetRequest, found: {:?}", req);
                 }
             },
             RDMA_CM_EVENT_ESTABLISHED => match req {
-                Request::Connect(_cmid_handle, ..) => {
+                Command::Connect(_cmid_handle, ..) => {
                     // assert_eq!(cmid_handle, event.id().as_handle());
-                    Ok(ResponseKind::Connect)
+                    Ok(CompletionKind::Connect)
                 }
-                Request::Accept(_cmid_handle, ..) => {
+                Command::Accept(_cmid_handle, ..) => {
                     // assert_eq!(cmid_handle, event.id().as_handle());
-                    Ok(ResponseKind::Accept)
+                    Ok(CompletionKind::Accept)
                 }
                 _ => {
                     panic!("Expect Connect/Accept, found: {:?}", req);
                 }
             },
             RDMA_CM_EVENT_DISCONNECTED => {
-                assert!(matches!(req, Request::Disconnect(..)), "{:?}", req);
-                Ok(ResponseKind::Disconnect)
+                assert!(matches!(req, Command::Disconnect(..)), "{:?}", req);
+                Ok(CompletionKind::Disconnect)
             }
             _ => {
                 panic!("Unhandled event type: {}", event.event());
@@ -734,12 +687,10 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     /// Process control path operations.
-    fn process_cmd(&mut self, req: &cmd::Request) -> Result<cmd::ResponseKind, Error> {
-        use ipc::cmd::{Request, ResponseKind};
+    fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
+        use ipc::transport::cmd::{Command, CompletionKind};
         match req {
-            Request::NewClient(..) => unreachable!(),
-            &Request::Hello(number) => Ok(ResponseKind::HelloBack(number)),
-            Request::GetAddrInfo(node, service, hints) => {
+            Command::GetAddrInfo(node, service, hints) => {
                 trace!(
                     "GetAddrInfo, node: {:?}, service: {:?}, hints: {:?}",
                     node,
@@ -753,11 +704,11 @@ impl<'ctx> TransportEngine<'ctx> {
                     hints.as_ref(),
                 );
                 match ret {
-                    Ok(ai) => Ok(ResponseKind::GetAddrInfo(ai.into())),
+                    Ok(ai) => Ok(CompletionKind::GetAddrInfo(ai.into())),
                     Err(e) => Err(Error::GetAddrInfo(e)),
                 }
             }
-            Request::CreateEp(ai, pd, qp_init_attr) => {
+            Command::CreateEp(ai, pd, qp_init_attr) => {
                 trace!(
                     "CreateEp, ai: {:?}, pd: {:?}, qp_init_attr: {:?}",
                     ai,
@@ -779,12 +730,12 @@ impl<'ctx> TransportEngine<'ctx> {
                             handle: interface::CmId(cmid_handle),
                             qp: ret_qp,
                         };
-                        Ok(ResponseKind::CreateEp(ret_cmid))
+                        Ok(CompletionKind::CreateEp(ret_cmid))
                     }
                     Err(e) => Err(Error::RdmaCm(e)),
                 }
             }
-            Request::Listen(cmid_handle, backlog) => {
+            Command::Listen(cmid_handle, backlog) => {
                 trace!(
                     "Listen, cmid_handle: {:?}, backlog: {}",
                     cmid_handle,
@@ -792,9 +743,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
                 let listener = self.state.resource().cmid_table.get(cmid_handle)?;
                 listener.listen(*backlog).map_err(Error::RdmaCm)?;
-                Ok(ResponseKind::Listen)
+                Ok(CompletionKind::Listen)
             }
-            Request::GetRequest(listener_handle) => {
+            Command::GetRequest(listener_handle) => {
                 trace!("listener_handle: {:?}", listener_handle);
 
                 // Respond after cm event connect request
@@ -809,9 +760,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 //     handle: interface::CmId(new_cmid_handle),
                 //     qp: ret_qp,
                 // };
-                // Ok(ResponseKind::GetRequest(ret_cmid))
+                // Ok(CompletionKind::GetRequest(ret_cmid))
             }
-            Request::Accept(cmid_handle, conn_param) => {
+            Command::Accept(cmid_handle, conn_param) => {
                 trace!(
                     "Accept, cmid_handle: {:?}, conn_param: {:?}",
                     cmid_handle,
@@ -823,9 +774,9 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // Ok(ResponseKind::Accept)
+                // Ok(CompletionKind::Accept)
             }
-            Request::Connect(cmid_handle, conn_param) => {
+            Command::Connect(cmid_handle, conn_param) => {
                 trace!(
                     "Connect, cmid_handle: {:?}, conn_param: {:?}",
                     cmid_handle,
@@ -838,9 +789,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 // Respond the user after cm event connection established
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // Ok(ResponseKind::Connect)
+                // Ok(CompletionKind::Connect)
             }
-            Request::CreateId(port_space) => {
+            Command::CreateId(port_space) => {
                 trace!("CreateId, port_space: {:?}", port_space);
                 // create a new event channel for each cmid
                 let channel =
@@ -866,9 +817,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     handle: interface::CmId(new_cmid_handle),
                     qp: None,
                 };
-                Ok(ResponseKind::CreateId(ret_cmid))
+                Ok(CompletionKind::CreateId(ret_cmid))
             }
-            Request::BindAddr(cmid_handle, sockaddr) => {
+            Command::BindAddr(cmid_handle, sockaddr) => {
                 trace!(
                     "BindAddr: cmid_handle: {:?}, sockaddr: {:?}",
                     cmid_handle,
@@ -876,9 +827,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
                 let cmid = self.state.resource().cmid_table.get(cmid_handle)?;
                 cmid.bind_addr(sockaddr).map_err(Error::RdmaCm)?;
-                Ok(ResponseKind::BindAddr)
+                Ok(CompletionKind::BindAddr)
             }
-            Request::ResolveAddr(cmid_handle, sockaddr) => {
+            Command::ResolveAddr(cmid_handle, sockaddr) => {
                 trace!(
                     "ResolveAddr: cmid_handle: {:?}, sockaddr: {:?}",
                     cmid_handle,
@@ -888,9 +839,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 cmid.resolve_addr(sockaddr).map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // Ok(ResponseKind::ResolveAddr)
+                // Ok(CompletionKind::ResolveAddr)
             }
-            Request::ResolveRoute(cmid_handle, timeout_ms) => {
+            Command::ResolveRoute(cmid_handle, timeout_ms) => {
                 trace!(
                     "ResolveRoute: cmid_handle: {:?}, timeout_ms: {:?}",
                     cmid_handle,
@@ -900,9 +851,9 @@ impl<'ctx> TransportEngine<'ctx> {
                 cmid.resolve_route(*timeout_ms).map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // Ok(ResponseKind::ResolveRoute)
+                // Ok(CompletionKind::ResolveRoute)
             }
-            Request::CmCreateQp(cmid_handle, pd, qp_init_attr) => {
+            Command::CmCreateQp(cmid_handle, pd, qp_init_attr) => {
                 trace!(
                     "CmCreateQp: cmid_handle: {:?}, pd: {:?}, qp_init_attr: {:?}",
                     cmid_handle,
@@ -928,9 +879,9 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map_err(Error::RdmaCm)?;
                 let handles = self.state.resource().insert_qp(qp)?;
                 let ret_qp = prepare_returned_qp(handles);
-                Ok(ResponseKind::CmCreateQp(ret_qp))
+                Ok(CompletionKind::CmCreateQp(ret_qp))
             }
-            Request::RegMr(pd, nbytes, access) => {
+            Command::RegMr(pd, nbytes, access) => {
                 trace!(
                     "RegMr, pd: {:?}, nbytes: {}, access: {:?}",
                     pd,
@@ -947,71 +898,71 @@ impl<'ctx> TransportEngine<'ctx> {
                 let rkey = mr.rkey();
                 let new_mr_handle = mr.as_handle();
                 self.state.resource().mr_table.insert(new_mr_handle, mr)?;
-                Ok(ResponseKind::RegMr(returned::MemoryRegion {
+                Ok(CompletionKind::RegMr(returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
                     rkey,
                 }))
             }
-            Request::DeregMr(mr) => {
+            Command::DeregMr(mr) => {
                 trace!("DeregMr, mr: {:?}", mr);
                 self.state.resource().mr_table.close_resource(&mr.0)?;
-                Ok(ResponseKind::DeregMr)
+                Ok(CompletionKind::DeregMr)
             }
-            Request::DeallocPd(pd) => {
+            Command::DeallocPd(pd) => {
                 trace!("DeallocPd, pd: {:?}", pd);
                 self.state.resource().pd_table.close_resource(&pd.0)?;
-                Ok(ResponseKind::DeallocPd)
+                Ok(CompletionKind::DeallocPd)
             }
-            Request::DestroyCq(cq) => {
+            Command::DestroyCq(cq) => {
                 trace!("DestroyQp, cq: {:?}", cq);
                 self.state.resource().cq_table.close_resource(&cq.0)?;
-                Ok(ResponseKind::DestroyCq)
+                Ok(CompletionKind::DestroyCq)
             }
-            Request::DestroyQp(qp) => {
+            Command::DestroyQp(qp) => {
                 trace!("DestroyQp, qp: {:?}", qp);
                 self.state.resource().qp_table.close_resource(&qp.0)?;
-                Ok(ResponseKind::DestroyQp)
+                Ok(CompletionKind::DestroyQp)
             }
-            Request::Disconnect(cmid) => {
+            Command::Disconnect(cmid) => {
                 trace!("Disconnect, cmid: {:?}", cmid);
                 let cmid = self.state.resource().cmid_table.get(&cmid.0)?;
                 cmid.disconnect().map_err(Error::RdmaCm)?;
                 assert!(self.cmd_buffer.replace(req.clone()).is_none());
                 Err(Error::InProgress)
-                // Ok(ResponseKind::Disconnect)
+                // Ok(CompletionKind::Disconnect)
             }
-            Request::DestroyId(cmid) => {
+            Command::DestroyId(cmid) => {
                 trace!("DestroyId, cmid: {:?}", cmid);
                 self.state.resource().cmid_table.close_resource(&cmid.0)?;
-                Ok(ResponseKind::DestroyId)
+                Ok(CompletionKind::DestroyId)
             }
 
-            Request::OpenPd(pd) => {
+            Command::OpenPd(pd) => {
                 trace!("OpenPd, pd: {:?}", pd);
                 self.state.resource().pd_table.open_resource(&pd.0)?;
-                Ok(ResponseKind::OpenPd)
+                Ok(CompletionKind::OpenPd)
             }
-            Request::OpenCq(cq) => {
+            Command::OpenCq(cq) => {
                 trace!("OpenCq, cq: {:?}", cq);
                 self.state.resource().cq_table.open_resource(&cq.0)?;
-                let cq = self.state.resource().cq_table.get(&cq.0)?;
-                Ok(ResponseKind::OpenCq(cq.capacity()))
+                Ok(CompletionKind::OpenCq)
             }
-            Request::OpenQp(qp) => {
+            Command::OpenQp(qp) => {
                 trace!("OpenQp, qp: {:?}", qp);
                 self.state.resource().qp_table.open_resource(&qp.0)?;
-                Ok(ResponseKind::OpenQp)
+                Ok(CompletionKind::OpenQp)
             }
-            Requset::GetDefaultPds => {
+            Command::GetDefaultPds => {
                 trace!("GetDefaultPds");
                 let pds = self
                     .state
                     .resource()
                     .default_pds
+                    .lock()
                     .iter()
-                    .map(|(pd, _gids)| *pd)
+                    .map(|(pd, _gids)| returned::ProtectionDomain { handle: *pd })
                     .collect();
-                Ok(ResponseKind::GetDefaultPds(pds))
+                Ok(CompletionKind::GetDefaultPds(pds))
             }
         }
     }

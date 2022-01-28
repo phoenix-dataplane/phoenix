@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fs;
-use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -8,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -17,16 +16,14 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::{manager::RuntimeManager, SchedulingMode};
+use ipc;
+use ipc::transport::{cmd, dp, control_plane};
 use ipc::unix::DomainSocket;
-use ipc::{self, cmd, dp};
 
 use super::engine::TransportEngine;
 use super::state::StateManager;
-use crate::module::Module;
 
 // TODO(cjr): make these configurable, see koala.toml
-const KOALA_PATH: &str = "/tmp/cjr/koala/koala-transport.sock";
-
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
 
@@ -81,12 +78,14 @@ impl TransportEngineBuilder {
         let wq_cap = self.dp_wq_depth * mem::size_of::<dp::WorkRequestSlot>();
         let cq_cap = self.dp_cq_depth * mem::size_of::<dp::CompletionSlot>();
 
-        let mut buf = bincode::serialize(&cmd::Response(Ok(cmd::ResponseKind::ConnectEngine(
-            self.mode,
-            server_name,
-            wq_cap,
-            cq_cap,
-        ))))?;
+        let mut buf = bincode::serialize(&control_plane::Response(Ok(
+            control_plane::ResponseKind::ConnectEngine {
+                mode: self.mode,
+                one_shot_name: server_name,
+                wq_cap,
+                cq_cap,
+            },
+        )))?;
         let nbytes = self.sock.send_to(buf.as_mut_slice(), &self.client_path)?;
         if nbytes != buf.len() {
             return Err(anyhow!(
@@ -101,8 +100,8 @@ impl TransportEngineBuilder {
         let (_, (cmd_tx, cmd_rx)): (
             _,
             (
-                ipc::IpcSender<cmd::Response>,
-                ipc::IpcReceiver<cmd::Request>,
+                ipc::IpcSender<cmd::Completion>,
+                ipc::IpcReceiver<cmd::Command>,
             ),
         ) = server.accept()?;
 
@@ -158,23 +157,21 @@ impl TransportModule {
         TransportModule { runtime_manager }
     }
 
-    // pub fn with_config() -> Self {
-    // }
-
-    fn dispatch(
+    pub fn handle_request(
         &mut self,
+        req: &control_plane::Request,
         sock: &DomainSocket,
-        buf: &mut [u8],
         sender: &SocketAddr,
         cred: &UCred,
     ) -> Result<()> {
         let client_path = sender
             .as_pathname()
             .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
-        let msg: cmd::Request = bincode::deserialize(buf).unwrap();
-        match msg {
-            cmd::Request::NewClient(mode) => self.handle_new_client(sock, client_path, mode, cred),
-            _ => unreachable!(""),
+        match req {
+            control_plane::Request::NewClient(mode) => {
+                self.handle_new_client(sock, client_path, *mode, cred)
+            }
+            _ => unreachable!("unknown req: {:?}", req),
         }
     }
 
@@ -196,9 +193,9 @@ impl TransportModule {
         let engine_sock = DomainSocket::bind(&engine_path)?;
 
         // 2. tell the engine's socket path to the client
-        let mut buf = bincode::serialize(&cmd::Response(Ok(cmd::ResponseKind::NewClient(
-            engine_path,
-        ))))?;
+        let mut buf = bincode::serialize(&control_plane::Response(Ok(
+            control_plane::ResponseKind::NewClient(engine_path),
+        )))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         if nbytes != buf.len() {
             return Err(anyhow!(
@@ -219,47 +216,5 @@ impl TransportModule {
         self.runtime_manager.submit(Box::new(engine), mode);
 
         Ok(())
-    }
-}
-
-impl Module for TransportModule {
-    fn bootstrap(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let koala_path = Path::new(KOALA_PATH);
-        if koala_path.exists() {
-            fs::remove_file(koala_path).expect("remove_file");
-        }
-
-        let sock = DomainSocket::bind(KOALA_PATH)
-            .unwrap_or_else(|e| panic!("Cannot bind domain socket: {}", e));
-
-        sock.set_read_timeout(Some(Duration::from_millis(1)))
-            .expect("set_read_timeout");
-        sock.set_write_timeout(Some(Duration::from_millis(1)))
-            .expect("set_write_timeout");
-
-        let mut buf = vec![0u8; 65536];
-        loop {
-            match sock.recv_with_credential_from(buf.as_mut_slice()) {
-                Ok((size, sender, cred)) => {
-                    debug!(
-                        "received {} bytes from {:?} with credential: {:?}",
-                        size, sender, cred
-                    );
-                    if let Some(cred) = cred {
-                        if let Err(e) = self.dispatch(&sock, &mut buf[..size], &sender, &cred) {
-                            warn!("TransportModule dispatch: {}", e);
-                        }
-                    } else {
-                        // ignore data without a credential
-                        warn!("received data without a credential");
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => warn!("recv failed: {:?}", e),
-            }
-
-            // std::thread::sleep(Duration::from_secs(1));
-            // debug!("recv timeout");
-        }
     }
 }

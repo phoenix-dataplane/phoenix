@@ -261,7 +261,7 @@ unsafe impl<'ctx> Sync for Resource<'ctx> {}
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 pub(crate) struct Resource<'ctx> {
     cmid_cnt: AtomicU32,
-    default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
+    pub(crate) default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
     pub(crate) cmid_table: ResourceTable<CmId<'ctx>>,

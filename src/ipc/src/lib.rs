@@ -12,9 +12,10 @@ pub use shmem_ipc::ringbuf::Error as ShmRingbufError;
 pub use shmem_ipc::sharedring::{Receiver as ShmReceiver, Sender as ShmSender};
 pub use shmem_ipc::Error as ShmIpcError;
 
+pub mod control;
+pub mod transport;
+
 pub mod buf;
-pub mod cmd;
-pub mod dp;
 
 pub mod unix;
 

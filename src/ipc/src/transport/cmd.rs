@@ -1,8 +1,6 @@
 //! Control path commands.
 use std::net::SocketAddr;
-use std::path::PathBuf;
 
-use engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 
 use interface::returned;
@@ -11,10 +9,7 @@ use interface::{addrinfo, ConnParam, Handle, QpInitAttr};
 type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Request {
-    NewClient(SchedulingMode),
-    Hello(i32),
-
+pub enum Command {
     // rdmacm
     GetAddrInfo(
         Option<String>,
@@ -59,16 +54,7 @@ pub enum Request {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ResponseKind {
-    /// path of the engine's domain socket
-    NewClient(PathBuf),
-    /// .0: the requested scheduling mode
-    /// .1: name of the OneShotServer
-    /// .2: data path work queue capacity
-    /// .3: data path completion queue capacity
-    ConnectEngine(SchedulingMode, String, usize, usize),
-    HelloBack(i32),
-
+pub enum CompletionKind {
     // rdmacm
     GetAddrInfo(addrinfo::AddrInfo),
     // handle of cmid, handle of inner qp
@@ -107,4 +93,4 @@ pub enum ResponseKind {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Response(pub IResult<ResponseKind>);
+pub struct Completion(pub IResult<CompletionKind>);
