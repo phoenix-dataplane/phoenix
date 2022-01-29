@@ -444,6 +444,12 @@ impl<'ctx> CompletionQueue<'ctx> {
             Ok(&mut completions[0..n as usize])
         }
     }
+
+    /// Returns the capacity of the CQ. The CQ can hold have at least this number of elements.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        unsafe { &*self.cq }.cqe as _
+    }
 }
 
 impl<'a> Drop for CompletionQueue<'a> {

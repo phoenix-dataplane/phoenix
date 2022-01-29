@@ -86,7 +86,8 @@ pub enum ResponseKind {
 
     // reference counting
     OpenPd,
-    OpenCq,
+    // return the CQ's capacity
+    OpenCq(usize),
     OpenQp,
 
     // ibverbs

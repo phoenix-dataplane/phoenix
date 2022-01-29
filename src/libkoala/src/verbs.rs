@@ -80,19 +80,71 @@ impl ProtectionDomain {
 #[derive(Debug)]
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
-    pub(crate) outstanding: AtomicBool,
     pub(crate) buffer: CqBuffer,
 }
 
 #[derive(Debug)]
 pub(crate) struct CqBuffer {
-    pub(crate) queue: Arc<spin::Mutex<VecDeque<WorkCompletion>>>,
+    pub(crate) shared: Arc<CqBufferShared>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundedVecDeque<T> {
+    queue: VecDeque<T>,
+    max_bound: usize,
+}
+
+impl<T> BoundedVecDeque<T> {
+    fn new() -> Self {
+        BoundedVecDeque {
+            queue: VecDeque::new(),
+            max_bound: 0,
+        }
+    }
+
+    pub fn set_bound(&mut self, max_bound: usize) {
+        self.max_bound = max_bound;
+    }
+
+    pub(crate) fn push_back_checked(&mut self, val: T) -> Result<(), T> {
+        if self.queue.len() + 1 <= self.max_bound {
+            self.queue.push_back(val);
+            Ok(())
+        } else {
+            Err(val)
+        }
+    }
+}
+
+impl<T> Default for BoundedVecDeque<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Deref for BoundedVecDeque<T> {
+    type Target = VecDeque<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.queue
+    }
+}
+
+impl<T> DerefMut for BoundedVecDeque<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.queue
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CqBufferShared {
+    pub(crate) queue: spin::Mutex<BoundedVecDeque<WorkCompletion>>,
+    pub(crate) outstanding: AtomicBool,
 }
 
 impl Clone for CqBuffer {
     fn clone(&self) -> Self {
         CqBuffer {
-            queue: Arc::clone(&self.queue),
+            shared: Arc::clone(&self.shared),
         }
     }
 }
@@ -100,13 +152,16 @@ impl Clone for CqBuffer {
 impl CqBuffer {
     fn new() -> Self {
         CqBuffer {
-            queue: Arc::new(spin::Mutex::new(VecDeque::new())),
+            shared: Arc::new(CqBufferShared {
+                queue: spin::Mutex::new(BoundedVecDeque::new()),
+                outstanding: AtomicBool::new(false),
+            })
         }
     }
 
     #[inline]
     fn refcnt(&self) -> usize {
-        Arc::strong_count(&self.queue)
+        Arc::strong_count(&self.shared)
     }
 }
 
@@ -144,10 +199,10 @@ impl CompletionQueue {
             let inner = returned_cq.handle;
             let req = Request::OpenCq(inner);
             ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, {
+            rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, cap, {
+                buffer.shared.queue.lock().set_bound(cap);
                 Ok(CompletionQueue {
                     inner,
-                    outstanding: AtomicBool::new(false),
                     buffer,
                 })
             })
