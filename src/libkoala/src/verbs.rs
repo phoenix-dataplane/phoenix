@@ -155,7 +155,7 @@ impl CqBuffer {
             shared: Arc::new(CqBufferShared {
                 queue: spin::Mutex::new(BoundedVecDeque::new()),
                 outstanding: AtomicBool::new(false),
-            })
+            }),
         }
     }
 
@@ -201,10 +201,7 @@ impl CompletionQueue {
             ctx.cmd_tx.send(req)?;
             rx_recv_impl!(ctx.cmd_rx, ResponseKind::OpenCq, cap, {
                 buffer.shared.queue.lock().set_bound(cap);
-                Ok(CompletionQueue {
-                    inner,
-                    buffer,
-                })
+                Ok(CompletionQueue { inner, buffer })
             })
         })
     }
