@@ -107,7 +107,7 @@ impl<T> BoundedVecDeque<T> {
     }
 
     pub(crate) fn push_back_checked(&mut self, val: T) -> Result<(), T> {
-        if self.queue.len() + 1 <= self.max_bound {
+        if self.queue.len() < self.max_bound {
             self.queue.push_back(val);
             Ok(())
         } else {
