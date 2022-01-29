@@ -1,4 +1,3 @@
-use fnv::FnvHashMap as HashMap;
 use std::cell::RefCell;
 use std::env;
 use std::fs::File;
@@ -6,31 +5,20 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UCred;
 use std::path::Path;
 
-use lazy_static::lazy_static;
 use uuid::Uuid;
 
 use engine::SchedulingMode;
 use ipc;
 use ipc::control;
-use ipc::transport::{cmd, control_plane, dp};
+use ipc::mrpc::{cmd, dp};
 use ipc::unix::DomainSocket;
 
 // Re-exports
 use crate::{Error, KOALA_PATH, MAX_MSG_LEN};
 
-pub mod cm;
-mod fp;
-pub mod verbs;
-
-// NOTE(cjr): Will lazy_static affects the performance?
-lazy_static! {
-    // A cq can be created by calling create_cq, but it can also come from create_ep
-    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<interface::CompletionQueue, verbs::CqBuffer>> =
-        spin::Mutex::new(HashMap::default());
-}
-
 thread_local! {
-    pub(crate) static KL_CTX: Context = Context::register().expect("koala transport register failed");
+    // Initialization is dynamically performed on the first call to with within a thread.
+    pub(crate) static MRPC_CTX: Context = Context::register().expect("koala mRPC register failed");
 }
 
 pub(crate) struct Context {
@@ -59,7 +47,7 @@ impl Context {
         let mut sock = DomainSocket::bind(sock_path)?;
 
         let req = control_plane::Request::NewClient(SchedulingMode::Dedicate);
-        let buf = bincode::serialize(&control::Request::Transport(req))?;
+        let buf = bincode::serialize(&control::Request::Mrpc(req))?;
         assert!(buf.len() < MAX_MSG_LEN);
         sock.send_to(&buf, KOALA_PATH)?;
 

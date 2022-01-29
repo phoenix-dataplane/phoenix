@@ -23,6 +23,12 @@ pub mod transport;
 // Re-exports
 pub use transport::{cm, verbs};
 
+pub mod mrpc;
+
+// TODO(cjr): make this configurable, see koala.toml
+const KOALA_PATH: &str = "/tmp/cjr/koala/koala-control.sock";
+const MAX_MSG_LEN: usize = 65536;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("IO Error {0}")]

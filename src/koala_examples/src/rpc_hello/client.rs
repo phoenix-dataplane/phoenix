@@ -1,4 +1,5 @@
 use std::net::ToSocketAddrs;
+use std::future::Future;
 
 use koala_examples::rpc_hello::mrpc;
 
@@ -34,7 +35,7 @@ impl GreeterClient {
 
     fn say_hello(
         &mut self,
-        request: impl HelloRequest,
+        request: HelloRequest,
     ) -> impl Future<Output = Result<Response<HelloReply>, mrpc::Status>> {
     }
 }
