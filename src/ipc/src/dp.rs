@@ -17,6 +17,8 @@ pub enum WorkRequest {
     PostWrite(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
     PostRead(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
     PollCq(interface::CompletionQueue),
+    VerbsPostSendFirst(interface::VerbsRequestFirst),
+    VerbsPostSendSecond(interface::VerbsRequestSecond),
 }
 
 pub type CompletionSlot = [u8; 64];

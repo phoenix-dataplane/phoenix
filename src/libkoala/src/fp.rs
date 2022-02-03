@@ -216,6 +216,72 @@ impl CmId {
         })
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
+    pub unsafe fn verbs_post_send(
+        &self,
+        reqs: Vec<verbs::VerbsRequest>,
+    ) -> Result<(), Error> {
+        let len = reqs.len();
+        println!("verbs_post_send len is {}", len);
+        for i in 0..len - 1 {
+            println!("Getting in loop");
+            let req = &reqs[i];
+            let first_req = WorkRequest::VerbsPostSendFirst(req.generate_first(self.inner.handle.0, true));
+            let second_req = WorkRequest::VerbsPostSendSecond(req.generate_second());
+            KL_CTX.with(|ctx| {
+                println!("Posting something");
+                let mut sent = false;
+                while !sent {
+                    ctx.dp_wq
+                        .borrow_mut()
+                        .sender_mut()
+                        .send(|ptr, count| unsafe {
+                            if count < 2 {
+                                return 0;
+                            }
+                            debug_assert!(count >= 2);
+                            ptr.cast::<WorkRequest>().write(first_req);
+                            ptr.offset(1).cast::<WorkRequest>().write(second_req);
+                            sent = true;
+                            2
+                        })?;
+                }
+                Result::<(), Error>::Ok(())
+            })?;
+        }
+        let first_req = WorkRequest::VerbsPostSendFirst(reqs[len - 1].generate_first(self.inner.handle.0,true));
+        let second_req = WorkRequest::VerbsPostSendSecond(reqs[len - 1].generate_second());
+        KL_CTX.with(|ctx| {
+            println!("Posting the last one");
+            let mut sent = false;
+            while !sent {
+                println!("WTF?");
+                ctx.dp_wq
+                    .borrow_mut()
+                    .sender_mut()
+                    .send(|ptr, count| unsafe {
+                        if count < 2 {
+                            return 0;
+                        }
+                        debug_assert!(count >= 2);
+                        ptr.cast::<WorkRequest>().write(first_req);
+                        ptr.offset(1).cast::<WorkRequest>().write(second_req);
+                        sent = true;
+                        2
+                    })?;
+            }
+            Result::<(), Error>::Ok(())
+        })?;
+        println!("Return!");
+        // Post the last one
+        Ok(())
+    }
+
     #[inline]
     pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);

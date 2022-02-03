@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "koala")]
 use interface::{AsHandle, Handle};
+use interface::{VerbsWqe};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
@@ -1472,6 +1473,44 @@ impl<'res> QueuePair<'res> {
         } else {
             Ok(())
         }
+    }
+
+
+    /// Posts a linked list / batch of Send Work Requests (WRs) to the Send Queue of this Queue Pair.
+    pub unsafe fn post_send_batch(&self, wr_list: Vec::<VerbsWqe>) -> io::Result<()> {
+        eprintln!("post_send_batch is called");
+        for i in 0..wr_list.len() - 1 {
+            //
+            eprintln!("post_send is called {}", i);
+            let req = &wr_list[i];
+            eprintln!("the req is {:?}", req);
+            let mut sge = ffi::ibv_sge {
+                addr : req.addr,
+                length: req.length,
+                lkey: req.lkey,
+            };
+            let mut send_wr = ffi::ibv_send_wr {
+                wr_id: req.wr_id,
+                next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
+                sg_list: &mut sge as *mut _,
+                num_sge: 1, // TODO: now just for test
+                opcode: ffi::ibv_wr_opcode::IBV_WR_SEND, // how to assign value ?
+                send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,  // how to assign value ? 
+                __bindgen_anon_1: Default::default(),
+                wr: Default::default(),
+                qp_type: Default::default(),
+                __bindgen_anon_2: Default::default(),
+            };
+            let mut bad_wr: *mut ffi::ibv_send_wr = ptr::null::<ffi::ibv_send_wr>() as *mut _;
+            let ctx = (&*self.qp).context;
+            let ops = &mut (&mut *ctx).ops;
+            let errno =
+                ops.post_send.as_mut().unwrap()(self.qp, &mut send_wr as *mut _, &mut bad_wr as *mut _);
+            //if errno != 0 {
+            //    Err(io::Error::from_raw_os_error(errno));
+            //} 
+        }
+        Ok(())
     }
 }
 

@@ -9,16 +9,18 @@ use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use ipc::buf::Range;
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 
-use interface::returned;
+use interface::{returned, Handle};
 use ipc::cmd::{Request, ResponseKind};
 
 use crate::{rx_recv_impl, Context, Error, FromBorrow, CQ_BUFFERS, KL_CTX};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
+pub use interface::{VerbsRequestFirst, VerbsRequestSecond, VerbsRequestOpcode};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
 #[derive(Debug)]
@@ -157,6 +159,65 @@ impl CompletionQueue {
 
 pub struct SharedReceiveQueue {
     pub(crate) inner: interface::SharedReceiveQueue,
+}
+
+#[derive(Debug)]
+pub struct VerbsRequest<'a> {
+    pub wr_id: u64,
+    // pub sge_addr: u64, // u64 address for shared memory
+    pub sg_list: Vec<ScatterGatherElement<'a>>,
+    pub sg_num: u32,
+    // Each sge consist os addr, length, and MR
+    pub opcode : VerbsRequestOpcode,
+    pub flags : SendFlags,
+    pub remote_addr : u64,
+    pub remote_key : u32,
+    // The second half for UD and Atomic
+    pub imm_data: u32,
+    pub compare_add : u64,
+    pub swap : u64,
+    pub rkey: u32,
+    pub ah: u64,
+    pub remote_qpn : u32,
+    pub remote_qkey: u32,
+} 
+
+impl VerbsRequest<'_> {
+    pub fn generate_first(&self, id: Handle, next: bool) ->VerbsRequestFirst {
+        VerbsRequestFirst {
+            id_handle: id,
+            wr_id: self.wr_id,
+            next: next,
+            // temporarily test
+            offset: self.sg_list[0].offset,
+            length: self.sg_list[0].len,
+            mr_handle: self.sg_list[0].mr.inner.0,
+            opcode: self.opcode,
+            flags: self.flags,
+            remote_addr: self.remote_addr,
+            remote_key: self.remote_key,
+        }
+    }
+
+    pub fn generate_second(&self)->VerbsRequestSecond {
+        VerbsRequestSecond {
+            imm_data: self.imm_data,
+            remote_addr: self.remote_addr,
+            compare_add: self.compare_add,
+            swap: self.swap,
+            rkey: self.rkey,
+            ah: self.ah,
+            remote_qpn: self.remote_qpn,
+            remote_qkey: self.remote_qkey
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ScatterGatherElement<'a>{
+    pub mr : &'a MemoryRegion<u8>,
+    pub offset: u32,
+    pub len: u32,
 }
 
 #[derive(Debug)]

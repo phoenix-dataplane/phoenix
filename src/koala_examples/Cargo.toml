@@ -42,3 +42,7 @@ path = "src/bench/bench_bw.rs"
 [[bin]]
 name = "alltoall"
 path = "src/alltoall/main.rs"
+
+[[bin]]
+name = "test"
+path = "src/test.rs"

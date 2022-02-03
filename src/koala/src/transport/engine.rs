@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use interface::{returned, AsHandle, Handle};
+use interface::{VerbsWqe};
 use ipc::unix::DomainSocket;
 use ipc::{self, cmd, dp};
 
@@ -170,30 +171,98 @@ impl<'ctx> TransportEngine<'ctx> {
             })
             .unwrap_or_else(|e| panic!("check_dp: {}", e));
 
-        // Process the work requests.
-        for wr in &buffer {
-            let result = self.process_dp(wr);
+        let mut i = 0;
+        let len = buffer.len();
+        // eprintln!("buffer.len is {}, i is {}", buffer.len(), i);
+        while i < len {
+            let req = &buffer[i];
+            let result = match req {
+                WorkRequest::VerbsPostSendFirst(_) => {
+                    let mut vec = Vec::<VerbsWqe>::new();
+                    loop {
+                        // loop to generate the vector of a wqe list.
+                        if let WorkRequest::VerbsPostSendFirst(verbs_request_first) = buffer[i] {
+                            eprintln!("Getting the first element");
+                            if let WorkRequest::VerbsPostSendSecond(verbs_request_second) =
+                                buffer[i + 1]
+                            {
+                                // TODO: for sge-batching, the logic here should be modified
+                                eprintln!("Getting the second element");
+                                let mr = self
+                                    .state
+                                    .resource()
+                                    .mr_table
+                                    .get_dp(&verbs_request_first.mr_handle)?;
+                                
+                                //let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                                let buf = &mr[verbs_request_first.offset as usize
+                                    ..(verbs_request_first.offset + verbs_request_first.length)
+                                        as usize];
+                                let addr = buf.as_ptr() as u64;
+                                let lkey = mr.lkey().clone();
+                                let new_wr =
+                                    VerbsWqe::constuct(verbs_request_first, verbs_request_second,  addr, lkey);
+                                vec.push(new_wr);
+                                eprintln!("vector is pushed");
+                                i += 2;
+                                if i >= len {
+                                    break;
+                                }
+                                let flag = match buffer[i] {
+                                    WorkRequest::VerbsPostSendFirst(_) => true,
+                                    _ => false,
+                                };
+                                if !flag {
+                                    break;
+                                }
+                            } else {
+                                panic!();
+                            }
+                        } else {
+                            panic!();
+                        }
+                    }
+                    i += 2;
+                    self.process_verbs_dp(vec)
+                }
+                _ => {
+                    eprintln!("Getting something else");
+                    i += 1;
+                    self.process_dp(req)
+                },
+            };
+            println!("Result is {:?}", result);
             match result {
                 Ok(()) => {}
                 Err(e) => {
-                    // NOTE(cjr): Typically, we expect to report the error to the user right after
-                    // we get this error. But busy waiting here may cause circular waiting between
-                    // koala engine and the user in some circumstance.
-                    //
-                    // The work queue and completion queue are both bounded. The bound is set by
-                    // koala system rather than the specified by the user. Imagine that the user is
-                    // trying to post_send without polling for completion timely. The completion
-                    // queue is full and koala will spin here without make any other progress (e.g.
-                    // drain the work queue).
-                    //
-                    // Therefore, we put the error into a local buffer. Whenever we want to put
-                    // things in the shared memory completion queue, we put from the local buffer
-                    // first. This way seems perfect. It can guarantee progress. The backpressure
-                    // is also not broken.
-                    let _sent = self.process_dp_error(wr, e).unwrap();
+                    let _sent = self.process_dp_error(req, e).unwrap();
                 }
             }
         }
+        // Process the work requests.
+        // for wr in &buffer {
+        //     let result = self.process_dp(wr);
+        //     match result {
+        //         Ok(()) => {}
+        //         Err(e) => {
+        //             // NOTE(cjr): Typically, we expect to report the error to the user right after
+        //             // we get this error. But busy waiting here may cause circular waiting between
+        //             // koala engine and the user in some circumstance.
+        //             //
+        //             // The work queue and completion queue are both bounded. The bound is set by
+        //             // koala system rather than the specified by the user. Imagine that the user is
+        //             // trying to post_send without polling for completion timely. The completion
+        //             // queue is full and koala will spin here without make any other progress (e.g.
+        //             // drain the work queue).
+        //             //
+        //             // Therefore, we put the error into a local buffer. Whenever we want to put
+        //             // things in the shared memory completion queue, we put from the local buffer
+        //             // first. This way seems perfect. It can guarantee progress. The backpressure
+        //             // is also not broken.
+        //             let _sent = self.process_dp_error(wr, e).unwrap();
+        //         }
+        //     }
+        // }
 
         self.try_flush_cq_err_buffer().unwrap();
 
@@ -323,6 +392,14 @@ impl<'ctx> TransportEngine<'ctx> {
                     (interface::CompletionQueue(Handle::INVALID), *wr_id)
                 }
             }
+
+            WorkRequest::VerbsPostSendFirst(verbs_request_first) => (
+                interface::CompletionQueue(Handle::INVALID),
+                verbs_request_first.wr_id,
+            ),
+            WorkRequest::VerbsPostSendSecond(_verbs_request_second) => {
+                (interface::CompletionQueue(Handle::INVALID), 0)
+            }
         }
     }
 
@@ -393,6 +470,21 @@ impl<'ctx> TransportEngine<'ctx> {
 
         mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
         status?;
+        Ok(())
+    }
+
+    fn process_verbs_dp(&mut self, wq_list: Vec<VerbsWqe>) -> Result<(), DatapathError> {
+        let cmid = self
+            .state
+            .resource()
+            .cmid_table
+            .get_dp(&wq_list[0].id_handle)?;
+        if let Some(qp) = cmid.qp() {
+            //let mr = self.state.resource().mr_table.get_dp(mr_handle)
+            unsafe {
+                qp.post_send_batch(wq_list).expect("qp.post_send_batch");
+            }
+        }
         Ok(())
     }
 
@@ -550,6 +642,12 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
                 Ok(())
             }
+            WorkRequest::VerbsPostSendFirst(verbs_request_first) => {
+                eprintln!("verbs_request_first is caught");
+                eprintln!("{}", verbs_request_first.wr_id);
+                Ok(())
+            }
+            WorkRequest::VerbsPostSendSecond(verbs_request_second) => Ok(()),
         }
     }
 

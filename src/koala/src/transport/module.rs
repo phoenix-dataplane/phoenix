@@ -25,7 +25,7 @@ use super::state::StateManager;
 use crate::module::Module;
 
 // TODO(cjr): make these configurable, see koala.toml
-const KOALA_PATH: &str = "/tmp/cjr/koala/koala-transport.sock";
+const KOALA_PATH: &str = "/tmp/libkoala_xinhao.sock";
 
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;

@@ -146,6 +146,17 @@ impl WcStatus {
     pub const AGAIN: WcStatus = WcStatus::Error(unsafe { NonZeroU32::new_unchecked(1024) });
 }
 
+
+#[repr(u32)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerbsRequestOpcode {
+    Write = 0,
+    WriteWithImm = 1,
+    Send = 2,
+    SendWithImm = 3,
+    Read = 4,
+}
+
 #[repr(u32)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WcOpcode {
@@ -199,6 +210,94 @@ bitflags! {
         /// Enables Remote Atomic Operation Access.
         const REMOTE_ATOMIC = 0b00001000;
     }
+}
+
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+// The first part of VerbsRequest is for ordinary request (send, write/read)
+pub struct VerbsRequestFirst {
+    pub id_handle: Handle,
+    pub wr_id: u64,
+    pub next: bool, 
+    // pub sge_addr: u64, // u64 address for shared memory
+    pub offset: u32,
+    pub length: u32,
+    pub mr_handle: Handle,
+    // Each sge consist os addr, length, and MR
+    pub opcode : VerbsRequestOpcode,
+    pub flags : SendFlags,
+    pub remote_addr : u64,
+    pub remote_key : u32,
+}
+
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+// The second part of VerbsRequest is for atomic and ud.
+pub struct VerbsRequestSecond {
+    pub imm_data: u32,
+    pub remote_addr : u64,
+    pub compare_add : u64,
+    pub swap : u64,
+    pub rkey: u32,
+    pub ah: u64,
+    pub remote_qpn : u32,
+    pub remote_qkey: u32,
+}
+
+
+// For ref in ibv.rs
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct VerbsWqe {
+    pub id_handle: Handle,
+    pub wr_id: u64,
+    // pub sge_addr: u64, // u64 address for shared memory
+    pub addr: u64,
+    pub length: u32,
+    pub lkey: u32,
+    // Each sge consist os addr, length, and MR
+    pub opcode: VerbsRequestOpcode,
+    pub flags: SendFlags,
+    pub remote_addr: u64,
+    pub remote_key: u32,
+    pub imm_data: u32,
+    pub compare_add: u64,
+    pub swap: u64,
+    pub rkey: u32,
+    pub ah: u64,
+    pub remote_qpn: u32,
+    pub remote_qkey: u32,
+}
+
+impl VerbsWqe {
+    pub fn constuct<'a>(verbs_request_first: VerbsRequestFirst, verbs_request_second: VerbsRequestSecond, addr: u64, lkey: u32) -> VerbsWqe {
+        VerbsWqe {
+            id_handle: verbs_request_first.id_handle,
+            wr_id: verbs_request_first.wr_id,
+            addr: addr,
+            length: verbs_request_first.length,
+            lkey: lkey,
+            opcode: verbs_request_first.opcode,
+            flags: verbs_request_first.flags,
+            remote_addr: verbs_request_first.remote_addr,
+            remote_key: verbs_request_first.remote_key,
+            imm_data: verbs_request_second.imm_data,
+            compare_add: verbs_request_second.compare_add,
+            swap: verbs_request_second.swap,
+            rkey: verbs_request_second.rkey,
+            ah: verbs_request_second.ah,
+            remote_qpn: verbs_request_second.remote_qpn,
+            remote_qkey: verbs_request_second.remote_qkey,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ScatterGatherElement {
+    pub mr: MemoryRegion,
+    // We keep the same as ipc::buf::Range
+    pub offset: u32,
+    pub len: u32,
 }
 
 /// A structure represent completion of some work.

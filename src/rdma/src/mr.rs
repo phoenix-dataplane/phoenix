@@ -117,6 +117,13 @@ impl MemoryRegion {
             addr: mr.addr as u64,
         }
     }
+
+    #[inline]
+    pub fn lkey(&self) -> u32 {
+        assert!(!self.mr.is_null());
+        let mr = unsafe {&*self.mr};
+        mr.lkey
+    }
 }
 
 impl<'a, A> From<A> for rdmacm::MemoryRegion<'a>

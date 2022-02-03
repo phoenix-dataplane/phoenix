@@ -23,7 +23,7 @@ mod fp;
 pub mod verbs;
 
 // TODO(cjr): make this configurable, see koala.toml
-const KOALA_TRANSPORT_PATH: &str = "/tmp/cjr/koala/koala-transport.sock";
+const KOALA_TRANSPORT_PATH: &str = "/tmp/libkoala_xinhao.sock";
 
 const MAX_MSG_LEN: usize = 65536;
 
