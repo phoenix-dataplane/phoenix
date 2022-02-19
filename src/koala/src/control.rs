@@ -4,14 +4,16 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use log::{debug, warn};
 
+use crate::mrpc::module::MrpcModule;
+use crate::transport::module::TransportModule;
+
 use engine::manager::RuntimeManager;
 use ipc::unix::DomainSocket;
-use crate::transport::module::TransportModule;
 
 // TODO(cjr): make these configurable, see koala.toml
 const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
@@ -19,6 +21,7 @@ const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
 pub struct Control {
     sock: DomainSocket,
     transport: TransportModule,
+    mrpc: MrpcModule,
 }
 
 impl Control {
@@ -39,6 +42,7 @@ impl Control {
         Control {
             sock,
             transport: TransportModule::new(Arc::clone(&runtime_manager)),
+            mrpc: MrpcModule::new(Arc::clone(&runtime_manager)),
         }
     }
 
@@ -74,7 +78,10 @@ impl Control {
         use ipc::control;
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
-            control::Request::Transport(req) => self.transport.handle_request(&req, &self.sock, sender, cred),
+            control::Request::Transport(req) => self
+                .transport
+                .handle_request(&req, &self.sock, sender, cred),
+            control::Request::Mrpc(req) => self.mrpc.handle_request(&req, &self.sock, sender, cred),
             _ => unreachable!("control::dispatch"),
         }
     }

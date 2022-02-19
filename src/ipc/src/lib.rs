@@ -14,6 +14,7 @@ pub use shmem_ipc::Error as ShmIpcError;
 
 pub mod control;
 pub mod transport;
+pub mod mrpc;
 
 pub mod buf;
 

@@ -46,10 +46,10 @@ path = "src/bench/bench_bw.rs"
 name = "alltoall"
 path = "src/alltoall/main.rs"
 
-[[bin]]
-name = "rpc_hello_client"
-path = "src/rpc_hello/client.rs"
+# [[bin]]
+# name = "rpc_hello_client"
+# path = "src/rpc_hello/client.rs"
 
-[[bin]]
-name = "rpc_hello_server"
-path = "src/rpc_hello/server.rs"
+# [[bin]]
+# name = "rpc_hello_server"
+# path = "src/rpc_hello/server.rs"

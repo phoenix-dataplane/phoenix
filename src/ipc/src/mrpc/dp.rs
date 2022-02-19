@@ -1,31 +1,19 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::{Handle, RemoteKey, SendFlags, WorkCompletion};
-
-use crate::buf::Range;
-
 pub type WorkRequestSlot = [u8; 64];
 
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
-    PostRecv(Handle, u64, Range, Handle),
-    PostSend(Handle, u64, Range, Handle, SendFlags),
-    PostWrite(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
-    PostRead(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
-    PollCq(interface::CompletionQueue),
+    Call(),
 }
 
 pub type CompletionSlot = [u8; 64];
 
 #[repr(C, align(64))]
 #[derive(Debug)]
-pub struct Completion {
-    pub cq_handle: interface::CompletionQueue,
-    pub _padding: [u8; 4],
-    pub wc: WorkCompletion,
-}
+pub struct Completion {}
 
 mod sa {
     use super::*;
