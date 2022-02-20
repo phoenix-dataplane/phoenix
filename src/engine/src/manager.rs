@@ -6,9 +6,10 @@ use std::thread::{self, JoinHandle};
 
 use spin::Mutex;
 
+use interface::engine::SchedulingMode;
+
 use crate::runtime::{self, Runtime};
 use crate::Engine;
-use crate::SchedulingMode;
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,

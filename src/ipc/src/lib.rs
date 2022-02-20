@@ -23,6 +23,9 @@ pub mod unix;
 pub mod shm;
 pub use shm::ShmObject;
 
+pub mod service;
+pub mod customer;
+
 use serde::Serialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

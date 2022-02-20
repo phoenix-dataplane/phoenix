@@ -1,16 +1,8 @@
-use serde::{Deserialize, Serialize};
 pub use version::{version, Version};
 
 pub(crate) mod lb;
 pub mod manager;
 pub mod runtime;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SchedulingMode {
-    Dedicate,
-    Spread,
-    Compact,
-}
 
 pub trait Upgradable {
     fn version(&self) -> Version {

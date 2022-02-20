@@ -14,7 +14,8 @@ use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use engine::{manager::RuntimeManager, SchedulingMode};
+use interface::engine::SchedulingMode;
+use engine::manager::RuntimeManager;
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 

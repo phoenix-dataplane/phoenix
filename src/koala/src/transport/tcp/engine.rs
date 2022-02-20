@@ -12,7 +12,8 @@ use interface::{AsHandle, Handle};
 use ipc::transport::tcp::{cmd, dp};
 use ipc::unix::DomainSocket;
 
-use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
+use interface::engine::SchedulingMode;
+use engine::{Engine, EngineStatus, Upgradable, Version};
 
 use super::{DatapathError, Error};
 use crate::transport::resource::ResourceTable;

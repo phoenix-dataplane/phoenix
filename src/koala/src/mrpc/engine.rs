@@ -134,6 +134,7 @@ impl MrpcEngine {
 
     fn create_transport(&mut self, transport_type: control_plane::TransportType) {
         self.transport_type = Some(transport_type);
+        
     }
 
     fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
@@ -151,7 +152,7 @@ impl MrpcEngine {
                 if self.transport_type.is_none() {
                     self.create_transport(control_plane::TransportType::Socket);
                 }
-                
+
                 Ok(CompletionKind::Connect)
             }
         }

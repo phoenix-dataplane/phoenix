@@ -14,7 +14,8 @@ use ipc;
 use ipc::unix::DomainSocket;
 use ipc::transport::rdma::{cmd, dp};
 
-use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
+use interface::engine::SchedulingMode;
+use engine::{Engine, EngineStatus, Upgradable, Version};
 
 use rdma::ibv;
 use rdma::rdmacm;

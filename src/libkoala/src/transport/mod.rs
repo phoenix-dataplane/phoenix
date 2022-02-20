@@ -9,7 +9,7 @@ use std::path::Path;
 use lazy_static::lazy_static;
 use uuid::Uuid;
 
-use engine::SchedulingMode;
+use interface::engine::SchedulingMode;
 use ipc;
 use ipc::control;
 use ipc::transport::rdma::{cmd, control_plane, dp};

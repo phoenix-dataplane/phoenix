@@ -334,6 +334,7 @@ name = "engine"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
+ "interface",
  "log",
  "num_cpus",
  "scheduler",
@@ -586,7 +587,7 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "uuid",
- "zerocopy 0.6.1",
+ "zerocopy 0.3.0",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use uuid::Uuid;
 
-use engine::SchedulingMode;
+use interface::engine::SchedulingMode;
 use ipc;
 use ipc::control;
 use ipc::mrpc::{cmd, control_plane, dp};

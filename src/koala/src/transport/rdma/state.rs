@@ -20,7 +20,7 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use super::resource::ResourceTable;
+use crate::transport::resource::ResourceTable;
 use super::Error;
 
 // Per-process state

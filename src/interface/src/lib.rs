@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod addrinfo;
+pub mod engine;
 
 #[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum Error {
