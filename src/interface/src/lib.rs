@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::os::unix::io::RawFd;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use thiserror::Error;
 
 pub mod addrinfo;
 
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum Error {
     #[error("{0}")]
     Generic(String),
@@ -23,6 +24,17 @@ impl Handle {
 pub trait AsHandle {
     #[must_use]
     fn as_handle(&self) -> Handle;
+}
+
+impl AsHandle for RawFd {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        if *self >= 0 {
+            Handle(*self as _)
+        } else {
+            Handle::INVALID
+        }
+    }
 }
 
 // These data struct can be `Copy` because they are only for IPC use.

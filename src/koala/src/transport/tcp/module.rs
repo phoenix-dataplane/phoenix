@@ -11,25 +11,19 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::{manager::RuntimeManager, SchedulingMode};
 use ipc;
-use ipc::transport::{cmd, dp, control_plane};
+use ipc::transport::tcp::{cmd, dp, control_plane};
 use ipc::unix::DomainSocket;
 
 use super::engine::TransportEngine;
-use super::state::StateManager;
 
 // TODO(cjr): make these configurable, see koala.toml
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
-
-lazy_static! {
-    static ref STATE_MGR: StateManager<'static> = StateManager::new();
-}
 
 pub(crate) struct TransportEngineBuilder {
     client_path: PathBuf,
@@ -67,7 +61,7 @@ impl TransportEngineBuilder {
         self
     }
 
-    fn build(mut self) -> Result<TransportEngine<'static>> {
+    fn build(mut self) -> Result<TransportEngine> {
         // 1. connect to the client
         self.sock.connect(&self.client_path)?;
 
@@ -125,9 +119,6 @@ impl TransportEngineBuilder {
             ],
         )?;
 
-        // 7. create or get the state of the process
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-
         // 7. finally, we are done here
         Ok(TransportEngine {
             client_path: self.client_path.clone(),
@@ -141,7 +132,7 @@ impl TransportEngineBuilder {
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
-            state,
+            state: super::engine::State::new(),
             cmd_buffer: None,
             last_cmd_ts: Instant::now(),
         })

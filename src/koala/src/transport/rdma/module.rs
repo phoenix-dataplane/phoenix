@@ -11,41 +11,47 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::{manager::RuntimeManager, SchedulingMode};
-use ipc::mrpc::{cmd, control_plane, dp};
+use ipc;
+use ipc::transport::rdma::{cmd, dp, control_plane};
 use ipc::unix::DomainSocket;
 
-use super::engine::MrpcEngine;
+use super::engine::TransportEngine;
+use super::state::StateManager;
 
+// TODO(cjr): make these configurable, see koala.toml
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
 
-pub(crate) struct MrpcEngineBuilder {
+lazy_static! {
+    static ref STATE_MGR: StateManager<'static> = StateManager::new();
+}
+
+pub(crate) struct TransportEngineBuilder {
     client_path: PathBuf,
     client_pid: Pid,
     sock: DomainSocket,
     mode: SchedulingMode,
-    transport: control_plane::TransportType,
     dp_wq_depth: usize,
     dp_cq_depth: usize,
 }
 
-impl MrpcEngineBuilder {
+impl TransportEngineBuilder {
     fn new<P: AsRef<Path>>(
         client_path: P,
         client_pid: Pid,
         sock: DomainSocket,
         mode: SchedulingMode,
     ) -> Self {
-        MrpcEngineBuilder {
+        TransportEngineBuilder {
             client_path: client_path.as_ref().to_owned(),
             client_pid,
             sock,
             mode,
-            transport: control_plane::TransportType::Socket,
             dp_wq_depth: DP_WQ_DEPTH,
             dp_cq_depth: DP_CQ_DEPTH,
         }
@@ -61,14 +67,14 @@ impl MrpcEngineBuilder {
         self
     }
 
-    fn set_transport(&mut self, transport: control_plane::TransportType) -> &mut Self {
-        self.transport = transport;
-        self
-    }
-
-    fn build(mut self) -> Result<MrpcEngine> {
+    fn build(mut self) -> Result<TransportEngine<'static>> {
+        // 1. connect to the client
         self.sock.connect(&self.client_path)?;
+
+        // 2. create an IPC channel with a random name
         let (server, server_name) = ipc::OneShotServer::new()?;
+
+        // 3. tell the name and the capacities of data path shared memory queues to the client
         let wq_cap = self.dp_wq_depth * mem::size_of::<dp::WorkRequestSlot>();
         let cq_cap = self.dp_cq_depth * mem::size_of::<dp::CompletionSlot>();
 
@@ -89,6 +95,8 @@ impl MrpcEngineBuilder {
             ));
         }
 
+        // 4. the client should later connect to the oneshot server, and create these channels
+        // to communicate with its transport engine.
         let (_, (cmd_tx, cmd_rx)): (
             _,
             (
@@ -97,11 +105,13 @@ impl MrpcEngineBuilder {
             ),
         ) = server.accept()?;
 
+        // 5. create data path shared memory queues
         let dp_wq = ipc::ShmReceiver::new(wq_cap)?;
         let dp_cq = ipc::ShmSender::new(cq_cap)?;
 
         let cmd_rx_entries = ipc::ShmObject::new(AtomicUsize::new(0))?;
 
+        // 6. send the file descriptors back to let the client attach to these shared memory queues
         self.sock.send_fd(
             &self.client_path,
             &[
@@ -115,9 +125,11 @@ impl MrpcEngineBuilder {
             ],
         )?;
 
-        // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        // 7. create or get the state of the process
+        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
 
-        Ok(MrpcEngine {
+        // 7. finally, we are done here
+        Ok(TransportEngine {
             client_path: self.client_path.clone(),
             sock: self.sock,
             cmd_rx_entries,
@@ -129,20 +141,20 @@ impl MrpcEngineBuilder {
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
-            datapath: None,
+            state,
             cmd_buffer: None,
             last_cmd_ts: Instant::now(),
         })
     }
 }
 
-pub struct MrpcModule {
+pub struct TransportModule {
     runtime_manager: Arc<RuntimeManager>,
 }
 
-impl MrpcModule {
+impl TransportModule {
     pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
-        MrpcModule { runtime_manager }
+        TransportModule { runtime_manager }
     }
 
     pub fn handle_request(
@@ -156,8 +168,8 @@ impl MrpcModule {
             .as_pathname()
             .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
         match req {
-            control_plane::Request::NewClient(mode, transport) => {
-                self.handle_new_client(sock, client_path, *mode, *transport, cred)
+            control_plane::Request::NewClient(mode) => {
+                self.handle_new_client(sock, client_path, *mode, cred)
             }
             _ => unreachable!("unknown req: {:?}", req),
         }
@@ -168,12 +180,11 @@ impl MrpcModule {
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
-        transport: control_plane::Transport,
         cred: &UCred,
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
-        let engine_path = PathBuf::from(format!("/tmp/koala/koala-mrpc-engine-{}.sock", uuid));
+        let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
 
         if engine_path.exists() {
             // This is actually impossible using uuid.
@@ -195,13 +206,10 @@ impl MrpcModule {
         }
 
         // 3. the following part are expected to be done in the Engine's constructor.
-        // the mrpc module is responsible for initializing and starting the mrpc engines
+        // the transport module is responsible for initializing and starting the transport engines
         let client_pid = Pid::from_raw(cred.pid.unwrap());
-        let mut builder = MrpcEngineBuilder::new(&client_path, client_pid, engine_sock, mode);
-        builder
-            .set_transport(transport)
-            .set_wq_depth(DP_WQ_DEPTH)
-            .set_cq_depth(DP_CQ_DEPTH);
+        let mut builder = TransportEngineBuilder::new(&client_path, client_pid, engine_sock, mode);
+        builder.set_wq_depth(DP_WQ_DEPTH).set_cq_depth(DP_CQ_DEPTH);
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime

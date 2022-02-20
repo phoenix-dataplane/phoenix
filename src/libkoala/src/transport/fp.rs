@@ -4,7 +4,7 @@ use std::slice::SliceIndex;
 use std::sync::atomic::Ordering;
 
 use ipc::buf;
-use ipc::transport::dp::{Completion, WorkRequest, WorkRequestSlot};
+use ipc::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
 
 use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 

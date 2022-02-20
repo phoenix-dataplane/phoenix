@@ -1,23 +1,12 @@
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
-use fnv::FnvHashMap as HashMap;
 use std::borrow::Borrow;
-use std::cell::RefCell;
-use std::env;
-use std::fs::File;
 use std::io;
-use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UCred;
-use std::path::Path;
 
-use lazy_static::lazy_static;
 use thiserror::Error;
-use uuid::Uuid;
 
-use engine::SchedulingMode;
 use ipc;
-use ipc::transport::{cmd, control_plane, dp};
-use ipc::unix::DomainSocket;
 
 pub mod transport;
 // Re-exports

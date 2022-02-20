@@ -2,7 +2,7 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
-use ipc::transport::cmd::{Command, CompletionKind};
+use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
 use crate::{rx_recv_impl, Error, FromBorrow};
 use crate::transport::KL_CTX;

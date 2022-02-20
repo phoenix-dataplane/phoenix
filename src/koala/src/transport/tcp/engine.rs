@@ -1,17 +1,37 @@
 use std::collections::VecDeque;
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
+use std::os::unix::io::{AsRawFd, RawFd};
 
-use ipc::mrpc::{cmd, control_plane, dp};
+use fnv::FnvHashMap as HashMap;
+
+use interface::{AsHandle, Handle};
+use ipc::transport::tcp::{cmd, dp};
 use ipc::unix::DomainSocket;
 
 use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
 
 use super::{DatapathError, Error};
+use crate::transport::resource::ResourceTable;
 
-pub struct MrpcEngine {
+pub(crate) struct State {
+    listener_table: ResourceTable<TcpListener>,
+    conn_table: ResourceTable<TcpStream>,
+}
+
+impl State {
+    pub(crate) fn new() -> Self {
+        State {
+            listener_table: HashMap::default(),
+            conn_table: HashMap::default(),
+        }
+    }
+}
+
+pub struct TransportEngine {
     pub(crate) client_path: PathBuf,
     pub(crate) sock: DomainSocket,
     pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
@@ -25,8 +45,7 @@ pub struct MrpcEngine {
     pub(crate) backoff: usize,
     pub(crate) _mode: SchedulingMode,
 
-    // state
-    pub(crate) transport_type: Option<control_plane::TransportType>,
+    pub(crate) state: State,
 
     // bufferred control path request
     pub(crate) cmd_buffer: Option<cmd::Command>,
@@ -34,7 +53,7 @@ pub struct MrpcEngine {
     pub(crate) last_cmd_ts: Instant,
 }
 
-impl Upgradable for MrpcEngine {
+impl Upgradable for TransportEngine {
     fn version(&self) -> Version {
         unimplemented!();
     }
@@ -62,7 +81,9 @@ enum Status {
     Disconnected,
 }
 
-impl Engine for MrpcEngine {
+use Status::Progress;
+
+impl Engine for TransportEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
@@ -100,14 +121,13 @@ impl Engine for MrpcEngine {
     }
 }
 
-impl MrpcEngine {
+impl TransportEngine {
     fn flush_dp(&mut self) -> Result<Status, DatapathError> {
         unimplemented!();
     }
 
     fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.cmd_rx.try_recv() {
-            // handle request
             Ok(req) => {
                 self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
@@ -132,27 +152,23 @@ impl MrpcEngine {
         }
     }
 
-    fn create_transport(&mut self, transport_type: control_plane::TransportType) {
-        self.transport_type = Some(transport_type);
-    }
-
     fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
-        use ipc::mrpc::cmd::{Command, CompletionKind};
+        use cmd::{Command, CompletionKind};
         match req {
-            Command::SetTransport(transport_type) => {
-                if self.transport_type.is_some() {
-                    Err(Error::TransportType)
-                } else {
-                    self.create_transport(*transport_type);
-                    Ok(CompletionKind::SetTransport)
-                }
+            Command::Bind(addr) => {
+                let listener = TcpListener::bind(addr).map_err(Error::Socket)?;
+                // listener.set_nonblocking(true)?.map_err(Error::Socket)?;
+                let handle = listener.as_raw_fd().as_handle();
+                self.state.listener_table.open_or_create_resource(listener)?;
+                Ok(CompletionKind::Bind(handle))
             }
-            Command::Connect(addr) => {
-                if self.transport_type.is_none() {
-                    self.create_transport(control_plane::TransportType::Socket);
-                }
-                
-                Ok(CompletionKind::Connect)
+            Command::Accept(handle) => {
+                let listener = self.state.listener_table.get(handle)?;
+                listener.accept();
+            }
+            Command::Connect(addr) => {}
+            Command::SetSockOption(handle) => {
+                Ok(CompletionKind::SetSockOption)
             }
         }
     }
@@ -160,6 +176,7 @@ impl MrpcEngine {
     fn check_dp(&mut self) -> Result<Status, DatapathError> {
         unimplemented!();
     }
+
     fn check_cm_event(&mut self) -> Result<Status, Error> {
         unimplemented!();
     }

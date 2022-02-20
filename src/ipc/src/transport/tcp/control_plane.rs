@@ -6,12 +6,6 @@ use engine::SchedulingMode;
 
 type IResult<T> = Result<T, interface::Error>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum TransportType {
-    Rdma,
-    Socket,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
     NewClient(SchedulingMode),
@@ -24,6 +18,7 @@ pub enum ResponseKind {
     /// .0: the requested scheduling mode
     /// .1: name of the OneShotServer
     /// .2: data path work queue capacity in bytes
+    /// .3: data path completion queue capacity in bytes
     ConnectEngine {
         mode: SchedulingMode,
         one_shot_name: String,

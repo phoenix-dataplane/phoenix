@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use interface::{returned, AsHandle, Handle};
 use ipc;
 use ipc::unix::DomainSocket;
-use ipc::transport::{cmd, dp};
+use ipc::transport::rdma::{cmd, dp};
 
 use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
 
@@ -239,7 +239,7 @@ impl<'ctx> TransportEngine<'ctx> {
             Err(e) => return Err(e),
         }
 
-        use ipc::transport::cmd::Command;
+        use ipc::transport::rdma::cmd::Command;
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.as_ref().unwrap();
         let cmd_handle = match req {
@@ -399,7 +399,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
     /// Process data path operations.
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
-        use ipc::transport::dp::WorkRequest;
+        use ipc::transport::rdma::dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 // trace!(
@@ -629,7 +629,7 @@ impl<'ctx> TransportEngine<'ctx> {
             cmp::Ordering::Greater => return Err(Error::Transport(event.status())),
         }
 
-        use ipc::transport::cmd::{Command, CompletionKind};
+        use ipc::transport::rdma::cmd::{Command, CompletionKind};
         use rdma::ffi::rdma_cm_event_type::*;
         match event.event() {
             RDMA_CM_EVENT_ADDR_RESOLVED => {
@@ -688,7 +688,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
     /// Process control path operations.
     fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
-        use ipc::transport::cmd::{Command, CompletionKind};
+        use cmd::{Command, CompletionKind};
         match req {
             Command::GetAddrInfo(node, service, hints) => {
                 trace!(

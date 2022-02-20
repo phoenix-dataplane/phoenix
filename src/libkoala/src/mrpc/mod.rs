@@ -16,9 +16,11 @@ use ipc::unix::DomainSocket;
 // Re-exports
 use crate::{Error, KOALA_PATH, MAX_MSG_LEN};
 
+pub mod cm;
+
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
-    pub(crate) static MRPC_CTX: Context = Context::register(control_plane::Transport::Socket).expect("koala mRPC register failed");
+    pub(crate) static MRPC_CTX: Context = Context::register().expect("koala mRPC register failed");
 }
 
 pub(crate) struct Context {
@@ -39,14 +41,14 @@ impl Context {
         }
     }
 
-    fn register(transport: control_plane::Transport) -> Result<Context, Error> {
+    fn register() -> Result<Context, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
         let sock_path = format!("/tmp/koala/koala-client-{}_{}.sock", appname, uuid);
         let mut sock = DomainSocket::bind(sock_path)?;
 
-        let req = control_plane::Request::NewClient(SchedulingMode::Dedicate, transport);
+        let req = control_plane::Request::NewClient(SchedulingMode::Dedicate);
         let buf = bincode::serialize(&control::Request::Mrpc(req))?;
         assert!(buf.len() < MAX_MSG_LEN);
         sock.send_to(&buf, KOALA_PATH)?;

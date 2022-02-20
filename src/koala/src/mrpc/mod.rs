@@ -3,9 +3,10 @@ use thiserror::Error;
 pub mod engine;
 pub mod module;
 
-
 #[derive(Debug, Error)]
 pub(crate) enum Error {
+    #[error("Failed to set transport type")]
+    TransportType,
     // Below are errors that does not return to the user.
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
@@ -20,5 +21,4 @@ impl From<Error> for interface::Error {
 }
 
 #[derive(Error, Debug)]
-pub(crate) enum DatapathError {
-}
+pub(crate) enum DatapathError {}

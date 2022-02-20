@@ -12,7 +12,7 @@ use uuid::Uuid;
 use engine::SchedulingMode;
 use ipc;
 use ipc::control;
-use ipc::transport::{cmd, control_plane, dp};
+use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 // Re-exports
@@ -59,7 +59,7 @@ impl Context {
         let mut sock = DomainSocket::bind(sock_path)?;
 
         let req = control_plane::Request::NewClient(SchedulingMode::Dedicate);
-        let buf = bincode::serialize(&control::Request::Transport(req))?;
+        let buf = bincode::serialize(&control::Request::RdmaTransport(req))?;
         assert!(buf.len() < MAX_MSG_LEN);
         sock.send_to(&buf, KOALA_PATH)?;
 

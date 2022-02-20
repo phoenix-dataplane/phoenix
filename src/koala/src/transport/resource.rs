@@ -1,12 +1,20 @@
-use fnv::FnvHashMap as HashMap;
 use std::collections::hash_map;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use thiserror::Error;
+use fnv::FnvHashMap as HashMap;
+
 use interface::Handle;
 
-use crate::transport::{DatapathError, Error};
+#[derive(Error, Debug, Clone)]
+pub(crate) enum Error {
+    #[error("Resource not found in table")]
+    NotFound,
+    #[error("Resource exists in table")]
+    Exists,
+}
 
 #[derive(Debug)]
 pub(crate) struct ResourceTable<R> {
@@ -71,12 +79,12 @@ impl<R> ResourceTable<R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn get_dp(&self, h: &Handle) -> Result<Arc<R>, DatapathError> {
+    pub(crate) fn get_dp(&self, h: &Handle) -> Result<Arc<R>, Error> {
         self.table
             .lock()
             .get(h)
             .map(|r| r.data())
-            .ok_or(DatapathError::NotFound)
+            .ok_or(Error::NotFound)
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
