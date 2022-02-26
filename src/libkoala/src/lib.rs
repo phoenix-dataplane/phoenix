@@ -14,7 +14,7 @@ pub use transport::{cm, verbs};
 pub mod mrpc;
 
 // TODO(cjr): make this configurable, see koala.toml
-const KOALA_PATH: &str = "/tmp/cjr/koala/koala-control.sock";
+const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
 
 #[derive(Error, Debug)]
 pub enum Error {
