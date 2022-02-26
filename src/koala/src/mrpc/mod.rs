@@ -1,17 +1,21 @@
 use thiserror::Error;
 
+use ipc::customer::Error as CustomerError;
+
 pub mod engine;
 pub mod module;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
+    // Below are errors that return to the user.
     #[error("Failed to set transport type")]
     TransportType,
+
     // Below are errors that does not return to the user.
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
-    #[error("IPC send error: {0}")]
-    IpcSend(#[from] ipc::Error),
+    #[error("Customer error: {0}")]
+    Customer(#[from] CustomerError),
 }
 
 impl From<Error> for interface::Error {

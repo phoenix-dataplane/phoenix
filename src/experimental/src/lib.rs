@@ -11,7 +11,7 @@ extern crate log;
 
 pub mod ringbuffer;
 pub mod shm;
-// pub mod ipc;
+pub mod ipc;
 mod aligned_alloc;
 mod regmr;
 mod shmalloc;

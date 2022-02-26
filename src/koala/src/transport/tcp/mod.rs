@@ -1,10 +1,12 @@
 use std::io;
 use thiserror::Error;
 
-pub mod module;
-pub mod engine;
+use ipc::customer::Error as CustomerError;
 
 use super::resource::Error as ResourceError;
+
+pub mod module;
+pub mod engine;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -30,8 +32,10 @@ pub(crate) enum Error {
     // Below are errors that does not return to the user.
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
-    #[error("IPC send error: {0}")]
-    IpcSend(#[from] ipc::Error),
+    // #[error("IPC send error: {0}")]
+    // IpcSend(#[from] ipc::Error),
+    #[error("Customer error: {0}")]
+    Customer(#[from] CustomerError),
 }
 
 impl From<Error> for interface::Error {

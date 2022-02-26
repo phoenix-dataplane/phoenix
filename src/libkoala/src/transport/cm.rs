@@ -26,8 +26,8 @@ pub fn getaddrinfo(
     );
 
     KL_CTX.with(|ctx| {
-        ctx.cmd_tx.send(req)?;
-        match ctx.cmd_rx.recv().map_err(Error::IpcRecv)?.0 {
+        ctx.service.send_cmd(req)?;
+        match ctx.service.recv_comp()?.0 {
             Ok(CompletionKind::GetAddrInfo(ai)) => Ok(ai),
             Err(e) => Err(Error::Interface("getaddrinfo", e)),
             _ => panic!(""),
@@ -131,19 +131,19 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         KL_CTX.with(|ctx| {
             // create_id
             let req = Command::CreateId(PortSpace::TCP);
-            ctx.cmd_tx.send(req)?;
-            let cmid = rx_recv_impl!(ctx.cmd_rx, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
+            ctx.service.send_cmd(req)?;
+            let cmid = rx_recv_impl!(ctx.service, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
             // auto drop if any of the following step failed
             let drop_cmid = DropCmId(cmid.handle);
             // bind_addr
             let req = Command::BindAddr(cmid.handle.0, listen_addr);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::BindAddr)?;
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::BindAddr)?;
             // listen
             let req = Command::Listen(cmid.handle.0, 512);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::Listen)?;
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::Listen)?;
             mem::forget(drop_cmid);
             Ok(CmIdListener {
                 handle: cmid.handle,
@@ -160,19 +160,19 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         KL_CTX.with(|ctx| {
             // create_id
             let req = Command::CreateId(PortSpace::TCP);
-            ctx.cmd_tx.send(req)?;
-            let cmid = rx_recv_impl!(ctx.cmd_rx, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
+            ctx.service.send_cmd(req)?;
+            let cmid = rx_recv_impl!(ctx.service, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
             // auto drop if any of the following step failed
             let drop_cmid = DropCmId(cmid.handle);
             // resolve_addr
             let req = Command::ResolveAddr(cmid.handle.0, connect_addr);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::ResolveAddr)?;
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::ResolveAddr)?;
             // resolve_route
             let req = Command::ResolveRoute(cmid.handle.0, 2000);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::ResolveRoute)?;
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::ResolveRoute)?;
             assert!(cmid.qp.is_none());
             let mut builder = self.clone();
             builder.handle = cmid.handle;
@@ -190,8 +190,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
                 pd,
                 interface::QpInitAttr::from_borrow(&self.qp_init_attr),
             );
-            ctx.cmd_tx.send(req)?;
-            let qp = rx_recv_impl!(ctx.cmd_rx, CompletionKind::CmCreateQp, qp, { Ok(qp) })?;
+            ctx.service.send_cmd(req)?;
+            let qp = rx_recv_impl!(ctx.service, CompletionKind::CmCreateQp, qp, { Ok(qp) })?;
             Ok(PreparedCmId {
                 inner: Inner {
                     handle: self.handle,
@@ -209,8 +209,8 @@ impl Drop for DropCmId {
         (|| {
             KL_CTX.with(|ctx| {
                 let req = Command::DestroyId(self.0);
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DestroyId)?;
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::DestroyId)?;
                 Ok(())
             })
         })()
@@ -237,8 +237,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub fn get_request(&self) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
         KL_CTX.with(|ctx| {
             let req = Command::GetRequest(self.handle.0);
-            ctx.cmd_tx.send(req)?;
-            let cmid = rx_recv_impl!(ctx.cmd_rx, CompletionKind::GetRequest, cmid, { Ok(cmid) })?;
+            ctx.service.send_cmd(req)?;
+            let cmid = rx_recv_impl!(ctx.service, CompletionKind::GetRequest, cmid, { Ok(cmid) })?;
             assert!(cmid.qp.is_none());
             let mut builder = self.builder.clone();
             builder.handle = cmid.handle;
@@ -260,8 +260,8 @@ impl PreparedCmId {
                 self.inner.handle.0,
                 conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
             );
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::Accept)?;
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::Accept)?;
             Ok(CmId { inner: self.inner })
         })
     }
@@ -273,9 +273,9 @@ impl PreparedCmId {
                 self.inner.handle.0,
                 conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
             );
-            ctx.cmd_tx.send(req)?;
+            ctx.service.send_cmd(req)?;
             rx_recv_impl!(
-                ctx.cmd_rx,
+                ctx.service,
                 CompletionKind::Connect,
                 { Ok(CmId { inner: self.inner }) },
                 e,
@@ -295,8 +295,8 @@ impl Drop for CmId {
         (|| {
             KL_CTX.with(|ctx| {
                 let req = Command::Disconnect(self.inner.handle);
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::Disconnect)?;
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::Disconnect)?;
                 Ok(())
             })
         })()
@@ -374,7 +374,7 @@ impl Inner {
     //         qp_init_attr.map(|attr| interface::QpInitAttr::from_borrow(attr)),
     //     );
     //     KL_CTX.with(|ctx| {
-    //         ctx.cmd_tx.send(req)?;
+    //         ctx.service.send_cmd(req)?;
 
     //         match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
     //             Ok(CompletionKind::CreateEp(cmid)) => Ok(CmId {
@@ -390,7 +390,7 @@ impl Inner {
     // pub fn listen(&self, backlog: i32) -> Result<(), Error> {
     //     let req = Command::Listen(self.handle.0, backlog);
     //     KL_CTX.with(|ctx| {
-    //         ctx.cmd_tx.send(req)?;
+    //         ctx.service.send_cmd(req)?;
     //         rx_recv_impl!(ctx.cmd_rx, CompletionKind::Listen, { Ok(()) })
     //     })
     // }
@@ -398,7 +398,7 @@ impl Inner {
     // pub fn get_request(&self) -> Result<CmId, Error> {
     //     let req = Command::GetRequest(self.handle.0);
     //     KL_CTX.with(|ctx| {
-    //         ctx.cmd_tx.send(req)?;
+    //         ctx.service.send_cmd(req)?;
 
     //         match ctx.cmd_rx.recv().map_err(|e| Error::IpcRecvError(e))?.0 {
     //             Ok(CompletionKind::GetRequest(cmid)) => Ok(CmId {
@@ -417,7 +417,7 @@ impl Inner {
     //         conn_param.map(|param| interface::ConnParam::from_borrow(param)),
     //     );
     //     KL_CTX.with(|ctx| {
-    //         ctx.cmd_tx.send(req)?;
+    //         ctx.service.send_cmd(req)?;
     //         rx_recv_impl!(ctx.cmd_rx, CompletionKind::Accept, { Ok(()) })
     //     })
     // }
@@ -428,7 +428,7 @@ impl Inner {
     //         conn_param.map(|param| interface::ConnParam::from_borrow(param)),
     //     );
     //     KL_CTX.with(|ctx| {
-    //         ctx.cmd_tx.send(req)?;
+    //         ctx.service.send_cmd(req)?;
     //         rx_recv_impl!(ctx.cmd_rx, CompletionKind::Connect, { Ok(()) })
     //     })
     // }

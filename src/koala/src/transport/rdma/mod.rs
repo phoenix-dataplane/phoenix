@@ -1,14 +1,17 @@
 use std::io;
 use thiserror::Error;
 
+use ipc::customer::Error as CustomerError;
+
+use super::resource::Error as ResourceError;
+
 pub mod engine;
 pub mod module;
 pub mod state;
 
-use super::resource::Error as ResourceError;
-
 #[derive(Debug, Error)]
 pub(crate) enum Error {
+    // Below are errors that return to the user.
     #[error("rdmacm internal error: {0}")]
     RdmaCm(io::Error),
     // #[error("ibv internal error: {0}")]
@@ -35,8 +38,10 @@ pub(crate) enum Error {
     // Below are errors that does not return to the user.
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
-    #[error("IPC send error: {0}")]
-    IpcSend(#[from] ipc::Error),
+    // #[error("IPC send error: {0}")]
+    // IpcSend(#[from] ipc::Error),
+    #[error("Customer error: {0}")]
+    Customer(#[from] CustomerError),
 }
 
 impl From<Error> for interface::Error {
@@ -73,6 +78,16 @@ impl From<ResourceError> for DatapathError {
         match other {
             ResourceError::NotFound => DatapathError::NotFound,
             ResourceError::Exists => panic!(),
+        }
+    }
+}
+
+impl From<CustomerError> for DatapathError {
+    fn from(other: CustomerError) -> Self {
+        match other {
+            CustomerError::ShmIpc(e) => DatapathError::ShmIpc(e),
+            CustomerError::ShmRingbuf(e) => DatapathError::ShmRingbuf(e),
+            _ => panic!(),
         }
     }
 }

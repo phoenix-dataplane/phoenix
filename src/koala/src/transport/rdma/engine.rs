@@ -2,20 +2,17 @@ use std::collections::VecDeque;
 use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
-use std::path::PathBuf;
 use std::slice;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use interface::{returned, AsHandle, Handle};
 use ipc;
-use ipc::unix::DomainSocket;
+use ipc::customer::Customer;
 use ipc::transport::rdma::{cmd, dp};
 
-use interface::engine::SchedulingMode;
 use engine::{Engine, EngineStatus, Upgradable, Version};
+use interface::engine::SchedulingMode;
 
 use rdma::ibv;
 use rdma::rdmacm;
@@ -25,15 +22,8 @@ use super::state::State;
 use super::{DatapathError, Error};
 
 pub struct TransportEngine<'ctx> {
-    /// This is the path of the domain socket which is client side is listening on.
-    /// The mainly purpose of keeping is to send file descriptors to the client.
-    pub(crate) client_path: PathBuf,
-    pub(crate) sock: DomainSocket,
-    pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-    pub(crate) cmd_tx: ipc::IpcSender<cmd::Completion>,
-    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Command>,
-    pub(crate) dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
-    pub(crate) dp_cq: ipc::ShmSender<dp::CompletionSlot>,
+    pub(crate) customer:
+        Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
@@ -94,7 +84,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
         self.dp_spin_cnt = 0;
 
-        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0
+        if self.customer.has_control_command()
             || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
         {
             self.last_cmd_ts = Instant::now();
@@ -134,7 +124,7 @@ fn prepare_returned_qp(handles: (Handle, Handle, Handle, Handle)) -> returned::Q
 impl<'ctx> TransportEngine<'ctx> {
     fn flush_dp(&mut self) -> Result<Status, DatapathError> {
         let mut processed = 0;
-        let existing_work = self.dp_wq.receiver_mut().read_count()?;
+        let existing_work = self.customer.get_avail_wr_count()?;
 
         while processed < existing_work {
             if let Progress(n) = self.check_dp()? {
@@ -150,7 +140,7 @@ impl<'ctx> TransportEngine<'ctx> {
         const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
-        let max_count = BUF_LEN.min(self.dp_cq.sender_mut().write_count()?);
+        let max_count = BUF_LEN.min(self.customer.get_avail_wc_slots()?);
         if max_count == 0 {
             return Ok(Progress(0));
         }
@@ -158,9 +148,8 @@ impl<'ctx> TransportEngine<'ctx> {
         let mut count = 0;
         let mut buffer = Vec::with_capacity(BUF_LEN);
 
-        self.dp_wq
-            .receiver_mut()
-            .recv(|ptr, read_count| unsafe {
+        self.customer
+            .dequeue_wr_with(|ptr, read_count| unsafe {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
                 debug_assert!(max_count <= BUF_LEN);
@@ -203,18 +192,17 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     fn check_cmd(&mut self) -> Result<Status, Error> {
-        match self.cmd_rx.try_recv() {
+        match self.customer.try_recv_cmd() {
             // handle request
             Ok(req) => {
-                self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
+                    Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
                     Err(Error::InProgress) => {
                         // nothing to do, waiting for some network/device response
                         return Ok(Progress(0));
                     }
-                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
+                    Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -234,7 +222,7 @@ impl<'ctx> TransportEngine<'ctx> {
             Ok(()) => {}
             Err(Error::NoCmEvent) => {}
             Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
-                self.cmd_tx.send(cmd::Completion(Err(e.into())))?;
+                self.customer.send_comp(cmd::Completion(Err(e.into())))?;
                 return Ok(Progress(1));
             }
             Err(e) => return Err(e),
@@ -260,8 +248,8 @@ impl<'ctx> TransportEngine<'ctx> {
             Some(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
-                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
-                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
+                    Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
+                    Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -365,7 +353,7 @@ impl<'ctx> TransportEngine<'ctx> {
         if !self.cq_err_buffer.is_empty() {
             self.cq_err_buffer.push_back(comp);
         } else {
-            self.dp_cq.send_raw(|ptr, _count| unsafe {
+            self.customer.notify_wc_with(|ptr, _count| unsafe {
                 // construct an WorkCompletion and set the vendor_err
                 ptr.cast::<dp::Completion>().write(comp);
                 sent = true;
@@ -383,7 +371,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
         let mut cq_err_buffer = VecDeque::new();
         mem::swap(&mut cq_err_buffer, &mut self.cq_err_buffer);
-        let status = self.dp_cq.send_raw(|ptr, count| unsafe {
+        let status = self.customer.notify_wc_with(|ptr, count| unsafe {
             let mut cnt = 0;
             // construct an WorkCompletion and set the vendor_err
             for comp in cq_err_buffer.drain(..count) {
@@ -510,7 +498,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let mut err = false;
                 let mut sent = false;
                 while !sent {
-                    self.dp_cq.sender_mut().send(|ptr, count| unsafe {
+                    self.customer.notify_wc_with(|ptr, count| unsafe {
                         sent = true;
                         let mut cnt = 0;
                         while cnt < count {
@@ -893,9 +881,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let mr = rdma::mr::MemoryRegion::new(&pd, *nbytes, *access)
                     .map_err(Error::MemoryRegion)?;
                 let fd = mr.memfd().as_raw_fd();
-                self.sock
-                    .send_fd(&self.client_path, &[fd][..])
-                    .map_err(Error::SendFd)?;
+                self.customer.send_fd(&[fd][..]).map_err(Error::SendFd)?;
                 let rkey = mr.rkey();
                 let new_mr_handle = mr.as_handle();
                 self.state.resource().mr_table.insert(new_mr_handle, mr)?;

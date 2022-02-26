@@ -7,12 +7,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use log::{debug, warn};
 
 use crate::mrpc::module::MrpcModule;
 use crate::transport::{rdma, tcp};
 
 use engine::manager::RuntimeManager;
+use interface::engine::EngineType;
 use ipc::unix::DomainSocket;
 
 // TODO(cjr): make these configurable, see koala.toml
@@ -80,6 +82,35 @@ impl Control {
         use ipc::control;
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
+            control::Request::NewClient(mode, engine_type) => {
+                let client_path = sender
+                    .as_pathname()
+                    .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
+                match engine_type {
+                    EngineType::RdmaTransport => {
+                        self.rdma_transport.handle_new_client(
+                            &self.sock,
+                            client_path,
+                            mode,
+                            cred,
+                        )?;
+                    }
+                    EngineType::TcpTransport => {
+                        self.tcp_transport.handle_new_client(
+                            &self.sock,
+                            client_path,
+                            mode,
+                            cred,
+                        )?;
+                    }
+                    EngineType::Mrpc => {
+                        self.mrpc
+                            .handle_new_client(&self.sock, client_path, mode, cred)?;
+                    }
+                    _ => unimplemented!(),
+                }
+                Ok(())
+            }
             control::Request::RdmaTransport(req) => self
                 .rdma_transport
                 .handle_request(&req, &self.sock, sender, cred),

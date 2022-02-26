@@ -1,16 +1,11 @@
 use std::collections::VecDeque;
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use fnv::FnvHashMap as HashMap;
-
 use interface::{AsHandle, Handle};
 use ipc::transport::tcp::{cmd, dp};
-use ipc::unix::DomainSocket;
+use ipc::customer::Customer;
 
 use interface::engine::SchedulingMode;
 use engine::{Engine, EngineStatus, Upgradable, Version};
@@ -26,20 +21,14 @@ pub(crate) struct State {
 impl State {
     pub(crate) fn new() -> Self {
         State {
-            listener_table: HashMap::default(),
-            conn_table: HashMap::default(),
+            listener_table: ResourceTable::default(),
+            conn_table: ResourceTable::default(),
         }
     }
 }
 
 pub struct TransportEngine {
-    pub(crate) client_path: PathBuf,
-    pub(crate) sock: DomainSocket,
-    pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-    pub(crate) cmd_tx: ipc::IpcSender<cmd::Completion>,
-    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Command>,
-    pub(crate) dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
-    pub(crate) dp_cq: ipc::ShmSender<dp::CompletionSlot>,
+    pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
@@ -101,7 +90,7 @@ impl Engine for TransportEngine {
 
         self.dp_spin_cnt = 0;
 
-        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0
+        if self.customer.has_control_command()
             || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
         {
             self.last_cmd_ts = Instant::now();
@@ -128,17 +117,16 @@ impl TransportEngine {
     }
 
     fn check_cmd(&mut self) -> Result<Status, Error> {
-        match self.cmd_rx.try_recv() {
+        match self.customer.try_recv_cmd() {
             Ok(req) => {
-                self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
+                    Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
                     Err(Error::InProgress) => {
                         // nothing to do, waiting for some network/device response
                         return Ok(Progress(0));
                     }
-                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
+                    Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -160,16 +148,27 @@ impl TransportEngine {
                 let listener = TcpListener::bind(addr).map_err(Error::Socket)?;
                 // listener.set_nonblocking(true)?.map_err(Error::Socket)?;
                 let handle = listener.as_raw_fd().as_handle();
-                self.state.listener_table.open_or_create_resource(listener)?;
+                self.state.listener_table.open_or_create_resource(handle, listener);
                 Ok(CompletionKind::Bind(handle))
             }
             Command::Accept(handle) => {
                 let listener = self.state.listener_table.get(handle)?;
-                listener.accept();
+                let (sock, addr) = listener.accept().map_err(Error::Socket)?;
+                sock.set_nonblocking(true).map_err(Error::Socket)?;
+                let new_handle = sock.as_raw_fd().as_handle();
+                self.state.conn_table.open_or_create_resource(new_handle, sock);
+                Ok(CompletionKind::Accept(new_handle))
             }
-            Command::Connect(addr) => {}
+            Command::Connect(addr) => {
+                let sock = TcpStream::connect(addr).map_err(Error::Socket)?;
+                sock.set_nonblocking(true).map_err(Error::Socket)?;
+                let handle = sock.as_raw_fd().as_handle();
+                self.state.conn_table.open_or_create_resource(handle, sock);
+                Ok(CompletionKind::Connect(handle))
+            }
             Command::SetSockOption(handle) => {
-                Ok(CompletionKind::SetSockOption)
+                unimplemented!("setsockoption");
+                // Ok(CompletionKind::SetSockOption)
             }
         }
     }

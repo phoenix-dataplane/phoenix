@@ -1,25 +1,15 @@
-use std::collections::VecDeque;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+use ipc::customer::Customer;
 use ipc::mrpc::{cmd, control_plane, dp};
-use ipc::unix::DomainSocket;
 
-use engine::{Engine, EngineStatus, SchedulingMode, Upgradable, Version};
+use engine::{Engine, EngineStatus, Upgradable, Version};
+use interface::engine::SchedulingMode;
 
 use super::{DatapathError, Error};
 
 pub struct MrpcEngine {
-    pub(crate) client_path: PathBuf,
-    pub(crate) sock: DomainSocket,
-    pub(crate) cmd_rx_entries: ipc::ShmObject<AtomicUsize>,
-    pub(crate) cmd_tx: ipc::IpcSender<cmd::Completion>,
-    pub(crate) cmd_rx: ipc::IpcReceiver<cmd::Command>,
-    pub(crate) dp_wq: ipc::ShmReceiver<dp::WorkRequestSlot>,
-    pub(crate) dp_cq: ipc::ShmSender<dp::CompletionSlot>,
-    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
+    pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -62,11 +52,13 @@ enum Status {
     Disconnected,
 }
 
+use Status::Progress;
+
 impl Engine for MrpcEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Status::Progress(n) = self.check_dp()? {
+        if let Progress(n) = self.check_dp()? {
             if n > 0 {
                 self.backoff = DP_LIMIT.min(self.backoff * 2);
             }
@@ -79,7 +71,7 @@ impl Engine for MrpcEngine {
 
         self.dp_spin_cnt = 0;
 
-        if self.cmd_rx_entries.load(Ordering::Relaxed) > 0
+        if self.customer.has_control_command()
             || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
         {
             self.last_cmd_ts = Instant::now();
@@ -106,18 +98,13 @@ impl MrpcEngine {
     }
 
     fn check_cmd(&mut self) -> Result<Status, Error> {
-        match self.cmd_rx.try_recv() {
+        match self.customer.try_recv_cmd() {
             // handle request
             Ok(req) => {
-                self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(cmd::Completion(Ok(res)))?,
-                    Err(Error::InProgress) => {
-                        // nothing to do, waiting for some network/device response
-                        return Ok(Progress(0));
-                    }
-                    Err(e) => self.cmd_tx.send(cmd::Completion(Err(e.into())))?,
+                    Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
+                    Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -134,7 +121,6 @@ impl MrpcEngine {
 
     fn create_transport(&mut self, transport_type: control_plane::TransportType) {
         self.transport_type = Some(transport_type);
-        
     }
 
     fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {

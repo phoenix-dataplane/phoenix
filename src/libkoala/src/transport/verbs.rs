@@ -16,7 +16,7 @@ use memmap2::{MmapOptions, MmapRaw};
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
+use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 use crate::{rx_recv_impl, FromBorrow};
 
 // Re-exports
@@ -33,8 +33,8 @@ fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // already been initialized.
     KL_CTX.with(|ctx| {
         let req = Command::GetDefaultPds;
-        ctx.cmd_tx.send(req)?;
-        rx_recv_impl!(ctx.cmd_rx, CompletionKind::GetDefaultPds, pds, {
+        ctx.service.send_cmd(req)?;
+        rx_recv_impl!(ctx.service, CompletionKind::GetDefaultPds, pds, {
             pds.into_iter()
                 .map(|pd| ProtectionDomain::open(pd))
                 .collect::<Result<Vec<_>, Error>>()
@@ -52,8 +52,8 @@ impl Drop for ProtectionDomain {
         (|| {
             let req = Command::DeallocPd(self.inner);
             KL_CTX.with(|ctx| {
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DeallocPd)
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::DeallocPd)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
@@ -65,8 +65,8 @@ impl ProtectionDomain {
         KL_CTX.with(|ctx| {
             let inner = pd.handle;
             let req = Command::OpenPd(inner);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenPd, {
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::OpenPd, {
                 Ok(ProtectionDomain { inner })
             })
         })
@@ -81,17 +81,16 @@ impl ProtectionDomain {
         assert!(nbytes > 0);
         let req = Command::RegMr(self.inner, nbytes, access);
         KL_CTX.with(|ctx| {
-            ctx.cmd_tx.send(req)?;
-            let (fds, cred) = ctx.sock.recv_fd()?;
+            ctx.service.send_cmd(req)?;
+            let fds = ctx.service.recv_fd()?;
 
-            Context::check_credential(&ctx.sock, cred)?;
             assert_eq!(fds.len(), 1);
 
             let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
             let file_len = memfd.as_file().metadata()?.len() as usize;
             assert_eq!(file_len, nbytes);
 
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::RegMr, mr, {
+            rx_recv_impl!(ctx.service, CompletionKind::RegMr, mr, {
                 MemoryRegion::new(self.inner, mr.handle, mr.rkey, memfd)
             })
         })
@@ -150,8 +149,8 @@ impl Drop for CompletionQueue {
 
             let req = Command::DestroyCq(self.inner);
             KL_CTX.with(|ctx| {
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DestroyCq)
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::DestroyCq)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
@@ -169,8 +168,8 @@ impl CompletionQueue {
                 .clone();
             let inner = returned_cq.handle;
             let req = Command::OpenCq(inner);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenCq, {
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::OpenCq, {
                 Ok(CompletionQueue {
                     inner,
                     outstanding: AtomicBool::new(false),
@@ -223,8 +222,8 @@ impl<T> Drop for MemoryRegion<T> {
         (|| {
             KL_CTX.with(|ctx| {
                 let req = Command::DeregMr(self.inner);
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DeregMr)
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::DeregMr)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
@@ -288,8 +287,8 @@ impl QueuePair {
         KL_CTX.with(|ctx| {
             let inner = returned_qp.handle;
             let req = Command::OpenQp(inner);
-            ctx.cmd_tx.send(req)?;
-            rx_recv_impl!(ctx.cmd_rx, CompletionKind::OpenQp, {
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::OpenQp, {
                 Ok(QueuePair {
                     inner,
                     pd: ProtectionDomain::open(returned_qp.pd)?,
@@ -321,8 +320,8 @@ impl Drop for QueuePair {
         (|| {
             let req = Command::DestroyQp(self.inner);
             KL_CTX.with(|ctx| {
-                ctx.cmd_tx.send(req)?;
-                rx_recv_impl!(ctx.cmd_rx, CompletionKind::DestroyQp)
+                ctx.service.send_cmd(req)?;
+                rx_recv_impl!(ctx.service, CompletionKind::DestroyQp)
             })
         })()
         .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));

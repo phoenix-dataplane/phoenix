@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::env;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::FromRawFd;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::UCred;
 use std::path::Path;
 
@@ -11,14 +11,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use interface::engine::{SchedulingMode, EngineType};
+use interface::engine::{EngineType, SchedulingMode};
 
 use crate::control;
 use crate::unix::DomainSocket;
 use crate::{IpcReceiver, IpcSender, IpcSenderNotify, ShmObject, ShmReceiver, ShmSender};
 
 const MAX_MSG_LEN: usize = 65536;
-const KOALA_PATH: &str = "/tmp/cjr/koala/koala-control.sock";
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -30,8 +29,6 @@ pub enum Error {
     IpcSend(crate::Error),
     #[error("IPC recv error")]
     IpcRecv(crate::IpcError),
-    #[error("Interface error {0}: {1}")]
-    Interface(&'static str, interface::Error),
     #[error("Control plane error {0}: {1}")]
     ControlPlane(&'static str, interface::Error),
     #[error("DomainSocket error: {0}")]
@@ -48,6 +45,9 @@ pub enum Error {
     CredentialMismatch(UCred, UCred),
 }
 
+/// # Comment:
+/// 
+/// The user must ensure that there is no concurrent access to this Service.
 pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     sock: DomainSocket,
     cmd_tx: IpcSenderNotify<Command>,
@@ -73,7 +73,10 @@ where
         }
     }
 
-    fn register(engine_type: EngineType) -> Result<Self, Error> {
+    pub fn register<P: AsRef<Path>>(
+        service_path: P,
+        engine_type: EngineType,
+    ) -> Result<Self, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
@@ -83,12 +86,12 @@ where
         let req = control::Request::NewClient(SchedulingMode::Dedicate, engine_type);
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
-        sock.send_to(&buf, KOALA_PATH)?;
+        sock.send_to(&buf, &service_path)?;
 
         // receive NewClient response
         let mut buf = vec![0u8; 128];
         let (_, sender) = sock.recv_from(buf.as_mut_slice())?;
-        assert_eq!(sender.as_pathname(), Some(Path::new(KOALA_PATH)));
+        assert_eq!(sender.as_pathname(), Some(service_path.as_ref()));
         let res: control::Response = bincode::deserialize(&buf)?;
 
         // return the internal error
@@ -170,5 +173,40 @@ where
             }
             _ => panic!("unexpected response: {:?}", res),
         }
+    }
+
+    #[inline]
+    pub fn recv_fd(&self) -> Result<Vec<RawFd>, Error> {
+        let (fds, cred) = self.sock.recv_fd()?;
+        Self::check_credential(&self.sock, cred)?;
+        Ok(fds)
+    }
+
+    #[inline]
+    pub fn send_cmd(&self, cmd: Command) -> Result<(), Error> {
+        Ok(self.cmd_tx.send(cmd)?)
+    }
+
+    #[inline]
+    pub fn recv_comp(&self) -> Result<Completion, Error> {
+        Ok(self.cmd_rx.recv().map_err(Error::IpcRecv)?)
+    }
+
+    #[inline]
+    pub fn enqueue_wr_with<F: FnOnce(*mut WorkRequest, usize) -> usize>(
+        &self,
+        f: F,
+    ) -> Result<(), Error> {
+        self.dp_wq.borrow_mut().sender_mut().send(f)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn dequeue_wc_with<F: FnOnce(*const WorkCompletion, usize) -> usize>(
+        &self,
+        f: F,
+    ) -> Result<(), Error> {
+        self.dp_cq.borrow_mut().receiver_mut().recv(f)?;
+        Ok(())
     }
 }
