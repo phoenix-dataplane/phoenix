@@ -31,6 +31,9 @@ pub struct TransportEngine {
     pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
+    // this engine translate RPC messages into transport-level work requests / completions
+    pub(crate) rpc_adapter: RpcAdapter,
+
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
     pub(crate) _mode: SchedulingMode,

@@ -1,7 +1,7 @@
 log_env = "KOALA_LOG"
 default_log_level = "debug"
 
-modules = ["transport", "mrpc"]
+modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]
 
 [control]
 prefix = "/tmp/koala"
@@ -15,3 +15,35 @@ datapath_cq_depth = 32
 command_max_interval_ms = 1000
 
 [mrpc]
+input = ["rpc-adapter"]
+output = ["overload"]
+
+[overload]
+input = ["mrpc"]
+output = ["rpc-adapter"]
+
+[rpc-adapter]
+input = ["overload"]
+output = ["rpc"]
+
+
+instances=[
+    {
+        "id": 1,
+        "type":"mrpc",
+        "tx_output": [2],
+        "rx_input": [3],
+    },
+    {
+        "id": 2,
+        "type":"overload",
+        "tx_input": [1],
+        "tx_output": [3],
+    }
+    {
+        "id": 3,
+        "type":"adapter",
+        "tx_input": [2],
+        "rx_output": [1],
+    },    
+]
