@@ -1,49 +1,62 @@
 log_env = "KOALA_LOG"
 default_log_level = "debug"
 
-modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]
+# modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]
+modules = ["Mrpc", "RpcAdapter", "Overload"]
 
 [control]
 prefix = "/tmp/koala"
-path = "/tmp/koala-control.sock"
+path = "koala-control.sock"
 
-[transport]
+[transport-rdma]
 prefix = "/tmp/koala"
-engine_basename = "koala-transport-engine"
+engine_basename = "koala-transport-engine-rdma"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
 command_max_interval_ms = 1000
 
-[mrpc]
-input = ["rpc-adapter"]
-output = ["overload"]
+[[node]]
+id = "mrpc.0"
+type = "Mrpc"
 
-[overload]
-input = ["mrpc"]
-output = ["rpc-adapter"]
+[[node]]
+id = "overload"
+type = "Overload"
 
-[rpc-adapter]
-input = ["overload"]
-output = ["rpc"]
+[[node]]
+id = "rpc-adapter"
+type = "RpcAdapter"
 
-
-instances=[
-    {
-        "id": 1,
-        "type":"mrpc",
-        "tx_output": [2],
-        "rx_input": [3],
-    },
-    {
-        "id": 2,
-        "type":"overload",
-        "tx_input": [1],
-        "tx_output": [3],
-    }
-    {
-        "id": 3,
-        "type":"adapter",
-        "tx_input": [2],
-        "rx_output": [1],
-    },    
+egress = [
+  ["mrpc.0", "overload"],
+  ["overload", "rpc-adapter"],
 ]
+
+ingress = [
+  ["rpc-adapter", "mrpc.0"],
+]
+
+# [[egress]]
+# from = "mrpc.0"
+# to = "overload"
+
+# instances = [
+#     {
+#         "id": 1,
+#         "type":"mrpc",
+#         "tx_output": [2],
+#         "rx_input": [3]
+#     },
+#     {
+#         "id": 2,
+#         "type":"overload",
+#         "tx_input": [1],
+#         "tx_output": [3]
+#     },
+#     {
+#         "id": 3,
+#         "type":"adapter",
+#         "tx_input": [2],
+#         "rx_output": [1]
+#     }
+# ]

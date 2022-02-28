@@ -17,7 +17,7 @@ pub trait Upgradable {
 }
 
 use std::sync::mpsc::{Sender, Receiver};
-pub trait RpcMessage {
+pub trait RpcMessage: Send {
     fn len(&self) -> usize;
     fn is_request(&self) -> bool;
     fn serialize(&self);
@@ -27,16 +27,16 @@ pub trait RpcMessage {
 pub type IQueue = Receiver<Box<dyn RpcMessage>>;
 pub type OQueue = Sender<Box<dyn RpcMessage>>;
 
-pub trait Node {
-    fn id(&self) -> usize;
+pub trait Vertex {
+    fn id(&self) -> String;
     fn engine_type(&self) -> EngineType;
-    fn tx_inputs(&self) -> Vec<IQueue>;
-    fn tx_outputs(&self) -> Vec<OQueue>;
-    fn rx_inputs(&self) -> Vec<IQueue>;
-    fn rx_outputs(&self) -> Vec<OQueue>;
+    fn tx_inputs(&self) -> &Vec<IQueue>;
+    fn tx_outputs(&self) -> &Vec<OQueue>;
+    fn rx_inputs(&self) -> &Vec<IQueue>;
+    fn rx_outputs(&self) -> &Vec<OQueue>;
 }
 
-pub trait Engine: Upgradable + Send + Node {
+pub trait Engine: Upgradable + Send + Vertex {
     /// `resume()` mush be non-blocking and short.
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
 }

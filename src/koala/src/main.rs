@@ -1,20 +1,36 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 
 #[macro_use]
 extern crate log;
 use anyhow::Result;
+use structopt::StructOpt;
 
+use koala::config::Config;
 use koala::control::Control;
 use engine::manager::RuntimeManager;
 
+#[derive(Debug, Clone, StructOpt)]
+#[structopt(name = "Koala Service")]
+struct Opts {
+    /// Koala config path
+    #[structopt(short, long, default_value = "koala.toml")]
+    config: PathBuf,
+}
+
 fn main() -> Result<()> {
-    init_env_log("KOALA_LOG", "debug");
+    // load config
+    let opts = Opts::from_args();
+    let config = Config::from_path(opts.config)?;
+
+    // by default, KOALA_LOG="debug"
+    init_env_log(config.log_env, config.default_log_level);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
 
     // the Control now takes over
-    let mut control = Control::new(runtime_manager);
+    let mut control = Control::new(runtime_manager, config);
     control.mainloop()
 }
 

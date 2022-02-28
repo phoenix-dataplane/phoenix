@@ -11,7 +11,7 @@ use ipc;
 use ipc::customer::Customer;
 use ipc::transport::rdma::{cmd, dp};
 
-use engine::{Engine, EngineStatus, Upgradable, Version};
+use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
 
 use rdma::ibv;
@@ -20,10 +20,13 @@ use rdma::rdmacm::CmId;
 
 use super::state::State;
 use super::{DatapathError, Error};
+use crate::node::Node;
 
 pub struct TransportEngine<'ctx> {
     pub(crate) customer:
         Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    node: Node,
+
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
@@ -66,6 +69,10 @@ enum Status {
 }
 
 use Status::Progress;
+
+impl<'ctx> Vertex for TransportEngine<'ctx> {
+    crate::impl_vertex_for_engine!(node);
+}
 
 impl<'ctx> Engine for TransportEngine<'ctx> {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {

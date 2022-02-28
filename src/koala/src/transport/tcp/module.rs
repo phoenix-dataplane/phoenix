@@ -11,13 +11,14 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::manager::RuntimeManager;
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingMode, EngineType};
 use ipc;
 use ipc::customer::Customer;
 use ipc::transport::tcp::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::TransportEngine;
+use crate::node::Node;
 
 pub(crate) struct TransportEngineBuilder {
     customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
@@ -41,9 +42,11 @@ impl TransportEngineBuilder {
     fn build(self) -> Result<TransportEngine> {
         // create or get the state of the process
         // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let node = Node::new(EngineType::TcpTransport);
 
         Ok(TransportEngine {
             customer: self.customer,
+            node,
             cq_err_buffer: VecDeque::new(),
             dp_spin_cnt: 0,
             backoff: 1,

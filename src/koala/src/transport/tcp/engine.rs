@@ -8,10 +8,11 @@ use ipc::transport::tcp::{cmd, dp};
 use ipc::customer::Customer;
 
 use interface::engine::SchedulingMode;
-use engine::{Engine, EngineStatus, Upgradable, Version};
+use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 
 use super::{DatapathError, Error};
 use crate::transport::resource::ResourceTable;
+use crate::node::Node;
 
 pub(crate) struct State {
     listener_table: ResourceTable<TcpListener>,
@@ -29,10 +30,9 @@ impl State {
 
 pub struct TransportEngine {
     pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
+    node: Node,
 
-    // this engine translate RPC messages into transport-level work requests / completions
-    pub(crate) rpc_adapter: RpcAdapter,
+    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -75,6 +75,10 @@ enum Status {
 }
 
 use Status::Progress;
+
+impl Vertex for TransportEngine {
+    crate::impl_vertex_for_engine!(node);
+}
 
 impl Engine for TransportEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {

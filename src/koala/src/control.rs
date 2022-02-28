@@ -10,25 +10,28 @@ use std::time::Duration;
 use anyhow::anyhow;
 use log::{debug, warn};
 
-use crate::mrpc::module::MrpcModule;
-use crate::transport::{rdma, tcp};
-
 use engine::manager::RuntimeManager;
-use interface::engine::EngineType;
+use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
+
+use crate::config::Config;
+use crate::mrpc::module::MrpcModule;
+use crate::node::Node;
+use crate::transport::{rdma, tcp};
 
 // TODO(cjr): make these configurable, see koala.toml
 const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
 
 pub struct Control {
     sock: DomainSocket,
+    config: Config,
     rdma_transport: rdma::module::TransportModule,
     tcp_transport: tcp::module::TransportModule,
     mrpc: MrpcModule,
 }
 
 impl Control {
-    pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
+    pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
         let koala_path = Path::new(KOALA_PATH);
         if koala_path.exists() {
             fs::remove_file(koala_path).expect("remove_file");
@@ -44,6 +47,7 @@ impl Control {
 
         Control {
             sock,
+            config,
             rdma_transport: rdma::module::TransportModule::new(Arc::clone(&runtime_manager)),
             tcp_transport: tcp::module::TransportModule::new(Arc::clone(&runtime_manager)),
             mrpc: MrpcModule::new(Arc::clone(&runtime_manager)),
@@ -71,6 +75,75 @@ impl Control {
                 Err(e) => warn!("recv failed: {:?}", e),
             }
         }
+    }
+
+    fn build_graph<P: AsRef<Path>>(
+        &mut self,
+        client_path: P,
+        mode: SchedulingMode,
+        cred: &UCred,
+    ) -> anyhow::Result<()> {
+        // create a node for each vertex in the graph
+        let mut nodes: Vec<Node> = self
+            .config
+            .node
+            .iter()
+            .map(|x| Node::create_from_template(x))
+            .collect();
+        // build all internal queues
+        for e in self.config.egress {
+            assert_eq!(e.len(), 2, "e: {:?}", e);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            nodes
+                .iter_mut()
+                .find(|x| x.id == e[0])
+                .unwrap()
+                .tx_output
+                .push(sender);
+            nodes
+                .iter_mut()
+                .find(|x| x.id == e[1])
+                .unwrap()
+                .tx_input
+                .push(receiver);
+        }
+        for e in self.config.ingress {
+            assert_eq!(e.len(), 2, "e: {:?}", e);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            nodes
+                .iter_mut()
+                .find(|x| x.id == e[0])
+                .unwrap()
+                .rx_output
+                .push(sender);
+            nodes
+                .iter_mut()
+                .find(|x| x.id == e[1])
+                .unwrap()
+                .rx_input
+                .push(receiver);
+        }
+        // build all engines from nodes
+        let engines = Vec::new();
+        for n in nodes {
+            let engine = match n.engine_type {
+                EngineType::RdmaTransport => panic!(),
+                EngineType::TcpTransport => panic!(),
+                EngineType::Mrpc => {
+                    self.mrpc
+                        .handle_new_client(&self.sock, client_path, mode, cred)?;
+                }
+                EngineType::RpcAdapter => {
+                    let e1 = self.rpc_adapter.create_engine(n);
+                    let e2 = self.rdma_transport.create_engine();
+                    engines.push(e1);
+                    engines.push(e2);
+                }
+                EngineType::Overload => unimplemented!(),
+            };
+        }
+        // submit engines to runtime
+        Ok(())
     }
 
     fn dispatch(
@@ -104,8 +177,9 @@ impl Control {
                         )?;
                     }
                     EngineType::Mrpc => {
-                        self.mrpc
-                            .handle_new_client(&self.sock, client_path, mode, cred)?;
+                        self.build_graph(client_path, mode, cred)?;
+                        // self.mrpc
+                        //     .handle_new_client(&self.sock, client_path, mode, cred)?;
                     }
                     _ => unimplemented!(),
                 }

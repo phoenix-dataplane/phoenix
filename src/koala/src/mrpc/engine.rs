@@ -3,13 +3,15 @@ use std::time::{Duration, Instant};
 use ipc::customer::Customer;
 use ipc::mrpc::{cmd, control_plane, dp};
 
-use engine::{Engine, EngineStatus, Upgradable, Version};
+use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 use interface::engine::SchedulingMode;
 
 use super::{DatapathError, Error};
+use crate::node::Node;
 
 pub struct MrpcEngine {
     pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    node: Node,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -53,6 +55,10 @@ enum Status {
 }
 
 use Status::Progress;
+
+impl Vertex for MrpcEngine {
+    crate::impl_vertex_for_engine!(node);
+}
 
 impl Engine for MrpcEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {

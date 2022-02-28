@@ -9,16 +9,18 @@ use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use interface::engine::SchedulingMode;
+use interface::engine::{EngineType, SchedulingMode};
 use engine::manager::RuntimeManager;
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 use ipc::customer::Customer;
 
 use super::engine::MrpcEngine;
+use crate::node::Node;
 
 pub(crate) struct MrpcEngineBuilder {
     customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    node: Node,
     _client_pid: Pid,
     mode: SchedulingMode,
 }
@@ -26,11 +28,13 @@ pub(crate) struct MrpcEngineBuilder {
 impl MrpcEngineBuilder {
     fn new(
         customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+        node: Node,
         _client_pid: Pid,
         mode: SchedulingMode,
     ) -> Self {
         MrpcEngineBuilder {
             customer,
+            node,
             _client_pid,
             mode,
         }
@@ -41,6 +45,7 @@ impl MrpcEngineBuilder {
 
         Ok(MrpcEngine {
             customer: self.customer,
+            node: self.node,
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
@@ -95,7 +100,8 @@ impl MrpcModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 4. create the engine
-        let builder = MrpcEngineBuilder::new(customer, client_pid, mode);
+        let node = Node::new(EngineType::Mrpc);
+        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode);
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime

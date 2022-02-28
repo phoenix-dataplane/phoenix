@@ -12,7 +12,7 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::manager::RuntimeManager;
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingMode, EngineType};
 use ipc;
 use ipc::customer::Customer;
 use ipc::transport::rdma::{cmd, control_plane, dp};
@@ -20,6 +20,7 @@ use ipc::unix::DomainSocket;
 
 use super::engine::TransportEngine;
 use super::state::StateManager;
+use crate::node::Node;
 
 lazy_static! {
     static ref STATE_MGR: StateManager<'static> = StateManager::new();
@@ -47,9 +48,11 @@ impl TransportEngineBuilder {
     fn build(self) -> Result<TransportEngine<'static>> {
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let node = Node::new(EngineType::RdmaTransport);
 
         Ok(TransportEngine {
             customer: self.customer,
+            node,
             cq_err_buffer: VecDeque::new(),
             dp_spin_cnt: 0,
             backoff: 1,
@@ -85,13 +88,13 @@ impl TransportModule {
         }
     }
 
-    pub fn handle_new_client<P: AsRef<Path>>(
+    pub(crate) fn create_engine<P: AsRef<Path>>(
         &mut self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
         cred: &UCred,
-    ) -> Result<()> {
+    ) -> Result<TransportEngine<'static>> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
         // TODO(cjr): make this configurable
@@ -108,7 +111,20 @@ impl TransportModule {
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
 
-        // 5. submit the engine to a runtime
+        Ok(engine)
+    }
+
+    pub fn handle_new_client<P: AsRef<Path>>(
+        &mut self,
+        sock: &DomainSocket,
+        client_path: P,
+        mode: SchedulingMode,
+        cred: &UCred,
+    ) -> Result<()> {
+        // create a new transport engine
+        let engine = self.create_engine(sock, client_path, mode, cred)?;
+
+        // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);
 
         Ok(())
