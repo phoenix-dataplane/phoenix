@@ -22,6 +22,13 @@ impl Hash for Node {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct Edges {
+    pub egress: Vec<Vec<String>>,
+    pub ingress: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Control {
     pub prefix: PathBuf,
     pub path: PathBuf,
@@ -47,8 +54,7 @@ pub struct Config {
     #[serde(alias = "transport-rdma")]
     pub transport_rdma: Option<RdmaTransportConfig>,
     pub node: Vec<Node>,
-    pub egress: Vec<Vec<String>>,
-    pub ingress: Vec<Vec<String>>,
+    pub edges: Edges,
 }
 
 impl Config {

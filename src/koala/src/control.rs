@@ -93,7 +93,7 @@ impl Control {
             .map(|x| Node::create_from_template(x))
             .collect();
         // build all internal queues
-        for e in &self.config.egress {
+        for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
             let (sender, receiver) = std::sync::mpsc::channel();
             nodes
@@ -109,7 +109,7 @@ impl Control {
                 .tx_input
                 .push(receiver);
         }
-        for e in &self.config.ingress {
+        for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
             let (sender, receiver) = std::sync::mpsc::channel();
             nodes
