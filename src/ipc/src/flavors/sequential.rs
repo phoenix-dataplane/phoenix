@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::queue::Queue;
 use crate::{Error, TryRecvError};
 
+// TODO(cjr): make these configurable, see koala.toml
+const DP_WQ_DEPTH: usize = 32;
+const DP_CQ_DEPTH: usize = 32;
+
 pub struct Shared<A, B, C, D> {
     fd_queue: VecDeque<Vec<RawFd>>,
     cmd_a: VecDeque<A>,
@@ -19,6 +23,25 @@ pub struct Shared<A, B, C, D> {
     dp_c: Queue<C>,
     dp_d: Queue<D>,
 }
+
+impl<A, B, C, D> Shared<A, B, C, D> {
+    pub fn new() -> Self {
+        Self {
+            fd_queue: VecDeque::new(),
+            cmd_a: VecDeque::new(),
+            cmd_b: VecDeque::new(),
+            dp_c: Queue::new(DP_WQ_DEPTH),
+            dp_d: Queue::new(DP_CQ_DEPTH),
+        }
+    }
+}
+
+/// # Safety
+/// 
+/// A Customer can be safely sent only when its corresponding Service is also moved
+/// to the same thread at the same time. The engine runtime must guarantee that.
+unsafe impl<A: Send, B: Send, C: Send, D: Send> Send for Customer<A, B, C, D> {}
+unsafe impl<A: Send, B: Send, C: Send, D: Send> Send for Service<A, B, C, D> {}
 
 pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     shared: Rc<RefCell<Shared<Command, Completion, WorkRequest, WorkCompletion>>>,
@@ -32,6 +55,14 @@ where
     WorkRequest: Copy + zerocopy::FromBytes,
     WorkCompletion: Copy + zerocopy::AsBytes,
 {
+    pub fn new(
+        shared: &Rc<RefCell<Shared<Command, Completion, WorkRequest, WorkCompletion>>>,
+    ) -> Self {
+        Self {
+            shared: Rc::clone(shared),
+        }
+    }
+
     #[inline]
     pub(crate) fn has_control_command(&self) -> bool {
         self.shared.borrow().cmd_a.len() > 0
@@ -76,9 +107,7 @@ where
         let (ptr, count) = self.shared.borrow().dp_c.get_data_buf();
         let read_cnt = f(ptr, count);
         assert!(read_cnt <= count);
-        unsafe {
-            self.shared.borrow_mut().dp_c.read_advance(read_cnt);
-        }
+        self.shared.borrow_mut().dp_c.read_advance(read_cnt);
         Ok(())
     }
 
@@ -119,6 +148,14 @@ where
     WorkRequest: Copy + zerocopy::AsBytes,
     WorkCompletion: Copy + zerocopy::FromBytes,
 {
+    pub fn new(
+        shared: &Rc<RefCell<Shared<Command, Completion, WorkRequest, WorkCompletion>>>,
+    ) -> Self {
+        Self {
+            shared: Rc::clone(shared),
+        }
+    }
+
     #[inline]
     pub(crate) fn recv_fd(&self) -> Result<Vec<RawFd>, Error> {
         panic!("please use the non-blocking version")
@@ -146,7 +183,11 @@ where
 
     #[inline]
     pub(crate) fn try_recv_comp(&self) -> Result<Completion, Error> {
-        self.shared.borrow_mut().cmd_b.pop_front().ok_or(Error::TryRecv(TryRecvError::Empty))
+        self.shared
+            .borrow_mut()
+            .cmd_b
+            .pop_front()
+            .ok_or(Error::TryRecv(TryRecvError::Empty))
     }
 
     #[inline]
@@ -171,9 +212,7 @@ where
         let (ptr, count) = self.shared.borrow().dp_d.get_data_buf();
         let read_cnt = f(ptr, count);
         assert!(read_cnt <= count);
-        unsafe {
-            self.shared.borrow_mut().dp_d.read_advance(read_cnt);
-        }
+        self.shared.borrow_mut().dp_d.read_advance(read_cnt);
         Ok(())
     }
 }

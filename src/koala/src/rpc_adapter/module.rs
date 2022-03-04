@@ -1,36 +1,31 @@
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use engine::manager::RuntimeManager;
 use interface::engine::{EngineType, SchedulingMode};
 use ipc;
-use ipc::service::{SerivceFlavor, Service};
+use ipc::service::Service;
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::RpcAdapterEngine;
 use crate::node::Node;
 
+pub(crate) type ServiceType = Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+
 pub(crate) struct RpcAdapterEngineBuilder {
-    service: Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    service: ServiceType,
     client_pid: Pid,
     mode: SchedulingMode,
 }
 
 impl RpcAdapterEngineBuilder {
-    fn new(
-        service: Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-        client_pid: Pid,
-        mode: SchedulingMode,
-    ) -> Self {
+    fn new(service: ServiceType, client_pid: Pid, mode: SchedulingMode) -> Self {
         RpcAdapterEngineBuilder {
             service,
             client_pid,
@@ -53,9 +48,7 @@ impl RpcAdapterEngineBuilder {
     }
 }
 
-pub struct RpcAdapterModule {
-    runtime_manager: Arc<RuntimeManager>,
-}
+pub struct RpcAdapterModule;
 
 impl RpcAdapterModule {
     pub fn handle_request(
@@ -73,10 +66,8 @@ impl RpcAdapterModule {
         }
     }
 
-    pub(crate) fn create_engine<P: AsRef<Path>>(
-        &mut self,
-        sock: &DomainSocket,
-        client_path: P,
+    pub(crate) fn create_engine(
+        service: ServiceType,
         mode: SchedulingMode,
         client_pid: Pid,
     ) -> Result<RpcAdapterEngine> {
@@ -86,13 +77,7 @@ impl RpcAdapterModule {
         let engine_path =
             PathBuf::from(format!("/tmp/koala/koala-rpc_adapter-engine-{}.sock", uuid));
 
-        // 2. create customer stub
-        // let customer = Customer::accept(sock, client_path, mode, engine_path)?;
-        let service = Service {
-            flavor: SerivceFlavor::Sequential::new(),
-        };
-
-        // 3. create the engine
+        // 2. create the engine
         let builder = RpcAdapterEngineBuilder::new(service, client_pid, mode);
         let engine = builder.build()?;
 

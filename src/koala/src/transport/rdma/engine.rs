@@ -6,25 +6,23 @@ use std::slice;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use interface::{returned, AsHandle, Handle};
-use ipc;
-use ipc::customer::Customer;
-use ipc::transport::rdma::{cmd, dp};
-
 use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
+use interface::{returned, AsHandle, Handle};
+use ipc::transport::rdma::{cmd, dp};
 
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
+use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
 use crate::node::Node;
 
 pub struct TransportEngine<'ctx> {
-    pub(crate) customer: Customer,
-    node: Node,
+    pub(crate) customer: CustomerType,
+    pub(crate) node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
@@ -216,10 +214,8 @@ impl<'ctx> TransportEngine<'ctx> {
                 // do nothing
                 Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::IpcError(ipc::IpcError::Disconnected)) => {
-                Ok(Status::Disconnected)
-            }
-            Err(ipc::TryRecvError::IpcError(_e)) => Err(Error::IpcTryRecv),
+            Err(ipc::TryRecvError::Disconnected) => Ok(Status::Disconnected),
+            Err(ipc::TryRecvError::Other(_e)) => Err(Error::IpcTryRecv),
         }
     }
 

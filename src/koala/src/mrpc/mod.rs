@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-use ipc::customer::Error as CustomerError;
-
 pub mod engine;
 pub mod module;
 
@@ -15,7 +13,7 @@ pub(crate) enum Error {
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     #[error("Customer error: {0}")]
-    Customer(#[from] CustomerError),
+    Customer(#[from] ipc::Error),
 }
 
 impl From<Error> for interface::Error {

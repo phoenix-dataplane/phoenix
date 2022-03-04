@@ -1,8 +1,6 @@
 use std::io;
 use thiserror::Error;
 
-use ipc::customer::Error as CustomerError;
-
 use super::resource::Error as ResourceError;
 
 pub mod engine;
@@ -25,7 +23,7 @@ pub(crate) enum Error {
     #[error("Fail to create MemoryRegion: {0}")]
     MemoryRegion(rdma::mr::Error),
     #[error("Failed to send file descriptors: {0}")]
-    SendFd(ipc::unix::Error),
+    SendFd(ipc::Error),
     #[error("Operation in progress")]
     InProgress,
     #[error("Mio error: {0}")]
@@ -41,7 +39,7 @@ pub(crate) enum Error {
     // #[error("IPC send error: {0}")]
     // IpcSend(#[from] ipc::Error),
     #[error("Customer error: {0}")]
-    Customer(#[from] CustomerError),
+    Customer(#[from] ipc::Error),
 }
 
 impl From<Error> for interface::Error {
@@ -64,9 +62,9 @@ pub(crate) enum DatapathError {
     #[error("Resource not found in table.")]
     NotFound,
     #[error("Shared memory queue error: {0}.")]
-    ShmIpc(#[from] ipc::ShmIpcError),
+    ShmIpc(#[from] ipc::shmem_ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}.")]
-    ShmRingbuf(#[from] ipc::ShmRingbufError),
+    ShmRingbuf(#[from] ipc::shmem_ipc::ShmRingbufError),
     #[error("rdmacm internal error: {0}.")]
     RdmaCm(io::Error),
     #[error("ibv internal error: {0}.")]
@@ -82,11 +80,11 @@ impl From<ResourceError> for DatapathError {
     }
 }
 
-impl From<CustomerError> for DatapathError {
-    fn from(other: CustomerError) -> Self {
+impl From<ipc::Error> for DatapathError {
+    fn from(other: ipc::Error) -> Self {
         match other {
-            CustomerError::ShmIpc(e) => DatapathError::ShmIpc(e),
-            CustomerError::ShmRingbuf(e) => DatapathError::ShmRingbuf(e),
+            ipc::Error::ShmIpc(e) => DatapathError::ShmIpc(e),
+            ipc::Error::ShmRingbuf(e) => DatapathError::ShmRingbuf(e),
             _ => panic!(),
         }
     }

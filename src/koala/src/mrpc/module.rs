@@ -9,28 +9,27 @@ use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use interface::engine::{EngineType, SchedulingMode};
 use engine::manager::RuntimeManager;
+use interface::engine::{EngineType, SchedulingMode};
+use ipc::customer::{Customer, ShmCustomer};
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::MrpcEngine;
 use crate::node::Node;
 
+pub type CustomerType =
+    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+
 pub(crate) struct MrpcEngineBuilder {
-    customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    customer: CustomerType,
     node: Node,
     _client_pid: Pid,
     mode: SchedulingMode,
 }
 
 impl MrpcEngineBuilder {
-    fn new(
-        customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-        node: Node,
-        _client_pid: Pid,
-        mode: SchedulingMode,
-    ) -> Self {
+    fn new(customer: CustomerType, node: Node, _client_pid: Pid, mode: SchedulingMode) -> Self {
         MrpcEngineBuilder {
             customer,
             node,
@@ -92,7 +91,8 @@ impl MrpcModule {
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-mrpc-engine-{}.sock", uuid));
 
         // 2. create customer stub
-        let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
+        let customer =
+            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the mrpc module is responsible for initializing and starting the mrpc engines

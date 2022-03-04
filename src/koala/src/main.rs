@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     let config = Config::from_path(opts.config)?;
 
     // by default, KOALA_LOG="debug"
-    init_env_log(config.log_env, config.default_log_level);
+    init_env_log(&config.log_env, &config.default_log_level);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));

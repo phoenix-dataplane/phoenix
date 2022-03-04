@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;
 
 use ipc::buf;
 use ipc::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
-use ipc::service::Service;
 
 use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 

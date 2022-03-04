@@ -14,7 +14,7 @@ use uuid::Uuid;
 use engine::manager::RuntimeManager;
 use interface::engine::{EngineType, SchedulingMode};
 use ipc;
-use ipc::customer::{Customer, CustomerFlavor};
+use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
@@ -25,6 +25,9 @@ use crate::node::Node;
 lazy_static! {
     static ref STATE_MGR: StateManager<'static> = StateManager::new();
 }
+
+pub type CustomerType =
+    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
@@ -84,28 +87,15 @@ impl TransportModule {
         }
     }
 
-    pub(crate) fn create_engine<P: AsRef<Path>>(
+    pub(crate) fn create_engine(
         &mut self,
-        sock: &DomainSocket,
-        client_path: P,
+        customer: CustomerType,
         mode: SchedulingMode,
-        cred: &UCred,
+        client_pid: Pid,
     ) -> Result<TransportEngine<'static>> {
-        // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
-        // TODO(cjr): make this configurable
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
 
-        // 2. create customer stub
-        let customer = Customer {
-            flavor: CustomerFlavor::SharedMemory::accept(sock, client_path, mode, engine_path)?,
-        };
-
-        // 3. the following part are expected to be done in the Engine's constructor.
-        // the transport module is responsible for initializing and starting the transport engines
-        let client_pid = Pid::from_raw(cred.pid.unwrap());
-
-        // 4. create the engine
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
 
@@ -120,7 +110,22 @@ impl TransportModule {
         cred: &UCred,
     ) -> Result<()> {
         // create a new transport engine
-        let engine = self.create_engine(sock, client_path, mode, cred)?;
+        // 1. generate a path and bind a unix domain socket to it
+        let uuid = Uuid::new_v4();
+        // TODO(cjr): make this configurable
+        let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
+
+        // 2. create customer stub
+        let customer =
+            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+
+        // 3. the following part are expected to be done in the Engine's constructor.
+        // the transport module is responsible for initializing and starting the transport engines
+        let client_pid = Pid::from_raw(cred.pid.unwrap());
+
+        // 4. create the engine
+        let builder = TransportEngineBuilder::new(customer, client_pid, mode);
+        let engine = builder.build()?;
 
         // submit the engine to a runtime
         self.runtime_manager.submit(Box::new(engine), mode);

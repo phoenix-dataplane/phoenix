@@ -20,14 +20,8 @@ use ipc::unix::DomainSocket;
 use super::engine::TransportEngine;
 use crate::node::Node;
 
-pub(crate) type CustomerType = Box<
-    dyn Customer<
-        Command = cmd::Command,
-        Completion = cmd::Completion,
-        WorkRequest = dp::WorkRequestSlot,
-        WorkCompletion = dp::CompletionSlot,
-    >,
->;
+pub type CustomerType =
+    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
@@ -104,7 +98,7 @@ impl TransportModule {
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
 
         // 2. create customer stub
-        let customer = Box::new(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer = Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines

@@ -1,5 +1,6 @@
 //! A Control is the entry of control plane. It directs commands from the external
 //! world to corresponding module.
+use nix::unistd::Pid;
 use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -10,34 +11,35 @@ use std::time::Duration;
 use anyhow::anyhow;
 use log::{debug, warn};
 
+use engine::Engine;
 use engine::manager::RuntimeManager;
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
+use ipc::ChannelFlavor;
 
 use crate::config::Config;
-use crate::mrpc::module::MrpcModule;
 use crate::node::Node;
-use crate::transport::{rdma, tcp};
-
-// TODO(cjr): make these configurable, see koala.toml
-const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
+use crate::{
+    mrpc, rpc_adapter,
+    transport::{rdma, tcp},
+};
 
 pub struct Control {
     sock: DomainSocket,
     config: Config,
     rdma_transport: rdma::module::TransportModule,
     tcp_transport: tcp::module::TransportModule,
-    mrpc: MrpcModule,
+    mrpc: mrpc::module::MrpcModule,
 }
 
 impl Control {
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
-        let koala_path = Path::new(KOALA_PATH);
+        let koala_path = config.control.prefix.join(&config.control.path);
         if koala_path.exists() {
-            fs::remove_file(koala_path).expect("remove_file");
+            fs::remove_file(&koala_path).expect("remove_file");
         }
 
-        let sock = DomainSocket::bind(koala_path)
+        let sock = DomainSocket::bind(&koala_path)
             .unwrap_or_else(|e| panic!("Cannot bind domain socket: {}", e));
 
         sock.set_read_timeout(Some(Duration::from_millis(1)))
@@ -50,7 +52,7 @@ impl Control {
             config,
             rdma_transport: rdma::module::TransportModule::new(Arc::clone(&runtime_manager)),
             tcp_transport: tcp::module::TransportModule::new(Arc::clone(&runtime_manager)),
-            mrpc: MrpcModule::new(Arc::clone(&runtime_manager)),
+            mrpc: mrpc::module::MrpcModule::new(Arc::clone(&runtime_manager)),
         }
     }
 
@@ -91,7 +93,7 @@ impl Control {
             .map(|x| Node::create_from_template(x))
             .collect();
         // build all internal queues
-        for e in self.config.egress {
+        for e in &self.config.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
             let (sender, receiver) = std::sync::mpsc::channel();
             nodes
@@ -107,7 +109,7 @@ impl Control {
                 .tx_input
                 .push(receiver);
         }
-        for e in self.config.ingress {
+        for e in &self.config.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
             let (sender, receiver) = std::sync::mpsc::channel();
             nodes
@@ -124,26 +126,33 @@ impl Control {
                 .push(receiver);
         }
         // build all engines from nodes
-        let engines = Vec::new();
+        let mut engines: Vec<Box<dyn Engine>> = Vec::new();
         for n in nodes {
-            let engine = match n.engine_type {
+            match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
                     self.mrpc
-                        .handle_new_client(&self.sock, client_path, mode, cred)?;
+                        .handle_new_client(&self.sock, &client_path, mode, cred)?;
                 }
                 EngineType::RpcAdapter => {
                     // for now, we create the adapter for tcp
-                    let e1 = self.rpc_adapter.create_engine(n);
-                    let e2 = self.rdma_transport.create_engine();
-                    engines.push(e1);
-                    engines.push(e2);
+                    let client_pid = Pid::from_raw(cred.pid.unwrap());
+                    let (service, customer) = ipc::create_channel(ChannelFlavor::Concurrent);
+                    let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
+                        service, mode, client_pid,
+                    )?;
+                    let e2 = self
+                        .rdma_transport
+                        .create_engine(customer, mode, client_pid)?;
+                    engines.push(Box::new(e1));
+                    engines.push(Box::new(e2));
                 }
                 EngineType::Overload => unimplemented!(),
             };
         }
         // submit engines to runtime
+        todo!();
         Ok(())
     }
 
@@ -179,8 +188,6 @@ impl Control {
                     }
                     EngineType::Mrpc => {
                         self.build_graph(client_path, mode, cred)?;
-                        // self.mrpc
-                        //     .handle_new_client(&self.sock, client_path, mode, cred)?;
                     }
                     _ => unimplemented!(),
                 }

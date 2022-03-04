@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::flavors;
 use crate::{Error, TryRecvError};
 
-// TODO(cjr): make these configurable, see koala.toml
-const DP_WQ_DEPTH: usize = 32;
-const DP_CQ_DEPTH: usize = 32;
+// Re-exports
+pub use crate::flavors::sequential::Customer as SeqCustomer;
+pub use crate::flavors::shm::Customer as ShmCustomer;
 
 /// COMMENT(cjr): There is no way to implement Customer as a trait. Because we need to
 /// ask the user to pass in an F: FnOnce, thereby making the the trait not object-safe.
@@ -19,10 +19,10 @@ const DP_CQ_DEPTH: usize = 32;
 /// we use an enum to differentite different Customer implementations at runtime.
 /// The runtime overhead is just a single branch instruction, whose prediction hit rate is 100%.
 pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
-    flavor: CustomerFlavor<Command, Completion, WorkRequest, WorkCompletion>,
+    pub(crate) flavor: CustomerFlavor<Command, Completion, WorkRequest, WorkCompletion>,
 }
 
-enum CustomerFlavor<A, B, C, D> {
+pub(crate) enum CustomerFlavor<A, B, C, D> {
     /// Customer interface based on shared memory.
     SharedMemory(flavors::shm::Customer<A, B, C, D>),
     /// Customer interface within a single address space (i.e., single process, but can be multi-threaded).
@@ -49,6 +49,22 @@ where
     WorkRequest: Copy + zerocopy::FromBytes,
     WorkCompletion: Copy + zerocopy::AsBytes,
 {
+    pub fn from_shm(
+        shm_customer: ShmCustomer<Command, Completion, WorkRequest, WorkCompletion>,
+    ) -> Self {
+        Self {
+            flavor: CustomerFlavor::SharedMemory(shm_customer),
+        }
+    }
+
+    pub fn from_seq(
+        seq_customer: SeqCustomer<Command, Completion, WorkRequest, WorkCompletion>,
+    ) -> Self {
+        Self {
+            flavor: CustomerFlavor::Sequential(seq_customer),
+        }
+    }
+
     #[inline]
     pub fn has_control_command(&self) -> bool {
         match &self.flavor {

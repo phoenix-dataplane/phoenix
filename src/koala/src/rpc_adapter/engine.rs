@@ -1,15 +1,15 @@
 use ipc::transport::tcp::{cmd, dp};
-use ipc::service::{Service};
 
 use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
 
 use crate::node::Node;
+use super::module::ServiceType;
 
 pub struct RpcAdapterEngine {
-    pub(crate) service:
-        ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-    node: Node,
+    pub(crate) service: ServiceType,
+    
+    pub(crate) node: Node,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -44,5 +44,6 @@ impl Vertex for RpcAdapterEngine {
 
 impl Engine for RpcAdapterEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
+        unimplemented!();
     }
 }

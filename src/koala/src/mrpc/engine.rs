@@ -1,17 +1,16 @@
 use std::time::{Duration, Instant};
 
-use ipc::customer::{Customer, ShmCustomer};
+use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
-use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
-use interface::engine::SchedulingMode;
-
+use super::module::CustomerType;
 use super::{DatapathError, Error};
 use crate::node::Node;
 
 pub struct MrpcEngine {
-    pub(crate) customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-    node: Node,
+    pub(crate) customer: CustomerType,
+    pub(crate) node: Node,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -118,10 +117,10 @@ impl MrpcEngine {
                 // do nothing
                 Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::IpcError(ipc::IpcError::Disconnected)) => {
+            Err(ipc::TryRecvError::Disconnected) => {
                 Ok(Status::Disconnected)
             }
-            Err(ipc::TryRecvError::IpcError(_e)) => Err(Error::IpcTryRecv),
+            Err(ipc::TryRecvError::Other(_e)) => Err(Error::IpcTryRecv),
         }
     }
 

@@ -395,34 +395,34 @@ where
     }
 
     #[inline]
-    pub(crate) fn recv_fd(&self) -> Result<Vec<RawFd>, Error> {
+    pub fn recv_fd(&self) -> Result<Vec<RawFd>, Error> {
         let (fds, cred) = self.sock.recv_fd()?;
         Self::check_credential(&self.sock, cred)?;
         Ok(fds)
     }
 
     #[inline]
-    pub(crate) fn try_recv_fd(&self) -> Result<Vec<RawFd>, Error> {
+    pub fn try_recv_fd(&self) -> Result<Vec<RawFd>, Error> {
         unimplemented!("todo")
     }
 
     #[inline]
-    pub(crate) fn send_cmd(&self, cmd: Command) -> Result<(), Error> {
+    pub fn send_cmd(&self, cmd: Command) -> Result<(), Error> {
         Ok(self.cmd_tx.send(cmd)?)
     }
 
     #[inline]
-    pub(crate) fn recv_comp(&self) -> Result<Completion, Error> {
+    pub fn recv_comp(&self) -> Result<Completion, Error> {
         Ok(self.cmd_rx.recv().map_err(|e| Error::IpcRecv(e.into()))?)
     }
 
     #[inline]
-    pub(crate) fn try_recv_comp(&self) -> Result<Completion, Error> {
+    pub fn try_recv_comp(&self) -> Result<Completion, Error> {
         unimplemented!("todo")
     }
 
     #[inline]
-    pub(crate) fn enqueue_wr_with<F: FnOnce(*mut WorkRequest, usize) -> usize>(
+    pub fn enqueue_wr_with<F: FnOnce(*mut WorkRequest, usize) -> usize>(
         &self,
         f: F,
     ) -> Result<(), Error> {
@@ -431,7 +431,7 @@ where
     }
 
     #[inline]
-    pub(crate) fn dequeue_wc_with<F: FnOnce(*const WorkCompletion, usize) -> usize>(
+    pub fn dequeue_wc_with<F: FnOnce(*const WorkCompletion, usize) -> usize>(
         &self,
         f: F,
     ) -> Result<(), Error> {

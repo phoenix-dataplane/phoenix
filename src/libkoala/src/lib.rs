@@ -19,7 +19,7 @@ const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Service error: {0}")]
-    Service(#[from] ipc::service::Error),
+    Service(#[from] ipc::Error),
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     // #[error("Bincode error: {0}")]

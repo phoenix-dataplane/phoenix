@@ -6,13 +6,17 @@ use serde::{Deserialize, Serialize};
 use crate::flavors;
 use crate::Error;
 
+// Re-exports
+pub use crate::flavors::sequential::Service as SeqService;
+pub use crate::flavors::shm::Service as ShmService;
+
 pub(crate) const MAX_MSG_LEN: usize = 65536;
 
 pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
-    flavor: SerivceFlavor<Command, Completion, WorkRequest, WorkCompletion>,
+    pub(crate) flavor: ServiceFlavor<Command, Completion, WorkRequest, WorkCompletion>,
 }
 
-enum SerivceFlavor<A, B, C, D> {
+pub(crate) enum ServiceFlavor<A, B, C, D> {
     /// Customer interface based on shared memory.
     SharedMemory(flavors::shm::Service<A, B, C, D>),
     /// Customer interface within a single address space (i.e., single process, but can be multi-threaded).
@@ -24,9 +28,9 @@ enum SerivceFlavor<A, B, C, D> {
 macro_rules! choose_flavor {
     ($flavor:expr, $func:ident $(, $args:tt)*) => {
         match $flavor {
-            SerivceFlavor::SharedMemory(c) => c.$func($($args)*),
-            SerivceFlavor::Concurrent(c) => c.$func($($args)*),
-            SerivceFlavor::Sequential(c) => c.$func($($args)*),
+            ServiceFlavor::SharedMemory(c) => c.$func($($args)*),
+            ServiceFlavor::Concurrent(c) => c.$func($($args)*),
+            ServiceFlavor::Sequential(c) => c.$func($($args)*),
         }
     };
 }

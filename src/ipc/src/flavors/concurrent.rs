@@ -1,8 +1,9 @@
 //! Concurrent Customer implementation. The two endpoints must
 //! be in the same process (the same address space). In this case,
 //! OS resources can be shared easily (e.g., special memory regions, files).
-use std::os::unix::io::RawFd;
 use std::cell::RefCell;
+use std::os::unix::io::RawFd;
+use std::sync::Arc;
 
 use crossbeam::channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
@@ -44,12 +45,59 @@ impl From<crossbeam::channel::RecvError> for RecvFdError {
     }
 }
 
+pub(crate) fn create_channel<A, B, C, D>() -> (Service<A, B, C, D>, Customer<A, B, C, D>)
+where
+    A: for<'de> Deserialize<'de> + Serialize,
+    B: for<'de> Deserialize<'de> + Serialize,
+    C: Copy + zerocopy::FromBytes + zerocopy::AsBytes,
+    D: Copy + zerocopy::FromBytes + zerocopy::AsBytes,
+{
+    use crossbeam::channel::unbounded;
+    let (fd_tx, fd_rx) = unbounded();
+    let (cmd_tx, cmd_rx) = unbounded();
+    let (comp_tx, comp_rx) = unbounded();
+
+    let wq_cap_bytes = shmem_ipc::ringbuf::channel_bufsize::<C>(DP_WQ_DEPTH);
+    let cq_cap_bytes = shmem_ipc::ringbuf::channel_bufsize::<D>(DP_CQ_DEPTH);
+
+    let mut dp_wq_buf = Vec::with_capacity(wq_cap_bytes);
+    let mut dp_cq_buf = Vec::with_capacity(cq_cap_bytes);
+    let (dp_wq_tx, dp_wq_rx) = shmem_ipc::ringbuf::channel(dp_wq_buf.as_mut_slice());
+    let (dp_cq_tx, dp_cq_rx) = shmem_ipc::ringbuf::channel(dp_cq_buf.as_mut_slice());
+    let dp_wq_buf = Arc::new(dp_wq_buf);
+    let dp_cq_buf = Arc::new(dp_cq_buf);
+
+    (
+        Service {
+            fd_rx,
+            cmd_tx,
+            cmd_rx: comp_rx,
+            dp_wq: RefCell::new(dp_wq_tx),
+            dp_cq: RefCell::new(dp_cq_rx),
+            _dp_wq_buf: Arc::clone(&dp_wq_buf),
+            _dp_cq_buf: Arc::clone(&dp_cq_buf),
+        },
+        Customer {
+            fd_tx,
+            cmd_rx,
+            cmd_tx: comp_tx,
+            dp_wq: dp_wq_rx,
+            dp_cq: dp_cq_tx,
+            _dp_wq_buf: Arc::clone(&dp_wq_buf),
+            _dp_cq_buf: Arc::clone(&dp_cq_buf),
+        },
+    )
+}
+
 pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     fd_tx: Sender<Vec<RawFd>>,
     cmd_rx: Receiver<Command>,
     cmd_tx: Sender<Completion>,
     dp_wq: RingReceiver<WorkRequest>,
     dp_cq: RingSender<WorkCompletion>,
+
+    _dp_wq_buf: Arc<Vec<u8>>,
+    _dp_cq_buf: Arc<Vec<u8>>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -133,6 +181,9 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     cmd_rx: Receiver<Completion>,
     dp_wq: RefCell<RingSender<WorkRequest>>,
     dp_cq: RefCell<RingReceiver<WorkCompletion>>,
+
+    _dp_wq_buf: Arc<Vec<u8>>,
+    _dp_cq_buf: Arc<Vec<u8>>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -151,7 +202,10 @@ where
 
     #[inline]
     pub(crate) fn try_recv_fd(&self) -> Result<Vec<RawFd>, Error> {
-        let fds = self.fd_rx.try_recv().map_err(|e| Error::TryRecvFd(e.into()))?;
+        let fds = self
+            .fd_rx
+            .try_recv()
+            .map_err(|e| Error::TryRecvFd(e.into()))?;
         Ok(fds)
     }
 
@@ -170,7 +224,10 @@ where
 
     #[inline]
     pub(crate) fn try_recv_comp(&self) -> Result<Completion, Error> {
-        Ok(self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?)
+        Ok(self
+            .cmd_rx
+            .try_recv()
+            .map_err(|e| Error::TryRecv(e.into()))?)
     }
 
     #[inline]

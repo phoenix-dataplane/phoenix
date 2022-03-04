@@ -31,7 +31,7 @@ impl State {
 
 pub struct TransportEngine {
     pub(crate) customer: CustomerType,
-    node: Node,
+    pub(crate) node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
 
@@ -142,10 +142,10 @@ impl TransportEngine {
                 // do nothing
                 Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::IpcError(ipc::IpcError::Disconnected)) => {
+            Err(ipc::TryRecvError::Disconnected) => {
                 Ok(Status::Disconnected)
             }
-            Err(ipc::TryRecvError::IpcError(_e)) => Err(Error::IpcTryRecv),
+            Err(ipc::TryRecvError::Other(_e)) => Err(Error::IpcTryRecv),
         }
     }
 

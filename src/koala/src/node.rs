@@ -25,7 +25,7 @@ impl Node {
 
     pub fn create_from_template(n: &crate::config::Node) -> Self {
         Node {
-            id: n.id,
+            id: n.id.clone(),
             engine_type: n.engine_type,
             tx_input: Vec::new(),
             tx_output: Vec::new(),
@@ -39,8 +39,8 @@ impl Node {
 macro_rules! impl_vertex_for_engine {
     ($node:ident) => {
         #[inline]
-        fn id(&self) -> String {
-            self.$node.id
+        fn id(&self) -> &str {
+            &self.$node.id
         }
         #[inline]
         fn engine_type(&self) -> interface::engine::EngineType {

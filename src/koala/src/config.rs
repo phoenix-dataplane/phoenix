@@ -7,9 +7,9 @@ use interface::engine::EngineType;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
-    pub(crate) id: String,
+    pub id: String,
     #[serde(alias = "type")]
-    pub(crate) engine_type: EngineType,
+    pub engine_type: EngineType,
 }
 
 use std::hash::{Hash, Hasher};
@@ -22,37 +22,37 @@ impl Hash for Node {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Control {
-    prefix: PathBuf,
-    path: PathBuf,
+pub struct Control {
+    pub prefix: PathBuf,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RdmaTransportConfig {
-    prefix: PathBuf,
-    engine_basename: String,
-    datapath_wq_depth: usize,
-    datapath_cq_depth: usize,
-    command_max_interval_ms: u32,
+pub struct RdmaTransportConfig {
+    pub prefix: PathBuf,
+    pub engine_basename: String,
+    pub datapath_wq_depth: usize,
+    pub datapath_cq_depth: usize,
+    pub command_max_interval_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub(crate) log_env: String,
-    pub(crate) default_log_level: String,
-    pub(crate) modules: Vec<String>,
-    pub(crate) control: Control,
+    pub log_env: String,
+    pub default_log_level: String,
+    pub modules: Vec<String>,
+    pub control: Control,
     #[serde(alias = "transport-rdma")]
-    pub(crate) transport_rdma: Option<RdmaTransportConfig>,
-    pub(crate) node: Vec<Node>,
-    pub(crate) egress: Vec<Vec<String>>,
-    pub(crate) ingress: Vec<Vec<String>>,
+    pub transport_rdma: Option<RdmaTransportConfig>,
+    pub node: Vec<Node>,
+    pub egress: Vec<Vec<String>>,
+    pub ingress: Vec<Vec<String>>,
 }
 
 impl Config {
-    fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)?;
         let config = toml::from_str(&content)?;
         Ok(config)

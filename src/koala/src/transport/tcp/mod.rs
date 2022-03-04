@@ -1,8 +1,6 @@
 use std::io;
 use thiserror::Error;
 
-use ipc::customer::Error as CustomerError;
-
 use super::resource::Error as ResourceError;
 
 pub mod module;
@@ -35,7 +33,7 @@ pub(crate) enum Error {
     // #[error("IPC send error: {0}")]
     // IpcSend(#[from] ipc::Error),
     #[error("Customer error: {0}")]
-    Customer(#[from] CustomerError),
+    Customer(#[from] ipc::Error),
 }
 
 impl From<Error> for interface::Error {
@@ -58,9 +56,9 @@ pub(crate) enum DatapathError {
     #[error("Resource not found in table.")]
     NotFound,
     #[error("Shared memory queue error: {0}.")]
-    ShmIpc(#[from] ipc::ShmIpcError),
+    ShmIpc(#[from] ipc::shmem_ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}.")]
-    ShmRingbuf(#[from] ipc::ShmRingbufError),
+    ShmRingbuf(#[from] ipc::shmem_ipc::ShmRingbufError),
     #[error("Socket internal error: {0}.")]
     Socket(io::Error),
 }

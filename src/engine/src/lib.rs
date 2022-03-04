@@ -28,7 +28,7 @@ pub type IQueue = Receiver<Box<dyn RpcMessage>>;
 pub type OQueue = Sender<Box<dyn RpcMessage>>;
 
 pub trait Vertex {
-    fn id(&self) -> String;
+    fn id(&self) -> &str;
     fn engine_type(&self) -> EngineType;
     fn tx_inputs(&self) -> &Vec<IQueue>;
     fn tx_outputs(&self) -> &Vec<OQueue>;
