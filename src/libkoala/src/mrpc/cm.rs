@@ -2,6 +2,7 @@ use std::net::ToSocketAddrs;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::control_plane::TransportType;
+use ipc::service::Service;
 
 use crate::mrpc::MRPC_CTX;
 use crate::{Error, rx_recv_impl};

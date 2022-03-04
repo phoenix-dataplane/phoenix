@@ -3,6 +3,7 @@ use std::mem;
 use std::net::ToSocketAddrs;
 
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
+use ipc::service::Service;
 
 use crate::{rx_recv_impl, Error, FromBorrow};
 use crate::transport::KL_CTX;

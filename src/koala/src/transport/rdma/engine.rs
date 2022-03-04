@@ -23,8 +23,7 @@ use super::{DatapathError, Error};
 use crate::node::Node;
 
 pub struct TransportEngine<'ctx> {
-    pub(crate) customer:
-        Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    pub(crate) customer: Customer,
     node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
@@ -505,7 +504,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let mut err = false;
                 let mut sent = false;
                 while !sent {
-                    self.customer.notify_wc_with(|ptr, count| unsafe {
+                    self.customer.enqueue_wc_with(|ptr, count| unsafe {
                         sent = true;
                         let mut cnt = 0;
                         while cnt < count {

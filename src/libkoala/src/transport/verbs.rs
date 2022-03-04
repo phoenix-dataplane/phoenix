@@ -15,6 +15,7 @@ use memmap2::{MmapOptions, MmapRaw};
 
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
+use ipc::service::Service;
 
 use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 use crate::{rx_recv_impl, FromBorrow};

@@ -10,6 +10,7 @@ use ipc::customer::Customer;
 use interface::engine::SchedulingMode;
 use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 
+use super::module::CustomerType;
 use super::{DatapathError, Error};
 use crate::transport::resource::ResourceTable;
 use crate::node::Node;
@@ -29,7 +30,7 @@ impl State {
 }
 
 pub struct TransportEngine {
-    pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    pub(crate) customer: CustomerType,
     node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,

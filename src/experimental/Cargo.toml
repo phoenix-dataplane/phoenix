@@ -32,6 +32,7 @@ shmem-ipc = "0.2.0"
 toml = { version = "0.5.8", features = ["preserve_order"] }
 petgraph = "0.6.0"
 linked-hash-map = "0.5.4"
+zerocopy = "0.3.0"
 
 [dev-dependencies]
 rand = "0.8.3"

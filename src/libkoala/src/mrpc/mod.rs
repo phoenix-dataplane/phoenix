@@ -1,5 +1,5 @@
 use ipc::mrpc::{cmd, dp};
-use ipc::service::Service;
+use ipc::service::ShmService;
 
 use interface::engine::EngineType;
 
@@ -14,12 +14,12 @@ thread_local! {
 }
 
 pub(crate) struct Context {
-    service: Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
 impl Context {
     fn register() -> Result<Context, Error> {
-        let service = Service::register(KOALA_PATH, EngineType::Mrpc)?;
+        let service = ShmService::register(KOALA_PATH, EngineType::Mrpc)?;
         Ok(Self { service })
     }
 }

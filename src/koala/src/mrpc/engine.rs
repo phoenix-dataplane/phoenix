@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use ipc::customer::Customer;
+use ipc::customer::{Customer, ShmCustomer};
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
@@ -10,7 +10,7 @@ use super::{DatapathError, Error};
 use crate::node::Node;
 
 pub struct MrpcEngine {
-    pub(crate) customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    pub(crate) customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
     node: Node,
 
     pub(crate) dp_spin_cnt: usize,

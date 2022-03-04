@@ -1,5 +1,5 @@
-use std::os::unix::net::{SocketAddr, UCred};
 use std::collections::VecDeque;
+use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,9 +12,9 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::manager::RuntimeManager;
-use interface::engine::{SchedulingMode, EngineType};
+use interface::engine::{EngineType, SchedulingMode};
 use ipc;
-use ipc::customer::Customer;
+use ipc::customer::{Customer, CustomerFlavor};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
@@ -27,17 +27,13 @@ lazy_static! {
 }
 
 pub(crate) struct TransportEngineBuilder {
-    customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    customer: CustomerType,
     client_pid: Pid,
     mode: SchedulingMode,
 }
 
 impl TransportEngineBuilder {
-    fn new(
-        customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-        client_pid: Pid,
-        mode: SchedulingMode,
-    ) -> Self {
+    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode) -> Self {
         TransportEngineBuilder {
             customer,
             client_pid,
@@ -101,7 +97,9 @@ impl TransportModule {
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
 
         // 2. create customer stub
-        let customer = Customer::accept(sock, client_path, mode, engine_path)?;
+        let customer = Customer {
+            flavor: CustomerFlavor::SharedMemory::accept(sock, client_path, mode, engine_path)?,
+        };
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines

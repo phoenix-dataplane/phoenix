@@ -13,13 +13,12 @@ use interface::engine::{EngineType, SchedulingMode};
 use engine::manager::RuntimeManager;
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
-use ipc::customer::Customer;
 
 use super::engine::MrpcEngine;
 use crate::node::Node;
 
 pub(crate) struct MrpcEngineBuilder {
-    customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
     node: Node,
     _client_pid: Pid,
     mode: SchedulingMode,
@@ -27,7 +26,7 @@ pub(crate) struct MrpcEngineBuilder {
 
 impl MrpcEngineBuilder {
     fn new(
-        customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+        customer: ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
         node: Node,
         _client_pid: Pid,
         mode: SchedulingMode,
@@ -93,7 +92,7 @@ impl MrpcModule {
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-mrpc-engine-{}.sock", uuid));
 
         // 2. create customer stub
-        let customer = Customer::accept(sock, client_path, mode, engine_path)?;
+        let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the mrpc module is responsible for initializing and starting the mrpc engines

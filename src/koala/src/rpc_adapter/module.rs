@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,28 +6,22 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
 use engine::manager::RuntimeManager;
 use interface::engine::{EngineType, SchedulingMode};
 use ipc;
-use ipc::customer::Customer;
+use ipc::service::{SerivceFlavor, Service};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::RpcAdapterEngine;
-use super::state::StateManager;
 use crate::node::Node;
-
-lazy_static! {
-    static ref STATE_MGR: StateManager<'static> = StateManager::new();
-}
 
 pub(crate) struct RpcAdapterEngineBuilder {
     service: Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
-    client_id: Pid,
+    client_pid: Pid,
     mode: SchedulingMode,
 }
 
@@ -45,9 +38,9 @@ impl RpcAdapterEngineBuilder {
         }
     }
 
-    fn build(self) -> Result<RpcAdapterEngine<'static>> {
+    fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let node = Node::new(EngineType::RpcAdapter);
 
         Ok(RpcAdapterEngine {
@@ -56,9 +49,6 @@ impl RpcAdapterEngineBuilder {
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
-            state,
-            cmd_buffer: None,
-            last_cmd_ts: Instant::now(),
         })
     }
 }
@@ -98,7 +88,9 @@ impl RpcAdapterModule {
 
         // 2. create customer stub
         // let customer = Customer::accept(sock, client_path, mode, engine_path)?;
-        let service = Service::register()?;
+        let service = Service {
+            flavor: SerivceFlavor::Sequential::new(),
+        };
 
         // 3. create the engine
         let builder = RpcAdapterEngineBuilder::new(service, client_pid, mode);

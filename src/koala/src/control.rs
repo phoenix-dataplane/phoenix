@@ -134,6 +134,7 @@ impl Control {
                         .handle_new_client(&self.sock, client_path, mode, cred)?;
                 }
                 EngineType::RpcAdapter => {
+                    // for now, we create the adapter for tcp
                     let e1 = self.rpc_adapter.create_engine(n);
                     let e2 = self.rdma_transport.create_engine();
                     engines.push(e1);

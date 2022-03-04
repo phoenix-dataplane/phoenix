@@ -42,10 +42,6 @@ pub enum Error {
     // ShmObj(#[from] ipc::shm::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
-    // #[error("Expect a credential from the peer")]
-    // EmptyCredential,
-    // #[error("Credential mismatch {0:?} vs {1:?}")]
-    // CredentialMismatch(UCred, UCred),
     #[error("Connect failed: {0}")]
     Connect(interface::Error),
 }

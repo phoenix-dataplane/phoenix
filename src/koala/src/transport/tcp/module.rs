@@ -13,22 +13,31 @@ use uuid::Uuid;
 use engine::manager::RuntimeManager;
 use interface::engine::{SchedulingMode, EngineType};
 use ipc;
-use ipc::customer::Customer;
+use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::tcp::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::TransportEngine;
 use crate::node::Node;
 
+pub(crate) type CustomerType = Box<
+    dyn Customer<
+        Command = cmd::Command,
+        Completion = cmd::Completion,
+        WorkRequest = dp::WorkRequestSlot,
+        WorkCompletion = dp::CompletionSlot,
+    >,
+>;
+
 pub(crate) struct TransportEngineBuilder {
-    customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    customer: CustomerType,
     _client_pid: Pid,
     mode: SchedulingMode,
 }
 
 impl TransportEngineBuilder {
     fn new(
-        customer: Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+        customer: CustomerType,
         _client_pid: Pid,
         mode: SchedulingMode,
     ) -> Self {
@@ -95,7 +104,7 @@ impl TransportModule {
         let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
 
         // 2. create customer stub
-        let customer = Customer::accept(sock, client_path, mode, engine_path)?;
+        let customer = Box::new(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines

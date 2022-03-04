@@ -422,6 +422,7 @@ dependencies = [
  "thiserror",
  "toml",
  "uuid",
+ "zerocopy 0.3.0",
 ]
 
 [[package]]
@@ -600,6 +601,7 @@ version = "0.1.0"
 dependencies = [
  "atomic-traits",
  "bincode",
+ "crossbeam",
  "engine",
  "interface",
  "ipc-channel",
