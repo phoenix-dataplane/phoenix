@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
 
 use interface::{RemoteKey, SendFlags, WcStatus};
@@ -144,27 +144,23 @@ pub fn print_lat(ctx: &Context, times: &[Instant]) {
     assert!(num > 0);
     let mut delta = Vec::new();
     for i in 0..num {
-        delta.push(
-            times[i + ctx.opt.warmup + 1]
-                .duration_since(times[i + ctx.opt.warmup])
-                .as_micros(),
-        );
+        delta.push(times[i + ctx.opt.warmup + 1].duration_since(times[i + ctx.opt.warmup]));
     }
     delta.sort_unstable();
 
-    let factor = if ctx.opt.verb == Verb::Read { 1.0 } else { 2.0 };
+    let factor = if ctx.opt.verb == Verb::Read { 1 } else { 2 };
 
     let cnt = num - LAT_MEASURE_TAIL;
-    let mut duration = 0.0;
+    let mut duration = Duration::new(0, 0);
     let mut lat = Vec::new();
     for t in delta.into_iter().take(cnt) {
-        duration += t as f64 / factor;
-        lat.push(t);
+        duration += t / factor;
+        lat.push(t / factor);
     }
     println!(
-        "duration: {:.2}, avg: {:.2}, min: {:.2}, median: {:.2}, p95: {:.2}, p99: {:.2}, max: {:.2}",
+        "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
         duration,
-        duration / cnt as f64,
+        duration / cnt as u32,
         lat[0],
         lat[cnt / 2],
         lat[(cnt as f64 * 0.95) as usize],
