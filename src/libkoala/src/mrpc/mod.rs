@@ -6,7 +6,7 @@ use interface::engine::EngineType;
 // Re-exports
 use crate::{Error, KOALA_PATH};
 
-pub mod cm;
+pub mod stub;
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.

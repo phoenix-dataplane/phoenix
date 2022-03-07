@@ -133,3 +133,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[error("mrpc::Error")]
 pub struct Error;
+
+
+#[derive(Debug, Clone, Copy)]
+pub struct Status;

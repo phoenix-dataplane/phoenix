@@ -3,13 +3,15 @@ use ipc::transport::tcp::{cmd, dp};
 use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
 
-use crate::node::Node;
 use super::module::ServiceType;
+use crate::node::Node;
 
 pub struct RpcAdapterEngine {
     pub(crate) service: ServiceType,
-    
+
     pub(crate) node: Node,
+    pub(crate) cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
+    pub(crate) cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,

@@ -7,6 +7,7 @@ use thiserror::Error;
 
 pub mod addrinfo;
 pub mod engine;
+pub mod rpc;
 
 #[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum Error {

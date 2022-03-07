@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
+use interface::Handle;
 use super::control_plane::TransportType;
 
 type IResult<T> = Result<T, interface::Error>;
@@ -16,7 +17,7 @@ pub enum Command {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompletionKind {
     SetTransport,
-    Connect,
+    Connect(Handle),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

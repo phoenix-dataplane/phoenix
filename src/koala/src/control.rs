@@ -11,8 +11,8 @@ use std::time::Duration;
 use anyhow::anyhow;
 use log::{debug, warn};
 
-use engine::Engine;
 use engine::manager::RuntimeManager;
+use engine::Engine;
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
 use ipc::ChannelFlavor;
@@ -27,6 +27,7 @@ use crate::{
 pub struct Control {
     sock: DomainSocket,
     config: Config,
+    runtime_manager: Arc<RuntimeManager>,
     rdma_transport: rdma::module::TransportModule,
     tcp_transport: tcp::module::TransportModule,
     mrpc: mrpc::module::MrpcModule,
@@ -50,6 +51,7 @@ impl Control {
         Control {
             sock,
             config,
+            runtime_manager: Arc::clone(&runtime_manager),
             rdma_transport: rdma::module::TransportModule::new(Arc::clone(&runtime_manager)),
             tcp_transport: tcp::module::TransportModule::new(Arc::clone(&runtime_manager)),
             mrpc: mrpc::module::MrpcModule::new(Arc::clone(&runtime_manager)),
@@ -79,12 +81,7 @@ impl Control {
         }
     }
 
-    fn build_graph<P: AsRef<Path>>(
-        &mut self,
-        client_path: P,
-        mode: SchedulingMode,
-        cred: &UCred,
-    ) -> anyhow::Result<()> {
+    fn build_internal_queues(&mut self) -> Vec<Node> {
         // create a node for each vertex in the graph
         let mut nodes: Vec<Node> = self
             .config
@@ -125,22 +122,55 @@ impl Control {
                 .rx_input
                 .push(receiver);
         }
+
+        nodes
+    }
+
+    fn build_graph<P: AsRef<Path>>(
+        &mut self,
+        client_path: P,
+        mode: SchedulingMode,
+        cred: &UCred,
+    ) -> anyhow::Result<()> {
+        // build internal queues
+        let nodes = self.build_internal_queues();
+
         // build all engines from nodes
         let mut engines: Vec<Box<dyn Engine>> = Vec::new();
+
+        // establish a specialized channel between mrpc and rpc-adapter
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut tx = Some(tx);
+        let mut rx = Some(rx);
+        let (tx2, rx2) = std::sync::mpsc::channel();
+        let mut tx2 = Some(tx2);
+        let mut rx2 = Some(rx2);
         for n in nodes {
             match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
-                    self.mrpc
-                        .handle_new_client(&self.sock, &client_path, mode, cred)?;
+                    self.mrpc.handle_new_client(
+                        &self.sock,
+                        &client_path,
+                        mode,
+                        cred,
+                        n,
+                        tx.take().unwrap(),
+                        rx2.take().unwrap(),
+                    )?;
                 }
                 EngineType::RpcAdapter => {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let (service, customer) = ipc::create_channel(ChannelFlavor::Concurrent);
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
-                        service, mode, client_pid,
+                        n,
+                        service,
+                        mode,
+                        client_pid,
+                        rx.take().unwrap(),
+                        tx2.take().unwrap(),
                     )?;
                     let e2 = self
                         .rdma_transport
@@ -152,7 +182,9 @@ impl Control {
             };
         }
         // submit engines to runtime
-        todo!();
+        for e in engines {
+            self.runtime_manager.submit(e, mode);
+        }
         Ok(())
     }
 

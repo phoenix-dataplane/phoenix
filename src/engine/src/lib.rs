@@ -17,12 +17,7 @@ pub trait Upgradable {
 }
 
 use std::sync::mpsc::{Sender, Receiver};
-pub trait RpcMessage: Send {
-    fn len(&self) -> usize;
-    fn is_request(&self) -> bool;
-    fn serialize(&self);
-    fn deserialize(&self);
-}
+use interface::rpc::RpcMessage;
 
 pub type IQueue = Receiver<Box<dyn RpcMessage>>;
 pub type OQueue = Sender<Box<dyn RpcMessage>>;

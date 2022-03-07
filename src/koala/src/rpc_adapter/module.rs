@@ -1,11 +1,8 @@
 use std::os::unix::net::{SocketAddr, UCred};
-use std::path::Path;
-use std::path::PathBuf;
 
 use anyhow::anyhow;
 use anyhow::Result;
 use nix::unistd::Pid;
-use uuid::Uuid;
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc;
@@ -16,31 +13,46 @@ use ipc::unix::DomainSocket;
 use super::engine::RpcAdapterEngine;
 use crate::node::Node;
 
-pub(crate) type ServiceType = Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+pub(crate) type ServiceType =
+    Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct RpcAdapterEngineBuilder {
+    node: Node,
     service: ServiceType,
     client_pid: Pid,
     mode: SchedulingMode,
+    cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
+    cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
 }
 
 impl RpcAdapterEngineBuilder {
-    fn new(service: ServiceType, client_pid: Pid, mode: SchedulingMode) -> Self {
+    fn new(
+        node: Node,
+        service: ServiceType,
+        client_pid: Pid,
+        mode: SchedulingMode,
+        cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
+        cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+    ) -> Self {
         RpcAdapterEngineBuilder {
+            node,
             service,
             client_pid,
             mode,
+            cmd_rx, cmd_tx,
         }
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
         // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        let node = Node::new(EngineType::RpcAdapter);
+        assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         Ok(RpcAdapterEngine {
             service: self.service,
-            node,
+            node: self.node,
+            cmd_rx: self.cmd_rx,
+            cmd_tx: self.cmd_tx,
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
@@ -67,18 +79,14 @@ impl RpcAdapterModule {
     }
 
     pub(crate) fn create_engine(
+        n: Node,
         service: ServiceType,
         mode: SchedulingMode,
         client_pid: Pid,
+        cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
+        cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
     ) -> Result<RpcAdapterEngine> {
-        // 1. generate a path and bind a unix domain socket to it
-        let uuid = Uuid::new_v4();
-        // TODO(cjr): make this configurable
-        let engine_path =
-            PathBuf::from(format!("/tmp/koala/koala-rpc_adapter-engine-{}.sock", uuid));
-
-        // 2. create the engine
-        let builder = RpcAdapterEngineBuilder::new(service, client_pid, mode);
+        let builder = RpcAdapterEngineBuilder::new(n, service, client_pid, mode, cmd_rx, cmd_tx);
         let engine = builder.build()?;
 
         Ok(engine)

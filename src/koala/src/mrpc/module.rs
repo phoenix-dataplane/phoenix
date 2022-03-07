@@ -26,12 +26,23 @@ pub(crate) struct MrpcEngineBuilder {
     node: Node,
     _client_pid: Pid,
     mode: SchedulingMode,
+    cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
+    cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
 }
 
 impl MrpcEngineBuilder {
-    fn new(customer: CustomerType, node: Node, _client_pid: Pid, mode: SchedulingMode) -> Self {
+    fn new(
+        customer: CustomerType,
+        node: Node,
+        _client_pid: Pid,
+        mode: SchedulingMode,
+        cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
+        cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+    ) -> Self {
         MrpcEngineBuilder {
             customer,
+            cmd_tx,
+            cmd_rx,
             node,
             _client_pid,
             mode,
@@ -40,10 +51,13 @@ impl MrpcEngineBuilder {
 
     fn build(self) -> Result<MrpcEngine> {
         // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
         Ok(MrpcEngine {
             customer: self.customer,
             node: self.node,
+            cmd_tx: self.cmd_tx,
+            cmd_rx: self.cmd_rx,
             dp_spin_cnt: 0,
             backoff: 1,
             _mode: self.mode,
@@ -84,6 +98,9 @@ impl MrpcModule {
         client_path: P,
         mode: SchedulingMode,
         cred: &UCred,
+        node: Node,
+        cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
+        cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
@@ -99,8 +116,7 @@ impl MrpcModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 4. create the engine
-        let node = Node::new(EngineType::Mrpc);
-        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode);
+        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode, cmd_tx, cmd_rx);
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime

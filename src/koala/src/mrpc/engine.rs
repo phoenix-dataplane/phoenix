@@ -11,6 +11,8 @@ use crate::node::Node;
 pub struct MrpcEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
+    pub(crate) cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
+    pub(crate) cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -140,11 +142,14 @@ impl MrpcEngine {
                 }
             }
             Command::Connect(addr) => {
-                if self.transport_type.is_none() {
-                    self.create_transport(control_plane::TransportType::Socket);
+                self.cmd_tx.send(Command::Connect(*addr)).unwrap();
+                match self.cmd_rx.recv().unwrap().0 {
+                    Ok(CompletionKind::Connect(handle)) => {
+                        // just forward it
+                        Ok(CompletionKind::Connect(handle))
+                    }
+                    other => panic!("unexpected: {:?}", other),
                 }
-
-                Ok(CompletionKind::Connect)
             }
         }
     }

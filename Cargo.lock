@@ -726,7 +726,6 @@ dependencies = [
  "anyhow",
  "bincode",
  "dns-lookup",
- "engine",
  "fnv",
  "ibverbs",
  "interface",
