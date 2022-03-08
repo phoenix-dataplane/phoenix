@@ -8,8 +8,8 @@ use ipc::transport::tcp::{cmd, dp};
 use ipc::customer::Customer;
 
 use interface::engine::SchedulingMode;
-use engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 
+use crate::engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 use super::module::CustomerType;
 use super::{DatapathError, Error};
 use crate::transport::resource::ResourceTable;

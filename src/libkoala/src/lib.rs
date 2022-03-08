@@ -1,5 +1,8 @@
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
+#![feature(allocator_api)]
+#![feature(nonnull_slice_from_raw_parts)]
+#![feature(specialization)]
 use std::borrow::Borrow;
 use std::io;
 

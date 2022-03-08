@@ -6,7 +6,7 @@ use log::{error, info};
 use spin::Mutex;
 use thiserror::Error;
 
-use crate::{Engine, EngineStatus};
+use crate::engine::{Engine, EngineStatus};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -24,7 +24,7 @@ type Result<T> = std::result::Result<T, Error>;
 /// the runtime moves engines from `pending` to `running` by checking the `new_pending` flag.
 unsafe impl Sync for Runtime {}
 
-pub struct Runtime {
+pub(crate) struct Runtime {
     /// engine id
     pub(crate) _id: usize,
     // we use RefCell here for unsynchronized interior mutability.
@@ -36,7 +36,7 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn new(id: usize) -> Self {
+    pub(crate) fn new(id: usize) -> Self {
         Runtime {
             _id: id,
             running: RefCell::new(Vec::new()),
@@ -46,16 +46,16 @@ impl Runtime {
     }
 
     /// Returns true if there is no runnable engine or pending engine.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.is_spinning() && self.pending.lock().is_empty()
     }
 
     /// Returns true if there is no runnable engine.
-    pub fn is_spinning(&self) -> bool {
+    pub(crate) fn is_spinning(&self) -> bool {
         self.running.borrow().is_empty()
     }
 
-    pub fn add_engine(&self, engine: Box<dyn Engine>) {
+    pub(crate) fn add_engine(&self, engine: Box<dyn Engine>) {
         self.pending.lock().push(RefCell::new(engine));
         self.new_pending.store(true, Ordering::Release);
     }

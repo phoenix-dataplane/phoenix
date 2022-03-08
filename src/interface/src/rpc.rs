@@ -1,17 +1,5 @@
 //! RPC data structures
-use crate::Handle;
-
 use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ShmBuf {
-    pub shm_id: Handle,
-    pub offset: u32,
-    pub len: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SgList(pub Vec<ShmBuf>);
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,29 +16,19 @@ pub enum RpcMsgType {
 //    pub sgl: Vec<ShmBuf>,
 // }
 
-pub trait Marshal {
-    type Error;
-    fn marshal(&self) -> Result<SgList, Self::Error>;
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MessageMeta {
+    pub conn_id: u32,
+    pub func_id: u32,
+    pub call_id: u64,
+    pub len: u64,
+    pub msg_type: RpcMsgType,
 }
 
-pub trait Unmarshal: Sized {
-    type Error;
-    fn unmarshal(sg_list: SgList) -> Result<Self, Self::Error>;
-}
-
-pub trait RpcMessage: Send {
-    fn conn_id(&self) -> u32;
-    fn func_id(&self) -> u32;
-    fn call_id(&self) -> u64; // unique id
-    fn len(&self) -> u64;
-    fn is_request(&self) -> bool;
-    fn marshal(&self) -> SgList;
-}
-
-/// # Safety
-/// 
-/// The zero-copy inter-process communication thing is beyond what the compiler
-/// can check. The programmer must ensure that everything is fine.
-pub unsafe trait SwitchAddressSpace {
-    fn switch_address_space(&mut self);
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MessageTemplateErased {
+    pub meta: MessageMeta,
+    pub shmptr: u64,
 }

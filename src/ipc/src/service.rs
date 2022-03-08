@@ -18,7 +18,7 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
 
 pub(crate) enum ServiceFlavor<A, B, C, D> {
     /// Customer interface based on shared memory.
-    SharedMemory(flavors::shm::Service<A, B, C, D>),
+    // SharedMemory(flavors::shm::Service<A, B, C, D>),
     /// Customer interface within a single address space (i.e., single process, but can be multi-threaded).
     Concurrent(flavors::concurrent::Service<A, B, C, D>),
     /// Customer interface where the two endpoints are guaranteed to be in the same thread (no concurrency).
@@ -28,7 +28,7 @@ pub(crate) enum ServiceFlavor<A, B, C, D> {
 macro_rules! choose_flavor {
     ($flavor:expr, $func:ident $(, $args:tt)*) => {
         match $flavor {
-            ServiceFlavor::SharedMemory(c) => c.$func($($args)*),
+            // ServiceFlavor::SharedMemory(c) => c.$func($($args)*),
             ServiceFlavor::Concurrent(c) => c.$func($($args)*),
             ServiceFlavor::Sequential(c) => c.$func($($args)*),
         }

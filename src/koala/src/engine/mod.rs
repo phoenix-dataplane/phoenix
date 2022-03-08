@@ -1,11 +1,11 @@
 use interface::engine::EngineType;
 pub use version::{version, Version};
 
-pub(crate) mod lb;
 pub mod manager;
-pub mod runtime;
+pub(crate) mod lb;
+pub(crate) mod runtime;
 
-pub trait Upgradable {
+pub(crate) trait Upgradable {
     fn version(&self) -> Version {
         version!().parse().unwrap()
     }
@@ -17,12 +17,12 @@ pub trait Upgradable {
 }
 
 use std::sync::mpsc::{Sender, Receiver};
-use interface::rpc::RpcMessage;
+use crate::mrpc::marshal::RpcMessage;
 
-pub type IQueue = Receiver<Box<dyn RpcMessage>>;
-pub type OQueue = Sender<Box<dyn RpcMessage>>;
+pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
+pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 
-pub trait Vertex {
+pub(crate) trait Vertex {
     fn id(&self) -> &str;
     fn engine_type(&self) -> EngineType;
     fn tx_inputs(&self) -> &Vec<IQueue>;
@@ -31,13 +31,13 @@ pub trait Vertex {
     fn rx_outputs(&self) -> &Vec<OQueue>;
 }
 
-pub trait Engine: Upgradable + Send + Vertex {
+pub(crate) trait Engine: Upgradable + Send + Vertex {
     /// `resume()` mush be non-blocking and short.
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
 }
 
 // NoProgress, MayDemandMoreCPU
-pub enum EngineStatus {
+pub(crate) enum EngineStatus {
     NoWork,
     Continue,
     Complete,

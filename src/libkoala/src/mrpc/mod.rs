@@ -3,10 +3,7 @@ use ipc::service::ShmService;
 
 use interface::engine::EngineType;
 
-// Re-exports
-use crate::{Error, KOALA_PATH};
-
-pub mod stub;
+use crate::{Error as ServiceError, KOALA_PATH};
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
@@ -18,8 +15,23 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    fn register() -> Result<Context, Error> {
+    fn register() -> Result<Context, ServiceError> {
         let service = ShmService::register(KOALA_PATH, EngineType::Mrpc)?;
         Ok(Self { service })
     }
 }
+
+// mRPC library
+pub mod stub;
+pub mod shared_heap;
+pub mod alloc;
+pub mod codegen;
+
+pub use thiserror::Error;
+#[derive(Error, Debug)]
+#[error("mrpc::Error")]
+pub struct Error;
+
+
+#[derive(Debug, Clone, Copy)]
+pub struct Status;

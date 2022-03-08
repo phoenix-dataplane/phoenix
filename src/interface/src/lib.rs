@@ -91,6 +91,7 @@ pub mod returned {
     pub struct MemoryRegion {
         pub handle: super::MemoryRegion,
         pub rkey: super::RemoteKey,
+        pub vaddr: u64,
     }
 }
 

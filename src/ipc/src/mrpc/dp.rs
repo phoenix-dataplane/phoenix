@@ -1,12 +1,14 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
+use interface::rpc::MessageTemplateErased;
+
 pub type WorkRequestSlot = [u8; 64];
 
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
-    Call(),
+    Call(MessageTemplateErased),
 }
 
 pub type CompletionSlot = [u8; 64];

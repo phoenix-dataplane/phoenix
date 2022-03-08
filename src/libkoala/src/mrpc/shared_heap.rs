@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use fnv::FnvHashMap as HashMap;
 use slabmalloc::{AllocablePage, LargeObjectPage, ZoneAllocator};
 
-use libkoala::verbs::{AccessFlags, MemoryRegion, ProtectionDomain};
+use crate::verbs::{AccessFlags, MemoryRegion, ProtectionDomain};
 
 thread_local! {
     /// thread-local shared heap
@@ -16,6 +16,7 @@ thread_local! {
 struct SharedHeap {
     // COMMET(cjr): currently, one shared heap must be exclusively associated with a protection domain.
     pd: &'static ProtectionDomain,
+    // vaddr -> MR
     mrs: HashMap<usize, MemoryRegion<u8>>,
     zone_allocator: ZoneAllocator<'static>,
 }
@@ -44,6 +45,7 @@ impl SharedHeap {
         ) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
+                assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
                 self.mrs.insert(addr, mr).ok_or(()).unwrap_err();
                 large_object_page
@@ -67,6 +69,16 @@ impl Default for SharedHeap {
 }
 
 pub struct SharedHeapAllocator;
+
+impl SharedHeapAllocator {
+    #[inline]
+    pub(crate) fn query_shm_offset(addr: usize) -> isize {
+        let addr_aligned = addr & !(LargeObjectPage::SIZE - 1);
+        TL_SHARED_HEAP.with(|shared_heap| {
+            shared_heap.borrow().mrs[&addr_aligned].offset
+        })
+    }
+}
 
 unsafe impl Allocator for SharedHeapAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
@@ -125,15 +137,3 @@ unsafe impl Allocator for SharedHeapAllocator {
         }
     }
 }
-
-pub type Vec<T> = std::vec::Vec<T, SharedHeapAllocator>;
-
-
-use thiserror::Error;
-#[derive(Error, Debug)]
-#[error("mrpc::Error")]
-pub struct Error;
-
-
-#[derive(Debug, Clone, Copy)]
-pub struct Status;

@@ -6,7 +6,6 @@ use std::slice;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
@@ -15,6 +14,7 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
+use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
@@ -882,6 +882,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 let pd = self.state.resource().pd_table.get(&pd.0)?;
                 let mr = rdma::mr::MemoryRegion::new(&pd, *nbytes, *access)
                     .map_err(Error::MemoryRegion)?;
+                let vaddr = mr.as_ptr() as u64;
                 let fd = mr.memfd().as_raw_fd();
                 self.customer.send_fd(&[fd][..]).map_err(Error::SendFd)?;
                 let rkey = mr.rkey();
@@ -890,6 +891,7 @@ impl<'ctx> TransportEngine<'ctx> {
                 Ok(CompletionKind::RegMr(returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
                     rkey,
+                    vaddr,
                 }))
             }
             Command::DeregMr(mr) => {

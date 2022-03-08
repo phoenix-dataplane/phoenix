@@ -11,7 +11,6 @@ thiserror = "1.0.29"
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
 libc = "0.2.103"
-engine = { path = "../engine" }
 interface = { path = "../interface" }
 shmem-ipc = "0.2.0"
 zerocopy = "0.3.0"
@@ -22,3 +21,4 @@ uuid = "0.8.2"
 atomic-traits = "0.3.0"
 nix = "0.23.0"
 crossbeam = "0.8.1"
+unique = "0.9.1"

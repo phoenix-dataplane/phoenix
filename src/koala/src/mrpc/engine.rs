@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-use engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::module::CustomerType;
 use super::{DatapathError, Error};
+use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -119,9 +119,7 @@ impl MrpcEngine {
                 // do nothing
                 Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::Disconnected) => {
-                Ok(Status::Disconnected)
-            }
+            Err(ipc::TryRecvError::Disconnected) => Ok(Status::Disconnected),
             Err(ipc::TryRecvError::Other(_e)) => Err(Error::IpcTryRecv),
         }
     }

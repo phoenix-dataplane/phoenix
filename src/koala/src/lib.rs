@@ -3,11 +3,10 @@
 #[macro_use]
 extern crate log;
 
-pub mod module;
+pub mod engine;
 pub mod transport;
 pub mod mrpc;
 pub mod rpc_adapter;
 pub mod control;
 pub mod config;
 pub mod node;
-

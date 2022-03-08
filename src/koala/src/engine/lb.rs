@@ -1,6 +1,6 @@
 //! Engine load balancer assigns engines to runtimes.
 
-use crate::Engine;
+use crate::engine::Engine;
 
 pub(crate) trait EngineBalancer {
     /// Schedule a runtime for this engine.

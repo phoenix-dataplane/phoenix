@@ -1,5 +1,6 @@
-use engine::{IQueue, OQueue};
 use interface::engine::EngineType;
+
+use crate::engine::{IQueue, OQueue};
 
 #[derive(Debug)]
 pub struct Node {
@@ -47,16 +48,16 @@ macro_rules! impl_vertex_for_engine {
             self.$node.engine_type
         }
         #[inline]
-        fn tx_inputs(&self) -> &Vec<engine::IQueue> {
+        fn tx_inputs(&self) -> &Vec<crate::engine::IQueue> {
             &self.$node.tx_input
         }
-        fn tx_outputs(&self) -> &Vec<engine::OQueue> {
+        fn tx_outputs(&self) -> &Vec<crate::engine::OQueue> {
             &self.$node.tx_output
         }
-        fn rx_inputs(&self) -> &Vec<engine::IQueue> {
+        fn rx_inputs(&self) -> &Vec<crate::engine::IQueue> {
             &self.$node.rx_input
         }
-        fn rx_outputs(&self) -> &Vec<engine::OQueue> {
+        fn rx_outputs(&self) -> &Vec<crate::engine::OQueue> {
             &self.$node.rx_output
         }
     }

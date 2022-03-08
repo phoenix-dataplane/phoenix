@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use koala::config::Config;
 use koala::control::Control;
-use engine::manager::RuntimeManager;
+use koala::engine::manager::RuntimeManager;
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(name = "Koala Service")]

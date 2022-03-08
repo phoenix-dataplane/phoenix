@@ -8,8 +8,8 @@ use spin::Mutex;
 
 use interface::engine::SchedulingMode;
 
-use crate::runtime::{self, Runtime};
-use crate::Engine;
+use crate::engine::runtime::{self, Runtime};
+use crate::engine::Engine;
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
@@ -58,7 +58,7 @@ impl RuntimeManager {
         }
     }
 
-    pub fn submit(&self, engine: Box<dyn Engine>, mode: SchedulingMode) {
+    pub(crate) fn submit(&self, engine: Box<dyn Engine>, mode: SchedulingMode) {
         let mut inner = self.inner.lock();
         match mode {
             SchedulingMode::Dedicate => {

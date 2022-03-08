@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod engine;
 pub mod module;
+pub mod marshal;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
