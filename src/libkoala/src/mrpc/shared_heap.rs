@@ -59,7 +59,7 @@ impl SharedHeap {
 
     // slabmalloc must be supplied by fixed-size memory, aka `slabmalloc::AllocablePage`.
     #[inline]
-    fn release_large_page(&mut self, p: &'static mut LargeObjectPage<'static>) { todo!() }
+    fn release_large_page(&mut self, _p: &'static mut LargeObjectPage<'static>) { todo!() }
 }
 
 impl Default for SharedHeap {

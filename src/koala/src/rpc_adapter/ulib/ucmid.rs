@@ -14,28 +14,6 @@ use verbs::{ConnParam, ProtectionDomain, QpInitAttr};
 // Re-exports
 pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
-/// Address and route resolution service.
-pub fn getaddrinfo(
-    node: Option<&str>,
-    service: Option<&str>,
-    hints: Option<&AddrInfoHints>,
-) -> Result<AddrInfo, Error> {
-    let req = Command::GetAddrInfo(
-        node.map(String::from),
-        service.map(String::from),
-        hints.map(AddrInfoHints::clone),
-    );
-
-    KL_CTX.with(|ctx| {
-        ctx.service.send_cmd(req)?;
-        match ctx.service.recv_comp()?.0 {
-            Ok(CompletionKind::GetAddrInfo(ai)) => Ok(ai),
-            Err(e) => Err(Error::Interface("getaddrinfo", e)),
-            _ => panic!(""),
-        }
-    })
-}
-
 #[derive(Clone)]
 pub struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     handle: interface::CmId,
@@ -453,3 +431,4 @@ impl Inner {
             .allocate(len, AccessFlags::LOCAL_WRITE | AccessFlags::REMOTE_READ)
     }
 }
+

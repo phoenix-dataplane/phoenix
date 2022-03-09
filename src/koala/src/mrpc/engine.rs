@@ -101,7 +101,8 @@ impl Engine for MrpcEngine {
 
 impl MrpcEngine {
     fn flush_dp(&mut self) -> Result<Status, DatapathError> {
-        unimplemented!();
+        // unimplemented!();
+        Ok(Status::Progress(0))
     }
 
     fn check_cmd(&mut self) -> Result<Status, Error> {
@@ -153,8 +154,57 @@ impl MrpcEngine {
     }
 
     fn check_dp(&mut self) -> Result<Status, DatapathError> {
-        unimplemented!();
+        use dp::WorkRequest;
+        const BUF_LEN: usize = 32;
+
+        // Fetch available work requests. Copy them into a buffer.
+        let max_count = BUF_LEN.min(self.customer.get_avail_wc_slots()?);
+        if max_count == 0 {
+            return Ok(Progress(0));
+        }
+
+        let mut count = 0;
+        let mut buffer = Vec::with_capacity(BUF_LEN);
+
+        self.customer
+            .dequeue_wr_with(|ptr, read_count| unsafe {
+                debug_assert!(max_count <= BUF_LEN);
+                count = max_count.min(read_count);
+                for i in 0..count {
+                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                }
+                count
+            })
+            .unwrap_or_else(|e| panic!("check_dp: {}", e));
+
+        // Process the work requests.
+
+        for wr in &buffer {
+            self.process_dp(wr)?;
+        }
+
+        Ok(Progress(0))
     }
+
+    fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
+        use dp::WorkRequest;
+        use crate::mrpc::codegen;
+        use crate::mrpc::marshal::MessageTemplate;
+        match req {
+            WorkRequest::Call(erased) => {
+                // recovery the original data type based on the func_id
+                match erased.meta.func_id {
+                    0 => {
+                        let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
+                        self.tx_outputs()[0].send(Box::new(msg))?;
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn check_cm_event(&mut self) -> Result<Status, Error> {
         unimplemented!();
     }

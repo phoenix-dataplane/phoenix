@@ -13,8 +13,8 @@ use interface::Handle;
 
 use crate::mrpc::codegen::SwitchAddressSpace;
 use crate::mrpc::shared_heap::SharedHeapAllocator;
-use crate::mrpc::MRPC_CTX;
-use crate::{rx_recv_impl, Error};
+use crate::mrpc::{MRPC_CTX, Error};
+use crate::rx_recv_impl;
 
 #[derive(Debug)]
 pub struct MessageTemplate<T> {

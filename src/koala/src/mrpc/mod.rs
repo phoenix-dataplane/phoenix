@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod engine;
 pub mod module;
 pub mod marshal;
+pub mod codegen;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -24,4 +25,29 @@ impl From<Error> for interface::Error {
 }
 
 #[derive(Error, Debug)]
-pub(crate) enum DatapathError {}
+pub(crate) enum DatapathError {
+    #[error("Resource not found in table.")]
+    NotFound,
+    #[error("Shared memory queue error: {0}.")]
+    ShmIpc(#[from] ipc::shmem_ipc::ShmIpcError),
+    #[error("Shared memory queue ringbuf error: {0}.")]
+    ShmRingbuf(#[from] ipc::shmem_ipc::ShmRingbufError),
+    #[error("Internal queue send error")]
+    InternalQueueSend,
+}
+
+impl From<ipc::Error> for DatapathError {
+    fn from(other: ipc::Error) -> Self {
+        match other {
+            ipc::Error::ShmIpc(e) => DatapathError::ShmIpc(e),
+            ipc::Error::ShmRingbuf(e) => DatapathError::ShmRingbuf(e),
+            _ => panic!(),
+        }
+    }
+}
+
+impl<T> From<std::sync::mpsc::SendError<T>> for DatapathError {
+    fn from(_other: std::sync::mpsc::SendError<T>) -> Self {
+        DatapathError::InternalQueueSend
+    }
+}

@@ -59,6 +59,10 @@ impl<'ctx> Upgradable for TransportEngine<'ctx> {
     }
 }
 
+impl<'ctx> Vertex for TransportEngine<'ctx> {
+    crate::impl_vertex_for_engine!(node);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Progress(usize),
@@ -66,10 +70,6 @@ enum Status {
 }
 
 use Status::Progress;
-
-impl<'ctx> Vertex for TransportEngine<'ctx> {
-    crate::impl_vertex_for_engine!(node);
-}
 
 impl<'ctx> Engine for TransportEngine<'ctx> {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
@@ -390,7 +390,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
     /// Process data path operations.
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
-        use ipc::transport::rdma::dp::WorkRequest;
+        use dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 // trace!(

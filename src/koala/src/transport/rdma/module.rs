@@ -93,9 +93,6 @@ impl TransportModule {
         mode: SchedulingMode,
         client_pid: Pid,
     ) -> Result<TransportEngine<'static>> {
-        let uuid = Uuid::new_v4();
-        let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
-
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
 

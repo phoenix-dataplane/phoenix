@@ -24,8 +24,6 @@ pub(crate) enum Error {
     MemoryRegion(rdma::mr::Error),
     #[error("Failed to send file descriptors: {0}")]
     SendFd(ipc::Error),
-    #[error("Operation in progress")]
-    InProgress,
     #[error("Mio error: {0}")]
     Mio(io::Error),
     #[error("No CM event")]
@@ -34,6 +32,8 @@ pub(crate) enum Error {
     Transport(i32),
 
     // Below are errors that does not return to the user.
+    #[error("Operation in progress")]
+    InProgress,
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     // #[error("IPC send error: {0}")]
