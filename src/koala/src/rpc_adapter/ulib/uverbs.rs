@@ -16,8 +16,7 @@ use memmap2::{MmapOptions, MmapRaw};
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
-use crate::{rx_recv_impl, FromBorrow};
+use super::{get_service, get_cq_buffers, rx_recv_impl, Error, FromBorrow};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
@@ -31,14 +30,13 @@ lazy_static! {
 fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
-    KL_CTX.with(|ctx| {
-        let req = Command::GetDefaultPds;
-        ctx.service.send_cmd(req)?;
-        rx_recv_impl!(ctx.service, CompletionKind::GetDefaultPds, pds, {
-            pds.into_iter()
-                .map(|pd| ProtectionDomain::open(pd))
-                .collect::<Result<Vec<_>, Error>>()
-        })
+    let service = get_service();
+    let req = Command::GetDefaultPds;
+    service.send_cmd(req)?;
+    rx_recv_impl!(service, CompletionKind::GetDefaultPds, pds, {
+        pds.into_iter()
+            .map(|pd| ProtectionDomain::open(pd))
+            .collect::<Result<Vec<_>, Error>>()
     })
 }
 
@@ -50,11 +48,10 @@ pub struct ProtectionDomain {
 impl Drop for ProtectionDomain {
     fn drop(&mut self) {
         (|| {
+            let service = get_service();
             let req = Command::DeallocPd(self.inner);
-            KL_CTX.with(|ctx| {
-                ctx.service.send_cmd(req)?;
-                rx_recv_impl!(ctx.service, CompletionKind::DeallocPd)
-            })
+            service.send_cmd(req)?;
+            rx_recv_impl!(service, CompletionKind::DeallocPd)
         })()
         .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
     }
@@ -62,13 +59,12 @@ impl Drop for ProtectionDomain {
 
 impl ProtectionDomain {
     pub(crate) fn open(pd: returned::ProtectionDomain) -> Result<Self, Error> {
-        KL_CTX.with(|ctx| {
-            let inner = pd.handle;
-            let req = Command::OpenPd(inner);
-            ctx.service.send_cmd(req)?;
-            rx_recv_impl!(ctx.service, CompletionKind::OpenPd, {
-                Ok(ProtectionDomain { inner })
-            })
+        let service = get_service();
+        let inner = pd.handle;
+        let req = Command::OpenPd(inner);
+        service.send_cmd(req)?;
+        rx_recv_impl!(service, CompletionKind::OpenPd, {
+            Ok(ProtectionDomain { inner })
         })
     }
 
@@ -79,20 +75,19 @@ impl ProtectionDomain {
     ) -> Result<MemoryRegion<T>, Error> {
         let nbytes = len * mem::size_of::<T>();
         assert!(nbytes > 0);
+        let service = get_service();
         let req = Command::RegMr(self.inner, nbytes, access);
-        KL_CTX.with(|ctx| {
-            ctx.service.send_cmd(req)?;
-            let fds = ctx.service.recv_fd()?;
+        service.send_cmd(req)?;
+        let fds = service.recv_fd()?;
 
-            assert_eq!(fds.len(), 1);
+        assert_eq!(fds.len(), 1);
 
-            let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
-            let file_len = memfd.as_file().metadata()?.len() as usize;
-            assert_eq!(file_len, nbytes);
+        let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
+        let file_len = memfd.as_file().metadata()?.len() as usize;
+        assert_eq!(file_len, nbytes);
 
-            rx_recv_impl!(ctx.service, CompletionKind::RegMr, mr, {
-                MemoryRegion::new(self.inner, mr.handle, mr.rkey, mr.vaddr, memfd)
-            })
+        rx_recv_impl!(service, CompletionKind::RegMr, mr, {
+            MemoryRegion::new(self.inner, mr.handle, mr.rkey, mr.vaddr, memfd)
         })
     }
 
@@ -138,7 +133,7 @@ impl CqBuffer {
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
         (|| {
-            let mut cq_buffers = CQ_BUFFERS.lock();
+            let mut cq_buffers = get_cq_buffers().lock();
             let ref_cnt = cq_buffers[&self.inner].refcnt();
             if ref_cnt == 2 {
                 // this is the last CQ
@@ -147,11 +142,10 @@ impl Drop for CompletionQueue {
             }
             drop(cq_buffers);
 
+            let service = get_service();
             let req = Command::DestroyCq(self.inner);
-            KL_CTX.with(|ctx| {
-                ctx.service.send_cmd(req)?;
-                rx_recv_impl!(ctx.service, CompletionKind::DestroyCq)
-            })
+            service.send_cmd(req)?;
+            rx_recv_impl!(service, CompletionKind::DestroyCq)
         })()
         .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
     }
@@ -159,22 +153,21 @@ impl Drop for CompletionQueue {
 
 impl CompletionQueue {
     pub(crate) fn open(returned_cq: returned::CompletionQueue) -> Result<Self, Error> {
+        let service = get_service();
         // allocate a buffer in the thread local context
-        KL_CTX.with(|ctx| {
-            let buffer = CQ_BUFFERS
-                .lock()
-                .entry(returned_cq.handle)
-                .or_insert_with(CqBuffer::new)
-                .clone();
-            let inner = returned_cq.handle;
-            let req = Command::OpenCq(inner);
-            ctx.service.send_cmd(req)?;
-            rx_recv_impl!(ctx.service, CompletionKind::OpenCq, {
-                Ok(CompletionQueue {
-                    inner,
-                    outstanding: AtomicBool::new(false),
-                    buffer,
-                })
+        let buffer = get_cq_buffers()
+            .lock()
+            .entry(returned_cq.handle)
+            .or_insert_with(CqBuffer::new)
+            .clone();
+        let inner = returned_cq.handle;
+        let req = Command::OpenCq(inner);
+        service.send_cmd(req)?;
+        rx_recv_impl!(service, CompletionKind::OpenCq, {
+            Ok(CompletionQueue {
+                inner,
+                outstanding: AtomicBool::new(false),
+                buffer,
             })
         })
     }
@@ -222,11 +215,10 @@ impl<T> DerefMut for MemoryRegion<T> {
 impl<T> Drop for MemoryRegion<T> {
     fn drop(&mut self) {
         (|| {
-            KL_CTX.with(|ctx| {
-                let req = Command::DeregMr(self.inner);
-                ctx.service.send_cmd(req)?;
-                rx_recv_impl!(ctx.service, CompletionKind::DeregMr)
-            })
+            let service = get_service();
+            let req = Command::DeregMr(self.inner);
+            service.send_cmd(req)?;
+            rx_recv_impl!(service, CompletionKind::DeregMr)
         })()
         .unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
     }
@@ -289,17 +281,16 @@ pub struct QueuePair {
 
 impl QueuePair {
     pub(crate) fn open(returned_qp: returned::QueuePair) -> Result<Self, Error> {
-        KL_CTX.with(|ctx| {
-            let inner = returned_qp.handle;
-            let req = Command::OpenQp(inner);
-            ctx.service.send_cmd(req)?;
-            rx_recv_impl!(ctx.service, CompletionKind::OpenQp, {
-                Ok(QueuePair {
-                    inner,
-                    pd: ProtectionDomain::open(returned_qp.pd)?,
-                    send_cq: CompletionQueue::open(returned_qp.send_cq)?,
-                    recv_cq: CompletionQueue::open(returned_qp.recv_cq)?,
-                })
+        let service = get_service();
+        let inner = returned_qp.handle;
+        let req = Command::OpenQp(inner);
+        service.send_cmd(req)?;
+        rx_recv_impl!(service, CompletionKind::OpenQp, {
+            Ok(QueuePair {
+                inner,
+                pd: ProtectionDomain::open(returned_qp.pd)?,
+                send_cq: CompletionQueue::open(returned_qp.send_cq)?,
+                recv_cq: CompletionQueue::open(returned_qp.recv_cq)?,
             })
         })
     }
@@ -323,11 +314,10 @@ impl QueuePair {
 impl Drop for QueuePair {
     fn drop(&mut self) {
         (|| {
+            let service = get_service();
             let req = Command::DestroyQp(self.inner);
-            KL_CTX.with(|ctx| {
-                ctx.service.send_cmd(req)?;
-                rx_recv_impl!(ctx.service, CompletionKind::DestroyQp)
-            })
+            service.send_cmd(req)?;
+            rx_recv_impl!(service, CompletionKind::DestroyQp)
         })()
         .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));
     }

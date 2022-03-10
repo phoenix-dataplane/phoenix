@@ -17,13 +17,14 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use crate::engine::manager::RuntimeManager;
 use super::engine::TransportEngine;
-use super::state::StateManager;
+use super::state::State;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
+use crate::state_mgr::StateManager;
 
 lazy_static! {
-    static ref STATE_MGR: StateManager<'static> = StateManager::new();
+    static ref STATE_MGR: Arc<StateManager<State<'static>>> = Arc::new(StateManager::new());
 }
 
 pub type CustomerType =

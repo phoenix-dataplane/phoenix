@@ -1,6 +1,5 @@
 //! Per-process state that is shared among multiple transport engines.
 use fnv::FnvHashMap as HashMap;
-use std::collections::hash_map;
 use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomPinned;
@@ -20,42 +19,13 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::transport::resource::ResourceTable;
+use crate::state_mgr::{StateManager, StateTrait};
+use crate::resource::ResourceTable;
 use super::Error;
-
-// Per-process state
-pub(crate) struct StateManager<'ctx> {
-    states: spin::Mutex<HashMap<Pid, State<'ctx>>>,
-}
-
-impl<'ctx> StateManager<'ctx> {
-    pub(crate) fn new() -> Self {
-        StateManager {
-            states: spin::Mutex::new(HashMap::default()),
-        }
-    }
-
-    pub(crate) fn get_or_create_state(&'ctx self, pid: Pid) -> io::Result<State<'ctx>> {
-        let mut states = self.states.lock();
-        match states.entry(pid) {
-            hash_map::Entry::Occupied(e) => {
-                // refcount ++
-                Ok(e.get().clone())
-            }
-            hash_map::Entry::Vacant(e) => {
-                let state = State::new(self, pid)?;
-                // refcount ++
-                let ret = state.clone();
-                e.insert(state);
-                Ok(ret)
-            }
-        }
-    }
-}
 
 // TODO(cjr): Make this global lock more fine-grained.
 pub(crate) struct State<'ctx> {
-    sm: &'ctx StateManager<'ctx>,
+    sm: Arc<StateManager<Self>>,
     pub(crate) shared: Arc<Shared<'ctx>>,
 }
 
@@ -63,8 +33,8 @@ impl<'ctx> Clone for State<'ctx> {
     fn clone(&self) -> Self {
         self.shared.alive_engines.fetch_add(1, Ordering::AcqRel);
         State {
+            sm: Arc::clone(&self.sm),
             shared: Arc::clone(&self.shared),
-            sm: self.sm,
         }
     }
 }
@@ -78,8 +48,9 @@ impl<'ctx> Drop for State<'ctx> {
     }
 }
 
-impl<'ctx> State<'ctx> {
-    pub(crate) fn new(sm: &'ctx StateManager<'ctx>, pid: Pid) -> io::Result<Self> {
+impl<'ctx> StateTrait for State<'ctx> {
+    type Err = io::Error;
+    fn new(sm: Arc<StateManager<Self>>, pid: Pid) -> io::Result<Self> {
         Ok(State {
             sm,
             shared: Arc::new(Shared {
@@ -92,6 +63,9 @@ impl<'ctx> State<'ctx> {
         })
     }
 
+}
+
+impl<'ctx> State<'ctx> {
     #[inline]
     pub(crate) fn resource(&self) -> &Resource<'ctx> {
         &self.shared.resource

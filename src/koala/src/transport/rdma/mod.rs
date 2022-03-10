@@ -1,7 +1,7 @@
 use std::io;
 use thiserror::Error;
 
-use super::resource::Error as ResourceError;
+use crate::resource::Error as ResourceError;
 
 pub mod engine;
 pub mod module;

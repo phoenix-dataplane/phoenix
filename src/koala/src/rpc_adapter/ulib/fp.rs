@@ -6,18 +6,18 @@ use std::sync::atomic::Ordering;
 use ipc::buf;
 use ipc::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
 
-use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
+use super::{get_service, get_cq_buffers, Error};
 
-use crate::transport::cm;
-use crate::transport::cm::{CmId, PreparedCmId};
-use crate::transport::verbs;
-use crate::transport::verbs::{CompletionQueue, WorkCompletion};
+use super::ucm;
+use super::ucm::{CmId, PreparedCmId};
+use super::uverbs;
+use super::uverbs::{CompletionQueue, WorkCompletion};
 
-impl cm::Inner {
+impl ucm::Inner {
     #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
-        mr: &mut verbs::MemoryRegion<T>,
+        mr: &mut uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
     ) -> Result<(), Error>
@@ -30,19 +30,18 @@ impl cm::Inner {
             buf::Range::new(mr, range),
             mr.inner.0,
         );
-        KL_CTX.with(|ctx| {
-            // This WR must be successfully sent.
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
+        let service = get_service();
+        // This WR must be successfully sent.
+        let mut sent = false;
+        while !sent {
+            service.enqueue_wr_with(|ptr, count| unsafe {
+                debug_assert!(count >= 1);
+                ptr.cast::<WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
     }
 }
 
@@ -55,7 +54,7 @@ impl PreparedCmId {
     #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
-        mr: &mut verbs::MemoryRegion<T>,
+        mr: &mut uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
     ) -> Result<(), Error>
@@ -75,7 +74,7 @@ impl CmId {
     #[inline]
     pub unsafe fn post_recv<T, R>(
         &self,
-        mr: &mut verbs::MemoryRegion<T>,
+        mr: &mut uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
     ) -> Result<(), Error>
@@ -93,10 +92,10 @@ impl CmId {
     #[inline]
     pub unsafe fn post_send<T, R>(
         &self,
-        mr: &verbs::MemoryRegion<T>,
+        mr: &uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
-        flags: verbs::SendFlags,
+        flags: uverbs::SendFlags,
     ) -> Result<(), Error>
     where
         R: SliceIndex<[T], Output = [T]>,
@@ -108,18 +107,17 @@ impl CmId {
             mr.inner.0,
             flags,
         );
-        KL_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
+        let service = get_service();
+        let mut sent = false;
+        while !sent {
+            service.enqueue_wr_with(|ptr, count| unsafe {
+                debug_assert!(count >= 1);
+                ptr.cast::<WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
     }
 
     /// # Safety
@@ -130,10 +128,10 @@ impl CmId {
     #[inline]
     pub unsafe fn post_write<T, R>(
         &self,
-        mr: &verbs::MemoryRegion<T>,
+        mr: &uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
-        flags: verbs::SendFlags,
+        flags: uverbs::SendFlags,
         rkey: interface::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
@@ -149,18 +147,17 @@ impl CmId {
             rkey,
             flags,
         );
-        KL_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
+        let service = get_service();
+        let mut sent = false;
+        while !sent {
+            service.enqueue_wr_with(|ptr, count| unsafe {
+                debug_assert!(count >= 1);
+                ptr.cast::<WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
     }
 
     /// # Safety
@@ -171,10 +168,10 @@ impl CmId {
     #[inline]
     pub unsafe fn post_read<T, R>(
         &self,
-        mr: &mut verbs::MemoryRegion<T>,
+        mr: &mut uverbs::MemoryRegion<T>,
         range: R,
         context: u64,
-        flags: verbs::SendFlags,
+        flags: uverbs::SendFlags,
         rkey: interface::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
@@ -190,22 +187,21 @@ impl CmId {
             rkey,
             flags,
         );
-        KL_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
-                    debug_assert!(count >= 1);
-                    ptr.cast::<WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
+        let service = get_service();
+        let mut sent = false;
+        while !sent {
+            service.enqueue_wr_with(|ptr, count| unsafe {
+                debug_assert!(count >= 1);
+                ptr.cast::<WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
     }
 
     #[inline]
-    pub fn get_send_comp(&self) -> Result<verbs::WorkCompletion, Error> {
+    pub fn get_send_comp(&self) -> Result<uverbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.send_cq;
         loop {
@@ -218,7 +214,7 @@ impl CmId {
     }
 
     #[inline]
-    pub fn get_recv_comp(&self) -> Result<verbs::WorkCompletion, Error> {
+    pub fn get_recv_comp(&self) -> Result<uverbs::WorkCompletion, Error> {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.recv_cq;
         loop {
@@ -246,39 +242,38 @@ impl CompletionQueue {
         }
         drop(local_buffer);
 
+        let service = get_service();
         // if local buffer is empty,
-        KL_CTX.with(|ctx| {
-            if !self.outstanding.load(Ordering::Acquire) {
-                // 1. Send a poll_cq command to the koala server. This poll_cq command does not have
-                // to be sent successfully. Because the user would keep retrying until they get what
-                // they expect.
-                let req = WorkRequest::PollCq(self.inner);
-                ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                    ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
-                    self.outstanding.store(true, Ordering::Release);
-                    1
-                })?;
-            }
-            // 2. Poll the shared memory queue, and put into the local buffer. Then return
-            // immediately.
-            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-                // iterate and dispatch
-                let cq_buffers = CQ_BUFFERS.lock();
-                for i in 0..count {
-                    let c = ptr.add(i).cast::<Completion>().read();
-                    if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
-                        self.outstanding.store(false, Ordering::Release);
-                        // this is just a notification that outstanding flag should be flapped
-                        if c.wc.status != interface::WcStatus::AGAIN {
-                            buffer.queue.lock().push_back(c.wc);
-                        }
-                    } else {
-                        eprintln!("no corresponding entry for {:?}", c);
-                    }
-                }
-                count
+        if !self.outstanding.load(Ordering::Acquire) {
+            // 1. Send a poll_cq command to the koala server. This poll_cq command does not have
+            // to be sent successfully. Because the user would keep retrying until they get what
+            // they expect.
+            let req = WorkRequest::PollCq(self.inner);
+            service.enqueue_wr_with(|ptr, _count| unsafe {
+                ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
+                self.outstanding.store(true, Ordering::Release);
+                1
             })?;
-            Ok(())
-        })
+        }
+        // 2. Poll the shared memory queue, and put into the local buffer. Then return
+        // immediately.
+        service.dequeue_wc_with(|ptr, count| unsafe {
+            // iterate and dispatch
+            let cq_buffers = get_cq_buffers().lock();
+            for i in 0..count {
+                let c = ptr.add(i).cast::<Completion>().read();
+                if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
+                    self.outstanding.store(false, Ordering::Release);
+                    // this is just a notification that outstanding flag should be flapped
+                    if c.wc.status != interface::WcStatus::AGAIN {
+                        buffer.queue.lock().push_back(c.wc);
+                    }
+                } else {
+                    eprintln!("no corresponding entry for {:?}", c);
+                }
+            }
+            count
+        })?;
+        Ok(())
     }
 }

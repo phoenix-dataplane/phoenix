@@ -34,6 +34,10 @@ pub(crate) trait Vertex {
 pub(crate) trait Engine: Upgradable + Send + Vertex {
     /// `resume()` mush be non-blocking and short.
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
+    #[inline]
+    unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
+        None
+    }
 }
 
 // NoProgress, MayDemandMoreCPU
@@ -42,3 +46,7 @@ pub(crate) enum EngineStatus {
     Continue,
     Complete,
 }
+
+// pub struct EngineTlStorage {
+//     pub ptr: Box<dyn std::any::Any>,
+// }

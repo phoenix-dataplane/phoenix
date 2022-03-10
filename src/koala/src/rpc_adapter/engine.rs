@@ -1,18 +1,21 @@
-use std::mem;
-
 use ipc::mrpc;
-use ipc::transport::rdma as transport;
 
-use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 use interface::engine::SchedulingMode;
 
+use super::state::State;
+use super::ulib;
 use super::module::ServiceType;
-use super::{rx_recv_impl, ControlPathError, DatapathError};
+use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use crate::node::Node;
 
-pub struct RpcAdapterEngine {
+pub struct TlStorage {
     pub(crate) service: ServiceType,
+    pub(crate) state: State,
+}
+
+pub struct RpcAdapterEngine {
+    pub(crate) tls: Box<TlStorage>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
@@ -69,6 +72,14 @@ impl Engine for RpcAdapterEngine {
         self.check_input_cmd_queue()?;
         Ok(EngineStatus::Continue)
     }
+
+    #[inline]
+    unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
+        // let (addr, meta) = (self.tls.as_ref() as *const TlStorage).to_raw_parts();
+        // let tls: *const TlStorage = std::ptr::from_raw_parts(addr, meta);
+        let tls = self.tls.as_ref() as *const TlStorage;
+        Some(&*tls)
+    }
 }
 
 impl RpcAdapterEngine {
@@ -107,48 +118,16 @@ impl RpcAdapterEngine {
             }
             mrpc::cmd::Command::Connect(addr) => {
                 log::trace!("Connect, addr: {:?}", addr);
-                // cread_id
-                let req = transport::cmd::Command::CreateId(PortSpace::TCP);
-                self.service.send_cmd(req)?;
-                let cmid = rx_recv_impl!(
-                    self.service,
-                    transport::cmd::CompletionKind::CreateId,
-                    cmid,
-                    { Ok(cmid) }
-                )?;
-                let drop_cmid = DropCmId(&self.service, cmid.handle);
-                assert!(cmid.qp.is_none());
-                // resolve_addr
-                let req = transport::cmd::Command::ResolveAddr(cmid.handle.0, *addr);
-                self.service.send_cmd(req)?;
-                rx_recv_impl!(self.service, transport::cmd::CompletionKind::ResolveAddr)?;
-                // resolve_route
-                let req = transport::cmd::Command::ResolveRoute(cmid.handle.0, 2000); 
-                self.service.send_cmd(req)?;
-                rx_recv_impl!(self.service, transport::cmd::CompletionKind::ResolveRoute)?;
+                // create CmIdBuilder
+                let builder = ulib::ucm::CmIdBuilder::new()
+                    .set_max_send_wr(128)
+                    .resolve_route(addr)?;
+                let pre_id = builder.build()?;
                 // connect
-                let req = transport::cmd::Command::Connect(cmid.handle.0, None);
-                self.service.send_cmd(req)?;
-                rx_recv_impl!(self.service, transport::cmd::CompletionKind::Connect)?;
-                // finally connected
-                mem::forget(drop_cmid);
-                let handle = cmid.handle.0;
+                let id = pre_id.connect(None)?;
+                let handle = id.inner.handle.0;
                 Ok(mrpc::cmd::CompletionKind::Connect(handle))
             }
         }
-    }
-}
-
-struct DropCmId<'a>(&'a ServiceType, interface::CmId);
-
-impl<'a> Drop for DropCmId<'a> {
-    fn drop(&mut self) {
-        (|| {
-            let req = transport::cmd::Command::DestroyId(self.1);
-            self.0.send_cmd(req)?;
-            rx_recv_impl!(self.0, transport::cmd::CompletionKind::DestroyId)?;
-            Ok(())
-        })()
-        .unwrap_or_else(|e: ControlPathError| eprintln!("Destroying CmId: {}", e));
     }
 }

@@ -15,7 +15,7 @@ pub mod cm;
 mod fp;
 pub mod verbs;
 
-// NOTE(cjr): Will lazy_static affects the performance?
+// NOTE(cjr): Will lazy_static affect the performance?
 lazy_static! {
     // A cq can be created by calling create_cq, but it can also come from create_ep
     pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<interface::CompletionQueue, verbs::CqBuffer>> =

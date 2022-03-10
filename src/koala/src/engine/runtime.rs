@@ -18,7 +18,14 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-/// __Safety__: A __Runtime__ only have one single consumer which iterates through
+// to emulate a thread local storage (TLS)
+thread_local! {
+    pub static ENGINE_TLS: RefCell<Option<&'static dyn std::any::Any>> = RefCell::new(None);
+}
+
+/// # Safety
+///
+/// A __Runtime__ only have one single consumer which iterates through
 /// `running` and runs each engine. Newly added or stolen engines are
 /// appended to `pending`, which is protected by a spinlock. In the mainloop,
 /// the runtime moves engines from `pending` to `running` by checking the `new_pending` flag.
@@ -69,6 +76,16 @@ impl Runtime {
 
             // run each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
+                ENGINE_TLS.with(|tls| {
+                    // Safety: The purpose here is to emulate thread-local storage for Engine.
+                    // Different engines can expose different types of TLS. The TLS will only be
+                    // used during the runtime of an engine. Thus, the TLS should always be valid
+                    // when it is used. However, there is no known way (for me) to express this
+                    // lifetime constraint. Ultimately, the solution is to force the lifetime of
+                    // the TLS of an engine to be 'static, and the programmer needs to think
+                    // through to make sure they implement it correctly.
+                    *tls.borrow_mut() = unsafe { engine.borrow().tls() };
+                });
                 match engine.borrow_mut().resume() {
                     Ok(EngineStatus::NoWork | EngineStatus::Continue) => {}
                     Ok(EngineStatus::Complete) => {

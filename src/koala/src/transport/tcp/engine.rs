@@ -12,7 +12,7 @@ use interface::engine::SchedulingMode;
 use crate::engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 use super::module::CustomerType;
 use super::{DatapathError, Error};
-use crate::transport::resource::ResourceTable;
+use crate::resource::ResourceTable;
 use crate::node::Node;
 
 pub(crate) struct State {
