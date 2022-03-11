@@ -2,6 +2,7 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
+use interface::{Handle, AsHandle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
 use super::{rx_recv_impl, get_service, uverbs, Error, FromBorrow};
@@ -257,6 +258,13 @@ impl PreparedCmId {
 #[derive(Debug)]
 pub struct CmId {
     pub(crate) inner: Inner,
+}
+
+impl AsHandle for CmId {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        self.inner.handle.0
+    }
 }
 
 impl Drop for CmId {

@@ -1,6 +1,8 @@
 //! this engine translate RPC messages into transport-level work requests / completions
 use thiserror::Error;
 
+use crate::resource::Error as ResourceError;
+
 pub mod engine;
 pub mod module;
 pub mod state;
@@ -14,6 +16,8 @@ pub(crate) enum ControlPathError {
     Interface(&'static str, interface::Error),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
+    #[error("Resource error: {0}")]
+    Resource(#[from] ResourceError),
 
     // Below are errors that does not return to the user.
     #[error("Operation in progress")]

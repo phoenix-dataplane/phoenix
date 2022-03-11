@@ -84,7 +84,14 @@ impl Engine for RpcAdapterEngine {
 
 impl RpcAdapterEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        Ok(Status::Progress(0))
+        use std::sync::mpsc::TryRecvError;
+        match self.tx_inputs()[0].try_recv() {
+            Ok(msg) => {
+                let sglist = msg.marshal();
+            }
+            Err(TryRecvError::Empty) => Ok(Progress(0)),
+            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
+        }
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
@@ -121,11 +128,13 @@ impl RpcAdapterEngine {
                 // create CmIdBuilder
                 let builder = ulib::ucm::CmIdBuilder::new()
                     .set_max_send_wr(128)
+                    .set_max_recv_wr(128)
                     .resolve_route(addr)?;
                 let pre_id = builder.build()?;
                 // connect
                 let id = pre_id.connect(None)?;
                 let handle = id.inner.handle.0;
+                self.tls.state.resource().insert_cmid(id)?;
                 Ok(mrpc::cmd::CompletionKind::Connect(handle))
             }
         }

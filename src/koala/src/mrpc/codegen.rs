@@ -11,6 +11,8 @@ pub struct HelloRequest {
 impl Marshal for HelloRequest {
     type Error = ();
     fn marshal(&self) -> Result<SgList, Self::Error> {
+        let selfaddr = self as *const _ as usize;
+        let vecptr = unsafe { (self as *const Self).cast::<usize>().read() };
         // let buf0 = ShmBuf {
         //     shm_id: Handle::INVALID,
         //     offset: 0,
