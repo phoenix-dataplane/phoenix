@@ -40,6 +40,8 @@ impl AsHandle for RawFd {
 }
 
 // These data struct can be `Copy` because they are only for IPC use.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct VerbsContext(pub Handle);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
@@ -61,6 +63,11 @@ pub struct QueuePair(pub Handle);
 
 pub mod returned {
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct VerbsContext {
+        pub handle: super::VerbsContext,
+    }
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct ProtectionDomain {
@@ -92,6 +99,7 @@ pub mod returned {
         pub handle: super::MemoryRegion,
         pub rkey: super::RemoteKey,
         pub vaddr: u64,
+        pub pd: super::ProtectionDomain,
     }
 }
 

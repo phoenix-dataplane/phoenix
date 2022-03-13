@@ -17,13 +17,19 @@ pub(crate) enum Error {
 }
 
 #[derive(Debug)]
-pub(crate) struct ResourceTable<R> {
-    table: spin::Mutex<HashMap<Handle, Entry<R>>>,
+pub(crate) struct ResourceTableGeneric<K, R> {
+    table: spin::Mutex<HashMap<K, Entry<R>>>,
 }
 
-impl<R> Default for ResourceTable<R> {
+// #[derive(Debug)]
+// pub(crate) struct ResourceTable<R> {
+//     table: spin::Mutex<HashMap<Handle, Entry<R>>>,
+// }
+pub(crate) type ResourceTable<R> = ResourceTableGeneric<Handle, R>;
+
+impl<K, R> Default for ResourceTableGeneric<K, R> {
     fn default() -> Self {
-        ResourceTable {
+        ResourceTableGeneric {
             table: spin::Mutex::new(HashMap::default()),
         }
     }
@@ -63,15 +69,15 @@ impl<R> Entry<R> {
     }
 }
 
-impl<R> ResourceTable<R> {
-    pub(crate) fn insert(&self, h: Handle, r: R) -> Result<(), Error> {
+impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
+    pub(crate) fn insert(&self, h: K, r: R) -> Result<(), Error> {
         match self.table.lock().insert(h, Entry::new(r, 1)) {
             Some(_) => Err(Error::Exists),
             None => Ok(()),
         }
     }
 
-    pub(crate) fn get(&self, h: &Handle) -> Result<Arc<R>, Error> {
+    pub(crate) fn get(&self, h: &K) -> Result<Arc<R>, Error> {
         self.table
             .lock()
             .get(h)
@@ -79,7 +85,7 @@ impl<R> ResourceTable<R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn get_dp(&self, h: &Handle) -> Result<Arc<R>, Error> {
+    pub(crate) fn get_dp(&self, h: &K) -> Result<Arc<R>, Error> {
         self.table
             .lock()
             .get(h)
@@ -88,7 +94,7 @@ impl<R> ResourceTable<R> {
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
-    pub(crate) fn occupy_or_create_resource(&self, h: Handle, r: R) {
+    pub(crate) fn occupy_or_create_resource(&self, h: K, r: R) {
         match self.table.lock().entry(h) {
             hash_map::Entry::Occupied(_e) => {
                 // TODO(cjr): check if they have the same handle
@@ -100,7 +106,7 @@ impl<R> ResourceTable<R> {
         }
     }
 
-    pub(crate) fn open_or_create_resource(&self, h: Handle, r: R) {
+    pub(crate) fn open_or_create_resource(&self, h: K, r: R) {
         match self.table.lock().entry(h) {
             hash_map::Entry::Occupied(mut e) => {
                 // TODO(cjr): check if they have the same handle
@@ -113,7 +119,7 @@ impl<R> ResourceTable<R> {
         }
     }
 
-    pub(crate) fn open_resource(&self, h: &Handle) -> Result<(), Error> {
+    pub(crate) fn open_resource(&self, h: &K) -> Result<(), Error> {
         // increase the refcnt
         self.table
             .lock()
@@ -122,7 +128,7 @@ impl<R> ResourceTable<R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn close_resource(&self, h: &Handle) -> Result<(), Error> {
+    pub(crate) fn close_resource(&self, h: &K) -> Result<(), Error> {
         let mut table = self.table.lock();
         let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
         if close {

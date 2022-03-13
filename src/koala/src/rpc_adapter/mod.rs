@@ -38,12 +38,15 @@ impl From<ControlPathError> for interface::Error {
 
 use std::sync::mpsc::SendError;
 impl<T> From<SendError<T>> for ControlPathError {
-    fn from(other: SendError<T>) -> Self {
+    fn from(_other: SendError<T>) -> Self {
         Self::SendCommand
     }
 }
 
 #[derive(Error, Debug)]
-#[error("rpc-adapter datapath error")]
 pub(crate) enum DatapathError {
+    #[error("Resource error: {0}")]
+    Resource(#[from] ResourceError),
+    #[error("Ulib error {0}")]
+    Ulib(#[from] ulib::Error),
 }

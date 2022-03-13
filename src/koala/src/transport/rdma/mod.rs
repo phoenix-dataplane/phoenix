@@ -12,8 +12,8 @@ pub(crate) enum Error {
     // Below are errors that return to the user.
     #[error("rdmacm internal error: {0}")]
     RdmaCm(io::Error),
-    // #[error("ibv internal error: {0}")]
-    // Ibv(io::Error),
+    #[error("ibv internal error: {0}")]
+    Ibv(io::Error),
     #[error("getaddrinfo error: {0}")]
     GetAddrInfo(io::Error),
     #[error("Resource not found in table")]

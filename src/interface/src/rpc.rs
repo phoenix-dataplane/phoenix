@@ -1,6 +1,8 @@
 //! RPC data structures
 use serde::{Serialize, Deserialize};
 
+use crate::Handle;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RpcMsgType {
@@ -19,7 +21,7 @@ pub enum RpcMsgType {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MessageMeta {
-    pub conn_id: u32,
+    pub conn_id: Handle,
     pub func_id: u32,
     pub call_id: u64,
     pub len: u64,

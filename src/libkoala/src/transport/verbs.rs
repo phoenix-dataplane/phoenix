@@ -233,7 +233,7 @@ impl<T> Drop for MemoryRegion<T> {
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(
+    pub(crate) fn new(
         pd: interface::ProtectionDomain,
         inner: interface::MemoryRegion,
         rkey: RemoteKey,

@@ -1,13 +1,20 @@
+use std::mem;
+use std::os::unix::prelude::AsRawFd;
+use std::sync::Arc;
+
 use ipc::mrpc;
 
 use interface::engine::SchedulingMode;
+use interface::AsHandle;
 
-use super::state::State;
-use super::ulib;
 use super::module::ServiceType;
+use super::state::{ConnectionContext, State, WrContext};
+use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use crate::mrpc::marshal::{ShmBuf, Unmarshal};
 use crate::node::Node;
+use crate::resource::Error as ResourceError;
 
 pub struct TlStorage {
     pub(crate) service: ServiceType,
@@ -16,6 +23,8 @@ pub struct TlStorage {
 
 pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
+    // shared completion queue model
+    pub(crate) cq: ulib::uverbs::CompletionQueue,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
@@ -68,6 +77,10 @@ impl Engine for RpcAdapterEngine {
         // check service
         self.check_transport_service()?;
 
+        // TODO(cjr): check incoming connect request
+        // the CmIdListener::get_request() is currently synchronous.
+        // need to make it asynchronous and low cost to check.
+
         // check input command queue
         self.check_input_cmd_queue()?;
         Ok(EngineStatus::Continue)
@@ -84,10 +97,42 @@ impl Engine for RpcAdapterEngine {
 
 impl RpcAdapterEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        // TODO(cjr): check from local queue
+        // TODO(cjr): check credit
         use std::sync::mpsc::TryRecvError;
+        use ulib::uverbs::SendFlags;
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
+                // get cmid from conn_id
+                let cmid_handle = msg.conn_id();
+                let mut conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+                let cmid = &conn_ctx.cmid;
+                // Sender marshals the data (gets an SgList)
                 let sglist = msg.marshal();
+                // Sender posts send requests from the SgList
+                for (i, &sge) in sglist.0.iter().enumerate() {
+                    // query mr from each sge
+                    let mr = self.tls.state.resource().query_mr(sge)?;
+                    let off = sge.ptr - mr.as_ptr() as usize;
+                    if i + 1 < sglist.0.len() {
+                        // post send
+                        unsafe {
+                            cmid.post_send(&mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                        }
+                    } else {
+                        // post send with imm
+                        unsafe {
+                            cmid.post_send_with_imm(
+                                &mr,
+                                off..off + sge.len,
+                                0,
+                                SendFlags::SIGNALED,
+                            )?;
+                        }
+                    }
+                }
+                // Sender posts an extra SendWithImm
+                Ok(Progress(1))
             }
             Err(TryRecvError::Empty) => Ok(Progress(0)),
             Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
@@ -95,6 +140,50 @@ impl RpcAdapterEngine {
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
+        // check completion, and replenish some recv requests
+        use interface::{WcFlags, WcOpcode, WcStatus};
+        let mut comps = Vec::with_capacity(32);
+        self.cq.poll(&mut comps)?;
+        for wc in comps {
+            match wc.status {
+                WcStatus::Success => {
+                    match wc.opcode {
+                        WcOpcode::Send => {
+                            // send completed, do nothing
+                        }
+                        WcOpcode::Recv => {
+                            let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
+                            let cmid_handle = wr_ctx.conn_id;
+                            let mut conn_ctx =
+                                self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+                            if !wc.wc_flags.contains(WcFlags::WITH_IMM) {
+                                // received a segment of RPC message
+                                let sge = ShmBuf {
+                                    ptr: wr_ctx.mr_addr,
+                                    len: wc.byte_len as _,
+                                };
+                                conn_ctx.receiving_sgl.0.push(sge);
+                            } else {
+                                // received an entire RPC message
+                                use crate::mrpc::codegen::{HelloReply, HelloRequest};
+                                use crate::mrpc::marshal::MessageTemplate;
+                                let sgl = mem::take(&mut conn_ctx.receiving_sgl);
+                                // TODO(cjr): switch here to figure out what should be the type
+                                let msg = unsafe {
+                                    MessageTemplate::<HelloRequest>::unmarshal(sgl).unwrap()
+                                };
+                                self.rx_outputs()[0].send(msg).unwrap();
+                            }
+                        }
+                        WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
+                        _ => panic!("Unhandled wc opcode: {:?}", wc),
+                    }
+                }
+                WcStatus::Error(_) => {
+                    eprintln!("wc failed: {:?}", wc);
+                }
+            }
+        }
         Ok(Status::Progress(0))
     }
 
@@ -121,21 +210,111 @@ impl RpcAdapterEngine {
     ) -> Result<mrpc::cmd::CompletionKind, ControlPathError> {
         match req {
             mrpc::cmd::Command::SetTransport(_) => {
-                unimplemented!()
+                unreachable!();
+            }
+            mrpc::cmd::Command::AllocShm(nbytes) => {
+                let pd = &self.tls.state.resource().default_pds()[0];
+                let access = ulib::uverbs::AccessFlags::REMOTE_READ
+                    | ulib::uverbs::AccessFlags::REMOTE_WRITE
+                    | ulib::uverbs::AccessFlags::LOCAL_WRITE;
+                let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
+                let returned_mr = interface::returned::MemoryRegion {
+                    handle: mr.inner,
+                    rkey: mr.rkey(),
+                    vaddr: mr.as_ptr() as u64,
+                    pd: mr.pd().inner,
+                };
+                // store the allocated MRs for later memory address translation
+                let memfd = mr.memfd().as_raw_fd();
+                self.tls
+                    .state
+                    .resource()
+                    .mr_table
+                    .lock()
+                    .insert(mr.as_ptr() as usize, Arc::new(mr))
+                    .map_or(Err(ResourceError::Exists), |_| Ok(()))?;
+                Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
+                    returned_mr,
+                    memfd,
+                ))
             }
             mrpc::cmd::Command::Connect(addr) => {
                 log::trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
                 let builder = ulib::ucm::CmIdBuilder::new()
+                    .set_send_cq(&self.cq)
+                    .set_recv_cq(&self.cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
                     .resolve_route(addr)?;
                 let pre_id = builder.build()?;
+                // create 128 receive mrs, post recv requestse and
+                // This is safe because even though recv_mr is moved, the backing memfd and
+                // mapped memory regions are still there, and nothing of this mr is changed.
+                // We also make sure the lifetime of the mr is longer by storing it in the
+                // state.
+                let mut recv_mrs = Vec::with_capacity(128);
+                for _ in 0..128 {
+                    let recv_mr: ulib::uverbs::MemoryRegion<u8> =
+                        pre_id.alloc_msgs(8 * 1024 * 1024)?;
+                    recv_mrs.push(recv_mr);
+                }
+                for recv_mr in &mut recv_mrs {
+                    let wr_id = recv_mr.as_handle().0 as u64;
+                    let wr_ctx = WrContext {
+                        conn_id: pre_id.as_handle(),
+                        mr_addr: recv_mr.as_ptr() as usize,
+                    };
+                    unsafe {
+                        pre_id.post_recv(recv_mr, .., wr_id)?;
+                    }
+                    self.tls
+                        .state
+                        .resource()
+                        .wr_contexts
+                        .insert(wr_id, wr_ctx)?;
+                }
                 // connect
                 let id = pre_id.connect(None)?;
                 let handle = id.inner.handle.0;
-                self.tls.state.resource().insert_cmid(id)?;
-                Ok(mrpc::cmd::CompletionKind::Connect(handle))
+                let mut returned_mrs = Vec::with_capacity(128);
+                let mut fds = Vec::with_capacity(128);
+                for recv_mr in &recv_mrs {
+                    returned_mrs.push(interface::returned::MemoryRegion {
+                        handle: recv_mr.inner,
+                        rkey: recv_mr.rkey(),
+                        vaddr: recv_mr.as_ptr() as u64,
+                        pd: recv_mr.pd().inner,
+                    });
+                    fds.push(recv_mr.memfd().as_raw_fd());
+                }
+
+                // insert resources
+                self.tls.state.resource().insert_cmid(id, 128)?;
+                for recv_mr in recv_mrs {
+                    self.tls
+                        .state
+                        .resource()
+                        .recv_mr_table
+                        .insert(recv_mr.as_handle(), recv_mr)?;
+                }
+                Ok(mrpc::cmd::CompletionKind::ConnectInternal(
+                    handle,
+                    returned_mrs,
+                    fds,
+                ))
+            }
+            mrpc::cmd::Command::Bind(addr) => {
+                log::trace!("Bind, addr: {:?}", addr);
+                // create CmIdBuilder
+                let listener = ulib::ucm::CmIdBuilder::new().bind(addr)?;
+                let handle = listener.as_handle();
+                self.tls
+                    .state
+                    .resource()
+                    .listener_table
+                    .insert(handle, listener)?;
+                Ok(mrpc::cmd::CompletionKind::Bind(handle))
             }
         }
     }

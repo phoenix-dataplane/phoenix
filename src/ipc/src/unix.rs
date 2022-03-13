@@ -10,6 +10,8 @@ use std::path::Path;
 
 use thiserror::Error;
 
+const ANCILLARY_BUFFER_SIZE: usize = 1024;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("send_vectored_with_ancillary_to: {0}.")]
@@ -195,7 +197,7 @@ impl DomainSocket {
     pub fn recv_fd(&self) -> Result<(Vec<RawFd>, Option<UCred>), Error> {
         let bufs = &mut [][..];
         let mut fds = Vec::new();
-        let mut ancillary_buffer = [0; 256];
+        let mut ancillary_buffer = [0; ANCILLARY_BUFFER_SIZE];
         let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
         let (_size, truncated) = self.recv_vectored_with_ancillary(bufs, &mut ancillary)?;
         // TODO(cjr): sanity check the sender, and see if it is the correct koala transport engine

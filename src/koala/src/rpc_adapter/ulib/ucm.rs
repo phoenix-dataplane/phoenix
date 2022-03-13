@@ -2,10 +2,10 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
-use interface::{Handle, AsHandle};
+use interface::{AsHandle, Handle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use super::{rx_recv_impl, get_service, uverbs, Error, FromBorrow};
+use super::{get_service, rx_recv_impl, uverbs, Error, FromBorrow};
 use uverbs::AccessFlags;
 use uverbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
@@ -97,10 +97,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         self
     }
 
-    pub fn bind<A: ToSocketAddrs>(
-        &self,
-        addr: A,
-    ) -> Result<CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
+    pub fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdListener, Error> {
         let listen_addr = addr
             .to_socket_addrs()?
             .next()
@@ -124,7 +121,6 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         mem::forget(drop_cmid);
         Ok(CmIdListener {
             handle: cmid.handle,
-            builder: self.clone(),
         })
     }
 
@@ -191,29 +187,39 @@ impl Drop for DropCmId {
     }
 }
 
-pub struct CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+// COMMENT(cjr): here we remove some functionalities of the CmIdListener from the libkoala so that
+// the 5 lifetime generices does not need to propagate.
+pub struct CmIdListener {
     pub(crate) handle: interface::CmId,
-    builder: CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>,
 }
 
-impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Drop for CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+impl AsHandle for CmIdListener {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        self.handle.0
+    }
+}
+
+impl Drop for CmIdListener {
     fn drop(&mut self) {
         let _drop_cmid = DropCmId(self.handle);
     }
 }
 
-impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+impl CmIdListener {
     pub fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         CmIdBuilder::new().bind(addr)
     }
 
-    pub fn get_request(&self) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
+    pub fn get_request<'pd, 'ctx, 'scq, 'rcq, 'srq>(
+        &self,
+    ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
         let service = get_service();
         let req = Command::GetRequest(self.handle.0);
         service.send_cmd(req)?;
         let cmid = rx_recv_impl!(service, CompletionKind::GetRequest, cmid, { Ok(cmid) })?;
         assert!(cmid.qp.is_none());
-        let mut builder = self.builder.clone();
+        let mut builder = CmIdBuilder::new();
         builder.handle = cmid.handle;
         Ok(builder)
     }
@@ -222,6 +228,13 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
 #[derive(Debug)]
 pub struct PreparedCmId {
     pub(crate) inner: Inner,
+}
+
+impl AsHandle for PreparedCmId {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        self.inner.handle.0
+    }
 }
 
 impl PreparedCmId {

@@ -9,25 +9,31 @@ use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 
-use interface::returned;
+use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use super::{get_service, get_cq_buffers, rx_recv_impl, Error, FromBorrow};
+use super::{get_cq_buffers, get_service, rx_recv_impl, Error, FromBorrow};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
-lazy_static! {
-    pub static ref DEFAULT_PDS: Vec<ProtectionDomain> =
-        get_default_pds().expect("Failed to get default PDs");
+pub(crate) fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
+    let service = get_service();
+    let req = Command::GetDefaultContexts;
+    service.send_cmd(req)?;
+    rx_recv_impl!(service, CompletionKind::GetDefaultContexts, ctx_list, {
+        ctx_list
+            .into_iter()
+            .map(|ctx| VerbsContext::new(ctx))
+            .collect::<Result<Vec<_>, Error>>()
+    })
 }
 
-fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
+pub(crate) fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
     let service = get_service();
@@ -38,6 +44,34 @@ fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
             .map(|pd| ProtectionDomain::open(pd))
             .collect::<Result<Vec<_>, Error>>()
     })
+}
+
+#[derive(Debug)]
+pub struct VerbsContext {
+    pub(crate) inner: interface::VerbsContext,
+}
+
+// Default verbs contexts are 'static, no need to drop and open them
+
+impl VerbsContext {
+    pub(crate) fn new(verbs: returned::VerbsContext) -> Result<Self, Error> {
+        Ok(VerbsContext {
+            inner: verbs.handle,
+        })
+    }
+
+    pub(crate) fn create_cq(
+        &self,
+        min_cq_entries: i32,
+        cq_context: u64,
+    ) -> Result<CompletionQueue, Error> {
+        let service = get_service();
+        let req = Command::CreateCq(self.inner, min_cq_entries, cq_context);
+        service.send_cmd(req)?;
+        rx_recv_impl!(service, CompletionKind::CreateCq, cq, {
+            Ok(CompletionQueue::open(cq)?)
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -87,13 +121,8 @@ impl ProtectionDomain {
         assert_eq!(file_len, nbytes);
 
         rx_recv_impl!(service, CompletionKind::RegMr, mr, {
-            MemoryRegion::new(self.inner, mr.handle, mr.rkey, mr.vaddr, memfd)
+            MemoryRegion::new(self.inner, mr.handle, mr.rkey, 0, memfd)
         })
-    }
-
-    #[inline]
-    pub fn default_pds() -> &'static [ProtectionDomain] {
-        &DEFAULT_PDS
     }
 }
 
@@ -182,10 +211,9 @@ pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
     mmap: MmapRaw,
     rkey: RemoteKey,
-    // offset between the remote mapped shared memory address and the local shared memory in bytes
-    pub(crate) offset: isize,
-    _memfd: Memfd,
-    _pd: ProtectionDomain,
+    pub(crate) app_vaddr: u64,
+    memfd: Memfd,
+    pd: ProtectionDomain,
     _marker: PhantomData<T>,
 }
 
@@ -224,23 +252,28 @@ impl<T> Drop for MemoryRegion<T> {
     }
 }
 
+impl<T> AsHandle for MemoryRegion<T> {
+    fn as_handle(&self) -> Handle {
+        self.inner.0
+    }
+}
+
 impl<T: Sized + Copy> MemoryRegion<T> {
     fn new(
         pd: interface::ProtectionDomain,
         inner: interface::MemoryRegion,
         rkey: RemoteKey,
-        vaddr: u64,
+        app_vaddr: u64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
         let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
-        let local_vaddr = mmap.as_ptr() as isize;
         Ok(MemoryRegion {
             inner,
             rkey,
             mmap,
-            offset: vaddr as isize - local_vaddr,
-            _pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
-            _memfd: memfd,
+            app_vaddr,
+            pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
+            memfd,
             _marker: PhantomData,
         })
     }
@@ -256,8 +289,18 @@ impl<T: Sized + Copy> MemoryRegion<T> {
     }
 
     #[inline]
+    pub fn memfd(&self) -> &Memfd {
+        &self.memfd
+    }
+
+    #[inline]
     pub fn rkey(&self) -> RemoteKey {
         self.rkey
+    }
+
+    #[inline]
+    pub fn pd(&self) -> &ProtectionDomain {
+        &self.pd
     }
 
     #[inline]

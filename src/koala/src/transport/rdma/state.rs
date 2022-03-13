@@ -174,12 +174,12 @@ pub(crate) struct Shared<'ctx> {
 
 // TODO(cjr): move this to per-process state for better isolation
 lazy_static! {
-    static ref DEFAULT_CTXS: Vec<DefaultContext> =
+    pub(crate) static ref DEFAULT_CTXS: Vec<DefaultContext> =
         open_default_verbs().expect("Open default RDMA context failed.");
 }
 
-struct PinnedContext {
-    verbs: ManuallyDrop<ibv::Context>,
+pub(crate) struct PinnedContext {
+    pub(crate) verbs: ManuallyDrop<ibv::Context>,
     _pin: PhantomPinned,
 }
 
@@ -192,8 +192,8 @@ impl PinnedContext {
     }
 }
 
-struct DefaultContext {
-    pinned_ctx: Pin<Box<PinnedContext>>,
+pub(crate) struct DefaultContext {
+    pub(crate) pinned_ctx: Pin<Box<PinnedContext>>,
     gid_table: Vec<ibv::Gid>,
 }
 

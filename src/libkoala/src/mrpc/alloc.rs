@@ -4,6 +4,7 @@ use crate::mrpc::shared_heap::SharedHeapAllocator;
 
 pub type Vec<T> = std::vec::Vec<T, SharedHeapAllocator>;
 
+// TODO(cjr): double-check if the code below is correct.
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
     fn switch_address_space(&mut self) {
         for v in self.iter_mut() {
@@ -20,6 +21,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
     }
 }
 
+// TODO(cjr): double-check if the code below is correct.
 unsafe impl<T> SwitchAddressSpace for Vec<T> {
     default fn switch_address_space(&mut self) {
         // TODO(cjr): how to change the inner pointer of the Vec?

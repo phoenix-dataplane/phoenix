@@ -14,10 +14,10 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
+use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use crate::node::Node;
 
 pub struct TransportEngine<'ctx> {
@@ -892,6 +892,7 @@ impl<'ctx> TransportEngine<'ctx> {
                     handle: interface::MemoryRegion(new_mr_handle),
                     rkey,
                     vaddr,
+                    pd: interface::ProtectionDomain(pd.as_handle()),
                 }))
             }
             Command::DeregMr(mr) => {
@@ -954,6 +955,40 @@ impl<'ctx> TransportEngine<'ctx> {
                     .map(|(pd, _gids)| returned::ProtectionDomain { handle: *pd })
                     .collect();
                 Ok(CompletionKind::GetDefaultPds(pds))
+            }
+            Command::GetDefaultContexts => {
+                trace!("GetDefaultContexts");
+                use super::state::DEFAULT_CTXS;
+                let ctx_list = DEFAULT_CTXS
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| returned::VerbsContext {
+                        handle: interface::VerbsContext(Handle(i as _)),
+                    })
+                    .collect();
+                Ok(CompletionKind::GetDefaultContexts(ctx_list))
+            }
+            Command::CreateCq(ctx, min_cq_entries, cq_context) => {
+                trace!(
+                    "CreateCq, ctx: {:?}, min_cq_entries: {:?}, cq_context: {:?}",
+                    ctx,
+                    min_cq_entries,
+                    cq_context
+                );
+                use super::state::DEFAULT_CTXS;
+                let index = ctx.0 .0 as usize;
+                if index >= DEFAULT_CTXS.len() {
+                    return Err(Error::NotFound);
+                }
+                let verbs = &DEFAULT_CTXS[index].pinned_ctx.verbs;
+                let cq = verbs
+                    .create_cq(*min_cq_entries, *cq_context as _)
+                    .map_err(Error::Ibv)?;
+                let handle = cq.as_handle();
+                self.state.resource().cq_table.occupy_or_create_resource(handle, cq);
+                Ok(CompletionKind::CreateCq(returned::CompletionQueue {
+                    handle: interface::CompletionQueue(handle),
+                }))
             }
         }
     }

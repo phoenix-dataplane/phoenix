@@ -14,6 +14,8 @@ use crate::mrpc::stub::{ClientStub, MessageTemplate};
 /// The zero-copy inter-process communication thing is beyond what the compiler
 /// can check. The programmer must ensure that everything is fine.
 pub unsafe trait SwitchAddressSpace {
+    // An unsafe trait is unsafe to implement but safe to use.
+    // The user of this trait does not need to satisfy any special condition.
     fn switch_address_space(&mut self);
 }
 
@@ -66,7 +68,7 @@ impl GreeterClient {
         &mut self,
         request: HelloRequest,
     ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
-        let msg = MessageTemplate::new(request);
+        let msg = MessageTemplate::new(request, self.stub.get_handle());
         self.stub.post(msg).unwrap();
         ReqFuture { stub: &self.stub }
     }

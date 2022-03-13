@@ -42,6 +42,7 @@ pub enum Command {
 
     // ibverbs
     RegMr(interface::ProtectionDomain, usize, interface::AccessFlags),
+    CreateCq(interface::VerbsContext, i32, u64),
 
     DeallocPd(interface::ProtectionDomain),
     DestroyCq(interface::CompletionQueue),
@@ -51,6 +52,7 @@ pub enum Command {
 
     // Other
     GetDefaultPds,
+    GetDefaultContexts,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,6 +83,7 @@ pub enum CompletionKind {
 
     // ibverbs
     RegMr(returned::MemoryRegion),
+    CreateCq(returned::CompletionQueue),
 
     DeallocPd,
     DestroyCq,
@@ -90,6 +93,7 @@ pub enum CompletionKind {
 
     // Other
     GetDefaultPds(Vec<returned::ProtectionDomain>),
+    GetDefaultContexts(Vec<returned::VerbsContext>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

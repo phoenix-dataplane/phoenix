@@ -205,7 +205,7 @@ impl CmId {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.send_cq;
         loop {
-            cq.poll_cq(&mut wc)?;
+            cq.poll(&mut wc)?;
             if wc.len() == 1 {
                 break;
             }
@@ -218,7 +218,7 @@ impl CmId {
         let mut wc = Vec::with_capacity(1);
         let cq = &self.inner.qp.recv_cq;
         loop {
-            cq.poll_cq(&mut wc)?;
+            cq.poll(&mut wc)?;
             if wc.len() == 1 {
                 break;
             }
@@ -229,7 +229,7 @@ impl CmId {
 
 impl CompletionQueue {
     #[inline]
-    pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
+    pub fn poll(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         // poll local buffer first
         unsafe { wc.set_len(0) };
         let mut local_buffer = self.buffer.queue.lock();

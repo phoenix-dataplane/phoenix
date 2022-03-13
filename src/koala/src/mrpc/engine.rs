@@ -140,12 +140,32 @@ impl MrpcEngine {
                     Ok(CompletionKind::SetTransport)
                 }
             }
+            Command::AllocShm(nbytes) => {
+                self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
+                match self.cmd_rx.recv().unwrap().0 {
+                    Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
+                        self.customer.send_fd(&[memfd])?;
+                        Ok(CompletionKind::AllocShm(returned_mr))
+                    }
+                    other => panic!("unexpected: {:?}", other),
+                }
+            }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().unwrap().0 {
-                    Ok(CompletionKind::Connect(handle)) => {
+                    Ok(CompletionKind::ConnectInternal(handle, recv_mrs, fds)) => {
+                        self.customer.send_fd(&fds)?;
+                        Ok(CompletionKind::Connect((handle, recv_mrs)))
+                    }
+                    other => panic!("unexpected: {:?}", other),
+                }
+            }
+            Command::Bind(addr) => {
+                self.cmd_tx.send(Command::Bind(*addr)).unwrap();
+                match self.cmd_rx.recv().unwrap().0 {
+                    Ok(CompletionKind::Bind(listener_handle)) => {
                         // just forward it
-                        Ok(CompletionKind::Connect(handle))
+                        Ok(CompletionKind::Bind(listener_handle))
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
