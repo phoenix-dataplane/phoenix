@@ -1,3 +1,4 @@
+use unique::Unique;
 use interface::engine::EngineType;
 pub use version::{version, Version};
 
@@ -19,8 +20,10 @@ pub(crate) trait Upgradable {
 use std::sync::mpsc::{Sender, Receiver};
 use crate::mrpc::marshal::RpcMessage;
 
-pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
-pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
+// pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
+// pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
+pub(crate) type IQueue = Receiver<Unique<dyn RpcMessage>>;
+pub(crate) type OQueue = Sender<Unique<dyn RpcMessage>>;
 
 pub(crate) trait Vertex {
     fn id(&self) -> &str;

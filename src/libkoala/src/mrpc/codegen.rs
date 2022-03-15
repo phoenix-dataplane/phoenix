@@ -1,8 +1,10 @@
 use std::net::ToSocketAddrs;
+use std::pin::Pin;
 
 use std::future::Future;
-use std::pin::Pin;
 use std::task::{Context, Poll};
+
+// use crate::mrpc::shmptr::ShmPtr;
 
 use crate::mrpc;
 use crate::mrpc::stub::{ClientStub, MessageTemplate};
@@ -19,11 +21,27 @@ pub unsafe trait SwitchAddressSpace {
     fn switch_address_space(&mut self);
 }
 
+// #[derive(Debug)]
+// struct HelloRequestInner {
+//     name: mrpc::alloc::Vec<u8>,
+// }
+
+
 // Manually write all generated code
 #[derive(Debug)]
 pub struct HelloRequest {
-    pub name: mrpc::alloc::Vec<u8>, // change to mrpc::alloc::Vec<u8>, -> String
+    pub name: mrpc::alloc::Vec<u8>,
+    // inner: Pin<Unique<HelloRequestInner>>,
+    // ptr: ShmPtr<HelloRequestInner, SharedHeapAllocator>,
+    // ptr: Box<HelloRequestInner, SharedHeapAllocator>,
 }
+
+// impl HelloRequest {
+//     #[inline]
+//     pub fn name(&self) -> &mrpc::alloc::Vec<u8> {
+//         &self.ptr.name
+//     }
+// }
 
 unsafe impl SwitchAddressSpace for HelloRequest {
     fn switch_address_space(&mut self) {
@@ -66,7 +84,7 @@ impl GreeterClient {
 
     pub fn say_hello(
         &mut self,
-        request: HelloRequest,
+        request: mrpc::alloc::Box<HelloRequest>,
     ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
         let msg = MessageTemplate::new(request, self.stub.get_handle());
         self.stub.post(msg).unwrap();

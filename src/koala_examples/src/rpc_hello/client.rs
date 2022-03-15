@@ -1,7 +1,7 @@
 #![feature(allocator_api)]
+use libkoala::mrpc::alloc::Vec;
 use libkoala::mrpc::codegen::{GreeterClient, HelloRequest};
 use libkoala::mrpc::shared_heap::SharedHeapAllocator;
-use libkoala::mrpc::alloc::Vec;
 
 use smol;
 
@@ -15,9 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     name.push(2);
     name.push(3);
     name.push(4);
-    let req = HelloRequest {
-        name,
-    };
+    let req = Box::new_in(HelloRequest { name }, SharedHeapAllocator);
     smol::block_on(async {
         let resp = client.say_hello(req).await.unwrap();
         eprintln!("resp: {:?}", resp);

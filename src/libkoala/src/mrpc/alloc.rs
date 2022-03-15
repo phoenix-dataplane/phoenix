@@ -3,6 +3,7 @@ use crate::mrpc::codegen::SwitchAddressSpace;
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 
 pub type Vec<T> = std::vec::Vec<T, SharedHeapAllocator>;
+pub type Box<T> = std::boxed::Box<T, SharedHeapAllocator>;
 
 // TODO(cjr): double-check if the code below is correct.
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {

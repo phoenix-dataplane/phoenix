@@ -19,7 +19,7 @@ pub enum RpcMsgType {
 // }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageMeta {
     pub conn_id: Handle,
     pub func_id: u32,

@@ -14,6 +14,7 @@ pub type WorkRequestSlot = [u8; 64];
 pub enum WorkRequest {
     PostRecv(Handle, u64, Range, Handle),
     PostSend(Handle, u64, Range, Handle, SendFlags),
+    PostSendWithImm(Handle, u64, Range, Handle, SendFlags, u32),
     PostWrite(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
     PostRead(Handle, Handle, u64, Range, u64, RemoteKey, SendFlags),
     PollCq(interface::CompletionQueue),

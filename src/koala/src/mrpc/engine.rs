@@ -1,11 +1,14 @@
 use std::time::{Duration, Instant};
 
+use unique::Unique;
+
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::module::CustomerType;
 use super::{DatapathError, Error};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -207,16 +210,20 @@ impl MrpcEngine {
     }
 
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
-        use dp::WorkRequest;
         use crate::mrpc::codegen;
         use crate::mrpc::marshal::MessageTemplate;
+        use dp::WorkRequest;
         match req {
             WorkRequest::Call(erased) => {
-                // recovery the original data type based on the func_id
+                // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
                         let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
-                        self.tx_outputs()[0].send(Box::new(msg))?;
+                        // Safety: this is fine here because msg is already a unique
+                        // pointer
+                        let dyn_msg =
+                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                        self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
                 }

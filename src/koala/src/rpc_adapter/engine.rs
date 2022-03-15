@@ -2,6 +2,8 @@ use std::mem;
 use std::os::unix::prelude::AsRawFd;
 use std::sync::Arc;
 
+use unique::Unique;
+
 use ipc::mrpc;
 
 use interface::engine::SchedulingMode;
@@ -12,7 +14,7 @@ use super::state::{ConnectionContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
-use crate::mrpc::marshal::{ShmBuf, Unmarshal};
+use crate::mrpc::marshal::{MessageTemplate, RpcMessage, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::resource::Error as ResourceError;
 
@@ -104,6 +106,7 @@ impl RpcAdapterEngine {
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
                 // get cmid from conn_id
+                let msg = unsafe { msg.as_ref() };
                 let cmid_handle = msg.conn_id();
                 let mut conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
                 let cmid = &conn_ctx.cmid;
@@ -127,6 +130,7 @@ impl RpcAdapterEngine {
                                 off..off + sge.len,
                                 0,
                                 SendFlags::SIGNALED,
+                                0,
                             )?;
                         }
                     }
@@ -162,17 +166,28 @@ impl RpcAdapterEngine {
                                     ptr: wr_ctx.mr_addr,
                                     len: wc.byte_len as _,
                                 };
-                                conn_ctx.receiving_sgl.0.push(sge);
+                                Arc::get_mut(&mut conn_ctx)
+                                    .unwrap()
+                                    .receiving_sgl
+                                    .0
+                                    .push(sge);
                             } else {
                                 // received an entire RPC message
-                                use crate::mrpc::codegen::{HelloReply, HelloRequest};
-                                use crate::mrpc::marshal::MessageTemplate;
-                                let sgl = mem::take(&mut conn_ctx.receiving_sgl);
+                                use crate::mrpc::codegen;
+                                let sgl = mem::take(
+                                    &mut Arc::get_mut(&mut conn_ctx).unwrap().receiving_sgl,
+                                );
                                 // TODO(cjr): switch here to figure out what should be the type
                                 let msg = unsafe {
-                                    MessageTemplate::<HelloRequest>::unmarshal(sgl).unwrap()
+                                    MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl)
+                                        .unwrap()
                                 };
-                                self.rx_outputs()[0].send(msg).unwrap();
+                                // Safety: this is fine here because msg is already a unique
+                                // pointer
+                                let dyn_msg = unsafe {
+                                    Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage)
+                                };
+                                self.rx_outputs()[0].send(dyn_msg).unwrap();
                             }
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),

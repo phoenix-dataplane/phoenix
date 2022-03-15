@@ -74,11 +74,14 @@ pub struct MessageTemplate<T> {
 }
 
 impl<T> MessageTemplate<T> {
-    pub unsafe fn new(erased: MessageTemplateErased) -> Self {
-        Self {
-            meta: erased.meta,
-            val: Unique::new(erased.shmptr as *mut T).unwrap(),
-        }
+    pub unsafe fn new(erased: MessageTemplateErased) -> Unique<Self> {
+        let this = Unique::new(erased.shmptr as *mut MessageTemplate<T>).unwrap();
+        assert_eq!(unsafe { this.as_ref() }.meta, erased.meta);
+        this
+        // Self {
+        //     meta: erased.meta,
+        //     val: Unique::new(erased.shmptr as *mut T).unwrap(),
+        // }
     }
 }
 

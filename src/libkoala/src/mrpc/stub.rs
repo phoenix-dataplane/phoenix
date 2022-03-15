@@ -17,6 +17,7 @@ use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
 use crate::verbs::MemoryRegion;
+use crate::mrpc::alloc::Box;
 
 #[derive(Debug)]
 pub struct MessageTemplate<T> {
@@ -25,7 +26,7 @@ pub struct MessageTemplate<T> {
 }
 
 impl<T> MessageTemplate<T> {
-    pub fn new(mut val: T, conn_id: Handle) -> Self {
+    pub fn new(val: Box<T>, conn_id: Handle) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
             func_id: 0,
@@ -33,10 +34,14 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Request,
         };
-        Self {
+        Box::new_in(Self {
             meta,
-            val: Unique::new(&mut val as *mut T).unwrap(),
-        }
+            val: Unique::new(Box::into_raw(val)).unwrap(),
+        }, SharedHeapAllocator)
+        // Self {
+        //     meta,
+        //     val: Unique::new(Box::into_raw(val)).unwrap(),
+        // }
     }
 }
 
@@ -107,7 +112,7 @@ impl ClientStub {
         })
     }
 
-    pub fn post<T: SwitchAddressSpace>(&self, mut msg: MessageTemplate<T>) -> Result<(), Error> {
+    pub fn post<T: SwitchAddressSpace>(&self, mut msg: Box<MessageTemplate<T>>) -> Result<(), Error> {
         msg.switch_address_space();
         let erased = MessageTemplateErased {
             meta: msg.meta,

@@ -266,7 +266,8 @@ impl<'ctx> TransportEngine<'ctx> {
     fn get_dp_error_info(&self, wr: &dp::WorkRequest) -> (interface::CompletionQueue, u64) {
         use dp::WorkRequest;
         match wr {
-            WorkRequest::PostSend(cmid_handle, wr_id, ..) => {
+            WorkRequest::PostSend(cmid_handle, wr_id, ..)
+            | WorkRequest::PostSendWithImm(cmid_handle, wr_id, ..) => {
                 // if the cq_handle does not exists at all, set it to
                 // Handle::INVALID.
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
@@ -433,6 +434,18 @@ impl<'ctx> TransportEngine<'ctx> {
 
                 let flags: ibv::SendFlags = (*send_flags).into();
                 unsafe { cmid.post_send(*wr_id, buf, &rdma_mr, flags.0) }
+                    .map_err(DatapathError::RdmaCm)?;
+                Ok(())
+            }
+            WorkRequest::PostSendWithImm(cmid_handle, wr_id, range, mr_handle, send_flags, imm) => {
+                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
+                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
+
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
+
+                let flags: ibv::SendFlags = (*send_flags).into();
+                unsafe { cmid.post_send_with_imm(*wr_id, buf, &rdma_mr, flags.0, *imm) }
                     .map_err(DatapathError::RdmaCm)?;
                 Ok(())
             }
@@ -985,7 +998,10 @@ impl<'ctx> TransportEngine<'ctx> {
                     .create_cq(*min_cq_entries, *cq_context as _)
                     .map_err(Error::Ibv)?;
                 let handle = cq.as_handle();
-                self.state.resource().cq_table.occupy_or_create_resource(handle, cq);
+                self.state
+                    .resource()
+                    .cq_table
+                    .occupy_or_create_resource(handle, cq);
                 Ok(CompletionKind::CreateCq(returned::CompletionQueue {
                     handle: interface::CompletionQueue(handle),
                 }))

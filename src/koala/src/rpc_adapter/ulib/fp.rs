@@ -126,6 +126,44 @@ impl CmId {
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll_cq` returns a completion for this send).
     #[inline]
+    pub unsafe fn post_send_with_imm<T, R>(
+        &self,
+        mr: &uverbs::MemoryRegion<T>,
+        range: R,
+        context: u64,
+        flags: uverbs::SendFlags,
+        imm: u32,
+    ) -> Result<(), Error>
+    where
+        R: SliceIndex<[T], Output = [T]>,
+    {
+        let req = WorkRequest::PostSendWithImm(
+            self.inner.handle.0,
+            context,
+            buf::Range::new(mr, range),
+            mr.inner.0,
+            flags,
+            imm,
+        );
+        let service = get_service();
+        let mut sent = false;
+        while !sent {
+            service.enqueue_wr_with(|ptr, count| unsafe {
+                debug_assert!(count >= 1);
+                ptr.cast::<WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
+    }
+
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll_cq` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_write<T, R>(
         &self,
         mr: &uverbs::MemoryRegion<T>,
