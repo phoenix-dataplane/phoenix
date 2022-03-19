@@ -269,7 +269,7 @@ impl WorkCompletion {
     }
 }
 
-// TODO(cjr): add static assert to make sure WorkCompletion is compatible with ibv_wc
+// TODO(cjr): add more static asserts to make sure WorkCompletion is compatible with ibv_wc
 mod sa {
     use super::*;
     use static_assertions::const_assert_eq;

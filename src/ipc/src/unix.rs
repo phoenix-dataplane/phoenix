@@ -10,7 +10,7 @@ use std::path::Path;
 
 use thiserror::Error;
 
-const ANCILLARY_BUFFER_SIZE: usize = 1024;
+const ANCILLARY_BUFFER_SIZE: usize = 8192;
 
 #[derive(Debug, Error)]
 pub enum Error {

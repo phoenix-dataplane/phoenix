@@ -48,11 +48,17 @@ impl Control {
         sock.set_write_timeout(Some(Duration::from_millis(1)))
             .expect("set_write_timeout");
 
+        // TODO(cjr): make all modules optional
+        assert!(config.transport_rdma.is_some());
+        let rdma_transport_config = config.transport_rdma.clone().unwrap();
         Control {
             sock,
             config,
             runtime_manager: Arc::clone(&runtime_manager),
-            rdma_transport: rdma::module::TransportModule::new(Arc::clone(&runtime_manager)),
+            rdma_transport: rdma::module::TransportModule::new(
+                rdma_transport_config,
+                Arc::clone(&runtime_manager),
+            ),
             tcp_transport: tcp::module::TransportModule::new(Arc::clone(&runtime_manager)),
             mrpc: mrpc::module::MrpcModule::new(Arc::clone(&runtime_manager)),
         }

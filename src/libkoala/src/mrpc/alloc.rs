@@ -19,6 +19,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
             let addr = ptr.read();
             ptr.write(addr + SharedHeapAllocator::query_shm_offset(addr as usize));
         }
+        panic!("make sure switch_address_space is not calling this for HelloRequest or HelloReply");
     }
 }
 

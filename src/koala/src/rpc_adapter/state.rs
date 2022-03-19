@@ -82,7 +82,6 @@ pub(crate) struct Resource {
     pub(crate) mr_table: spin::Mutex<BTreeMap<usize, Arc<ulib::uverbs::MemoryRegion<u8>>>>,
     // TODO(cjr): we do not release any receive mr now. DO it in later version.
     pub(crate) recv_mr_table: ResourceTable<ulib::uverbs::MemoryRegion<u8>>,
-    pub(crate) cq_table: ResourceTable<ulib::uverbs::CompletionQueue>,
     pub(crate) cmid_table: ResourceTable<ConnectionContext>,
     pub(crate) listener_table: ResourceTable<ulib::ucm::CmIdListener>,
     // wr_id -> WrContext
@@ -96,7 +95,6 @@ impl Resource {
             default_pds: Vec::new(),
             mr_table: spin::Mutex::new(BTreeMap::default()),
             recv_mr_table: ResourceTable::default(),
-            cq_table: ResourceTable::default(),
             cmid_table: ResourceTable::default(),
             listener_table: ResourceTable::default(),
             wr_contexts: ResourceTableGeneric::default(),

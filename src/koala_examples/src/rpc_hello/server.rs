@@ -13,7 +13,6 @@ impl Greeter for MyGreeter {
     ) -> Result<libkoala::mrpc::alloc::Box<HelloReply>, libkoala::mrpc::Status> {
         eprintln!("resp: {:?}", request);
         let mut name = Vec::new_in(SharedHeapAllocator);
-        // TODO(cjr): request type should be copy-on-write...
         name.extend(request.name);
         let reply = Box::new_in(HelloReply { name }, SharedHeapAllocator);
         Ok(reply)

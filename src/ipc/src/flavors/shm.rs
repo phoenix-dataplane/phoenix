@@ -85,10 +85,6 @@ where
         mode: SchedulingMode,
         engine_path: Q,
     ) -> Result<Self, Error> {
-        // 1. generate a path and bind a unix domain socket to it
-        // let uuid = Uuid::new_v4();
-        // let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
-
         if engine_path.as_ref().exists() {
             // This is actually impossible using uuid.
             fs::remove_file(&engine_path)?;

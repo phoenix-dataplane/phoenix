@@ -809,6 +809,8 @@ impl<'ctx> TransportEngine<'ctx> {
                 let cmid =
                     unsafe { CmId::create_id(Some(&channel), 0, ps.0) }.map_err(Error::RdmaCm)?;
                 // insert event_channel
+                // TODO(cjr): think over it. What if any exception happen in between any of these
+                // operations? How to safely/correctly rollback?
                 self.state
                     .resource()
                     .event_channel_table

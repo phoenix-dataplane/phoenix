@@ -6,6 +6,18 @@ RPC
 - Prost codegen
 - Heap allocator
 
+RPC init version
+- rpc client side async/.await
+- check incoming connect requests and make Listener::get_request()
+  non-blocking
+- switch_addr_space to delivery the msg to application
+- releasing reply
+- resize cq on connection setup/destroy
+- credit control on post send
+- koala configuration, engine paths are not read from koala.toml
+- make modules in control.rs optional, based on their occurances in
+  koala.toml
+
 Policy
 - Implement more engines for global policy
 
@@ -51,6 +63,7 @@ Testing
 - Multiple threads operate on their own QPs, and poll the CQs associated
   with those QPs
 - Run those tests simultaneously with multiple processes
+- Build a CI pipeline
 
 Application
 - allreduce
@@ -72,6 +85,8 @@ Engine Framework
 - *Change Engine trait to a huge Generator*
 
 Resource Releasing
+- Think over it carefully, rollback the creating resource operation when
+  there is exception in the middle.
 -[x] implement resource release
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 

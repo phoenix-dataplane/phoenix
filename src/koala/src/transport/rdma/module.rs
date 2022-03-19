@@ -22,6 +22,7 @@ use super::state::State;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
+use crate::config::RdmaTransportConfig;
 
 lazy_static! {
     static ref STATE_MGR: Arc<StateManager<State<'static>>> = Arc::new(StateManager::new());
@@ -65,12 +66,13 @@ impl TransportEngineBuilder {
 }
 
 pub struct TransportModule {
+    config: RdmaTransportConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
 
 impl TransportModule {
-    pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
-        TransportModule { runtime_manager }
+    pub fn new(config: RdmaTransportConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+        TransportModule { config, runtime_manager }
     }
 
     pub fn handle_request(
@@ -110,8 +112,8 @@ impl TransportModule {
         // create a new transport engine
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
-        // TODO(cjr): make this configurable
-        let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
+        let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
+        let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
         let customer =
