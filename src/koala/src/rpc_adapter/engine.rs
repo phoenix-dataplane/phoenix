@@ -144,6 +144,46 @@ impl RpcAdapterEngine {
         }
     }
 
+    fn unmarshal_and_deliver_up(&mut self, sgl: SgList) -> Result<Status, DatapathError> {
+        use crate::mrpc::codegen;
+        let erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
+        let meta = unsafe { erased.as_ref() }.meta;
+        let dyn_msg = match meta.msg_type {
+            RpcMsgType::Request => {
+                match meta.func_id {
+                    0 => {
+                        let msg = unsafe {
+                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl).unwrap()
+                        };
+                        // Safety: this is fine here because msg is already a unique
+                        // pointer
+                        let dyn_msg =
+                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                        dyn_msg
+                    }
+                    _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+                }
+            }
+            RpcMsgType::Response => {
+                match meta.func_id {
+                    0 => {
+                        let msg = unsafe {
+                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl).unwrap()
+                        };
+                        // Safety: this is fine here because msg is already a unique
+                        // pointer
+                        let dyn_msg =
+                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                        dyn_msg
+                    }
+                    _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+                }
+            }
+        };
+        self.rx_outputs()[0].send(dyn_msg).unwrap();
+        Ok(Progress(1))
+    }
+
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
@@ -174,62 +214,10 @@ impl RpcAdapterEngine {
                                     .push(sge);
                             } else {
                                 // received an entire RPC message
-                                use crate::mrpc::codegen;
                                 let sgl = mem::take(
                                     &mut Arc::get_mut(&mut conn_ctx).unwrap().receiving_sgl,
                                 );
-                                // TODO(cjr): switch here to figure out what should be the type
-                                let erased =
-                                    unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }
-                                        .unwrap();
-                                let meta = unsafe { erased.as_ref() }.meta;
-                                let dyn_msg = match meta.msg_type {
-                                    RpcMsgType::Request => {
-                                        match meta.func_id {
-                                            0 => {
-                                                let msg = unsafe {
-                                                    MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl)
-                                                        .unwrap()
-                                                };
-                                                // Safety: this is fine here because msg is already a unique
-                                                // pointer
-                                                let dyn_msg = unsafe {
-                                                    Unique::new_unchecked(
-                                                        msg.as_ptr() as *mut dyn RpcMessage
-                                                    )
-                                                };
-                                                dyn_msg
-                                            }
-                                            _ => panic!(
-                                                "unknown func_id: {}, meta: {:?}",
-                                                meta.func_id, meta
-                                            ),
-                                        }
-                                    }
-                                    RpcMsgType::Response => {
-                                        match meta.func_id {
-                                            0 => {
-                                                let msg = unsafe {
-                                                    MessageTemplate::<codegen::HelloReply>::unmarshal(sgl)
-                                                    .unwrap()
-                                                };
-                                                // Safety: this is fine here because msg is already a unique
-                                                // pointer
-                                                let dyn_msg = unsafe {
-                                                    Unique::new_unchecked(
-                                                        msg.as_ptr() as *mut dyn RpcMessage
-                                                    )
-                                                };
-                                                dyn_msg
-                                            }
-                                            _ => panic!(
-                                                "unknown func_id: {}, meta: {:?}",
-                                                meta.func_id, meta
-                                            ),
-                                        }
-                                    }
-                                };
-                                self.rx_outputs()[0].send(dyn_msg).unwrap();
+                                self.unmarshal_and_deliver_up(sgl)?;
                             }
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
@@ -241,6 +229,8 @@ impl RpcAdapterEngine {
                 }
             }
         }
+        // COMMENT(cjr): Progress(0) here is okay for now because we haven't use the progress as
+        // any indicator.
         Ok(Status::Progress(0))
     }
 
