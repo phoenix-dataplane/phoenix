@@ -57,6 +57,31 @@ impl Unmarshal for MessageMeta {
     }
 }
 
+impl Marshal for MessageTemplateErased {
+    type Error = ();
+    fn marshal(&self) -> Result<SgList, Self::Error> {
+        let selfptr = self as *const _ as usize;
+        let len = mem::size_of::<Self>();
+        let sgl = SgList(vec![ShmBuf { ptr: selfptr, len }]);
+        Ok(sgl)
+    }
+}
+
+impl Unmarshal for MessageTemplateErased {
+    type Error = ();
+    unsafe fn unmarshal(mut sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
+        if sg_list.0.len() <= 1 {
+            return Err(());
+        }
+        let mut header_sgl = sg_list.0.remove(0);
+        header_sgl.len -= mem::size_of::<u64>();
+        let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
+        let mut this = meta.cast::<Self>();
+        this.as_mut().shmptr = sg_list.0[0].ptr as _;
+        Ok(this)
+    }
+}
+
 pub(crate) trait RpcMessage: Send {
     fn conn_id(&self) -> Handle;
     fn func_id(&self) -> u32;
@@ -103,10 +128,11 @@ impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
         if sg_list.0.len() <= 1 {
             return Err(());
         }
-        let header_sgl = sg_list.0.remove(0);
+        let mut header_sgl = sg_list.0.remove(0);
+        header_sgl.len -= mem::size_of::<Unique<T>>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
-        let val = T::unmarshal(sg_list).or(Err(()))?;
         let mut this = meta.cast::<Self>();
+        let val = T::unmarshal(sg_list).or(Err(()))?;
         this.as_mut().val = val;
         Ok(this)
     }

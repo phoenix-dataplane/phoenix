@@ -7,6 +7,7 @@ use unique::Unique;
 use ipc::mrpc;
 
 use interface::engine::SchedulingMode;
+use interface::rpc::{MessageTemplateErased, RpcMsgType};
 use interface::AsHandle;
 
 use super::module::ServiceType;
@@ -14,7 +15,7 @@ use super::state::{ConnectionContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
-use crate::mrpc::marshal::{MessageTemplate, RpcMessage, ShmBuf, Unmarshal};
+use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::resource::Error as ResourceError;
 
@@ -178,14 +179,55 @@ impl RpcAdapterEngine {
                                     &mut Arc::get_mut(&mut conn_ctx).unwrap().receiving_sgl,
                                 );
                                 // TODO(cjr): switch here to figure out what should be the type
-                                let msg = unsafe {
-                                    MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl)
-                                        .unwrap()
-                                };
-                                // Safety: this is fine here because msg is already a unique
-                                // pointer
-                                let dyn_msg = unsafe {
-                                    Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage)
+                                let erased =
+                                    unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }
+                                        .unwrap();
+                                let meta = unsafe { erased.as_ref() }.meta;
+                                let dyn_msg = match meta.msg_type {
+                                    RpcMsgType::Request => {
+                                        match meta.func_id {
+                                            0 => {
+                                                let msg = unsafe {
+                                                    MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl)
+                                                        .unwrap()
+                                                };
+                                                // Safety: this is fine here because msg is already a unique
+                                                // pointer
+                                                let dyn_msg = unsafe {
+                                                    Unique::new_unchecked(
+                                                        msg.as_ptr() as *mut dyn RpcMessage
+                                                    )
+                                                };
+                                                dyn_msg
+                                            }
+                                            _ => panic!(
+                                                "unknown func_id: {}, meta: {:?}",
+                                                meta.func_id, meta
+                                            ),
+                                        }
+                                    }
+                                    RpcMsgType::Response => {
+                                        match meta.func_id {
+                                            0 => {
+                                                let msg = unsafe {
+                                                    MessageTemplate::<codegen::HelloReply>::unmarshal(sgl)
+                                                    .unwrap()
+                                                };
+                                                // Safety: this is fine here because msg is already a unique
+                                                // pointer
+                                                let dyn_msg = unsafe {
+                                                    Unique::new_unchecked(
+                                                        msg.as_ptr() as *mut dyn RpcMessage
+                                                    )
+                                                };
+                                                dyn_msg
+                                            }
+                                            _ => panic!(
+                                                "unknown func_id: {}, meta: {:?}",
+                                                meta.func_id, meta
+                                            ),
+                                        }
+                                    }
                                 };
                                 self.rx_outputs()[0].send(dyn_msg).unwrap();
                             }

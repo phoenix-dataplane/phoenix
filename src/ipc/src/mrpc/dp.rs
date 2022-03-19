@@ -9,6 +9,8 @@ pub type WorkRequestSlot = [u8; 64];
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
     Call(MessageTemplateErased),
+    // this will also deallocate
+    Reply(MessageTemplateErased),
 }
 
 pub type CompletionSlot = [u8; 64];

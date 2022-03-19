@@ -95,7 +95,7 @@ impl GreeterClient {
         request: mrpc::alloc::Box<HelloRequest>,
     ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
         let msg = MessageTemplate::new(request, self.stub.get_handle());
-        stub::post_msg(msg).unwrap();
+        stub::post_call(msg).unwrap();
         ReqFuture { stub: &self.stub }
     }
 }
@@ -138,7 +138,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {
-                let mut msg = MessageTemplate::new(reply, conn_id);
+                let mut msg = MessageTemplate::new_reply(reply, conn_id);
                 msg.switch_address_space();
                 let erased = MessageTemplateErased {
                     meta: msg.meta,

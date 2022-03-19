@@ -46,6 +46,23 @@ impl<T> MessageTemplate<T> {
         //     val: Unique::new(Box::into_raw(val)).unwrap(),
         // }
     }
+
+    pub fn new_reply(val: Box<T>, conn_id: Handle) -> Box<Self> {
+        let meta = MessageMeta {
+            conn_id,
+            func_id: 0,
+            call_id: 0,
+            len: 0,
+            msg_type: RpcMsgType::Response,
+        };
+        Box::new_in(
+            Self {
+                meta,
+                val: Unique::new(Box::into_raw(val)).unwrap(),
+            },
+            SharedHeapAllocator,
+        )
+    }
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
@@ -62,7 +79,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
     }
 }
 
-pub(crate) fn post_msg<T: SwitchAddressSpace>(
+pub(crate) fn post_call<T: SwitchAddressSpace>(
     mut msg: Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
     msg.switch_address_space();
@@ -84,10 +101,10 @@ pub(crate) fn post_msg<T: SwitchAddressSpace>(
     })
 }
 
-pub(crate) fn post_msg_erased(
+pub(crate) fn post_reply(
     erased: MessageTemplateErased,
 ) -> Result<(), Error> {
-    let req = dp::WorkRequest::Call(erased);
+    let req = dp::WorkRequest::Reply(erased);
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
         while !sent {
@@ -204,7 +221,7 @@ impl Server {
         msgs: Vec<MessageTemplateErased>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         for m in msgs {
-            post_msg_erased(m)?;
+            post_reply(m)?;
         }
         Ok(())
     }

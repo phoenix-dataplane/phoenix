@@ -231,6 +231,20 @@ impl MrpcEngine {
                     _ => unimplemented!(),
                 }
             }
+            WorkRequest::Reply(erased) => {
+                // recover the original data type based on the func_id
+                match erased.meta.func_id {
+                    0 => {
+                        let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
+                        // Safety: this is fine here because msg is already a unique
+                        // pointer
+                        let dyn_msg =
+                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                        self.tx_outputs()[0].send(dyn_msg)?;
+                    }
+                    _ => unimplemented!(),
+                }
+            }
         }
         Ok(())
     }
