@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use unique::Unique;
 
 use interface::engine::SchedulingMode;
@@ -68,11 +69,13 @@ impl Engine for MrpcEngine {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Progress(n) = self.check_dp()? {
+        if let Progress(n) = self.check_customer()? {
             if n > 0 {
                 self.backoff = DP_LIMIT.min(self.backoff * 2);
             }
         }
+
+        self.check_input_queue()?;
 
         self.dp_spin_cnt += 1;
         if self.dp_spin_cnt < self.backoff {
@@ -176,7 +179,7 @@ impl MrpcEngine {
         }
     }
 
-    fn check_dp(&mut self) -> Result<Status, DatapathError> {
+    fn check_customer(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
         const BUF_LEN: usize = 32;
 
@@ -198,7 +201,7 @@ impl MrpcEngine {
                 }
                 count
             })
-            .unwrap_or_else(|e| panic!("check_dp: {}", e));
+            .unwrap_or_else(|e| panic!("check_customer: {}", e));
 
         // Process the work requests.
 
@@ -230,6 +233,45 @@ impl MrpcEngine {
             }
         }
         Ok(())
+    }
+
+    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        use std::sync::mpsc::TryRecvError;
+        match self.rx_inputs()[0].try_recv() {
+            Ok(msg) => {
+                // deliver the msg to application
+                // TODO(cjr): switch_address_space
+                // msg.switch_address_space();
+                let msg_ref = unsafe { msg.as_ref() };
+                let meta = MessageMeta {
+                    conn_id: msg_ref.conn_id(),
+                    func_id: msg_ref.func_id(),
+                    call_id: msg_ref.call_id(),
+                    len: msg_ref.len(),
+                    msg_type: if msg_ref.is_request() {
+                        RpcMsgType::Request
+                    } else {
+                        RpcMsgType::Response
+                    },
+                };
+                let erased = MessageTemplateErased {
+                    meta,
+                    // casting to thin pointer first, drop the Pointee::Metadata
+                    shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
+                };
+                let mut sent = false;
+                while !sent {
+                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                        sent = true;
+                        ptr.cast::<dp::Completion>().write(dp::Completion { erased });
+                        1
+                    })?;
+                }
+                Ok(Progress(0))
+            }
+            Err(TryRecvError::Empty) => Ok(Progress(0)),
+            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
+        }
     }
 
     fn check_cm_event(&mut self) -> Result<Status, Error> {

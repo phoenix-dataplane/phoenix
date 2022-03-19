@@ -137,3 +137,13 @@ impl<T: Send + Marshal + Unmarshal> RpcMessage for MessageTemplate<T> {
         unsafe { self.val.as_ref() }.marshal().unwrap()
     }
 }
+
+/// # Safety
+///
+/// The zero-copy inter-process communication thing is beyond what the compiler
+/// can check. The programmer must ensure that everything is fine.
+pub unsafe trait SwitchAddressSpace {
+    // An unsafe trait is unsafe to implement but safe to use.
+    // The user of this trait does not need to satisfy any special condition.
+    fn switch_address_space(&mut self);
+}

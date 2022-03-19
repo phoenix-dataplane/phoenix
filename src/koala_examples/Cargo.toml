@@ -52,6 +52,6 @@ path = "src/alltoall/main.rs"
 name = "rpc_hello_client"
 path = "src/rpc_hello/client.rs"
 
-# [[bin]]
-# name = "rpc_hello_server"
-# path = "src/rpc_hello/server.rs"
+[[bin]]
+name = "rpc_hello_server"
+path = "src/rpc_hello/server.rs"

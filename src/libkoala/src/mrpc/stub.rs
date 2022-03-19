@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::ToSocketAddrs;
 
@@ -12,17 +12,17 @@ pub use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use interface::Handle;
 pub use ipc::mrpc::control_plane::TransportType;
 
+use crate::mrpc::alloc::Box;
 use crate::mrpc::codegen::SwitchAddressSpace;
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
 use crate::verbs::MemoryRegion;
-use crate::mrpc::alloc::Box;
 
 #[derive(Debug)]
 pub struct MessageTemplate<T> {
-    meta: MessageMeta,
-    val: Unique<T>,
+    pub(crate) meta: MessageMeta,
+    pub(crate) val: Unique<T>,
 }
 
 impl<T> MessageTemplate<T> {
@@ -34,10 +34,13 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Request,
         };
-        Box::new_in(Self {
-            meta,
-            val: Unique::new(Box::into_raw(val)).unwrap(),
-        }, SharedHeapAllocator)
+        Box::new_in(
+            Self {
+                meta,
+                val: Unique::new(Box::into_raw(val)).unwrap(),
+            },
+            SharedHeapAllocator,
+        )
         // Self {
         //     meta,
         //     val: Unique::new(Box::into_raw(val)).unwrap(),
@@ -57,6 +60,45 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
             .unwrap();
         }
     }
+}
+
+pub(crate) fn post_msg<T: SwitchAddressSpace>(
+    mut msg: Box<MessageTemplate<T>>,
+) -> Result<(), Error> {
+    msg.switch_address_space();
+    let erased = MessageTemplateErased {
+        meta: msg.meta,
+        shmptr: Box::into_raw(msg) as u64,
+    };
+    let req = dp::WorkRequest::Call(erased);
+    MRPC_CTX.with(|ctx| {
+        let mut sent = false;
+        while !sent {
+            ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
+                ptr.cast::<dp::WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
+    })
+}
+
+pub(crate) fn post_msg_erased(
+    erased: MessageTemplateErased,
+) -> Result<(), Error> {
+    let req = dp::WorkRequest::Call(erased);
+    MRPC_CTX.with(|ctx| {
+        let mut sent = false;
+        while !sent {
+            ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
+                ptr.cast::<dp::WorkRequest>().write(req);
+                sent = true;
+                1
+            })?;
+        }
+        Ok(())
+    })
 }
 
 #[derive(Debug)]
@@ -111,36 +153,17 @@ impl ClientStub {
             })
         })
     }
-
-    pub fn post<T: SwitchAddressSpace>(&self, mut msg: Box<MessageTemplate<T>>) -> Result<(), Error> {
-        msg.switch_address_space();
-        let erased = MessageTemplateErased {
-            meta: msg.meta,
-            shmptr: msg.val.as_ptr() as u64,
-        };
-        let req = dp::WorkRequest::Call(erased);
-        MRPC_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                    ptr.cast::<dp::WorkRequest>().write(req);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
-    }
 }
 
-#[derive(Debug)]
-pub struct ServerStub {
+pub struct Server {
     listener_handle: Handle,
     handles: HashSet<Handle>,
     mrs: HashSet<MemoryRegion<u8>>,
+    // func_id -> Service
+    routes: HashMap<u32, std::boxed::Box<dyn Service>>,
 }
 
-impl ServerStub {
+impl Server {
     pub fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let bind_addr = addr
             .to_socket_addrs()?
@@ -154,8 +177,70 @@ impl ServerStub {
                     listener_handle,
                     handles: HashSet::default(),
                     mrs: Default::default(),
+                    routes: HashMap::default(),
                 })
             })
         })
     }
+
+    pub fn add_service<S: Service + NamedService + 'static>(&mut self, svc: S) -> &mut Self {
+        match self.routes.insert(S::FUNC_ID, std::boxed::Box::new(svc)) {
+            Some(_) => panic!("A func_id can only have 1 handler, func_id: {}", S::FUNC_ID),
+            None => {}
+        }
+        self
+    }
+
+    /// Receive data from read shared heap and look up the routes and dispatch the erased message.
+    pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+        loop {
+            let msgs = self.poll_requests()?;
+            self.post_replies(msgs)?;
+        }
+    }
+
+    pub fn post_replies(
+        &mut self,
+        msgs: Vec<MessageTemplateErased>,
+    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+        for m in msgs {
+            post_msg_erased(m)?;
+        }
+        Ok(())
+    }
+
+    pub fn poll_requests(
+        &mut self,
+    ) -> Result<Vec<MessageTemplateErased>, std::boxed::Box<dyn std::error::Error>> {
+        let mut msgs = Vec::with_capacity(32);
+        MRPC_CTX.with(|ctx| {
+            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
+                // just do it in place, no threadpool
+                for i in 0..count {
+                    let c = ptr.add(i).cast::<dp::Completion>().read();
+                    // looking up the routing table
+                    let func_id = c.erased.meta.func_id;
+                    match self.routes.get_mut(&func_id) {
+                        Some(s) => {
+                            let reply_erased = s.call(c.erased);
+                            msgs.push(reply_erased);
+                        }
+                        None => {
+                            eprintln!("unrecognized request: {:?}", c.erased);
+                        }
+                    }
+                }
+                count
+            })?;
+            Ok(msgs)
+        })
+    }
+}
+
+pub trait NamedService {
+    const FUNC_ID: u32;
+}
+
+pub trait Service {
+    fn call(&mut self, req: MessageTemplateErased) -> MessageTemplateErased;
 }

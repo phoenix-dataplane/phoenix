@@ -292,7 +292,6 @@ impl<'ctx> TransportEngine<'ctx> {
                 }
             }
             WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
-
             WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
@@ -304,7 +303,6 @@ impl<'ctx> TransportEngine<'ctx> {
                     (interface::CompletionQueue(Handle::INVALID), *wr_id)
                 }
             }
-
             WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
                 if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {

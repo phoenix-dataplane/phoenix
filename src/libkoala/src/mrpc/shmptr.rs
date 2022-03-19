@@ -2,14 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+//! This crate provides a full set of shared memory smart pointers.
+//! - ShmBox<T> provides an shared heap box allocation for T, only the guest can use, the uniqueness
+//! is guaranteed by the compiler and the correctness of the os-service
+//! - ShmPtr<T> ShmBox::into_raw(), leaked by the guest, used by the os-servie. It is extremely
+//! dangerous to dereference the pointer (because the guest is untrusted, it can do anything such
+//! as invalidating the value during the usage of the pointer). For this reason, ShmPtr<T> does not
+//! even implement Deref or DerefMut. To access the value, one mush clone the data and get an owned
+//! value with Coa<T>.
+//! Coa<T>, ShmRef<T>, Src<T> (Rc, Arc, only for trusted cases).
+//!
+//! Note that we do not have ShmRef because it's never safe to dereference a structure on a shared
+//! memory when the other side is untrusted.
+
 //! This crate provides a [`ShmPtr`] implementation.
 //! A ShmPtr has the following characteristics:
-//! - Non-moveable (Pin<ShmPtrInner: !Unpin>)
+//! - Points to a shared memory region (like Box<T, SharedHeapAllocator>)
 //! - Non-null (like NonNull<T>)
 //! - No alias (like Unique<T>)
-//! - Points to a shared memory region (like Box<T, SharedHeapAllocator>)
-//! - No drop 
-//! - Implements SwitchAddressSpace trait.
+//! - Deref, DerefMut to &T or &mut T (smart pointers)
+//! - SwitchAddressSpace on Drop, but do not touch anything about allocator.
+//! - No drop ? (for RawVec and Koala, we do not want drop), sometimes, for user data, we need sth
+//! like a Box<T, SharedHeapAllocator>.
+//! - Non-moveable (Pin<ShmPtrInner: !Unpin>) ? (for a user data type, we hope it is non-moveable,
+//! but if it is already a pointer, there is no need to make the pointer non-moveable again)
+//! - CopyOnAccess, impl ToOwned for ShmPtr;
+//! impl ShmBorrow<T> for ShmBox<T>;
 //!
 //! For the current detailed implementation, at its core, ShmPtrInner
 //! consists of a base pointer and an offset to the base pointer. The base

@@ -108,7 +108,7 @@ impl RpcAdapterEngine {
                 // get cmid from conn_id
                 let msg = unsafe { msg.as_ref() };
                 let cmid_handle = msg.conn_id();
-                let mut conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+                let conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
                 let cmid = &conn_ctx.cmid;
                 // Sender marshals the data (gets an SgList)
                 let sglist = msg.marshal();
