@@ -14,14 +14,15 @@ use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
 use interface::{AsHandle, Handle};
+use ipc::transport::rdma::cmd;
 
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::state_mgr::{StateManager, StateTrait};
-use crate::resource::ResourceTable;
 use super::Error;
+use crate::resource::ResourceTable;
+use crate::state_mgr::{StateManager, StateTrait};
 
 // TODO(cjr): Make this global lock more fine-grained.
 pub(crate) struct State<'ctx> {
@@ -62,7 +63,6 @@ impl<'ctx> StateTrait for State<'ctx> {
             }),
         })
     }
-
 }
 
 impl<'ctx> State<'ctx> {
@@ -102,13 +102,22 @@ impl<'ctx> State<'ctx> {
     pub(crate) fn get_one_cm_event(
         &self,
         event_channel_handle: &Handle,
+        event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<rdmacm::CmEvent> {
         self.shared.cm_manager.try_lock().and_then(|mut manager| {
-            manager
+            // Get an event that match the req event type
+            // If there's any event matches, return the first one,
+            // otherwise, return None.
+            let event_queue = manager
                 .event_channel_buffer
                 .entry(*event_channel_handle)
-                .or_insert_with(VecDeque::default)
-                .pop_front()
+                .or_insert_with(VecDeque::default);
+
+            if let Some(pos) = event_queue.iter().position(|e| e.event() == event_type) {
+                event_queue.remove(pos)
+            } else {
+                None
+            }
         })
     }
 }

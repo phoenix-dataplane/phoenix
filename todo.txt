@@ -11,12 +11,14 @@ RPC init version
 - check incoming connect requests and make Listener::get_request()
   non-blocking
 - switch_addr_space to delivery the msg to application
+- fill in requset metadata correctly
 - releasing reply
 - resize cq on connection setup/destroy
 - credit control on post send
 - koala configuration, engine paths are not read from koala.toml
 - make modules in control.rs optional, based on their occurances in
   koala.toml
+- error handling at various places
 
 Policy
 - Implement more engines for global policy

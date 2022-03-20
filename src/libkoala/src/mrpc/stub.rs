@@ -27,6 +27,7 @@ pub struct MessageTemplate<T> {
 
 impl<T> MessageTemplate<T> {
     pub fn new(val: Box<T>, conn_id: Handle) -> Box<Self> {
+        // TODO(cjr): fill in these values
         let meta = MessageMeta {
             conn_id,
             func_id: 0,
@@ -79,7 +80,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
     }
 }
 
-pub(crate) fn post_call<T: SwitchAddressSpace>(
+pub(crate) fn post_request<T: SwitchAddressSpace>(
     mut msg: Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
     msg.switch_address_space();

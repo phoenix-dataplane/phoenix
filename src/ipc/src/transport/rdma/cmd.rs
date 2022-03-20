@@ -23,6 +23,7 @@ pub enum Command {
     ),
     Listen(Handle, i32),
     GetRequest(Handle),
+    TryGetRequest(Handle),
     Accept(Handle, Option<ConnParam>),
     Connect(Handle, Option<ConnParam>),
 
@@ -63,6 +64,7 @@ pub enum CompletionKind {
     CreateEp(returned::CmId),
     Listen,
     GetRequest(returned::CmId),
+    TryGetRequest(Option<returned::CmId>),
     Accept,
     Connect,
 

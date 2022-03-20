@@ -221,7 +221,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
     fn check_cm_event(&mut self) -> Result<Status, Error> {
         match self.state.poll_cm_event_once() {
-            Ok(()) => {}
+            Ok(()) => {} // fail to acquire the lock
             Err(Error::NoCmEvent) => {}
             Err(e @ (Error::RdmaCm(_) | Error::Mio(_))) => {
                 self.customer.send_comp(cmd::Completion(Err(e.into())))?;
@@ -230,7 +230,7 @@ impl<'ctx> TransportEngine<'ctx> {
             Err(e) => return Err(e),
         }
 
-        use ipc::transport::rdma::cmd::Command;
+        use cmd::Command;
         assert!(self.cmd_buffer.is_some());
         let req = self.cmd_buffer.as_ref().unwrap();
         let cmd_handle = match req {
@@ -238,6 +238,7 @@ impl<'ctx> TransportEngine<'ctx> {
             Command::ResolveRoute(h, ..) => h,
             Command::Connect(h, ..) => h,
             Command::GetRequest(h) => h,
+            Command::TryGetRequest(h) => h,
             Command::Accept(h, ..) => h,
             Command::Disconnect(h) => &h.0,
             _ => panic!("Unexpected CM type: {:?}", req),
@@ -246,7 +247,10 @@ impl<'ctx> TransportEngine<'ctx> {
         let cmid = self.state.resource().cmid_table.get(cmd_handle)?;
         let ec_handle = cmid.event_channel().as_handle();
 
-        match self.state.get_one_cm_event(&ec_handle) {
+        let event_type = Self::get_event_type(req);
+
+        // This should be first matched cm_event
+        match self.state.get_one_cm_event(&ec_handle, event_type) {
             Some(cm_event) => {
                 // the event must be consumed
                 match self.process_cm_event(cm_event) {
@@ -259,6 +263,21 @@ impl<'ctx> TransportEngine<'ctx> {
                 // try again next time
                 Ok(Progress(0))
             }
+        }
+    }
+
+    fn get_event_type(req: &cmd::Command) -> rdma::ffi::rdma_cm_event_type::Type {
+        use cmd::Command;
+        use rdma::ffi::rdma_cm_event_type::*;
+        match req {
+            Command::ResolveAddr(..) => RDMA_CM_EVENT_ADDR_RESOLVED,
+            Command::ResolveRoute(..) => RDMA_CM_EVENT_ROUTE_RESOLVED,
+            Command::Connect(..) => RDMA_CM_EVENT_ESTABLISHED,
+            Command::GetRequest(..) => RDMA_CM_EVENT_CONNECT_REQUEST,
+            Command::TryGetRequest(..) => RDMA_CM_EVENT_CONNECT_REQUEST,
+            Command::Accept(..) => RDMA_CM_EVENT_ESTABLISHED,
+            Command::Disconnect(..) => RDMA_CM_EVENT_DISCONNECTED,
+            _ => panic!("Unexpected CM type: {:?}", req),
         }
     }
 
@@ -643,7 +662,8 @@ impl<'ctx> TransportEngine<'ctx> {
                 Ok(CompletionKind::ResolveRoute)
             }
             RDMA_CM_EVENT_CONNECT_REQUEST => match req {
-                Command::GetRequest(_listener_handle) => {
+                Command::GetRequest(_listener_handle)
+                | Command::TryGetRequest(_listener_handle) => {
                     // let listener = self.state.resource().cmid_table.get(&listener_handle)?;
                     // assert_eq!(listener_handle, event.listen_id().unwrap().as_handle());
                     let (new_cmid, new_qp) = event.get_request();
@@ -659,7 +679,13 @@ impl<'ctx> TransportEngine<'ctx> {
                         handle: interface::CmId(new_cmid_handle),
                         qp: ret_qp,
                     };
-                    Ok(CompletionKind::GetRequest(ret_cmid))
+                    match req {
+                        Command::GetRequest(_) => Ok(CompletionKind::GetRequest(ret_cmid)),
+                        Command::TryGetRequest(_) => {
+                            Ok(CompletionKind::TryGetRequest(Some(ret_cmid)))
+                        }
+                        _ => unreachable!(),
+                    }
                 }
                 _ => {
                     panic!("Expect GetRequest, found: {:?}", req);
@@ -763,6 +789,25 @@ impl<'ctx> TransportEngine<'ctx> {
                 //     qp: ret_qp,
                 // };
                 // Ok(CompletionKind::GetRequest(ret_cmid))
+            }
+            Command::TryGetRequest(listener_handle) => {
+                trace!("listener_handle: {:?}", listener_handle);
+                // Just forward the request
+                assert!(self
+                    .cmd_buffer
+                    .replace(Command::GetRequest(*listener_handle))
+                    .is_none());
+                match self.check_cm_event()? {
+                    Progress(0) => {
+                        let comp = CompletionKind::TryGetRequest(None);
+                        self.cmd_buffer = None;
+                        self.customer.send_comp(cmd::Completion(Ok(comp)))?;
+                    }
+                    Progress(_) => {} // already sent
+                    Status::Disconnected => unreachable!(),
+                }
+                // TODO(cjr): Should this be Error::InProgress? What if the upper layer used this?
+                Err(Error::InProgress)
             }
             Command::Accept(cmid_handle, conn_param) => {
                 trace!(

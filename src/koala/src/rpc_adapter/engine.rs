@@ -11,7 +11,7 @@ use interface::rpc::{MessageTemplateErased, RpcMsgType};
 use interface::AsHandle;
 
 use super::module::ServiceType;
-use super::state::{ConnectionContext, State, WrContext};
+use super::state::{State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};

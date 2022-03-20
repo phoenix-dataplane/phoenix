@@ -4,9 +4,12 @@ use std::pin::Pin;
 use std::future::Future;
 use std::task::{Context, Poll};
 
-// use crate::mrpc::shmptr::ShmPtr;
+use fnv::FnvHashMap as HashMap;
+use unique::Unique;
 
+// use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
+use crate::mrpc::MRPC_CTX;
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service,
@@ -30,7 +33,7 @@ pub unsafe trait SwitchAddressSpace {
 // }
 
 // Manually write all generated code
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HelloRequest {
     pub name: mrpc::alloc::Vec<u8>,
     // inner: Pin<Unique<HelloRequestInner>>,
@@ -51,7 +54,7 @@ unsafe impl SwitchAddressSpace for HelloRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HelloReply {
     pub name: mrpc::alloc::Vec<u8>, // change to mrpc::alloc::Vec<u8>, -> String
 }
@@ -63,20 +66,79 @@ unsafe impl SwitchAddressSpace for HelloReply {
 }
 
 pub struct ReqFuture<'a> {
-    stub: &'a ClientStub,
+    call_id: u64,
+    reply_cache: &'a ReplyCache,
 }
 
 impl<'a> Future for ReqFuture<'a> {
     type Output = Result<HelloReply, mrpc::Status>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        todo!();
-        Poll::Pending
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        check_completion(&this.reply_cache).unwrap();
+        if let Some(erased) = this.reply_cache.remove(this.call_id) {
+            // unmarshal
+            let msg: Unique<MessageTemplate<HelloReply>> = Unique::new(erased.shmptr as *mut _).unwrap();
+            // TODO(cjr): when to drop the reply
+            let msg = unsafe { msg.as_ref().val.as_ref().clone() };
+            Poll::Ready(Ok(msg))
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+fn check_completion(reply_cache: &ReplyCache) -> Result<(), super::Error> {
+    use ipc::mrpc::dp;
+    let mut msgs = Vec::with_capacity(32);
+    MRPC_CTX.with(|ctx| {
+        ctx.service.dequeue_wc_with(|ptr, count| unsafe {
+            for i in 0..count {
+                let c = ptr.add(i).cast::<dp::Completion>().read();
+                msgs.push(c.erased);
+            }
+            count
+        })?;
+        for m in msgs {
+            let call_id = m.meta.call_id;
+            reply_cache.insert(call_id, m);
+        }
+        Ok(())
+    })
+}
+
+// Reply cache, call_id -> Reply, Sync, not durable
+#[derive(Debug)]
+pub struct ReplyCache {
+    cache: spin::Mutex<HashMap<u64, MessageTemplateErased>>,
+}
+
+impl ReplyCache {
+    fn new() -> Self {
+        Self {
+            cache: spin::Mutex::new(HashMap::default()),
+        }
+    }
+
+    #[inline]
+    fn insert(&self, call_id: u64, erased: MessageTemplateErased) {
+        self.cache
+            .lock()
+            .insert(call_id, erased)
+            .ok_or(())
+            .unwrap_err();
+    }
+
+    #[inline]
+    fn remove(&self, call_id: u64) -> Option<MessageTemplateErased> {
+        self.cache.lock().remove(&call_id)
     }
 }
 
 #[derive(Debug)]
 pub struct GreeterClient {
     stub: ClientStub,
+    // call_id -> ShmBox<Reply>
+    reply_cache: ReplyCache,
 }
 
 impl GreeterClient {
@@ -87,7 +149,10 @@ impl GreeterClient {
         // request/response to/from the rpc engine rather than the transport engine.
         // let stub = libkoala::mrpc::cm::MrpcStub::set_transport(libkoala::mrpc::cm::TransportType::Rdma)?;
         let stub = ClientStub::connect(dst).unwrap();
-        Ok(Self { stub })
+        Ok(Self {
+            stub,
+            reply_cache: ReplyCache::new(),
+        })
     }
 
     pub fn say_hello(
@@ -95,8 +160,12 @@ impl GreeterClient {
         request: mrpc::alloc::Box<HelloRequest>,
     ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
         let msg = MessageTemplate::new(request, self.stub.get_handle());
-        stub::post_call(msg).unwrap();
-        ReqFuture { stub: &self.stub }
+        let call_id = msg.meta.call_id;
+        stub::post_request(msg).unwrap();
+        ReqFuture {
+            call_id,
+            reply_cache: &self.reply_cache,
+        }
     }
 }
 

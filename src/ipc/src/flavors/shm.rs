@@ -414,7 +414,7 @@ where
 
     #[inline]
     pub fn try_recv_comp(&self) -> Result<Completion, Error> {
-        unimplemented!("todo")
+        Ok(self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?)
     }
 
     #[inline]

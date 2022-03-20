@@ -122,6 +122,7 @@ impl Default for SharedHeap {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct SharedHeapAllocator;
 
 impl SharedHeapAllocator {
