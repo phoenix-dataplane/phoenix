@@ -1,6 +1,6 @@
 //! The code below should be generated.
 use std::mem;
-use crate::mrpc::marshal::{Marshal, Unmarshal, SgList, ShmBuf};
+use crate::mrpc::marshal::{Marshal, Unmarshal, SgList, ShmBuf, SwitchAddressSpace};
 
 use unique::Unique;
 
@@ -84,5 +84,17 @@ impl Unmarshal for HelloReply {
         let vecptr = &mut this.as_mut().name as *mut _ as *mut usize;
         vecptr.write(vecaddr);
         Ok(this)
+    }
+}
+
+unsafe impl SwitchAddressSpace for HelloRequest {
+    fn switch_address_space(&mut self) {
+        self.name.switch_address_space();
+    }
+}
+
+unsafe impl SwitchAddressSpace for HelloReply {
+    fn switch_address_space(&mut self) {
+        self.name.switch_address_space();
     }
 }

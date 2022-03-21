@@ -7,6 +7,7 @@ use std::os::unix::io::RawFd;
 use std::os::unix::net::{AncillaryData, SocketAddr, SocketAncillary, SocketCred, UnixDatagram};
 use std::os::unix::ucred::UCred;
 use std::path::Path;
+use std::time;
 
 use thiserror::Error;
 
@@ -110,7 +111,7 @@ impl DomainSocket {
         Ok(())
     }
 
-    pub fn set_peer_cred(&mut self, cred: UCred) {
+    fn set_peer_cred(&mut self, cred: UCred) {
         self.peer_cred = Some(cred);
     }
 
@@ -228,5 +229,17 @@ impl DomainSocket {
         }
 
         Ok((fds, cred))
+    }
+
+    pub fn try_recv_fd(&self) -> Result<Option<(Vec<RawFd>, Option<UCred>)>, Error> {
+        self.set_read_timeout(Some(time::Duration::from_micros(1)))?;
+        let ret = match self.recv_fd() {
+            Ok(ret) => Ok(Some(ret)),
+            Err(Error::Io(ref e)) if e.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(e) => Err(e),
+        };
+        // here we may get two errors...
+        self.set_read_timeout(None).unwrap();
+        ret
     }
 }

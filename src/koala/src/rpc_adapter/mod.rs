@@ -1,7 +1,7 @@
 //! this engine translate RPC messages into transport-level work requests / completions
 use thiserror::Error;
 
-use crate::resource::Error as ResourceError;
+use crate::{mrpc::marshal::ShmBuf, resource::Error as ResourceError};
 
 pub mod engine;
 pub mod module;
@@ -12,8 +12,6 @@ pub mod ulib;
 #[error("rpc-adapter control path error")]
 pub(crate) enum ControlPathError {
     // Below are errors that return to the user.
-    #[error("Interface error {0}: {1}")]
-    Interface(&'static str, interface::Error),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
     #[error("Resource error: {0}")]
@@ -22,6 +20,8 @@ pub(crate) enum ControlPathError {
     // Below are errors that does not return to the user.
     #[error("Operation in progress")]
     InProgress,
+    #[error("No Response is required. Note, this is not an error")]
+    NoResponse,
     #[error("Ipc-channel TryRecvError")]
     IpcTryRecv,
     #[error("Send command error")]
@@ -49,4 +49,27 @@ pub(crate) enum DatapathError {
     Resource(#[from] ResourceError),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
+}
+
+#[inline]
+pub(crate) fn query_shm_offset(addr: usize) -> isize {
+    use crate::engine::runtime::ENGINE_TLS;
+    use engine::TlStorage;
+    ENGINE_TLS.with(|tls| {
+        let sge = ShmBuf {
+            ptr: addr as _,
+            len: 0,
+        };
+        let mr = tls
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<TlStorage>()
+            .unwrap()
+            .state
+            .resource()
+            .query_mr(sge)
+            .unwrap();
+        (mr.app_vaddr as usize - addr) as _
+    })
 }

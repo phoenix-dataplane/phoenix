@@ -1,5 +1,5 @@
 use std::mem;
-use std::os::unix::prelude::AsRawFd;
+use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::sync::Arc;
 
 use unique::Unique;
@@ -28,6 +28,7 @@ pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
     // shared completion queue model
     pub(crate) cq: ulib::uverbs::CompletionQueue,
+    pub(crate) recent_listener_handle: Option<interface::Handle>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
@@ -83,6 +84,7 @@ impl Engine for RpcAdapterEngine {
         // TODO(cjr): check incoming connect request
         // the CmIdListener::get_request() is currently synchronous.
         // need to make it asynchronous and low cost to check.
+        self.check_incoming_connection()?;
 
         // check input command queue
         self.check_input_cmd_queue()?;
@@ -234,6 +236,88 @@ impl RpcAdapterEngine {
         Ok(Status::Progress(0))
     }
 
+    fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
+        // TODO(cjr): should check for each connection.......... shit!
+        if let Some(recent) = self.recent_listener_handle.as_ref() {
+            let listener = self.tls.state.resource().listener_table.get(recent)?;
+            if let Some(mut builder) = listener.try_get_request()? {
+                // establish connection
+                let mut pre_id = builder
+                    .set_send_cq(&self.cq)
+                    .set_recv_cq(&self.cq)
+                    .set_max_send_wr(128)
+                    .set_max_recv_wr(128)
+                    .build()?;
+                // prepare and post receive buffers
+                let mut recv_mrs = Vec::with_capacity(128);
+                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
+                // accept
+                let id = pre_id.accept(None)?;
+                let handle = id.as_handle();
+                // insert resources after connection establishment
+                self.tls.state.resource().insert_cmid(id, 128)?;
+                for recv_mr in recv_mrs {
+                    self.tls
+                        .state
+                        .resource()
+                        .recv_mr_table
+                        .insert(recv_mr.as_handle(), recv_mr)?;
+                }
+                // pass these resources back to the user
+                let comp = mrpc::cmd::Completion(Ok(
+                    mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
+                ));
+                self.cmd_tx.send(comp)?;
+            }
+            Ok(Status::Progress(1))
+        } else {
+            Ok(Status::Progress(0))
+        }
+    }
+
+    fn prepare_recv_buffers(
+        &self,
+        pre_id: &mut ulib::ucm::PreparedCmId,
+        recv_mrs: &mut Vec<ulib::uverbs::MemoryRegion<u8>>,
+    ) -> Result<(Vec<interface::returned::MemoryRegion>, Vec<RawFd>), ControlPathError> {
+        // create 128 receive mrs, post recv requestse and
+        // This is safe because even though recv_mr is moved, the backing memfd and
+        // mapped memory regions are still there, and nothing of this mr is changed.
+        // We also make sure the lifetime of the mr is longer by storing it in the
+        // state.
+        for _ in 0..128 {
+            let recv_mr: ulib::uverbs::MemoryRegion<u8> = pre_id.alloc_msgs(8 * 1024 * 1024)?;
+            recv_mrs.push(recv_mr);
+        }
+        for recv_mr in recv_mrs.iter_mut() {
+            let wr_id = recv_mr.as_handle().0 as u64;
+            let wr_ctx = WrContext {
+                conn_id: pre_id.as_handle(),
+                mr_addr: recv_mr.as_ptr() as usize,
+            };
+            unsafe {
+                pre_id.post_recv(recv_mr, .., wr_id)?;
+            }
+            self.tls
+                .state
+                .resource()
+                .wr_contexts
+                .insert(wr_id, wr_ctx)?;
+        }
+        let mut returned_mrs = Vec::with_capacity(128);
+        let mut fds = Vec::with_capacity(128);
+        for recv_mr in recv_mrs {
+            returned_mrs.push(interface::returned::MemoryRegion {
+                handle: recv_mr.inner,
+                rkey: recv_mr.rkey(),
+                vaddr: recv_mr.as_ptr() as u64,
+                pd: recv_mr.pd().inner,
+            });
+            fds.push(recv_mr.memfd().as_raw_fd());
+        }
+        Ok((returned_mrs, fds))
+    }
+
     fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
         use std::sync::mpsc::TryRecvError;
         match self.cmd_rx.try_recv() {
@@ -242,6 +326,7 @@ impl RpcAdapterEngine {
                 match result {
                     Ok(res) => self.cmd_tx.send(mrpc::cmd::Completion(Ok(res)))?,
                     Err(ControlPathError::InProgress) => return Ok(Progress(0)),
+                    Err(ControlPathError::NoResponse) => return Ok(Progress(1)),
                     Err(e) => self.cmd_tx.send(mrpc::cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
@@ -252,7 +337,7 @@ impl RpcAdapterEngine {
     }
 
     fn process_cmd(
-        &self,
+        &mut self,
         req: &mrpc::cmd::Command,
     ) -> Result<mrpc::cmd::CompletionKind, ControlPathError> {
         match req {
@@ -294,49 +379,15 @@ impl RpcAdapterEngine {
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
                     .resolve_route(addr)?;
-                let pre_id = builder.build()?;
-                // create 128 receive mrs, post recv requestse and
-                // This is safe because even though recv_mr is moved, the backing memfd and
-                // mapped memory regions are still there, and nothing of this mr is changed.
-                // We also make sure the lifetime of the mr is longer by storing it in the
-                // state.
+                let mut pre_id = builder.build()?;
+                // prepare and post receive buffers
                 let mut recv_mrs = Vec::with_capacity(128);
-                for _ in 0..128 {
-                    let recv_mr: ulib::uverbs::MemoryRegion<u8> =
-                        pre_id.alloc_msgs(8 * 1024 * 1024)?;
-                    recv_mrs.push(recv_mr);
-                }
-                for recv_mr in &mut recv_mrs {
-                    let wr_id = recv_mr.as_handle().0 as u64;
-                    let wr_ctx = WrContext {
-                        conn_id: pre_id.as_handle(),
-                        mr_addr: recv_mr.as_ptr() as usize,
-                    };
-                    unsafe {
-                        pre_id.post_recv(recv_mr, .., wr_id)?;
-                    }
-                    self.tls
-                        .state
-                        .resource()
-                        .wr_contexts
-                        .insert(wr_id, wr_ctx)?;
-                }
+                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
                 // connect
                 let id = pre_id.connect(None)?;
-                let handle = id.inner.handle.0;
-                let mut returned_mrs = Vec::with_capacity(128);
-                let mut fds = Vec::with_capacity(128);
-                for recv_mr in &recv_mrs {
-                    returned_mrs.push(interface::returned::MemoryRegion {
-                        handle: recv_mr.inner,
-                        rkey: recv_mr.rkey(),
-                        vaddr: recv_mr.as_ptr() as u64,
-                        pd: recv_mr.pd().inner,
-                    });
-                    fds.push(recv_mr.memfd().as_raw_fd());
-                }
+                let handle = id.as_handle();
 
-                // insert resources
+                // insert resources after connection establishment
                 self.tls.state.resource().insert_cmid(id, 128)?;
                 for recv_mr in recv_mrs {
                     self.tls
@@ -361,7 +412,16 @@ impl RpcAdapterEngine {
                     .resource()
                     .listener_table
                     .insert(handle, listener)?;
+                self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
+            }
+            mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
+                // find those existing mrs, and update their app_vaddrs
+                for (mr_handle, app_vaddr) in app_vaddrs {
+                    let mut mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
+                    Arc::get_mut(&mut mr).unwrap().app_vaddr = *app_vaddr;
+                }
+                Err(ControlPathError::NoResponse)
             }
         }
     }

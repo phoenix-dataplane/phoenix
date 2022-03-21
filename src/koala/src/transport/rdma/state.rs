@@ -14,7 +14,6 @@ use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
 use interface::{AsHandle, Handle};
-use ipc::transport::rdma::cmd;
 
 use rdma::ibv;
 use rdma::rdmacm;

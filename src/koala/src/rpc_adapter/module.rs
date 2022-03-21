@@ -69,6 +69,7 @@ impl RpcAdapterEngineBuilder {
                 state,
             }),
             cq,
+            recent_listener_handle: None,
             node: self.node,
             cmd_rx: self.cmd_rx,
             cmd_tx: self.cmd_tx,

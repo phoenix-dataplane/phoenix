@@ -1,5 +1,6 @@
 #![feature(peer_credentials_unix_socket)]
 #![feature(ptr_metadata)]
+#![feature(specialization)]
 
 #[macro_use]
 extern crate log;

@@ -12,6 +12,8 @@ pub(crate) enum Error {
     TransportType,
 
     // Below are errors that does not return to the user.
+    #[error("No Response is required. Note, this is not an error")]
+    NoReponse,
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     #[error("Customer error: {0}")]
@@ -26,8 +28,6 @@ impl From<Error> for interface::Error {
 
 #[derive(Error, Debug)]
 pub(crate) enum DatapathError {
-    #[error("Resource not found in table.")]
-    NotFound,
     #[error("Shared memory queue error: {0}.")]
     ShmIpc(#[from] ipc::shmem_ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}.")]

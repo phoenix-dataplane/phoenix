@@ -121,7 +121,10 @@ impl ProtectionDomain {
         assert_eq!(file_len, nbytes);
 
         rx_recv_impl!(service, CompletionKind::RegMr, mr, {
-            MemoryRegion::new(self.inner, mr.handle, mr.rkey, 0, memfd)
+            // use the kaddr by default, this is fine only whey the shared memory is mapped to the
+            // same address space
+            let kaddr = mr.vaddr;
+            MemoryRegion::new(self.inner, mr.handle, mr.rkey, kaddr, memfd)
         })
     }
 }

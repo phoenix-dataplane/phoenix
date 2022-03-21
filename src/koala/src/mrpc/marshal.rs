@@ -82,7 +82,7 @@ impl Unmarshal for MessageTemplateErased {
     }
 }
 
-pub(crate) trait RpcMessage: Send {
+pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
     fn conn_id(&self) -> Handle;
     fn func_id(&self) -> u32;
     fn call_id(&self) -> u64; // unique id
@@ -138,7 +138,7 @@ impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
     }
 }
 
-impl<T: Send + Marshal + Unmarshal> RpcMessage for MessageTemplate<T> {
+impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageTemplate<T> {
     #[inline]
     fn conn_id(&self) -> Handle {
         self.meta.conn_id
@@ -172,4 +172,56 @@ pub unsafe trait SwitchAddressSpace {
     // An unsafe trait is unsafe to implement but safe to use.
     // The user of this trait does not need to satisfy any special condition.
     fn switch_address_space(&mut self);
+}
+
+#[inline]
+fn query_shm_offset(addr: usize) -> isize {
+    crate::rpc_adapter::query_shm_offset(addr)
+}
+
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
+    fn switch_address_space(&mut self) {
+        unsafe {
+            self.val.as_mut().switch_address_space();
+            self.val = Unique::new(
+                self.val
+                    .as_ptr()
+                    .offset(query_shm_offset(self.val.as_ptr() as _)),
+            )
+            .unwrap();
+        }
+    }
+}
+
+// TODO(cjr): double-check if the code below is correct.
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
+    fn switch_address_space(&mut self) {
+        for v in self.iter_mut() {
+            v.switch_address_space();
+        }
+        // TODO(cjr): how to change the inner pointer of the Vec?
+        unsafe {
+            // XXX(cjr): the following operation has no safety guarantee.
+            // It's a very very dirty hack to overwrite the first 8 bytes of self.
+            let ptr = self as *mut _ as *mut isize;
+            let addr = ptr.read();
+            ptr.write(addr + query_shm_offset(addr as usize));
+        }
+        panic!("make sure switch_address_space is not calling this for HelloRequest or HelloReply");
+    }
+}
+
+// TODO(cjr): double-check if the code below is correct.
+unsafe impl<T> SwitchAddressSpace for Vec<T> {
+    default fn switch_address_space(&mut self) {
+        // TODO(cjr): how to change the inner pointer of the Vec?
+        eprintln!("make sure switch_address_space is calling this for HelloRequest");
+        unsafe {
+            // XXX(cjr): the following operation has no safety guarantee.
+            // It's a very very dirty hack to overwrite the first 8 bytes of self.
+            let ptr = self as *mut _ as *mut isize;
+            let addr = ptr.read();
+            ptr.write(addr + query_shm_offset(addr as usize));
+        }
+    }
 }

@@ -238,7 +238,6 @@ impl Control {
                 .tcp_transport
                 .handle_request(&req, &self.sock, sender, cred),
             control::Request::Mrpc(req) => self.mrpc.handle_request(&req, &self.sock, sender, cred),
-            _ => unreachable!("control::dispatch"),
         }
     }
 }

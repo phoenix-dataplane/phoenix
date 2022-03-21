@@ -4,7 +4,6 @@ use std::net::ToSocketAddrs;
 
 use interface::{AsHandle, Handle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
-use ipc::TryRecvError;
 
 use super::{get_service, rx_recv_impl, uverbs, Error, FromBorrow};
 use uverbs::AccessFlags;
@@ -243,27 +242,6 @@ impl CmIdListener {
             }
         })?;
         Ok(maybe_cmid)
-        // match service.try_recv_comp() {
-        //     Ok(comp) => {
-        //         match comp.0 {
-        //             Ok(CompletionKind::TryGetRequest(cmid)) => {
-        //                 assert!(cmid.qp.is_none());
-        //                 let mut builder = CmIdBuilder::new();
-        //                 builder.handle = cmid.handle;
-        //                 Ok(Some(builder))
-        //             }
-        //             Err(e) => {
-        //                 Err(Error::Interface("TryGetRequest", e))
-        //             }
-        //         }
-        //     }
-        //     Err(err) => {
-        //         match err {
-        //             ipc::Error::TryRecv(TryRecvError::Empty) => Ok(None),
-        //             _ => Err(err.into()),
-        //         }
-        //     }
-        // }
     }
 }
 

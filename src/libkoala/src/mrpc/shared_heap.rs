@@ -13,7 +13,7 @@ use slabmalloc::{AllocablePage, LargeObjectPage, ZoneAllocator};
 use ipc::mrpc::cmd;
 
 use crate::mrpc::{Error as MrpcError, MRPC_CTX};
-use crate::verbs::{MemoryRegion, ProtectionDomain};
+use crate::verbs::MemoryRegion;
 
 thread_local! {
     /// thread-local shared heap

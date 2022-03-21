@@ -25,8 +25,6 @@ pub struct MrpcEngine {
     // state
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
-    // bufferred control path request
-    pub(crate) cmd_buffer: Option<cmd::Command>,
     // otherwise, the
     pub(crate) last_cmd_ts: Instant,
 }
@@ -97,9 +95,7 @@ impl Engine for MrpcEngine {
             self.backoff = DP_LIMIT.min(self.backoff * 2);
         }
 
-        if self.cmd_buffer.is_some() {
-            self.check_cm_event()?;
-        }
+        self.check_new_incoming_connection()?;
 
         Ok(EngineStatus::Continue)
     }
@@ -118,6 +114,7 @@ impl MrpcEngine {
                 let result = self.process_cmd(&req);
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
+                    Err(Error::NoReponse) => {} // no need to do anything
                     Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
@@ -175,6 +172,11 @@ impl MrpcEngine {
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
+            }
+            cmd::Command::NewMappedAddrs(app_vaddrs) => {
+                // just forward it
+                self.cmd_tx.send(cmd::Command::NewMappedAddrs(app_vaddrs.clone())).unwrap();
+                Err(Error::NoReponse)
             }
         }
     }
@@ -288,7 +290,17 @@ impl MrpcEngine {
         }
     }
 
-    fn check_cm_event(&mut self) -> Result<Status, Error> {
-        unimplemented!();
+    fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
+        use ipc::mrpc::cmd::CompletionKind;
+        match self.cmd_rx.recv().unwrap().0 {
+            Ok(CompletionKind::NewConnectionInternal(handle, recv_mrs, fds)) => {
+                // TODO(cjr): check if this send_fd will block indefinitely.
+                self.customer.send_fd(&fds)?;
+                let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
+                self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                Ok(Status::Progress(1))
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
     }
 }

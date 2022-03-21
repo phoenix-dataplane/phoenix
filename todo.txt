@@ -18,7 +18,9 @@ RPC init version
 - koala configuration, engine paths are not read from koala.toml
 - make modules in control.rs optional, based on their occurances in
   koala.toml
-- error handling at various places
+- error handling at various places (user glue code, marshal/unmarshal)
+- Rewrite the marshal/unmarshal and SgList
+- ShmBox, ShmPtr, Coa
 
 Policy
 - Implement more engines for global policy

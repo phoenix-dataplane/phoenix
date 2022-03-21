@@ -14,6 +14,7 @@ pub enum Command {
     AllocShm(usize),
     Connect(SocketAddr),
     Bind(SocketAddr),
+    NewMappedAddrs(Vec<(Handle, u64)>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,6 +26,9 @@ pub enum CompletionKind {
     ConnectInternal(Handle, Vec<returned::MemoryRegion>, Vec<RawFd>),
     Connect((Handle, Vec<returned::MemoryRegion>)),
     Bind(Handle),
+    // These are actually commands which go by a reverse direction.
+    NewConnectionInternal(Handle, Vec<returned::MemoryRegion>, Vec<RawFd>),
+    NewConnection((Handle, Vec<returned::MemoryRegion>)),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

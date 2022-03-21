@@ -42,10 +42,6 @@ impl<T> MessageTemplate<T> {
             },
             SharedHeapAllocator,
         )
-        // Self {
-        //     meta,
-        //     val: Unique::new(Box::into_raw(val)).unwrap(),
-        // }
     }
 
     pub fn new_reply(val: Box<T>, conn_id: Handle) -> Box<Self> {
@@ -102,9 +98,7 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
     })
 }
 
-pub(crate) fn post_reply(
-    erased: MessageTemplateErased,
-) -> Result<(), Error> {
+pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
     let req = dp::WorkRequest::Reply(erased);
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
@@ -176,7 +170,7 @@ impl ClientStub {
 pub struct Server {
     listener_handle: Handle,
     handles: HashSet<Handle>,
-    mrs: HashSet<MemoryRegion<u8>>,
+    mrs: HashMap<Handle, MemoryRegion<u8>>,
     // func_id -> Service
     routes: HashMap<u32, std::boxed::Box<dyn Service>>,
 }
@@ -212,12 +206,50 @@ impl Server {
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
     pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         loop {
+            // check new incoming connections
+            self.check_new_incoming_connection()?;
+            // check new requests
             let msgs = self.poll_requests()?;
             self.post_replies(msgs)?;
         }
     }
 
-    pub fn post_replies(
+    fn check_new_incoming_connection(
+        &mut self,
+    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+        MRPC_CTX.with(|ctx| {
+            // TODO(cjr): the implementation of this function is super slow
+            match ctx.service.try_recv_fd() {
+                Ok(fds) => {
+                    let mut vaddrs = Vec::new();
+                    rx_recv_impl!(ctx.service, CompletionKind::NewConnection, ret, {
+                        use memfd::Memfd;
+                        assert_eq!(fds.len(), ret.1.len());
+                        assert!(self.handles.insert(ret.0));
+                        for (mr, &fd) in ret.1.into_iter().zip(&fds) {
+                            let memfd = Memfd::try_from_fd(fd)
+                                .map_err(|_| io::Error::last_os_error())
+                                .unwrap();
+                            let h = mr.handle.0;
+                            let m = MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd)
+                                .unwrap();
+                            vaddrs.push((h, m.as_ptr() as u64));
+                            self.mrs.insert(h, m);
+                        }
+                        Ok(())
+                    })?;
+                    // return the mapped addr back
+                    let req = Command::NewMappedAddrs(vaddrs);
+                    ctx.service.send_cmd(req)?;
+                }
+                Err(ipc::Error::TryRecvFd(ipc::TryRecvError::Empty)) => {}
+                Err(e) => return Err(e.into()),
+            }
+            Ok(())
+        })
+    }
+
+    fn post_replies(
         &mut self,
         msgs: Vec<MessageTemplateErased>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
@@ -227,7 +259,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn poll_requests(
+    fn poll_requests(
         &mut self,
     ) -> Result<Vec<MessageTemplateErased>, std::boxed::Box<dyn std::error::Error>> {
         let mut msgs = Vec::with_capacity(32);

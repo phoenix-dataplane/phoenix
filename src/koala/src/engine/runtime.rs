@@ -12,13 +12,14 @@ use crate::engine::{Engine, EngineStatus};
 pub enum Error {
     #[error("Invalid engine ID: {0}, (0 <= expected < {})", num_cpus::get())]
     InvalidId(usize),
+    #[allow(dead_code)]
     #[error("Fail to set thread affinity")]
     SetAffinity(io::Error),
 }
 
 type Result<T> = std::result::Result<T, Error>;
 
-// to emulate a thread local storage (TLS)
+// to emulate a thread local storage (TLS). Should be called engine-local-storage (ELS).
 thread_local! {
     pub static ENGINE_TLS: RefCell<Option<&'static dyn std::any::Any>> = RefCell::new(None);
 }
@@ -80,9 +81,9 @@ impl Runtime {
                     // Safety: The purpose here is to emulate thread-local storage for Engine.
                     // Different engines can expose different types of TLS. The TLS will only be
                     // used during the runtime of an engine. Thus, the TLS should always be valid
-                    // when it is used. However, there is no known way (for me) to express this
-                    // lifetime constraint. Ultimately, the solution is to force the lifetime of
-                    // the TLS of an engine to be 'static, and the programmer needs to think
+                    // when it is referred to. However, there is no known way (for me) to express
+                    // this lifetime constraint. Ultimately, the solution is to force the lifetime
+                    // of the TLS of an engine to be 'static, and the programmer needs to think
                     // through to make sure they implement it correctly.
                     *tls.borrow_mut() = unsafe { engine.borrow().tls() };
                 });

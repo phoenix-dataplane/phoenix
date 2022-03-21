@@ -62,7 +62,6 @@ impl MrpcEngineBuilder {
             backoff: 1,
             _mode: self.mode,
             transport_type: None,
-            cmd_buffer: None,
             last_cmd_ts: Instant::now(),
         })
     }

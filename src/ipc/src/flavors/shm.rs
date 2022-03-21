@@ -399,7 +399,12 @@ where
 
     #[inline]
     pub fn try_recv_fd(&self) -> Result<Vec<RawFd>, Error> {
-        unimplemented!("todo")
+        if let Some((fds, cred)) = self.sock.try_recv_fd()? {
+            Self::check_credential(&self.sock, cred)?;
+            Ok(fds)
+        } else {
+            Err(Error::TryRecvFd(TryRecvError::Empty))
+        }
     }
 
     #[inline]
@@ -414,7 +419,8 @@ where
 
     #[inline]
     pub fn try_recv_comp(&self) -> Result<Completion, Error> {
-        Ok(self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?)
+        panic!("Shouldn't call this");
+        // Ok(self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?)
     }
 
     #[inline]

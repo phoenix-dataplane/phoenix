@@ -53,6 +53,15 @@ impl Clone for State {
     }
 }
 
+impl Drop for State {
+    fn drop(&mut self) {
+        let was_last = self.shared.alive_engines.fetch_sub(1, Ordering::AcqRel) == 1;
+        if was_last {
+            let _ = self.sm.states.lock().remove(&self.shared.pid);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct WrContext {
     pub(crate) conn_id: interface::Handle,
