@@ -291,16 +291,23 @@ impl MrpcEngine {
     }
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
-        use ipc::mrpc::cmd::CompletionKind;
-        match self.cmd_rx.recv().unwrap().0 {
-            Ok(CompletionKind::NewConnectionInternal(handle, recv_mrs, fds)) => {
-                // TODO(cjr): check if this send_fd will block indefinitely.
-                self.customer.send_fd(&fds)?;
-                let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
-                self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
-                Ok(Status::Progress(1))
+        use ipc::mrpc::cmd::{CompletionKind, Completion};
+        use std::sync::mpsc::TryRecvError;
+        match self.cmd_rx.try_recv() {
+            Ok(Completion(comp)) => {
+                match comp {
+                    Ok(CompletionKind::NewConnectionInternal(handle, recv_mrs, fds)) => {
+                        // TODO(cjr): check if this send_fd will block indefinitely.
+                        self.customer.send_fd(&fds)?;
+                        let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
+                        self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                        Ok(Status::Progress(1))
+                    }
+                    other => panic!("unexpected: {:?}", other),
+                }
             }
-            other => panic!("unexpected: {:?}", other),
+            Err(TryRecvError::Empty) => Ok(Progress(0)),
+            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
         }
     }
 }

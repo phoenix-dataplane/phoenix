@@ -60,8 +60,8 @@ where
     let wq_cap_bytes = shmem_ipc::ringbuf::channel_bufsize::<C>(DP_WQ_DEPTH);
     let cq_cap_bytes = shmem_ipc::ringbuf::channel_bufsize::<D>(DP_CQ_DEPTH);
 
-    let mut dp_wq_buf = Vec::with_capacity(wq_cap_bytes);
-    let mut dp_cq_buf = Vec::with_capacity(cq_cap_bytes);
+    let mut dp_wq_buf = vec![0; wq_cap_bytes];
+    let mut dp_cq_buf = vec![0; cq_cap_bytes];
     let (dp_wq_tx, dp_wq_rx) = shmem_ipc::ringbuf::channel(dp_wq_buf.as_mut_slice());
     let (dp_cq_tx, dp_cq_rx) = shmem_ipc::ringbuf::channel(dp_cq_buf.as_mut_slice());
     let dp_wq_buf = Arc::new(dp_wq_buf);

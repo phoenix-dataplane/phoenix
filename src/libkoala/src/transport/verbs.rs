@@ -190,7 +190,7 @@ pub struct MemoryRegion<T> {
     mmap: MmapRaw,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes
-    pub(crate) offset: isize,
+    pub(crate) remote_addr: u64,
     _memfd: Memfd,
     _pd: ProtectionDomain,
     _marker: PhantomData<T>,
@@ -237,16 +237,15 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         pd: interface::ProtectionDomain,
         inner: interface::MemoryRegion,
         rkey: RemoteKey,
-        vaddr: u64,
+        remote_addr: u64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
         let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
-        let local_vaddr = mmap.as_ptr() as isize;
         Ok(MemoryRegion {
             inner,
             rkey,
             mmap,
-            offset: vaddr as isize - local_vaddr,
+            remote_addr,
             _pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
             _memfd: memfd,
             _marker: PhantomData,

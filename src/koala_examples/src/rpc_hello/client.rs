@@ -5,7 +5,7 @@ use libkoala::mrpc::shared_heap::SharedHeapAllocator;
 
 use smol;
 
-const SERVER_ADDR: &str = "192.168.211.194";
+const SERVER_ADDR: &str = "192.168.211.162";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

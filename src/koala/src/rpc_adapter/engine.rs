@@ -27,7 +27,7 @@ pub struct TlStorage {
 pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
     // shared completion queue model
-    pub(crate) cq: ulib::uverbs::CompletionQueue,
+    pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
 
     pub(crate) node: Node,
@@ -101,6 +101,17 @@ impl Engine for RpcAdapterEngine {
 }
 
 impl RpcAdapterEngine {
+    fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
+        // this function is not supposed to be called concurrent.
+        if self.cq.is_none() {
+            // TODO(cjr): we currently by default use the first ibv_context.
+            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.service).unwrap();
+            let ctx = &ctx_list[0];
+            self.cq = Some(ctx.create_cq(1024, 0).unwrap());
+        }
+        self.cq.as_ref().unwrap()
+    }
+
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         // TODO(cjr): check from local queue
         // TODO(cjr): check credit
@@ -190,7 +201,8 @@ impl RpcAdapterEngine {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
         let mut comps = Vec::with_capacity(32);
-        self.cq.poll(&mut comps)?;
+        let cq = self.get_or_init_cq();
+        cq.poll(&mut comps)?;
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
@@ -201,24 +213,20 @@ impl RpcAdapterEngine {
                         WcOpcode::Recv => {
                             let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
                             let cmid_handle = wr_ctx.conn_id;
-                            let mut conn_ctx =
+                            let conn_ctx =
                                 self.tls.state.resource().cmid_table.get(&cmid_handle)?;
                             if !wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received a segment of RPC message
                                 let sge = ShmBuf {
                                     ptr: wr_ctx.mr_addr,
-                                    len: wc.byte_len as _,
+                                    len: wc.byte_len as _, // note this byte_len is only valid for
+                                    // recv request
                                 };
-                                Arc::get_mut(&mut conn_ctx)
-                                    .unwrap()
-                                    .receiving_sgl
-                                    .0
-                                    .push(sge);
+                                conn_ctx.receiving_sgl.lock().0.push(sge);
                             } else {
                                 // received an entire RPC message
-                                let sgl = mem::take(
-                                    &mut Arc::get_mut(&mut conn_ctx).unwrap().receiving_sgl,
-                                );
+                                use std::ops::DerefMut;
+                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl)?;
                             }
                         }
@@ -242,9 +250,10 @@ impl RpcAdapterEngine {
             let listener = self.tls.state.resource().listener_table.get(recent)?;
             if let Some(mut builder) = listener.try_get_request()? {
                 // establish connection
+                let cq = self.get_or_init_cq();
                 let mut pre_id = builder
-                    .set_send_cq(&self.cq)
-                    .set_recv_cq(&self.cq)
+                    .set_send_cq(cq)
+                    .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
                     .build()?;
@@ -358,13 +367,25 @@ impl RpcAdapterEngine {
                 };
                 // store the allocated MRs for later memory address translation
                 let memfd = mr.memfd().as_raw_fd();
+                // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
+                // log::debug!(
+                //     "mr_table: {:0x?}",
+                //     self.tls
+                //         .state
+                //         .resource()
+                //         .mr_table
+                //         .lock()
+                //         .keys()
+                //         .copied()
+                //         .collect::<Vec<usize>>()
+                // );
                 self.tls
                     .state
                     .resource()
                     .mr_table
                     .lock()
                     .insert(mr.as_ptr() as usize, Arc::new(mr))
-                    .map_or(Err(ResourceError::Exists), |_| Ok(()))?;
+                    .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))?;
                 Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
                     returned_mr,
                     memfd,
@@ -373,9 +394,10 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::Connect(addr) => {
                 log::trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
+                let cq = self.get_or_init_cq();
                 let builder = ulib::ucm::CmIdBuilder::new()
-                    .set_send_cq(&self.cq)
-                    .set_recv_cq(&self.cq)
+                    .set_send_cq(cq)
+                    .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
                     .resolve_route(addr)?;
@@ -418,8 +440,8 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
                 // find those existing mrs, and update their app_vaddrs
                 for (mr_handle, app_vaddr) in app_vaddrs {
-                    let mut mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
-                    Arc::get_mut(&mut mr).unwrap().app_vaddr = *app_vaddr;
+                    let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
+                    mr.set_app_vaddr(*app_vaddr);
                 }
                 Err(ControlPathError::NoResponse)
             }

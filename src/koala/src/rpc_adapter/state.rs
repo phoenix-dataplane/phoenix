@@ -72,7 +72,7 @@ pub(crate) struct WrContext {
 pub(crate) struct ConnectionContext {
     pub(crate) cmid: ulib::ucm::CmId,
     pub(crate) credit: usize,
-    pub(crate) receiving_sgl: SgList,
+    pub(crate) receiving_sgl: spin::Mutex<SgList>,
 }
 
 impl ConnectionContext {
@@ -80,7 +80,7 @@ impl ConnectionContext {
         Self {
             cmid,
             credit,
-            receiving_sgl: SgList(Vec::new()),
+            receiving_sgl: spin::Mutex::new(SgList(Vec::new())),
         }
     }
 }

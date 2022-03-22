@@ -21,6 +21,8 @@ RPC init version
 - error handling at various places (user glue code, marshal/unmarshal)
 - Rewrite the marshal/unmarshal and SgList
 - ShmBox, ShmPtr, Coa
+- MutableResourceTable (global lock and slot lock) (State)
+- get sglist right after jumping into koala space
 
 Policy
 - Implement more engines for global policy

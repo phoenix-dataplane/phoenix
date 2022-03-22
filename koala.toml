@@ -19,19 +19,22 @@ command_max_interval_ms = 1000
 id = "mrpc.0"
 type = "Mrpc"
 
-[[node]]
-id = "overload"
-type = "Overload"
+# [[node]]
+# id = "overload"
+# type = "Overload"
 
 [[node]]
 id = "rpc-adapter"
 type = "RpcAdapter"
 
+[edges]
 egress = [
-  ["mrpc.0", "overload"],
-  ["overload", "rpc-adapter"],
+  ["mrpc.0", "rpc-adapter"],
 ]
-
+# egress = [
+#   ["mrpc.0", "overload"],
+#   ["overload", "rpc-adapter"],
+# ]
 ingress = [
   ["rpc-adapter", "mrpc.0"],
 ]

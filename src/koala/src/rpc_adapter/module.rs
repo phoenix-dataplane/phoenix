@@ -58,17 +58,19 @@ impl RpcAdapterEngineBuilder {
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
-        // let pd = state.resource().default_pds()[0];
-        let ctx_list = ulib::uverbs::get_default_verbs_contexts()?;
-        let ctx = &ctx_list[0];
-        let cq = ctx.create_cq(1024, 0)?;
+        // The cq can only be created lazily. Because the engine on other side is not run at this
+        // time.
+        //// let pd = state.resource().default_pds()[0];
+        // let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.service)?;
+        // let ctx = &ctx_list[0];
+        // let cq = ctx.create_cq(1024, 0)?;
 
         Ok(RpcAdapterEngine {
             tls: Box::new(TlStorage {
                 service: self.service,
                 state,
             }),
-            cq,
+            cq: None,
             recent_listener_handle: None,
             node: self.node,
             cmd_rx: self.cmd_rx,

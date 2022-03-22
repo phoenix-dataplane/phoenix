@@ -1,5 +1,5 @@
-use std::mem;
 use std::fmt;
+use std::mem;
 
 use serde::{Deserialize, Serialize};
 use unique::Unique;
@@ -181,15 +181,15 @@ fn query_shm_offset(addr: usize) -> isize {
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
     fn switch_address_space(&mut self) {
-        unsafe {
-            self.val.as_mut().switch_address_space();
-            self.val = Unique::new(
-                self.val
-                    .as_ptr()
-                    .offset(query_shm_offset(self.val.as_ptr() as _)),
-            )
-            .unwrap();
-        }
+        unsafe { self.val.as_mut() }.switch_address_space();
+        self.val = Unique::new(
+            self.val
+                .as_ptr()
+                .cast::<u8>()
+                .wrapping_offset(query_shm_offset(self.val.as_ptr() as _))
+                .cast(),
+        )
+        .unwrap();
     }
 }
 

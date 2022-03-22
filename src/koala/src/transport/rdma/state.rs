@@ -267,6 +267,8 @@ impl<'ctx> Resource<'ctx> {
                 Ok(pd) => pd,
                 Err(_) => continue,
             };
+            // TODO(cjr): Different resource of different devices can have the same handle
+            // e.g. when SR-IOV is enabled, the program will panic here.
             let pd_handle = pd.as_handle();
             pd_table.insert(pd_handle, pd).unwrap();
             default_pds.push((interface::ProtectionDomain(pd_handle), gid_table.clone()));

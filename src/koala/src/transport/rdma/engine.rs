@@ -791,11 +791,11 @@ impl<'ctx> TransportEngine<'ctx> {
                 // Ok(CompletionKind::GetRequest(ret_cmid))
             }
             Command::TryGetRequest(listener_handle) => {
-                trace!("listener_handle: {:?}", listener_handle);
+                // trace!("listener_handle: {:?}", listener_handle);
                 // Just forward the request
                 assert!(self
                     .cmd_buffer
-                    .replace(Command::GetRequest(*listener_handle))
+                    .replace(Command::TryGetRequest(*listener_handle))
                     .is_none());
                 match self.check_cm_event()? {
                     Progress(0) => {

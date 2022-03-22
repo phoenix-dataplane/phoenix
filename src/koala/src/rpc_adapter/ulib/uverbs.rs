@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use memfd::Memfd;
@@ -16,13 +16,13 @@ use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
 use super::{get_cq_buffers, get_service, rx_recv_impl, Error, FromBorrow};
+use super::super::module::ServiceType;
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
-pub(crate) fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
-    let service = get_service();
+pub(crate) fn get_default_verbs_contexts(service: &ServiceType) -> Result<Vec<VerbsContext>, Error> {
     let req = Command::GetDefaultContexts;
     service.send_cmd(req)?;
     rx_recv_impl!(service, CompletionKind::GetDefaultContexts, ctx_list, {
@@ -214,7 +214,7 @@ pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
     mmap: MmapRaw,
     rkey: RemoteKey,
-    pub(crate) app_vaddr: u64,
+    pub(crate) app_vaddr: AtomicU64,
     memfd: Memfd,
     pd: ProtectionDomain,
     _marker: PhantomData<T>,
@@ -274,7 +274,7 @@ impl<T: Sized + Copy> MemoryRegion<T> {
             inner,
             rkey,
             mmap,
-            app_vaddr,
+            app_vaddr: AtomicU64::new(app_vaddr),
             pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
             memfd,
             _marker: PhantomData,
@@ -314,6 +314,16 @@ impl<T: Sized + Copy> MemoryRegion<T> {
     #[inline]
     pub fn as_mut_ptr(&self) -> *mut T {
         self.mmap.as_mut_ptr() as *mut T
+    }
+
+    #[inline]
+    pub fn set_app_vaddr(&self, app_vaddr: u64) {
+        self.app_vaddr.store(app_vaddr, Ordering::SeqCst);
+    }
+
+    #[inline]
+    pub fn app_vaddr(&self) -> u64 {
+        self.app_vaddr.load(Ordering::SeqCst)
     }
 }
 

@@ -33,7 +33,9 @@ unsafe impl<T> SwitchAddressSpace for Vec<T> {
             // It's a very very dirty hack to overwrite the first 8 bytes of self.
             let ptr = self as *mut _ as *mut isize;
             let addr = ptr.read();
-            ptr.write(addr + SharedHeapAllocator::query_shm_offset(addr as usize));
+            let remote_addr = addr + SharedHeapAllocator::query_shm_offset(addr as usize);
+            eprintln!("addr: {:0x}, remote_addr: {:0x}", addr, remote_addr);
+            ptr.write(remote_addr);
         }
     }
 }

@@ -41,7 +41,7 @@ impl Control {
         }
 
         let sock = DomainSocket::bind(&koala_path)
-            .unwrap_or_else(|e| panic!("Cannot bind domain socket: {}", e));
+            .unwrap_or_else(|e| panic!("Cannot bind domain socket at {:?}: {}", koala_path, e));
 
         sock.set_read_timeout(Some(Duration::from_millis(1)))
             .expect("set_read_timeout");

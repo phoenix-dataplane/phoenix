@@ -64,15 +64,15 @@ impl<T> MessageTemplate<T> {
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
     fn switch_address_space(&mut self) {
-        unsafe {
-            self.val.as_mut().switch_address_space();
-            self.val = Unique::new(
-                self.val
-                    .as_ptr()
-                    .offset(SharedHeapAllocator::query_shm_offset(self.val.as_ptr() as _)),
-            )
-            .unwrap();
-        }
+        unsafe { self.val.as_mut() }.switch_address_space();
+        self.val = Unique::new(
+            self.val
+                .as_ptr()
+                .cast::<u8>()
+                .wrapping_offset(SharedHeapAllocator::query_shm_offset(self.val.as_ptr() as _))
+                .cast()
+        )
+        .unwrap();
     }
 }
 

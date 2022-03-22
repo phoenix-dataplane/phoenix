@@ -3,9 +3,9 @@ use std::io;
 
 use thiserror::Error;
 
+pub mod fp;
 pub mod ucm;
 pub mod uverbs;
-pub mod fp;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -56,7 +56,6 @@ macro_rules! _rx_recv_impl {
 
 pub(crate) use _rx_recv_impl as rx_recv_impl;
 
-
 // Get an owned structure from a borrow
 pub trait FromBorrow<Borrowed> {
     fn from_borrow<T: Borrow<Borrowed>>(borrow: &T) -> Self;
@@ -66,18 +65,30 @@ use super::module::ServiceType;
 
 #[inline]
 fn get_service() -> &'static ServiceType {
-    use crate::engine::runtime::ENGINE_TLS;
     use super::engine::TlStorage;
+    use crate::engine::runtime::ENGINE_TLS;
     ENGINE_TLS.with(|tls| {
-        &tls.borrow().as_ref().unwrap().downcast_ref::<TlStorage>().unwrap().service
+        &tls.borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<TlStorage>()
+            .unwrap()
+            .service
     })
 }
 
 #[inline]
 fn get_cq_buffers() -> &'static super::state::CqBuffers {
-    use crate::engine::runtime::ENGINE_TLS;
     use super::engine::TlStorage;
+    use crate::engine::runtime::ENGINE_TLS;
     ENGINE_TLS.with(|tls| {
-        &tls.borrow().as_ref().unwrap().downcast_ref::<TlStorage>().unwrap().state.shared.cq_buffers
+        &tls.borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<TlStorage>()
+            .unwrap()
+            .state
+            .shared
+            .cq_buffers
     })
 }

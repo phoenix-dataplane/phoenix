@@ -8,7 +8,7 @@ use std::ptr::NonNull;
 // use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
 use memfd::Memfd;
-use slabmalloc::{AllocablePage, LargeObjectPage, ZoneAllocator};
+use slabmalloc::{AllocablePage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
 use ipc::mrpc::cmd;
 
@@ -98,7 +98,7 @@ impl SharedHeap {
         match self.allocate_shm(LargeObjectPage::SIZE) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
-                assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {}", addr);
+                // assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
                 REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
                 large_object_page
@@ -109,9 +109,29 @@ impl SharedHeap {
             }
         }
     }
+    #[inline]
+    fn allocate_page(&mut self) -> Option<&'static mut ObjectPage<'static>> {
+        match self.allocate_shm(ObjectPage::SIZE) {
+            Ok(mr) => {
+                let addr = mr.as_ptr() as usize;
+                let object_page = unsafe { mem::transmute(addr) };
+                REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                object_page
+            }
+            Err(e) => {
+                eprintln!("allocate_page: {}", e);
+                None
+            }
+        }
+    }
 
     #[inline]
     fn release_large_page(&mut self, _p: &'static mut LargeObjectPage<'static>) {
+        todo!()
+    }
+
+    #[inline]
+    fn release_page(&mut self, _p: &'static mut ObjectPage<'static>) {
         todo!()
     }
 }
@@ -128,8 +148,26 @@ pub struct SharedHeapAllocator;
 impl SharedHeapAllocator {
     #[inline]
     pub(crate) fn query_shm_offset(addr: usize) -> isize {
-        let addr_aligned = addr & !(LargeObjectPage::SIZE - 1);
-        REGIONS.lock()[&addr_aligned].offset
+        // The assumption does not hold for sure
+        // let addr_aligned = addr & !(LargeObjectPage::SIZE - 1);
+        // REGIONS.lock()[&addr_aligned].offset
+        match REGIONS.lock().range(0..=addr).last() {
+            Some(kv) => {
+                assert!(
+                    *kv.0 <= addr && *kv.0 + kv.1.len() > addr,
+                    "addr: {:0x}, page_addr: {:0x}, page_len: {}",
+                    addr,
+                    *kv.0,
+                    kv.1.len()
+                );
+                kv.1.remote_addr as isize - *kv.0 as isize
+            }
+            None => panic!(
+                "addr: {:0x} not found in allocated pages, number of pages allocated: {}",
+                addr,
+                REGIONS.lock().len()
+            ),
+        }
     }
 }
 
@@ -144,21 +182,34 @@ unsafe impl Allocator for SharedHeapAllocator {
                         Ok(nptr) => Ok(NonNull::slice_from_raw_parts(nptr, layout.size())),
                         Err(AllocationError::OutOfMemory) => {
                             // refill the zone allocator
-                            if let Some(large_page) = shared_heap.allocate_large_page() {
-                                unsafe {
-                                    shared_heap
-                                        .zone_allocator
-                                        .refill_large(layout, large_page)
-                                        .expect("Cannot refill?");
+                            if layout.size() <= ZoneAllocator::MAX_BASE_ALLOC_SIZE {
+                                if let Some(page) = shared_heap.allocate_page() {
+                                    unsafe {
+                                        shared_heap
+                                            .zone_allocator
+                                            .refill(layout, page)
+                                            .unwrap_or_else(|_| panic!("Cannot refill? layout: {:?}", layout));
+                                    }
+                                } else {
+                                    return Err(AllocError);
                                 }
-                                let nptr = shared_heap
-                                    .zone_allocator
-                                    .allocate(layout)
-                                    .expect("Should success after refill");
-                                Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
                             } else {
-                                Err(AllocError)
+                                if let Some(large_page) = shared_heap.allocate_large_page() {
+                                    unsafe {
+                                        shared_heap
+                                            .zone_allocator
+                                            .refill_large(layout, large_page)
+                                            .unwrap_or_else(|_| panic!("Cannot refill? layout: {:?}", layout));
+                                    }
+                                } else {
+                                    return Err(AllocError);
+                                }
                             }
+                            let nptr = shared_heap
+                                .zone_allocator
+                                .allocate(layout)
+                                .expect("Should success after refill");
+                            Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
                         }
                         Err(AllocationError::InvalidLayout) => {
                             eprintln!("Invalid layout: {:?}", layout);

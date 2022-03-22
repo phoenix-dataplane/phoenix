@@ -70,6 +70,6 @@ pub(crate) fn query_shm_offset(addr: usize) -> isize {
             .resource()
             .query_mr(sge)
             .unwrap();
-        (mr.app_vaddr as usize - addr) as _
+        mr.app_vaddr() as isize - mr.as_ptr() as isize
     })
 }

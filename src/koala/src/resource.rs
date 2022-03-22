@@ -10,9 +10,9 @@ use interface::Handle;
 
 #[derive(Error, Debug, Clone)]
 pub(crate) enum Error {
-    #[error("Resource not found in table")]
+    #[error("Resource not found in the table")]
     NotFound,
-    #[error("Resource exists in table")]
+    #[error("Resource exists in the table")]
     Exists,
 }
 
