@@ -223,6 +223,7 @@ unsafe impl Allocator for SharedHeapAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        return;
         use slabmalloc::Allocator;
         match layout.size() {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {

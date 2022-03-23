@@ -31,10 +31,12 @@ impl Unmarshal for HelloRequest {
     type Error = ();
     unsafe fn unmarshal(sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
         // TODO(cjr): double-check if the code below is correct.
+        log::debug!("HelloReques, unmarshal, sg_list: {:0x?}", sg_list);
         if sg_list.0.len() != 2 {
             return Err(());
         }
-        if sg_list.0[0].len != mem::size_of::<Self> as usize {
+        log::debug!("HelloReques, unmarshal, size_of::<Self>: {:0x?}", mem::size_of::<Self>());
+        if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }
         let mut this = Unique::new(sg_list.0[0].ptr as *mut Self).unwrap();
@@ -76,7 +78,7 @@ impl Unmarshal for HelloReply {
         if sg_list.0.len() != 2 {
             return Err(());
         }
-        if sg_list.0[0].len != mem::size_of::<Self> as usize {
+        if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }
         let mut this = Unique::new(sg_list.0[0].ptr as *mut Self).unwrap();

@@ -95,7 +95,7 @@ impl Runtime {
                         shutdown.push(index);
                     }
                     Err(e) => {
-                        error!("Engine error: {}", e);
+                        error!("Engine {} error: {}", engine.borrow().description(), e);
                         shutdown.push(index);
                     }
                 }

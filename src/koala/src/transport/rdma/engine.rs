@@ -72,6 +72,10 @@ enum Status {
 use Status::Progress;
 
 impl<'ctx> Engine for TransportEngine<'ctx> {
+    fn description(&self) -> String {
+        format!("RDMA TransportEngine, user pid: {:?}", self.state.shared.pid)
+    }
+
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;

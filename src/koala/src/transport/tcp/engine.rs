@@ -82,6 +82,10 @@ impl Vertex for TransportEngine {
 }
 
 impl Engine for TransportEngine {
+    fn description(&self) -> String {
+        format!("TCP TransportEngine, user pid: update me")
+    }
+
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;

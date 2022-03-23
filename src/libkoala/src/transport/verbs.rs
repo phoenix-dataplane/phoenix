@@ -5,6 +5,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
+use std::os::unix::io::AsRawFd;
 use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -187,7 +188,8 @@ pub struct SharedReceiveQueue {
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
-    mmap: MmapRaw,
+    // mmap: MmapRaw,
+    mmap: Mmap,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes
     pub(crate) remote_addr: u64,
@@ -232,6 +234,105 @@ impl<T> Drop for MemoryRegion<T> {
     }
 }
 
+use nix::fcntl::OFlag;
+use nix::sys::mman::{mmap, msync, munmap, shm_open, shm_unlink, MapFlags, MsFlags, ProtFlags};
+use nix::sys::stat::Mode;
+use std::fs;
+pub struct Mmap {
+    ptr: *mut libc::c_void,
+    len: usize,
+}
+
+impl Drop for Mmap {
+    fn drop(&mut self) {
+        unsafe {
+            munmap(self.ptr, self.len).unwrap_or_else(|e| eprintln!("failed to munmap: {}", e))
+        };
+    }
+}
+
+impl Mmap {
+    fn new(target_addr: usize, memfile: &fs::File) -> io::Result<Self> {
+        let len = memfile.metadata()?.len() as usize;
+        let ptr = unsafe {
+            mmap(
+                target_addr as *mut libc::c_void,
+                len,
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE | MapFlags::MAP_FIXED,
+                memfile.as_raw_fd(),
+                0,
+            )?
+        };
+        Ok(Self { ptr, len })
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns a raw pointer to the memory mapped file.
+    ///
+    /// Before dereferencing this pointer, you have to make sure that the file has not been
+    /// truncated since the memory map was created.
+    /// Avoiding this will not introduce memory safety issues in Rust terms,
+    /// but will cause SIGBUS (or equivalent) signal.
+    #[inline]
+    pub fn as_ptr(&self) -> *const u8 {
+        self.ptr as *const u8
+    }
+
+    /// Returns an unsafe mutable pointer to the memory mapped file.
+    ///
+    /// Before dereferencing this pointer, you have to make sure that the file has not been
+    /// truncated since the memory map was created.
+    /// Avoiding this will not introduce memory safety issues in Rust terms,
+    /// but will cause SIGBUS (or equivalent) signal.
+    #[inline]
+    pub fn as_mut_ptr(&self) -> *mut u8 {
+        self.ptr as *mut u8
+    }
+}
+
+// Why this is safe?
+unsafe impl Sync for Mmap {}
+unsafe impl Send for Mmap {}
+
+impl Deref for Mmap {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+}
+
+impl AsRef<[u8]> for Mmap {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
+    }
+}
+
+impl DerefMut for Mmap {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+}
+
+use std::fmt;
+impl fmt::Debug for Mmap {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Mmap")
+            .field("ptr", &self.as_ptr())
+            .field("len", &self.len())
+            .finish()
+    }
+}
+
+
 impl<T: Sized + Copy> MemoryRegion<T> {
     pub(crate) fn new(
         pd: interface::ProtectionDomain,
@@ -240,7 +341,10 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         remote_addr: u64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
-        let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
+        // Map to the same address as remote_addr, panic if it does not work
+        // TODO(cjr): will design a mechanism to make sure the uniqueness of addresses in the future
+        let mmap = Mmap::new(remote_addr as _, memfd.as_file())?;
+        // let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,

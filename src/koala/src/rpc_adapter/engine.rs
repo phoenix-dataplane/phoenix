@@ -8,7 +8,7 @@ use ipc::mrpc;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageTemplateErased, RpcMsgType};
-use interface::AsHandle;
+use interface::{AsHandle, Handle};
 
 use super::module::ServiceType;
 use super::state::{State, WrContext};
@@ -74,6 +74,13 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
+    fn description(&self) -> String {
+        format!(
+            "RcpAdapterEngine, user pid: {:?}",
+            self.tls.state.shared.pid
+        )
+    }
+
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         // check input queue
         self.check_input_queue()?;
@@ -88,6 +95,7 @@ impl Engine for RpcAdapterEngine {
 
         // check input command queue
         self.check_input_cmd_queue()?;
+
         Ok(EngineStatus::Continue)
     }
 
@@ -127,6 +135,7 @@ impl RpcAdapterEngine {
                 // Sender marshals the data (gets an SgList)
                 let sglist = msg.marshal();
                 // Sender posts send requests from the SgList
+                log::debug!("check_input_queue, sglist: {:0x?}", sglist);
                 for (i, &sge) in sglist.0.iter().enumerate() {
                     // query mr from each sge
                     let mr = self.tls.state.resource().query_mr(sge)?;
@@ -157,21 +166,27 @@ impl RpcAdapterEngine {
         }
     }
 
-    fn unmarshal_and_deliver_up(&mut self, sgl: SgList) -> Result<Status, DatapathError> {
+    fn unmarshal_and_deliver_up(
+        &mut self,
+        sgl: SgList,
+        conn_handle: Handle,
+    ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
-        let erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
-        let meta = unsafe { erased.as_ref() }.meta;
+        log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
+        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
+        let meta = &mut unsafe { erased.as_mut() }.meta;
+        meta.conn_id = conn_handle;
         let dyn_msg = match meta.msg_type {
             RpcMsgType::Request => {
                 match meta.func_id {
                     0 => {
-                        let msg = unsafe {
+                        let mut msg = unsafe {
                             MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         let dyn_msg =
-                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -180,13 +195,13 @@ impl RpcAdapterEngine {
             RpcMsgType::Response => {
                 match meta.func_id {
                     0 => {
-                        let msg = unsafe {
+                        let mut msg = unsafe {
                             MessageTemplate::<codegen::HelloReply>::unmarshal(sgl).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         let dyn_msg =
-                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -215,19 +230,18 @@ impl RpcAdapterEngine {
                             let cmid_handle = wr_ctx.conn_id;
                             let conn_ctx =
                                 self.tls.state.resource().cmid_table.get(&cmid_handle)?;
-                            if !wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                // received a segment of RPC message
-                                let sge = ShmBuf {
-                                    ptr: wr_ctx.mr_addr,
-                                    len: wc.byte_len as _, // note this byte_len is only valid for
-                                    // recv request
-                                };
-                                conn_ctx.receiving_sgl.lock().0.push(sge);
-                            } else {
+                            // received a segment of RPC message
+                            let sge = ShmBuf {
+                                ptr: wr_ctx.mr_addr,
+                                len: wc.byte_len as _, // note this byte_len is only valid for
+                                                       // recv request
+                            };
+                            conn_ctx.receiving_sgl.lock().0.push(sge);
+                            if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
-                                self.unmarshal_and_deliver_up(sgl)?;
+                                self.unmarshal_and_deliver_up(sgl, conn_ctx.cmid.as_handle())?;
                             }
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
@@ -354,6 +368,7 @@ impl RpcAdapterEngine {
                 unreachable!();
             }
             mrpc::cmd::Command::AllocShm(nbytes) => {
+                log::trace!("AllocShm, nbytes: {}", *nbytes);
                 let pd = &self.tls.state.resource().default_pds()[0];
                 let access = ulib::uverbs::AccessFlags::REMOTE_READ
                     | ulib::uverbs::AccessFlags::REMOTE_WRITE

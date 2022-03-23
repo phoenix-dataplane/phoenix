@@ -171,7 +171,7 @@ pub(crate) struct Shared<'ctx> {
     // Control path operations must be per-process level
     cm_manager: spin::Mutex<CmEventManager>,
     // We use pid as the identifier of this process
-    pid: Pid,
+    pub(crate) pid: Pid,
     // Reference counting
     alive_engines: AtomicUsize,
     // Resources

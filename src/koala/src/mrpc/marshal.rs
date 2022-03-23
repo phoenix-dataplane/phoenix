@@ -100,8 +100,10 @@ pub struct MessageTemplate<T> {
 
 impl<T> MessageTemplate<T> {
     pub unsafe fn new(erased: MessageTemplateErased) -> Unique<Self> {
+        // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
         let this = Unique::new(erased.shmptr as *mut MessageTemplate<T>).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
+        log::debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this
         // Self {
         //     meta: erased.meta,
@@ -118,6 +120,7 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
         let sge1 = ShmBuf { ptr: selfptr, len };
         let mut sgl = unsafe { self.val.as_ref() }.marshal()?;
         sgl.0.insert(0, sge1);
+        eprintln!("MessageTemplate<T>, marshal, sgl: {:0x?}", sgl);
         Ok(sgl)
     }
 }
@@ -125,14 +128,18 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
 impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
     type Error = ();
     unsafe fn unmarshal(mut sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
+        log::debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
         if sg_list.0.len() <= 1 {
             return Err(());
         }
         let mut header_sgl = sg_list.0.remove(0);
         header_sgl.len -= mem::size_of::<Unique<T>>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
+        log::debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
         let mut this = meta.cast::<Self>();
+        log::debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
         let val = T::unmarshal(sg_list).or(Err(()))?;
+        log::debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
         this.as_mut().val = val;
         Ok(this)
     }
@@ -160,7 +167,9 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
         self.meta.msg_type == RpcMsgType::Request
     }
     fn marshal(&self) -> SgList {
-        unsafe { self.val.as_ref() }.marshal().unwrap()
+        // <Self as dyn Marshal>::marshal(self).unwrap()
+        // <Self as Marshal<Error = <T as Marshal>::Error>>::marshal(self).unwrap()
+        (self as &dyn Marshal<Error = <T as Marshal>::Error>).marshal().unwrap()
     }
 }
 

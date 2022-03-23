@@ -22,7 +22,7 @@ pub(crate) type CqBuffers =
     spin::Mutex<HashMap<interface::CompletionQueue, ulib::uverbs::CqBuffer>>;
 
 pub(crate) struct Shared {
-    pid: Pid,
+    pub(crate) pid: Pid,
     alive_engines: AtomicUsize,
     resource: Resource,
     pub(crate) cq_buffers: CqBuffers,

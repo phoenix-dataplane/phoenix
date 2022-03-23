@@ -64,6 +64,10 @@ impl Vertex for MrpcEngine {
 }
 
 impl Engine for MrpcEngine {
+    fn description(&self) -> String {
+        format!("MrpcEngine, todo show more information")
+    }
+
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
@@ -223,11 +227,15 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
+                        let mut msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
+                        log::debug!("start to marshal");
+                        unsafe { msg.as_ref() }.marshal();
+                        // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
+                        log::debug!("end marshal");
                         let dyn_msg =
-                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -237,11 +245,11 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
+                        let mut msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         let dyn_msg =
-                            unsafe { Unique::new_unchecked(msg.as_ptr() as *mut dyn RpcMessage) };
+                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),

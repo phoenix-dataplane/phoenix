@@ -72,7 +72,7 @@ pub struct ReqFuture<'a> {
 
 impl<'a> Future for ReqFuture<'a> {
     type Output = Result<HelloReply, mrpc::Status>;
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         check_completion(&this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
@@ -82,6 +82,7 @@ impl<'a> Future for ReqFuture<'a> {
             let msg = unsafe { msg.as_ref().val.as_ref().clone() };
             Poll::Ready(Ok(msg))
         } else {
+            cx.waker().wake_by_ref();
             Poll::Pending
         }
     }

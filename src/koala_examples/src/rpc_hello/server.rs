@@ -15,6 +15,7 @@ impl Greeter for MyGreeter {
         let mut name = Vec::new_in(SharedHeapAllocator);
         name.extend(request.name);
         let reply = Box::new_in(HelloReply { name }, SharedHeapAllocator);
+        eprintln!("reply: {:?}", reply);
         Ok(reply)
     }
 }

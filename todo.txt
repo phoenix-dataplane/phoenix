@@ -16,7 +16,7 @@ RPC init version
 - resize cq on connection setup/destroy
 - credit control on post send
 - koala configuration, engine paths are not read from koala.toml
-- make modules in control.rs optional, based on their occurances in
+- make modules in control.rs optional, based on their occurrences in
   koala.toml
 - error handling at various places (user glue code, marshal/unmarshal)
 - Rewrite the marshal/unmarshal and SgList

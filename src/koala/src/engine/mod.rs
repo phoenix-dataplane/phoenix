@@ -35,6 +35,7 @@ pub(crate) trait Vertex {
 }
 
 pub(crate) trait Engine: Upgradable + Send + Vertex {
+    fn description(&self) -> String;
     /// `resume()` mush be non-blocking and short.
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
     #[inline]
