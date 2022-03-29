@@ -1,6 +1,9 @@
 use thiserror::Error;
 
+use crate::resource::Error as ResourceError;
+
 pub mod engine;
+pub mod state;
 pub mod module;
 pub mod marshal;
 pub mod codegen;
@@ -10,6 +13,8 @@ pub(crate) enum Error {
     // Below are errors that return to the user.
     #[error("Failed to set transport type")]
     TransportType,
+    #[error("Resource error: {0}")]
+    Resource(#[from] ResourceError),
 
     // Below are errors that does not return to the user.
     #[error("No Response is required. Note, this is not an error")]

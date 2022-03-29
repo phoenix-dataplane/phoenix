@@ -23,6 +23,8 @@ RPC init version
 - ShmBox, ShmPtr, Coa
 - MutableResourceTable (global lock and slot lock) (State)
 - get sglist right after jumping into koala space
+- fix bug in runtime.is_spinning()
+- use MAP_FIXED_NOREPLACE
 
 Policy
 - Implement more engines for global policy

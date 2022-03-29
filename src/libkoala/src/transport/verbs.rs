@@ -188,8 +188,8 @@ pub struct SharedReceiveQueue {
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
-    // mmap: MmapRaw,
-    mmap: Mmap,
+    mmap: MmapRaw,
+    // mmap: Mmap,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes
     pub(crate) remote_addr: u64,
@@ -234,9 +234,7 @@ impl<T> Drop for MemoryRegion<T> {
     }
 }
 
-use nix::fcntl::OFlag;
-use nix::sys::mman::{mmap, msync, munmap, shm_open, shm_unlink, MapFlags, MsFlags, ProtFlags};
-use nix::sys::stat::Mode;
+use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
 use std::fs;
 pub struct Mmap {
     ptr: *mut libc::c_void,
@@ -254,6 +252,7 @@ impl Drop for Mmap {
 impl Mmap {
     fn new(target_addr: usize, memfile: &fs::File) -> io::Result<Self> {
         let len = memfile.metadata()?.len() as usize;
+        // TODO(cjr): use MAP_FIXED_NOREPLACE
         let ptr = unsafe {
             mmap(
                 target_addr as *mut libc::c_void,
@@ -264,6 +263,7 @@ impl Mmap {
                 0,
             )?
         };
+        assert_eq!(ptr as usize, target_addr);
         Ok(Self { ptr, len })
     }
 
@@ -343,8 +343,8 @@ impl<T: Sized + Copy> MemoryRegion<T> {
     ) -> Result<Self, Error> {
         // Map to the same address as remote_addr, panic if it does not work
         // TODO(cjr): will design a mechanism to make sure the uniqueness of addresses in the future
-        let mmap = Mmap::new(remote_addr as _, memfd.as_file())?;
-        // let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
+        // let mmap = Mmap::new(remote_addr as _, memfd.as_file())?;
+        let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,

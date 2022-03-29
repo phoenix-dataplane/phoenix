@@ -26,12 +26,12 @@ pub struct MessageTemplate<T> {
 }
 
 impl<T> MessageTemplate<T> {
-    pub fn new(val: Box<T>, conn_id: Handle) -> Box<Self> {
+    pub fn new(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
         // TODO(cjr): fill in these values
         let meta = MessageMeta {
             conn_id,
-            func_id: 0,
-            call_id: 0,
+            func_id,
+            call_id,
             len: 0,
             msg_type: RpcMsgType::Request,
         };
@@ -44,11 +44,11 @@ impl<T> MessageTemplate<T> {
         )
     }
 
-    pub fn new_reply(val: Box<T>, conn_id: Handle) -> Box<Self> {
+    pub fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
-            func_id: 0,
-            call_id: 0,
+            func_id,
+            call_id,
             len: 0,
             msg_type: RpcMsgType::Response,
         };
@@ -70,7 +70,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
                 .as_ptr()
                 .cast::<u8>()
                 .wrapping_offset(SharedHeapAllocator::query_shm_offset(self.val.as_ptr() as _))
-                .cast()
+                .cast(),
         )
         .unwrap();
     }
@@ -79,10 +79,16 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
 pub(crate) fn post_request<T: SwitchAddressSpace>(
     mut msg: Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
+    let meta = msg.meta;
     msg.switch_address_space();
+    let local_ptr = Box::into_raw(msg);
+    let remote_shmptr = local_ptr
+        .cast::<u8>()
+        .wrapping_offset(SharedHeapAllocator::query_shm_offset(local_ptr as _))
+        as u64;
     let erased = MessageTemplateErased {
-        meta: msg.meta,
-        shmptr: Box::into_raw(msg) as u64,
+        meta,
+        shmptr: remote_shmptr,
     };
     let req = dp::WorkRequest::Call(erased);
     MRPC_CTX.with(|ctx| {
@@ -147,6 +153,7 @@ impl ClientStub {
             rx_recv_impl!(ctx.service, CompletionKind::Connect, ret, {
                 use memfd::Memfd;
                 assert_eq!(fds.len(), ret.1.len());
+                let mut vaddrs = Vec::new();
                 let reply_mrs = ret
                     .1
                     .into_iter()
@@ -155,9 +162,16 @@ impl ClientStub {
                         let memfd = Memfd::try_from_fd(fd)
                             .map_err(|_| io::Error::last_os_error())
                             .unwrap();
-                        MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd).unwrap()
+                        let m = MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd).unwrap();
+                        vaddrs.push((mr.handle.0, m.as_ptr() as u64));
+                        m
                     })
                     .collect();
+                // return the mapped addr back
+                let req = Command::NewMappedAddrs(vaddrs);
+                ctx.service.send_cmd(req)?;
+                // COMMENT(cjr): must wait for the reply!
+                rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
                 Ok(Self {
                     handle: ret.0,
                     reply_mrs,
@@ -241,6 +255,8 @@ impl Server {
                     // return the mapped addr back
                     let req = Command::NewMappedAddrs(vaddrs);
                     ctx.service.send_cmd(req)?;
+                    // COMMENT(cjr): must wait for the reply!
+                    rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
                 }
                 Err(ipc::Error::TryRecvFd(ipc::TryRecvError::Empty)) => {}
                 Err(e) => return Err(e.into()),

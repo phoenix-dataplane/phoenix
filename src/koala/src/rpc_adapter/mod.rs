@@ -1,7 +1,7 @@
 //! this engine translate RPC messages into transport-level work requests / completions
 use thiserror::Error;
 
-use crate::{mrpc::marshal::ShmBuf, resource::Error as ResourceError};
+use crate::resource::Error as ResourceError;
 
 pub mod engine;
 pub mod module;
@@ -49,27 +49,4 @@ pub(crate) enum DatapathError {
     Resource(#[from] ResourceError),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
-}
-
-#[inline]
-pub(crate) fn query_shm_offset(addr: usize) -> isize {
-    use crate::engine::runtime::ENGINE_TLS;
-    use engine::TlStorage;
-    ENGINE_TLS.with(|tls| {
-        let sge = ShmBuf {
-            ptr: addr as _,
-            len: 0,
-        };
-        let mr = tls
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .downcast_ref::<TlStorage>()
-            .unwrap()
-            .state
-            .resource()
-            .query_mr(sge)
-            .unwrap();
-        mr.app_vaddr() as isize - mr.as_ptr() as isize
-    })
 }

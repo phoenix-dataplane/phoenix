@@ -8,7 +8,7 @@ use nix::unistd::Pid;
 
 use interface::AsHandle;
 
-use crate::mrpc::marshal::{ShmBuf, SgList};
+use crate::mrpc::marshal::{SgList, ShmBuf};
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
@@ -16,16 +16,6 @@ use crate::state_mgr::{StateManager, StateTrait};
 pub(crate) struct State {
     sm: Arc<StateManager<Self>>,
     pub(crate) shared: Arc<Shared>,
-}
-
-pub(crate) type CqBuffers =
-    spin::Mutex<HashMap<interface::CompletionQueue, ulib::uverbs::CqBuffer>>;
-
-pub(crate) struct Shared {
-    pub(crate) pid: Pid,
-    alive_engines: AtomicUsize,
-    resource: Resource,
-    pub(crate) cq_buffers: CqBuffers,
 }
 
 impl StateTrait for State {
@@ -60,6 +50,16 @@ impl Drop for State {
             let _ = self.sm.states.lock().remove(&self.shared.pid);
         }
     }
+}
+
+pub(crate) type CqBuffers =
+    spin::Mutex<HashMap<interface::CompletionQueue, ulib::uverbs::CqBuffer>>;
+
+pub(crate) struct Shared {
+    pub(crate) pid: Pid,
+    alive_engines: AtomicUsize,
+    resource: Resource,
+    pub(crate) cq_buffers: CqBuffers,
 }
 
 #[derive(Debug)]
@@ -111,8 +111,13 @@ impl Resource {
     }
 
     #[inline]
-    pub(crate) fn insert_cmid(&self, cmid: ulib::ucm::CmId, credit: usize) -> Result<(), ResourceError> {
-        self.cmid_table.insert(cmid.as_handle(), ConnectionContext::new(cmid, credit))
+    pub(crate) fn insert_cmid(
+        &self,
+        cmid: ulib::ucm::CmId,
+        credit: usize,
+    ) -> Result<(), ResourceError> {
+        self.cmid_table
+            .insert(cmid.as_handle(), ConnectionContext::new(cmid, credit))
     }
 
     pub(crate) fn default_pds(&self) -> &[ulib::uverbs::ProtectionDomain] {
@@ -126,6 +131,16 @@ impl Resource {
             });
             &self.default_pds
         }
+    }
+
+    pub(crate) fn insert_mr(
+        &self,
+        mr: ulib::uverbs::MemoryRegion<u8>,
+    ) -> Result<(), ResourceError> {
+        self.mr_table
+            .lock()
+            .insert(mr.as_ptr() as usize, Arc::new(mr))
+            .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
     }
 
     pub(crate) fn query_mr(

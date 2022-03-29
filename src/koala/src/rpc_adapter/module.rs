@@ -12,7 +12,6 @@ use ipc::service::Service;
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use super::ulib;
 use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::State;
 use crate::node::Node;

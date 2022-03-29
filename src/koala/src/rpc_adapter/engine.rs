@@ -397,10 +397,7 @@ impl RpcAdapterEngine {
                 self.tls
                     .state
                     .resource()
-                    .mr_table
-                    .lock()
-                    .insert(mr.as_ptr() as usize, Arc::new(mr))
-                    .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))?;
+                    .insert_mr(mr)?;
                 Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
                     returned_mr,
                     memfd,
@@ -454,11 +451,14 @@ impl RpcAdapterEngine {
             }
             mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
                 // find those existing mrs, and update their app_vaddrs
+                let mut ret = Vec::new();
                 for (mr_handle, app_vaddr) in app_vaddrs {
                     let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
                     mr.set_app_vaddr(*app_vaddr);
+                    ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
                 }
-                Err(ControlPathError::NoResponse)
+                Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
+                // Err(ControlPathError::NoResponse)
             }
         }
     }

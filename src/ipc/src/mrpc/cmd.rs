@@ -29,6 +29,9 @@ pub enum CompletionKind {
     // These are actually commands which go by a reverse direction.
     NewConnectionInternal(Handle, Vec<returned::MemoryRegion>, Vec<RawFd>),
     NewConnection((Handle, Vec<returned::MemoryRegion>)),
+    NewMappedAddrs,
+    // local_addr, remote_addr, len
+    NewMappedAddrsInternal(Vec<(usize, usize, usize)>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

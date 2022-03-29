@@ -8,15 +8,22 @@ use anyhow::anyhow;
 use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
+use lazy_static::lazy_static;
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
+use super::state::State;
 use super::engine::MrpcEngine;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
+use crate::state_mgr::StateManager;
+
+lazy_static! {
+    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+}
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -24,7 +31,7 @@ pub type CustomerType =
 pub(crate) struct MrpcEngineBuilder {
     customer: CustomerType,
     node: Node,
-    _client_pid: Pid,
+    client_pid: Pid,
     mode: SchedulingMode,
     cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
     cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
@@ -34,7 +41,7 @@ impl MrpcEngineBuilder {
     fn new(
         customer: CustomerType,
         node: Node,
-        _client_pid: Pid,
+        client_pid: Pid,
         mode: SchedulingMode,
         cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
         cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
@@ -44,16 +51,17 @@ impl MrpcEngineBuilder {
             cmd_tx,
             cmd_rx,
             node,
-            _client_pid,
+            client_pid,
             mode,
         }
     }
 
     fn build(self) -> Result<MrpcEngine> {
-        // let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
         Ok(MrpcEngine {
+            state,
             customer: self.customer,
             node: self.node,
             cmd_tx: self.cmd_tx,

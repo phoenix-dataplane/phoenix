@@ -9,11 +9,11 @@ use unique::Unique;
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::MRPC_CTX;
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service,
 };
+use crate::mrpc::MRPC_CTX;
 
 // mimic the generated code of tonic-helloworld
 
@@ -77,7 +77,8 @@ impl<'a> Future for ReqFuture<'a> {
         check_completion(&this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
             // unmarshal
-            let msg: Unique<MessageTemplate<HelloReply>> = Unique::new(erased.shmptr as *mut _).unwrap();
+            let msg: Unique<MessageTemplate<HelloReply>> =
+                Unique::new(erased.shmptr as *mut _).unwrap();
             // TODO(cjr): when to drop the reply
             let msg = unsafe { msg.as_ref().val.as_ref().clone() };
             Poll::Ready(Ok(msg))
@@ -140,6 +141,7 @@ pub struct GreeterClient {
     stub: ClientStub,
     // call_id -> ShmBox<Reply>
     reply_cache: ReplyCache,
+    call_counter: u64,
 }
 
 impl GreeterClient {
@@ -153,6 +155,7 @@ impl GreeterClient {
         Ok(Self {
             stub,
             reply_cache: ReplyCache::new(),
+            call_counter: 0,
         })
     }
 
@@ -160,7 +163,13 @@ impl GreeterClient {
         &mut self,
         request: mrpc::alloc::Box<HelloRequest>,
     ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
-        let msg = MessageTemplate::new(request, self.stub.get_handle());
+        let msg = MessageTemplate::new(
+            request,
+            self.stub.get_handle(),
+            Self::FUNC_ID,
+            self.call_counter,
+        );
+        self.call_counter += 1;
         let call_id = msg.meta.call_id;
         stub::post_request(msg).unwrap();
         ReqFuture {
@@ -168,6 +177,10 @@ impl GreeterClient {
             reply_cache: &self.reply_cache,
         }
     }
+}
+
+impl NamedService for GreeterClient {
+    const FUNC_ID: u32 = 0;
 }
 
 // #[async_trait]
@@ -202,17 +215,24 @@ impl<T: Greeter> Service for GreeterServer<T> {
     ) -> interface::rpc::MessageTemplateErased {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
+        let call_id = req.meta.call_id;
         let raw = req.shmptr as *mut MessageTemplate<HelloRequest>;
         let msg = unsafe { mrpc::alloc::Box::from_raw_in(raw, SharedHeapAllocator) };
         let req = unsafe { mrpc::alloc::Box::from_raw_in(msg.val.as_ptr(), SharedHeapAllocator) };
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {
-                let mut msg = MessageTemplate::new_reply(reply, conn_id);
+                let mut msg = MessageTemplate::new_reply(reply, conn_id, Self::FUNC_ID, call_id);
+                let meta = msg.meta;
                 msg.switch_address_space();
+                let local_ptr = mrpc::alloc::Box::into_raw(msg);
+                let remote_shmptr = local_ptr
+                    .cast::<u8>()
+                    .wrapping_offset(SharedHeapAllocator::query_shm_offset(local_ptr as _))
+                    as u64;
                 let erased = MessageTemplateErased {
-                    meta: msg.meta,
-                    shmptr: mrpc::alloc::Box::into_raw(msg) as u64,
+                    meta,
+                    shmptr: remote_shmptr,
                 };
                 erased
             }

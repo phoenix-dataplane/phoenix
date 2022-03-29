@@ -184,8 +184,25 @@ pub unsafe trait SwitchAddressSpace {
 }
 
 #[inline]
-fn query_shm_offset(addr: usize) -> isize {
-    crate::rpc_adapter::query_shm_offset(addr)
+pub(crate) fn query_shm_offset(addr: usize) -> isize {
+    // crate::mrpc::query_shm_offset(addr)
+    use crate::engine::runtime::ENGINE_TLS;
+    use super::state::Resource;
+    ENGINE_TLS.with(|tls| {
+        let buf = ShmBuf {
+            ptr: addr,
+            len: 0
+        };
+        log::debug!("query_shm_offset: {:#0x}", addr);
+        let app_addr = tls.borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<Resource>()
+            .unwrap()
+            .query_app_addr(buf)
+            .unwrap();
+        app_addr as isize - addr as isize
+    })
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {

@@ -87,15 +87,17 @@ impl Runtime {
                     // through to make sure they implement it correctly.
                     *tls.borrow_mut() = unsafe { engine.borrow().tls() };
                 });
-                match engine.borrow_mut().resume() {
+                // bind to a variable first (otherwise engine is borrowed in the match expression)
+                let status = engine.borrow_mut().resume();
+                match status {
                     Ok(EngineStatus::NoWork | EngineStatus::Continue) => {}
                     Ok(EngineStatus::Complete) => {
                         // drop engine
-                        info!("Engine completed, shutting down.");
+                        info!("Engine [{}] completed, shutting down...", engine.borrow().description());
                         shutdown.push(index);
                     }
                     Err(e) => {
-                        error!("Engine {} error: {}", engine.borrow().description(), e);
+                        error!("Engine [{}] error: {}", engine.borrow().description(), e);
                         shutdown.push(index);
                     }
                 }
@@ -104,8 +106,9 @@ impl Runtime {
             // garbage collect every several rounds, maybe move to another thread.
             for index in shutdown.drain(..).rev() {
                 let engine = self.running.borrow_mut().swap_remove(index);
-                // make it explicit
+                let desc = engine.borrow().description();
                 drop(engine);
+                info!("Engine [{}] shutdown successfully", desc);
             }
 
             // move newly added runtime to the scheduling queue
