@@ -1,5 +1,7 @@
+use std::collections::VecDeque;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use unique::Unique;
@@ -11,13 +13,12 @@ use interface::rpc::{MessageTemplateErased, RpcMsgType};
 use interface::{AsHandle, Handle};
 
 use super::module::ServiceType;
-use super::state::{State, WrContext};
+use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
-use crate::resource::Error as ResourceError;
 
 pub struct TlStorage {
     pub(crate) service: ServiceType,
@@ -29,6 +30,7 @@ pub struct RpcAdapterEngine {
     // shared completion queue model
     pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
+    pub(crate) local_buffer: VecDeque<Unique<dyn RpcMessage>>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
@@ -125,57 +127,86 @@ impl RpcAdapterEngine {
         // TODO(cjr): check credit
         use std::sync::mpsc::TryRecvError;
         use ulib::uverbs::SendFlags;
-        match self.tx_inputs()[0].try_recv() {
-            Ok(msg) => {
-                // get cmid from conn_id
-                let msg = unsafe { msg.as_ref() };
-                let cmid_handle = msg.conn_id();
-                let conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
-                let cmid = &conn_ctx.cmid;
-                // Sender marshals the data (gets an SgList)
-                let sglist = msg.marshal();
-                // Sender posts send requests from the SgList
-                log::debug!("check_input_queue, sglist: {:0x?}", sglist);
-                for (i, &sge) in sglist.0.iter().enumerate() {
-                    // query mr from each sge
-                    let mr = self.tls.state.resource().query_mr(sge)?;
-                    let off = sge.ptr - mr.as_ptr() as usize;
-                    if i + 1 < sglist.0.len() {
-                        // post send
-                        unsafe {
-                            cmid.post_send(&mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
-                        }
-                    } else {
-                        // post send with imm
-                        unsafe {
-                            cmid.post_send_with_imm(
-                                &mr,
-                                off..off + sge.len,
-                                0,
-                                SendFlags::SIGNALED,
-                                0,
-                            )?;
-                        }
+        while let Some(msg) = self.local_buffer.pop_front() {
+            // get cmid from conn_id
+            let msg_ref = unsafe { msg.as_ref() };
+            let cmid_handle = msg_ref.conn_id();
+            let conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+            if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
+                // some random number for now TODO(cjr): update this
+                self.local_buffer.push_front(msg);
+                break;
+            }
+            let cmid = &conn_ctx.cmid;
+            // Sender marshals the data (gets an SgList)
+            let sglist = msg_ref.marshal();
+            // Sender posts send requests from the SgList
+            log::debug!("check_input_queue, sglist: {:0x?}", sglist);
+            if msg_ref.is_request() {
+                conn_ctx.credit.fetch_sub(sglist.0.len(), Ordering::AcqRel);
+                conn_ctx.outstanding_req.lock().push_back(ReqContext {
+                    call_id: msg_ref.call_id(),
+                    sg_len: sglist.0.len(),
+                });
+            }
+            // TODO(cjr): credit handle logic for response
+            for (i, &sge) in sglist.0.iter().enumerate() {
+                // query mr from each sge
+                let mr = self.tls.state.resource().query_mr(sge)?;
+                let off = sge.ptr - mr.as_ptr() as usize;
+                if i + 1 < sglist.0.len() {
+                    // post send
+                    unsafe {
+                        cmid.post_send(&mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                    }
+                } else {
+                    // post send with imm
+                    unsafe {
+                        cmid.post_send_with_imm(
+                            &mr,
+                            off..off + sge.len,
+                            0,
+                            SendFlags::SIGNALED,
+                            0,
+                        )?;
                     }
                 }
-                // Sender posts an extra SendWithImm
-                Ok(Progress(1))
             }
-            Err(TryRecvError::Empty) => Ok(Progress(0)),
-            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
+            // Sender posts an extra SendWithImm
+            return Ok(Progress(1));
         }
+
+        match self.tx_inputs()[0].try_recv() {
+            Ok(msg) => {
+                self.local_buffer.push_back(msg);
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+        Ok(Progress(0))
     }
 
     fn unmarshal_and_deliver_up(
         &mut self,
         sgl: SgList,
-        conn_handle: Handle,
+        conn_ctx: Arc<ConnectionContext>,
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
         log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
         let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
         let meta = &mut unsafe { erased.as_mut() }.meta;
-        meta.conn_id = conn_handle;
+        meta.conn_id = conn_ctx.cmid.as_handle();
+
+        // replenish the credits
+        if meta.msg_type == RpcMsgType::Response {
+            let call_id = meta.call_id;
+            let mut outstanding_req = conn_ctx.outstanding_req.lock();
+            let req_ctx = outstanding_req.pop_front().unwrap();
+            assert_eq!(call_id, req_ctx.call_id);
+            conn_ctx.credit.fetch_add(req_ctx.sg_len, Ordering::AcqRel);
+            drop(outstanding_req);
+        }
+
         let dyn_msg = match meta.msg_type {
             RpcMsgType::Request => {
                 match meta.func_id {
@@ -241,7 +272,22 @@ impl RpcAdapterEngine {
                                 // received an entire RPC message
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
-                                self.unmarshal_and_deliver_up(sgl, conn_ctx.cmid.as_handle())?;
+                                self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
+                            }
+                            // XXX(cjr): only when the upper layer app finish using the data
+                            // we can repost the receives
+                            let cmid = &conn_ctx.cmid;
+                            let recv_mr = self
+                                .tls
+                                .state
+                                .resource()
+                                .recv_mr_table
+                                .get(&Handle(wc.wr_id as u32))?;
+                            unsafe {
+                                // TODO(cjr): check the correctness of this unsafe operation
+                                let recv_mr: &mut ulib::uverbs::MemoryRegion<u8> =
+                                    &mut *(recv_mr.as_ref() as *const _ as *mut _);
+                                cmid.post_recv(recv_mr, .., wc.wr_id)?;
                             }
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
@@ -394,10 +440,7 @@ impl RpcAdapterEngine {
                 //         .copied()
                 //         .collect::<Vec<usize>>()
                 // );
-                self.tls
-                    .state
-                    .resource()
-                    .insert_mr(mr)?;
+                self.tls.state.resource().insert_mr(mr)?;
                 Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
                     returned_mr,
                     memfd,

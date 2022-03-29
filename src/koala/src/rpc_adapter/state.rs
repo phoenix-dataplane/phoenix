@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
@@ -69,9 +69,17 @@ pub(crate) struct WrContext {
 }
 
 #[derive(Debug)]
+pub(crate) struct ReqContext {
+    pub(crate) call_id: u64,
+    pub(crate) sg_len: usize,
+}
+
+#[derive(Debug)]
 pub(crate) struct ConnectionContext {
     pub(crate) cmid: ulib::ucm::CmId,
-    pub(crate) credit: usize,
+    pub(crate) credit: AtomicUsize,
+    // call_id, sg_len
+    pub(crate) outstanding_req: spin::Mutex<VecDeque<ReqContext>>,
     pub(crate) receiving_sgl: spin::Mutex<SgList>,
 }
 
@@ -79,7 +87,8 @@ impl ConnectionContext {
     pub(crate) fn new(cmid: ulib::ucm::CmId, credit: usize) -> Self {
         Self {
             cmid,
-            credit,
+            credit: AtomicUsize::new(credit),
+            outstanding_req: spin::Mutex::new(VecDeque::new()),
             receiving_sgl: spin::Mutex::new(SgList(Vec::new())),
         }
     }

@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::os::unix::net::{SocketAddr, UCred};
 
@@ -71,6 +72,7 @@ impl RpcAdapterEngineBuilder {
             }),
             cq: None,
             recent_listener_handle: None,
+            local_buffer: VecDeque::new(),
             node: self.node,
             cmd_rx: self.cmd_rx,
             cmd_tx: self.cmd_tx,
