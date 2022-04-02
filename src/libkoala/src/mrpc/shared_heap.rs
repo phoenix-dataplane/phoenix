@@ -98,7 +98,7 @@ impl SharedHeap {
         match self.allocate_shm(LargeObjectPage::SIZE) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
-                // assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
+                assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
                 REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
                 large_object_page
@@ -114,6 +114,7 @@ impl SharedHeap {
         match self.allocate_shm(ObjectPage::SIZE) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
+                assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let object_page = unsafe { mem::transmute(addr) };
                 REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
                 object_page

@@ -11,11 +11,11 @@ impl Greeter for MyGreeter {
         &self,
         request: libkoala::mrpc::alloc::Box<HelloRequest>,
     ) -> Result<libkoala::mrpc::alloc::Box<HelloReply>, libkoala::mrpc::Status> {
-        eprintln!("resp: {:?}", request);
+        // eprintln!("resp: {:?}", request);
         let mut name = Vec::new_in(SharedHeapAllocator);
         name.extend(request.name);
         let reply = Box::new_in(HelloReply { name }, SharedHeapAllocator);
-        eprintln!("reply: {:?}", reply);
+        // eprintln!("reply: {:?}", reply);
         Ok(reply)
     }
 }

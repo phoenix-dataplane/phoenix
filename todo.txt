@@ -25,6 +25,11 @@ RPC init version
 - get sglist right after jumping into koala space
 - fix bug in runtime.is_spinning()
 - use MAP_FIXED_NOREPLACE
+- memory returned by allocate_shm is not page aligned
+- req/resp must be moved into RPC (better to allow pass a reference)
+- needs to spend a lot of time checking new incoming connections
+- send/recv is too naive
+- the lifetime of a reply on the server credit?
 
 Policy
 - Implement more engines for global policy
