@@ -31,6 +31,8 @@ RPC init version
 - send/recv is too naive
 - the lifetime of a reply on the server credit?
 
+- call rdma-transport directly from rpc_adapter/ulib
+
 Policy
 - Implement more engines for global policy
 

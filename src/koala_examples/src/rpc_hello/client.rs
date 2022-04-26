@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut reqs = vec![];
         for _ in 0..256 {
             let mut name = Vec::new_in(SharedHeapAllocator);
-            for _ in 0..250000 {
+            for _ in 0..1000000 {
                 name.push(42);
             }
             reqs.push(name);
