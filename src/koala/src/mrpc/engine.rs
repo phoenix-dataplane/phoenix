@@ -160,7 +160,7 @@ impl MrpcEngine {
                 self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
                 match self.cmd_rx.recv().unwrap().0 {
                     Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
-                        self.customer.send_fd(&[memfd])?;
+                        self.customer.send_fd(&[memfd]).unwrap();
                         Ok(CompletionKind::AllocShm(returned_mr))
                     }
                     other => panic!("unexpected: {:?}", other),
@@ -170,7 +170,7 @@ impl MrpcEngine {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().unwrap().0 {
                     Ok(CompletionKind::ConnectInternal(handle, recv_mrs, fds)) => {
-                        self.customer.send_fd(&fds)?;
+                        self.customer.send_fd(&fds).unwrap();
                         Ok(CompletionKind::Connect((handle, recv_mrs)))
                     }
                     other => panic!("unexpected: {:?}", other),
@@ -349,7 +349,7 @@ impl MrpcEngine {
                 match comp {
                     Ok(CompletionKind::NewConnectionInternal(handle, recv_mrs, fds)) => {
                         // TODO(cjr): check if this send_fd will block indefinitely.
-                        self.customer.send_fd(&fds)?;
+                        self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))

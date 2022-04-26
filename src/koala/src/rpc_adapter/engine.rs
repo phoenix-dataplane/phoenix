@@ -3,6 +3,7 @@ use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::{Instant, Duration};
 
 use unique::Unique;
 
@@ -38,6 +39,7 @@ pub struct RpcAdapterEngine {
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
+    pub(crate) last_cmd_ts: Instant,
     pub(crate) _mode: SchedulingMode,
 }
 
@@ -84,19 +86,46 @@ impl Engine for RpcAdapterEngine {
     }
 
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
+        const DP_LIMIT: usize = 1 << 17;
+        const CMD_MAX_INTERVAL_MS: u64 = 1000;
+        let mut work = 0;
+
         // check input queue
-        self.check_input_queue()?;
+        if let Progress(n) = self.check_input_queue()? {
+            work += n;
+        }
 
         // check service
-        self.check_transport_service()?;
+        if let Progress(n) = self.check_transport_service()? {
+            work += n;
+        }
+
+        // check input command queue
+        if let Progress(n) = self.check_input_cmd_queue()? {
+            work += n;
+        }
+
+        if work > 0 {
+            self.backoff = DP_LIMIT.min(self.backoff * 2);
+        }
+
+        self.dp_spin_cnt += 1;
+        if self.dp_spin_cnt < self.backoff {
+            return Ok(EngineStatus::Continue);
+        }
+
+        self.dp_spin_cnt = 0;
 
         // TODO(cjr): check incoming connect request
         // the CmIdListener::get_request() is currently synchronous.
         // need to make it asynchronous and low cost to check.
-        self.check_incoming_connection()?;
-
-        // check input command queue
-        self.check_input_cmd_queue()?;
+        if self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS) {
+            self.last_cmd_ts = Instant::now();
+            self.backoff = std::cmp::max(1, self.backoff / 2);
+            self.check_incoming_connection()?;
+        } else {
+            self.backoff = DP_LIMIT.min(self.backoff * 2);
+        }
 
         Ok(EngineStatus::Continue)
     }
@@ -380,6 +409,8 @@ impl RpcAdapterEngine {
                 handle: recv_mr.inner,
                 rkey: recv_mr.rkey(),
                 vaddr: recv_mr.as_ptr() as u64,
+                map_len: recv_mr.len() as u64,
+                file_off: recv_mr.file_off,
                 pd: recv_mr.pd().inner,
             });
             fds.push(recv_mr.memfd().as_raw_fd());
@@ -424,6 +455,8 @@ impl RpcAdapterEngine {
                     handle: mr.inner,
                     rkey: mr.rkey(),
                     vaddr: mr.as_ptr() as u64,
+                    map_len: mr.len() as u64,
+                    file_off: mr.file_off,
                     pd: mr.pd().inner,
                 };
                 // store the allocated MRs for later memory address translation

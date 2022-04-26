@@ -7,7 +7,7 @@ use libkoala::mrpc::shared_heap::SharedHeapAllocator;
 
 use smol;
 
-const SERVER_ADDR: &str = "192.168.211.162";
+const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut reqs = vec![];
         for _ in 0..256 {
             let mut name = Vec::new_in(SharedHeapAllocator);
-            for _ in 0..1000000 {
+            for _ in 0..250000 {
                 name.push(42);
             }
             reqs.push(name);

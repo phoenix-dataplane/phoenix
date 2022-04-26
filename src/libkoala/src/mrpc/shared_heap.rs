@@ -62,12 +62,19 @@ impl SharedHeap {
 
             let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
             let file_len = memfd.as_file().metadata()?.len() as usize;
-            assert_eq!(file_len, len);
+            assert!(file_len >= len);
 
             match ctx.service.recv_comp().unwrap().0 {
-                Ok(cmd::CompletionKind::AllocShm(mr)) => {
-                    Ok(MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd).unwrap())
-                }
+                Ok(cmd::CompletionKind::AllocShm(mr)) => Ok(MemoryRegion::new(
+                    mr.pd,
+                    mr.handle,
+                    mr.rkey,
+                    mr.vaddr,
+                    len,
+                    mr.file_off,
+                    memfd,
+                )
+                .unwrap()),
                 Err(e) => Err(MrpcError::Interface("AllocShm", e)),
                 otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
             }
@@ -98,7 +105,7 @@ impl SharedHeap {
         match self.allocate_shm(LargeObjectPage::SIZE) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
-                assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
+                assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
                 REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
                 large_object_page
@@ -189,18 +196,28 @@ unsafe impl Allocator for SharedHeapAllocator {
                                         shared_heap
                                             .zone_allocator
                                             .refill(layout, page)
-                                            .unwrap_or_else(|_| panic!("Cannot refill? layout: {:?}", layout));
+                                            .unwrap_or_else(|_| {
+                                                panic!("Cannot refill? layout: {:?}", layout)
+                                            });
                                     }
                                 } else {
                                     return Err(AllocError);
                                 }
                             } else {
                                 if let Some(large_page) = shared_heap.allocate_large_page() {
+                                    let addr = large_page as *mut _ as usize;
+                                    assert!(
+                                        addr % 2097152 == 0,
+                                        "addr: {:#0x?} is not huge page aligned",
+                                        addr
+                                    );
                                     unsafe {
                                         shared_heap
                                             .zone_allocator
                                             .refill_large(layout, large_page)
-                                            .unwrap_or_else(|_| panic!("Cannot refill? layout: {:?}", layout));
+                                            .unwrap_or_else(|_| {
+                                                panic!("Cannot refill? layout: {:?}", layout)
+                                            });
                                     }
                                 } else {
                                     return Err(AllocError);
@@ -219,7 +236,28 @@ unsafe impl Allocator for SharedHeapAllocator {
                     }
                 })
             }
-            _ => todo!("Handle object size larger than 2MB"),
+            _ => {
+                log::error!(
+                    "Requested: {} bytes. Please handle object size larger than {}",
+                    layout.size(), ZoneAllocator::MAX_ALLOC_SIZE
+                );
+                TL_SHARED_HEAP.with(|shared_heap| {
+                    let shared_heap = shared_heap.borrow_mut();
+                    let aligned_size = layout.align_to(4096).unwrap().pad_to_align().size();
+                    match shared_heap.allocate_shm(aligned_size) {
+                        Ok(mr) => {
+                            let addr = mr.as_ptr() as usize;
+                            let nptr = NonNull::new(mr.as_mut_ptr()).unwrap();
+                            REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                            Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
+                        }
+                        Err(e) => {
+                            eprintln!("allocate_shm: {}", e);
+                            Err(AllocError)
+                        }
+                    }
+                })
+            }
         }
     }
 

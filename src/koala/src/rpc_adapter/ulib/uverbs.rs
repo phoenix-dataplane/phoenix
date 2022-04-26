@@ -11,18 +11,21 @@ use std::sync::Arc;
 
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
+use memmap_fixed::MmapFixed;
 
 use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use super::{get_cq_buffers, get_service, rx_recv_impl, Error, FromBorrow};
 use super::super::module::ServiceType;
+use super::{get_cq_buffers, get_service, rx_recv_impl, Error, FromBorrow};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
-pub(crate) fn get_default_verbs_contexts(service: &ServiceType) -> Result<Vec<VerbsContext>, Error> {
+pub(crate) fn get_default_verbs_contexts(
+    service: &ServiceType,
+) -> Result<Vec<VerbsContext>, Error> {
     let req = Command::GetDefaultContexts;
     service.send_cmd(req)?;
     rx_recv_impl!(service, CompletionKind::GetDefaultContexts, ctx_list, {
@@ -118,13 +121,22 @@ impl ProtectionDomain {
 
         let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
         let file_len = memfd.as_file().metadata()?.len() as usize;
-        assert_eq!(file_len, nbytes);
+        assert!(file_len >= nbytes);
 
         rx_recv_impl!(service, CompletionKind::RegMr, mr, {
             // use the kaddr by default, this is fine only whey the shared memory is mapped to the
             // same address space
+            assert_eq!(nbytes, mr.map_len as usize);
             let kaddr = mr.vaddr;
-            MemoryRegion::new(self.inner, mr.handle, mr.rkey, kaddr, memfd)
+            MemoryRegion::new(
+                self.inner,
+                mr.handle,
+                mr.rkey,
+                kaddr,
+                nbytes,
+                mr.file_off,
+                memfd,
+            )
         })
     }
 }
@@ -212,11 +224,13 @@ pub struct SharedReceiveQueue {
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
-    mmap: MmapRaw,
+    // mmap: MmapRaw,
+    mmap: MmapFixed,
     rkey: RemoteKey,
     pub(crate) app_vaddr: AtomicU64,
     memfd: Memfd,
     pd: ProtectionDomain,
+    pub(crate) file_off: u64,
     _marker: PhantomData<T>,
 }
 
@@ -267,9 +281,15 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         inner: interface::MemoryRegion,
         rkey: RemoteKey,
         app_vaddr: u64,
+        nbytes: usize,
+        file_off: u64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
-        let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
+        // let mmap = MmapOptions::new()
+        //     .offset(file_off)
+        //     .len(nbytes)
+        //     .map_raw(memfd.as_file())?;
+        let mmap = MmapFixed::new(app_vaddr as usize, nbytes, file_off as i64, memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,
@@ -277,6 +297,7 @@ impl<T: Sized + Copy> MemoryRegion<T> {
             app_vaddr: AtomicU64::new(app_vaddr),
             pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
             memfd,
+            file_off,
             _marker: PhantomData,
         })
     }

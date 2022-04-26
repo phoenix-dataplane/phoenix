@@ -78,6 +78,7 @@ impl RpcAdapterEngineBuilder {
             cmd_tx: self.cmd_tx,
             dp_spin_cnt: 0,
             backoff: 1,
+            last_cmd_ts: std::time::Instant::now(),
             _mode: self.mode,
         })
     }

@@ -21,6 +21,7 @@ bincode = "1.3.3"
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
 rdma = { path = "../rdma", features = ["koala"] }
+memmap-fixed = { path = "../memmap-fixed" }
 fnv = "1.0.7"
 mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 lazy_static = "1.4.0"

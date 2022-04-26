@@ -12,6 +12,7 @@ uuid = "0.8.2"
 ipc-channel = "0.15.0"
 ipc = { path = "../ipc" }
 interface = { path = "../interface" }
+memmap-fixed = { path = "../memmap-fixed" }
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
 log = "0.4.14"

@@ -818,6 +818,7 @@ dependencies = [
  "libc",
  "log",
  "memfd",
+ "memmap-fixed",
  "memmap2 0.5.0",
  "memoffset",
  "mio 0.7.14",
@@ -888,6 +889,7 @@ dependencies = [
  "libc",
  "log",
  "memfd",
+ "memmap-fixed",
  "memmap2 0.5.0",
  "nix",
  "serde",
@@ -951,6 +953,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6627dc657574b49d6ad27105ed671822be56e0d2547d413bfbf3e8d8fa92e7a"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "memmap-fixed"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "nix",
 ]
 
 [[package]]
@@ -1376,6 +1386,7 @@ dependencies = [
  "log",
  "memfd",
  "memmap2 0.5.0",
+ "nix",
  "serde",
  "socket2",
  "static_assertions",

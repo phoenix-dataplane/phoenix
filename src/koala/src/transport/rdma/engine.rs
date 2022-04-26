@@ -210,7 +210,12 @@ impl<'ctx> TransportEngine<'ctx> {
                         // nothing to do, waiting for some network/device response
                         return Ok(Progress(0));
                     }
-                    Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
+                    Err(e) => {
+                        // better to log the error here, in case sometimes the customer does
+                        // not receive the error
+                        log::error!("process_cmd error: {}", e);
+                        self.customer.send_comp(cmd::Completion(Err(e.into())))?
+                    }
                 }
                 Ok(Progress(1))
             }
@@ -943,17 +948,23 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
                 let pd = self.state.resource().pd_table.get(&pd.0)?;
                 let mr = rdma::mr::MemoryRegion::new(&pd, *nbytes, *access)
-                    .map_err(Error::MemoryRegion)?;
+                    .map_err(Error::MemoryRegion).unwrap();
+                // TODO(cjr): If there is an error here, the customer will be confused.
+                // Because the customer blocks at recv_fd.
+                // The customer will never know there is an error actually happens
                 let vaddr = mr.as_ptr() as u64;
                 let fd = mr.memfd().as_raw_fd();
-                self.customer.send_fd(&[fd][..]).map_err(Error::SendFd)?;
+                self.customer.send_fd(&[fd][..]).map_err(Error::SendFd).unwrap();
                 let rkey = mr.rkey();
                 let new_mr_handle = mr.as_handle();
+                let file_off = mr.file_off() as u64;
                 self.state.resource().mr_table.insert(new_mr_handle, mr)?;
                 Ok(CompletionKind::RegMr(returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
                     rkey,
                     vaddr,
+                    map_len: *nbytes as u64,
+                    file_off,
                     pd: interface::ProtectionDomain(pd.as_handle()),
                 }))
             }

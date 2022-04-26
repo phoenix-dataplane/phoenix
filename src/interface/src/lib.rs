@@ -99,6 +99,8 @@ pub mod returned {
         pub handle: super::MemoryRegion,
         pub rkey: super::RemoteKey,
         pub vaddr: u64,
+        pub map_len: u64,
+        pub file_off: u64,
         pub pd: super::ProtectionDomain,
     }
 }

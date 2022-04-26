@@ -162,7 +162,16 @@ impl ClientStub {
                         let memfd = Memfd::try_from_fd(fd)
                             .map_err(|_| io::Error::last_os_error())
                             .unwrap();
-                        let m = MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd).unwrap();
+                        let m = MemoryRegion::new(
+                            mr.pd,
+                            mr.handle,
+                            mr.rkey,
+                            mr.vaddr,
+                            mr.map_len as usize,
+                            mr.file_off,
+                            memfd,
+                        )
+                        .unwrap();
                         vaddrs.push((mr.handle.0, m.as_ptr() as u64));
                         m
                     })
@@ -245,8 +254,16 @@ impl Server {
                                 .map_err(|_| io::Error::last_os_error())
                                 .unwrap();
                             let h = mr.handle.0;
-                            let m = MemoryRegion::new(mr.pd, mr.handle, mr.rkey, mr.vaddr, memfd)
-                                .unwrap();
+                            let m = MemoryRegion::new(
+                                mr.pd,
+                                mr.handle,
+                                mr.rkey,
+                                mr.vaddr,
+                                mr.map_len as usize,
+                                mr.file_off,
+                                memfd,
+                            )
+                            .unwrap();
                             vaddrs.push((h, m.as_ptr() as u64));
                             self.mrs.insert(h, m);
                         }
