@@ -79,8 +79,7 @@ pub enum CompletionKind {
 
     // reference counting
     OpenPd,
-    // return the CQ's capacity
-    OpenCq(usize),
+    OpenCq(u32),
     OpenQp,
 
     // ibverbs

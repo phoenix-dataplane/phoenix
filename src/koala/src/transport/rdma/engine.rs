@@ -24,7 +24,7 @@ pub struct TransportEngine<'ctx> {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
 
-    pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
+    pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
 
     pub(crate) dp_spin_cnt: usize,
     pub(crate) backoff: usize,
@@ -79,7 +79,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
         const DP_LIMIT: usize = 1 << 17;
         const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Progress(n) = self.check_dp()? {
+        if let Progress(n) = self.check_dp(false)? {
             if n > 0 {
                 self.backoff = DP_LIMIT.min(self.backoff * 2);
             }
@@ -92,6 +92,7 @@ impl<'ctx> Engine for TransportEngine<'ctx> {
 
         self.dp_spin_cnt = 0;
 
+        // COMMENT(cjr): these two conditions should be connected with ||
         if self.customer.has_control_command()
             || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
         {
@@ -135,7 +136,7 @@ impl<'ctx> TransportEngine<'ctx> {
         let existing_work = self.customer.get_avail_wr_count()?;
 
         while processed < existing_work {
-            if let Progress(n) = self.check_dp()? {
+            if let Progress(n) = self.check_dp(true)? {
                 processed += n;
             }
         }
@@ -143,12 +144,16 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(Progress(processed))
     }
 
-    fn check_dp(&mut self) -> Result<Status, DatapathError> {
+    fn check_dp(&mut self, flushing: bool) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
         const BUF_LEN: usize = 32;
 
         // Fetch available work requests. Copy them into a buffer.
-        let max_count = BUF_LEN.min(self.customer.get_avail_wc_slots()?);
+        let max_count = if !flushing {
+            BUF_LEN.min(self.customer.get_avail_wc_slots()?)
+        } else {
+            BUF_LEN
+        };
         if max_count == 0 {
             return Ok(Progress(0));
         }
@@ -171,7 +176,7 @@ impl<'ctx> TransportEngine<'ctx> {
 
         // Process the work requests.
         for wr in &buffer {
-            let result = self.process_dp(wr);
+            let result = self.process_dp(wr, flushing);
             match result {
                 Ok(()) => {}
                 Err(e) => {
@@ -180,13 +185,13 @@ impl<'ctx> TransportEngine<'ctx> {
                     // koala engine and the user in some circumstance.
                     //
                     // The work queue and completion queue are both bounded. The bound is set by
-                    // koala system rather than the specified by the user. Imagine that the user is
+                    // koala system rather than specified by the user. Imagine that the user is
                     // trying to post_send without polling for completion timely. The completion
-                    // queue is full and koala will spin here without make any other progress (e.g.
+                    // queue is full and koala will spin here without making any progress (e.g.
                     // drain the work queue).
                     //
                     // Therefore, we put the error into a local buffer. Whenever we want to put
-                    // things in the shared memory completion queue, we put from the local buffer
+                    // stuff in the shared memory completion queue, we put from the local buffer
                     // first. This way seems perfect. It can guarantee progress. The backpressure
                     // is also not broken.
                     let _sent = self.process_dp_error(wr, e).unwrap();
@@ -393,6 +398,40 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(sent)
     }
 
+    fn poll_cq_to_backup_buffer(
+        &mut self,
+        cq_handle: &interface::CompletionQueue,
+        cq: &ibv::CompletionQueue,
+    ) -> Result<(), DatapathError> {
+        let mut wc: [rdma::ffi::ibv_wc; 1] = Default::default();
+        loop {
+            match cq.poll(&mut wc) {
+                Ok(completions) if !completions.is_empty() => {
+                    for w in completions {
+                        self.cq_err_buffer.push_back(dp::Completion {
+                            cq_handle: *cq_handle,
+                            _padding: Default::default(),
+                            wc: unsafe { mem::transmute_copy(w) },
+                        });
+                    }
+                }
+                Ok(_) => {
+                    self.cq_err_buffer.push_back(dp::Completion {
+                        cq_handle: *cq_handle,
+                        _padding: Default::default(),
+                        wc: interface::WorkCompletion::again(),
+                    });
+                    break;
+                }
+                Err(rdma::ibv::PollCqError) => {
+                    return Err(DatapathError::Ibv(io::Error::last_os_error()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+
     fn try_flush_cq_err_buffer(&mut self) -> Result<(), DatapathError> {
         if self.cq_err_buffer.is_empty() {
             return Ok(());
@@ -416,7 +455,7 @@ impl<'ctx> TransportEngine<'ctx> {
     }
 
     /// Process data path operations.
-    fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
+    fn process_dp(&mut self, req: &dp::WorkRequest, flushing: bool) -> Result<(), DatapathError> {
         use dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
@@ -533,12 +572,22 @@ impl<'ctx> TransportEngine<'ctx> {
                 //
                 // This send must be successful because the libkoala uses an outstanding flag to
                 // reduce the busy polling from the user appliation. If the shared memory cq is
-                // full of completion from another cq, and the shared memory wq only has one
-                // poll_cq, and the poll_cq is not really executed because the shmcq is full. Then
+                // full of completions from cq A, and the shared memory wq only has one poll_cq,
+                // and the poll_cq is not really executed because the shmcq is full. Then
                 // the outstanding flag will never be flipped and that user cq is thus dead.
+                //
+                // This while loop will not go forever only when we have a guard that checks the
+                // write count of dp_cq is non-zero at the entry of check_dp()
                 let mut err = false;
                 let mut sent = false;
                 while !sent {
+                    if flushing {
+                        let write_count = self.customer.get_avail_wc_slots()?;
+                        if write_count == 0 {
+                            // unlikely
+                            self.poll_cq_to_backup_buffer(cq_handle, &cq)?;
+                        }
+                    }
                     self.customer.enqueue_wc_with(|ptr, count| unsafe {
                         sent = true;
                         let mut cnt = 0;
@@ -1010,7 +1059,8 @@ impl<'ctx> TransportEngine<'ctx> {
             Command::OpenCq(cq) => {
                 trace!("OpenCq, cq: {:?}", cq);
                 self.state.resource().cq_table.open_resource(&cq.0)?;
-                Ok(CompletionKind::OpenCq)
+                let cq = self.state.resource().cq_table.get(&cq.0)?;
+                Ok(CompletionKind::OpenCq(cq.capacity()))
             }
             Command::OpenQp(qp) => {
                 trace!("OpenQp, qp: {:?}", qp);

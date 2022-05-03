@@ -1,6 +1,5 @@
 use std::any::Any;
 use std::borrow::Borrow;
-use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
@@ -13,6 +12,7 @@ use lazy_static::lazy_static;
 use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 use memmap_fixed::MmapFixed;
+use utils::bounded_vec::BoundedVecDeque;
 
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
@@ -114,19 +114,24 @@ impl ProtectionDomain {
 #[derive(Debug)]
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
-    pub(crate) outstanding: AtomicBool,
     pub(crate) buffer: CqBuffer,
 }
 
 #[derive(Debug)]
 pub(crate) struct CqBuffer {
-    pub(crate) queue: Arc<spin::Mutex<VecDeque<WorkCompletion>>>,
+    pub(crate) shared: Arc<CqBufferShared>,
+}
+
+#[derive(Debug)]
+pub(crate) struct CqBufferShared {
+    pub(crate) queue: spin::Mutex<BoundedVecDeque<WorkCompletion>>,
+    pub(crate) outstanding: AtomicBool,
 }
 
 impl Clone for CqBuffer {
     fn clone(&self) -> Self {
         CqBuffer {
-            queue: Arc::clone(&self.queue),
+            shared: Arc::clone(&self.shared),
         }
     }
 }
@@ -134,13 +139,16 @@ impl Clone for CqBuffer {
 impl CqBuffer {
     fn new() -> Self {
         CqBuffer {
-            queue: Arc::new(spin::Mutex::new(VecDeque::new())),
+            shared: Arc::new(CqBufferShared {
+                queue: spin::Mutex::new(BoundedVecDeque::new()),
+                outstanding: AtomicBool::new(false),
+            }),
         }
     }
 
     #[inline]
     fn refcnt(&self) -> usize {
-        Arc::strong_count(&self.queue)
+        Arc::strong_count(&self.shared)
     }
 }
 
@@ -178,12 +186,9 @@ impl CompletionQueue {
             let inner = returned_cq.handle;
             let req = Command::OpenCq(inner);
             ctx.service.send_cmd(req)?;
-            rx_recv_impl!(ctx.service, CompletionKind::OpenCq, {
-                Ok(CompletionQueue {
-                    inner,
-                    outstanding: AtomicBool::new(false),
-                    buffer,
-                })
+            rx_recv_impl!(ctx.service, CompletionKind::OpenCq, cap, {
+                buffer.shared.queue.lock().set_bound(cap as usize);
+                Ok(CompletionQueue { inner, buffer })
             })
         })
     }

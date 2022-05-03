@@ -1,5 +1,14 @@
 [workspace]
-members = ["src/experimental", "src/koala", "src/ipc", "src/rdma", "src/utils", "src/libkoala", "src/koala_examples", "src/memmap-fixed"]
+members = [
+  "src/experimental",
+  "src/koala",
+  "src/ipc",
+  "src/rdma",
+  "src/utils",
+  "src/libkoala",
+  "src/koala_examples",
+  "src/memmap-fixed",
+]
 
 [profile.release]
 debug=true

@@ -207,7 +207,7 @@ impl CompletionQueue {
         let inner = returned_cq.handle;
         let req = Command::OpenCq(inner);
         service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::OpenCq, {
+        rx_recv_impl!(service, CompletionKind::OpenCq, _cap, {
             Ok(CompletionQueue {
                 inner,
                 outstanding: AtomicBool::new(false),

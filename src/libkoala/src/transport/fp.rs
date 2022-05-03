@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use ipc::buf;
 use ipc::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
 
-use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
+use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
 
 use crate::transport::cm;
 use crate::transport::cm::{CmId, PreparedCmId};
@@ -40,6 +40,9 @@ impl cm::Inner {
                     sent = true;
                     1
                 })?;
+                if !sent {
+                    ctx.progress()?;
+                }
             }
             Ok(())
         })
@@ -117,6 +120,9 @@ impl CmId {
                     sent = true;
                     1
                 })?;
+                if !sent {
+                    ctx.progress()?;
+                }
             }
             Ok(())
         })
@@ -158,6 +164,9 @@ impl CmId {
                     sent = true;
                     1
                 })?;
+                if !sent {
+                    ctx.progress()?;
+                }
             }
             Ok(())
         })
@@ -199,6 +208,9 @@ impl CmId {
                     sent = true;
                     1
                 })?;
+                if !sent {
+                    ctx.progress()?;
+                }
             }
             Ok(())
         })
@@ -231,12 +243,43 @@ impl CmId {
     }
 }
 
+impl Context {
+    #[inline]
+    fn progress(&self) -> Result<(), Error> {
+        // Poll the shared memory queue, and put into the local buffer. This is called progress
+        // because if the dp_cq is full, it may cause the program to hang unnecessarily.
+        self.service.dequeue_wc_with(|ptr, count| unsafe {
+            // iterate and dispatch
+            let cq_buffers = CQ_BUFFERS.lock();
+            for i in 0..count {
+                let c = ptr.add(i).cast::<Completion>().read();
+                if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
+                    buffer.shared.outstanding.store(false, Ordering::Release);
+                    // this is just a notification that outstanding flag should be flapped
+                    if c.wc.status != interface::WcStatus::AGAIN {
+                        buffer
+                            .shared
+                            .queue
+                            .lock()
+                            .push_back_checked(c.wc)
+                            .expect("Something is wrong, local cq_buffer exceeds its limit");
+                    }
+                } else {
+                    eprintln!("no corresponding entry for {:?}", c);
+                }
+            }
+            count
+        })?;
+        Ok(())
+    }
+}
+
 impl CompletionQueue {
     #[inline]
     pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         // poll local buffer first
         unsafe { wc.set_len(0) };
-        let mut local_buffer = self.buffer.queue.lock();
+        let mut local_buffer = self.buffer.shared.queue.lock();
         if !local_buffer.is_empty() {
             let count = wc.capacity().min(local_buffer.len());
             for c in local_buffer.drain(..count) {
@@ -248,36 +291,23 @@ impl CompletionQueue {
 
         // if local buffer is empty,
         KL_CTX.with(|ctx| {
-            if !self.outstanding.load(Ordering::Acquire) {
+            if !self.buffer.shared.outstanding.load(Ordering::Acquire) {
                 // 1. Send a poll_cq command to the koala server. This poll_cq command does not have
                 // to be sent successfully. Because the user would keep retrying until they get what
                 // they expect.
                 let req = WorkRequest::PollCq(self.inner);
                 ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
                     ptr.write(mem::transmute::<WorkRequest, WorkRequestSlot>(req));
-                    self.outstanding.store(true, Ordering::Release);
+                    self.buffer
+                        .shared
+                        .outstanding
+                        .store(true, Ordering::Release);
                     1
                 })?;
             }
             // 2. Poll the shared memory queue, and put into the local buffer. Then return
             // immediately.
-            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-                // iterate and dispatch
-                let cq_buffers = CQ_BUFFERS.lock();
-                for i in 0..count {
-                    let c = ptr.add(i).cast::<Completion>().read();
-                    if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
-                        self.outstanding.store(false, Ordering::Release);
-                        // this is just a notification that outstanding flag should be flapped
-                        if c.wc.status != interface::WcStatus::AGAIN {
-                            buffer.queue.lock().push_back(c.wc);
-                        }
-                    } else {
-                        eprintln!("no corresponding entry for {:?}", c);
-                    }
-                }
-                count
-            })?;
+            ctx.progress()?;
             Ok(())
         })
     }

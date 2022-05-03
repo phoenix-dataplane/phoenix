@@ -91,6 +91,7 @@ impl MemoryRegion {
 
         if mr.is_null() {
             panic!("{:?}", Error::Io(io::Error::last_os_error()));
+            // TODO(cjr): remove this panic after testing is finished
             Err(Error::Io(io::Error::last_os_error()))
         } else {
             Ok(Self { mr, mmap, memfd, file_off })
