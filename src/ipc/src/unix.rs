@@ -7,8 +7,11 @@ use std::os::unix::io::RawFd;
 use std::os::unix::net::{AncillaryData, SocketAddr, SocketAncillary, SocketCred, UnixDatagram};
 use std::os::unix::ucred::UCred;
 use std::path::Path;
+use std::time;
 
 use thiserror::Error;
+
+const ANCILLARY_BUFFER_SIZE: usize = 8192;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -108,7 +111,7 @@ impl DomainSocket {
         Ok(())
     }
 
-    pub fn set_peer_cred(&mut self, cred: UCred) {
+    fn set_peer_cred(&mut self, cred: UCred) {
         self.peer_cred = Some(cred);
     }
 
@@ -195,7 +198,7 @@ impl DomainSocket {
     pub fn recv_fd(&self) -> Result<(Vec<RawFd>, Option<UCred>), Error> {
         let bufs = &mut [][..];
         let mut fds = Vec::new();
-        let mut ancillary_buffer = [0; 256];
+        let mut ancillary_buffer = [0; ANCILLARY_BUFFER_SIZE];
         let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
         let (_size, truncated) = self.recv_vectored_with_ancillary(bufs, &mut ancillary)?;
         // TODO(cjr): sanity check the sender, and see if it is the correct koala transport engine
@@ -226,5 +229,17 @@ impl DomainSocket {
         }
 
         Ok((fds, cred))
+    }
+
+    pub fn try_recv_fd(&self) -> Result<Option<(Vec<RawFd>, Option<UCred>)>, Error> {
+        self.set_read_timeout(Some(time::Duration::from_micros(1)))?;
+        let ret = match self.recv_fd() {
+            Ok(ret) => Ok(Some(ret)),
+            Err(Error::Io(ref e)) if e.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(e) => Err(e),
+        };
+        // here we may get two errors...
+        self.set_read_timeout(None).unwrap();
+        ret
     }
 }

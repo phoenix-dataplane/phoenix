@@ -783,6 +783,57 @@ impl<'res> CmId<'res> {
     /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
     /// until `CompletionQueue::poll` returns a completion for this send).
     #[inline]
+    pub unsafe fn post_send_with_imm<'a>(
+        &self,
+        wr_id: u64,
+        buf: &[u8],
+        mr: &MemoryRegion<'a>,
+        flags: ffi::ibv_send_flags,
+        imm: u32,
+    ) -> io::Result<()> {
+        let qp = (&*self.0).qp;
+        let addr = buf.as_ptr();
+        let length = buf.len();
+
+        let mr = mr.0;
+        assert!(!mr.is_null());
+        assert!(
+            (&*mr).addr as *const _ <= addr
+                && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
+        );
+        let mut sge = ffi::ibv_sge {
+            addr: addr as u64,
+            length: length as u32,
+            lkey: (&*mr).lkey,
+        };
+        let mut wr = ffi::ibv_send_wr {
+            wr_id,
+            next: ptr::null_mut(),
+            sg_list: &mut sge as *mut _,
+            num_sge: 1,
+            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND_WITH_IMM,
+            send_flags: flags.0,
+            __bindgen_anon_1: ffi::ibv_send_wr__bindgen_ty_1 { imm_data: imm },
+            wr: Default::default(),
+            qp_type: Default::default(),
+            __bindgen_anon_2: Default::default(),
+        };
+        let mut bad_wr = ptr::null_mut();
+        let ctx = (&*self.0).verbs;
+        let ops = &mut (&mut *ctx).ops;
+        let rc = ops.post_send.as_mut().unwrap()(qp, &mut wr, &mut bad_wr);
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `CompletionQueue::poll` returns a completion for this send).
+    #[inline]
     pub unsafe fn post_recv<'a>(
         &self,
         wr_id: u64,

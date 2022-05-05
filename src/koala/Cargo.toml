@@ -18,12 +18,19 @@ nix = "0.23.0"
 libc = "0.2.103"
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
-engine = { path = "../engine" }
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
 rdma = { path = "../rdma", features = ["koala"] }
+memmap-fixed = { path = "../memmap-fixed" }
 fnv = "1.0.7"
 mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 lazy_static = "1.4.0"
 memoffset = "0.6.5"
 spin = "0.9.2"
+structopt = "0.3.26"
+toml = { version = "0.5.8", features = ["preserve_order"] }
+version = "3.0.0"
+scheduler = "0.1.3"
+unique = "0.9.1"
+memfd = "0.4.1"
+memmap2 = "0.5.0"

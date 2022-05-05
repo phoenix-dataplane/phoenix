@@ -3,7 +3,7 @@
 set -euo pipefail
 
 main() {
-    cmake -DCMAKE_BUILD_TYPE=Release -Bbuild
+    cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -Bbuild
     cmake --build build
 }
 

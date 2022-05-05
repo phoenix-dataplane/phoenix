@@ -1,12 +1,15 @@
 use std::num::NonZeroU32;
+use std::os::unix::io::RawFd;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod addrinfo;
+pub mod engine;
+pub mod rpc;
 
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum Error {
     #[error("{0}")]
     Generic(String),
@@ -25,7 +28,20 @@ pub trait AsHandle {
     fn as_handle(&self) -> Handle;
 }
 
+impl AsHandle for RawFd {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        if *self >= 0 {
+            Handle(*self as _)
+        } else {
+            Handle::INVALID
+        }
+    }
+}
+
 // These data struct can be `Copy` because they are only for IPC use.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct VerbsContext(pub Handle);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
@@ -47,6 +63,11 @@ pub struct QueuePair(pub Handle);
 
 pub mod returned {
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct VerbsContext {
+        pub handle: super::VerbsContext,
+    }
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct ProtectionDomain {
@@ -77,6 +98,10 @@ pub mod returned {
     pub struct MemoryRegion {
         pub handle: super::MemoryRegion,
         pub rkey: super::RemoteKey,
+        pub vaddr: u64,
+        pub map_len: u64,
+        pub file_off: u64,
+        pub pd: super::ProtectionDomain,
     }
 }
 
@@ -246,7 +271,7 @@ impl WorkCompletion {
     }
 }
 
-// TODO(cjr): add static assert to make sure WorkCompletion is compatible with ibv_wc
+// TODO(cjr): add more static asserts to make sure WorkCompletion is compatible with ibv_wc
 mod sa {
     use super::*;
     use static_assertions::const_assert_eq;

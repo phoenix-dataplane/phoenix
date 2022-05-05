@@ -447,7 +447,7 @@ impl<'ctx> CompletionQueue<'ctx> {
 
     /// Returns the capacity of the CQ. The CQ can hold have at least this number of elements.
     #[inline]
-    pub fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> u32 {
         unsafe { &*self.cq }.cqe as _
     }
 }

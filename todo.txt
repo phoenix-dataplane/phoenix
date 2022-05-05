@@ -6,6 +6,33 @@ RPC
 - Prost codegen
 - Heap allocator
 
+RPC init version
+- rpc client side async/.await
+- check incoming connect requests and make Listener::get_request()
+  non-blocking
+- switch_addr_space to delivery the msg to application
+- fill in requset metadata correctly
+- releasing reply
+- resize cq on connection setup/destroy
+- credit control on post send
+- koala configuration, engine paths are not read from koala.toml
+- make modules in control.rs optional, based on their occurrences in
+  koala.toml
+- error handling at various places (user glue code, marshal/unmarshal)
+- Rewrite the marshal/unmarshal and SgList
+- ShmBox, ShmPtr, Coa
+- MutableResourceTable (global lock and slot lock) (State)
+- get sglist right after jumping into koala space
+- fix bug in runtime.is_spinning()
+- use MAP_FIXED_NOREPLACE
+- memory returned by allocate_shm is not page aligned
+- req/resp must be moved into RPC (better to allow pass a reference)
+- needs to spend a lot of time checking new incoming connections
+- send/recv is too naive
+- the lifetime of a reply on the server credit?
+
+- call rdma-transport directly from rpc_adapter/ulib
+
 Policy
 - Implement more engines for global policy
 
@@ -51,6 +78,7 @@ Testing
 - Multiple threads operate on their own QPs, and poll the CQs associated
   with those QPs
 - Run those tests simultaneously with multiple processes
+- Build a CI pipeline
 
 Application
 - allreduce
@@ -72,6 +100,8 @@ Engine Framework
 - *Change Engine trait to a huge Generator*
 
 Resource Releasing
+- Think over it carefully, rollback the creating resource operation when
+  there is exception in the middle.
 -[x] implement resource release
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 
@@ -96,3 +126,5 @@ libkoala interface
     -[x] CmIdListener::bind()
     -[x] CmIdListener::incoming()
     -[x] CmIdListener::accept()
+
+Multi-NIC

@@ -1,32 +1,37 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 
 #[macro_use]
 extern crate log;
 use anyhow::Result;
-use crossbeam::thread;
+use structopt::StructOpt;
 
-use koala::module::Module;
-use koala::transport::module::TransportModule;
+use koala::config::Config;
+use koala::control::Control;
+use koala::engine::manager::RuntimeManager;
 
-use engine::manager::RuntimeManager;
+#[derive(Debug, Clone, StructOpt)]
+#[structopt(name = "Koala Service")]
+struct Opts {
+    /// Koala config path
+    #[structopt(short, long, default_value = "koala.toml")]
+    config: PathBuf,
+}
 
 fn main() -> Result<()> {
-    init_env_log("KOALA_LOG", "debug");
+    // load config
+    let opts = Opts::from_args();
+    let config = Config::from_path(opts.config)?;
+
+    // by default, KOALA_LOG="debug"
+    init_env_log(&config.log_env, &config.default_log_level);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
 
-    // start transport module
-    thread::scope(|s| {
-        let handle = s.spawn(|_| {
-            TransportModule::new(runtime_manager).bootstrap().unwrap();
-        });
-
-        handle.join().unwrap();
-    })
-    .unwrap();
-
-    Ok(())
+    // the Control now takes over
+    let mut control = Control::new(runtime_manager, config);
+    control.mainloop()
 }
 
 fn init_env_log(filter_env: &str, default_level: &str) {
