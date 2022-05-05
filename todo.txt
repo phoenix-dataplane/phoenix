@@ -31,7 +31,23 @@ RPC init version
 - send/recv is too naive
 - the lifetime of a reply on the server credit?
 
+- slabmalloc use 1GB huge page
+- find a more efficient way to allocate aligned `shared memory`, maybe
+  using map_fixed
 - call rdma-transport directly from rpc_adapter/ulib
+- dyn RpcMessage may some more fields, e.g., to access the content of
+  message
+- prost codegen marshal/unmarshal
+- prost codegen service interface
+- replace Unique with ShmPtr
+- upgrade to 1.60, 2021
+- add an .cargo config, rr alias
+- maybe the xatu customer/service framework and queues need to be
+  adjusted, separating data/control queues are no more useful
+- setup CI and benchmark
+- bench_queues add an option,
+  --affinity=[none,hyperthread,numa,crossnuma/inter_numa/inter_cpu]
+  --affinity=[casual,l1,l3,mem]
 
 Policy
 - Implement more engines for global policy
@@ -41,6 +57,9 @@ Transport Trait
 - Let every data path operation return a future, and implement a runtime
   for that
 - Implement a socket datapath
+
+Runtime
+- SchedulingMode::Bundled
 
 Misc
 - get configuration from a file to run multiple backends for developing
