@@ -32,6 +32,7 @@ Misc
 -[x] upgrade to 1.60, 2021
 -[x] add an .cargo config, rr alias
 - Also implement handle for CmId, use the pointer as the identifier.
+  Now the problem is that pointers are 64-bit. Handle now is only a u32.
 - support ibv functions, especially ibv_post_send for batched posting
 - update all `trace!`s in TransportEngine::process_cmd
 - bench_queues add an option,
@@ -39,8 +40,10 @@ Misc
   --affinity=[casual,l1,l3,mem]
 
 Shared memory heap
+- check if a read only shm file descriptor can be open with write
+  permission and really written
 - *call rdma-transport directly from rpc_adapter/ulib*
-- rdma mr.rs handle layout (size + alignment) rather than just size
+-[x] rdma mr.rs handle layout (size + alignment) rather than just size
 -[x] find a more efficient way to allocate aligned `shared memory`, maybe
   using map_fixed
 - shared heap dealloc

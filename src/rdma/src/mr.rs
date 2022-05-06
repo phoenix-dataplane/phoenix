@@ -5,7 +5,6 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use memfd::{Memfd, MemfdOptions};
-use memmap2::{MmapMut, MmapOptions};
 use memmap_fixed::MmapFixed;
 use thiserror::Error;
 
@@ -77,12 +76,10 @@ impl MemoryRegion {
         let memfd = opts.create(name)?;
         memfd.as_file().set_len(nbytes as u64)?;
 
-        // let mut mmap = unsafe { MmapOptions::new().map_mut(memfd.as_file()) }?;
-        // assert!(mmap.as_ptr() as usize % page_size() == 0);
-        // let (mmap, file_off) = MmapAligned::map_aligned(memfd.as_file())?;
         let align = nbytes
             .checked_next_power_of_two()
-            .expect("next_power_of_two: {len}");
+            .expect("next_power_of_two: {len}")
+            .max(page_size());
         let layout = Layout::from_size_align(nbytes, align).unwrap();
         let target_addr = ADDRESS_MEDIATOR.allocate(layout);
         let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
@@ -98,8 +95,6 @@ impl MemoryRegion {
         };
 
         if mr.is_null() {
-            panic!("{:?}", Error::Io(io::Error::last_os_error()));
-            // TODO(cjr): remove this panic after testing is finished
             Err(Error::Io(io::Error::last_os_error()))
         } else {
             Ok(Self {
@@ -154,6 +149,15 @@ where
 
 use lazy_static::lazy_static;
 use std::alloc::Layout;
+/// The backend and user applications are forced to mmap the shared memory to the same location.
+/// This single-address-space approach avoids the problem of invalid pointers on shared memory.
+///
+/// `AddressMediator` is used to find an unused address in both address space. In this prototype,
+/// since 48bit virtual address space is embrassingly large, we just take the address starting from
+/// 0x600000000000 and bump it on each allocation.
+///
+/// Similar to memory allocation, it takes an `Layout` as input and returns an address that follows
+/// the alignment requirement.
 struct AddressMediator {
     current: spin::Mutex<usize>,
 }
@@ -177,4 +181,20 @@ impl AddressMediator {
 
 lazy_static! {
     static ref ADDRESS_MEDIATOR: AddressMediator = AddressMediator::new();
+}
+
+fn page_size() -> usize {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
+
+    match PAGE_SIZE.load(Ordering::Relaxed) {
+        0 => {
+            let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
+
+            PAGE_SIZE.store(page_size, Ordering::Relaxed);
+
+            page_size
+        }
+        page_size => page_size,
+    }
 }
