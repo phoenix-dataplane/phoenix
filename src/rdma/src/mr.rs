@@ -94,7 +94,12 @@ impl MemoryRegion {
             // TODO(cjr): remove this panic after testing is finished
             Err(Error::Io(io::Error::last_os_error()))
         } else {
-            Ok(Self { mr, mmap, memfd, file_off })
+            Ok(Self {
+                mr,
+                mmap,
+                memfd,
+                file_off,
+            })
         }
     }
 
@@ -161,7 +166,13 @@ impl MmapAligned {
     fn map_aligned(memfile: &fs::File) -> io::Result<(Self, usize)> {
         let len = memfile.metadata()?.len() as usize;
         assert_ne!(len, 0);
-        let align = if len < 2097152 { 4096 } else { 2097152 };
+        // let align = if len <= 1 << 18 { 4096 } else { 2097152 };
+        let align = match len {
+            0..=4096 => 4096,
+            0..=268435456 => 2097152,
+            0..=1073741824 => 1024 * 1024 * 1024,
+            _ => panic!("impossible: len: {}", len),
+        };
         assert!(len % align == 0, "len {} vs align {}", len, align);
 
         let mapped_len = align + len;
@@ -204,10 +215,13 @@ impl MmapAligned {
         );
 
         assert!(aligned_ptr as usize % align == 0);
-        Ok((Self {
-            ptr: aligned_ptr,
-            len,
-        }, head_len))
+        Ok((
+            Self {
+                ptr: aligned_ptr,
+                len,
+            },
+            head_len,
+        ))
     }
 
     #[inline]
@@ -273,10 +287,6 @@ impl fmt::Debug for MmapAligned {
             .field("len", &self.len())
             .finish()
     }
-}
-
-const fn huge_page_size() -> usize {
-    2097152
 }
 
 fn page_size() -> usize {

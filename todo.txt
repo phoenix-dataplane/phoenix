@@ -31,7 +31,8 @@ RPC init version
 - send/recv is too naive
 - the lifetime of a reply on the server credit?
 
-- slabmalloc use 1GB huge page
+-[x] slabmalloc use 1GB huge page
+- rdma mr.rs handle layout (size + alignment) rather than just size
 - find a more efficient way to allocate aligned `shared memory`, maybe
   using map_fixed
 - call rdma-transport directly from rpc_adapter/ulib

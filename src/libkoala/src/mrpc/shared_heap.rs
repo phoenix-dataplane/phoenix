@@ -8,7 +8,7 @@ use std::ptr::NonNull;
 // use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
 use memfd::Memfd;
-use slabmalloc::{AllocablePage, LargeObjectPage, ObjectPage, ZoneAllocator};
+use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
 use ipc::mrpc::cmd;
 
@@ -80,28 +80,28 @@ impl SharedHeap {
             }
         })
     }
+    #[inline]
+    fn allocate_huge_page(&mut self) -> Option<&'static mut HugeObjectPage<'static>> {
+        match self.allocate_shm(HugeObjectPage::SIZE) {
+            Ok(mr) => {
+                let addr = mr.as_ptr() as usize;
+                assert!(addr & (HugeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
+                let huge_object_page = unsafe { mem::transmute(addr) };
+                REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                huge_object_page
+            }
+            Err(e) => {
+                eprintln!("allocate_huge_page: {}", e);
+                None
+            }
+        }
+    }
 
     // slabmalloc must be supplied by fixed-size memory, aka `slabmalloc::AllocablePage`.
     #[inline]
     fn allocate_large_page(&mut self) -> Option<&'static mut LargeObjectPage<'static>> {
         // use mem::transmute to coerce an address to LargeObjectPage, make sure the size is
         // correct
-        // match self.pd.allocate::<u8>(
-        //     LargeObjectPage::SIZE,
-        //     AccessFlags::LOCAL_WRITE | AccessFlags::REMOTE_READ | AccessFlags::REMOTE_WRITE,
-        // ) {
-        //     Ok(mr) => {
-        //         let addr = mr.as_ptr() as usize;
-        //         assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {}", addr);
-        //         let large_object_page = unsafe { mem::transmute(addr) };
-        //         self.mrs.insert(addr, mr).ok_or(()).unwrap_err();
-        //         large_object_page
-        //     }
-        //     Err(e) => {
-        //         eprintln!("allocate_large_page: {}", e);
-        //         None
-        //     }
-        // }
         match self.allocate_shm(LargeObjectPage::SIZE) {
             Ok(mr) => {
                 let addr = mr.as_ptr() as usize;
@@ -116,6 +116,7 @@ impl SharedHeap {
             }
         }
     }
+
     #[inline]
     fn allocate_page(&mut self) -> Option<&'static mut ObjectPage<'static>> {
         match self.allocate_shm(ObjectPage::SIZE) {
@@ -203,7 +204,7 @@ unsafe impl Allocator for SharedHeapAllocator {
                                 } else {
                                     return Err(AllocError);
                                 }
-                            } else {
+                            } else if layout.size() <= ZoneAllocator::MAX_LARGE_ALLOC_SIZE {
                                 if let Some(large_page) = shared_heap.allocate_large_page() {
                                     let addr = large_page as *mut _ as usize;
                                     assert!(
@@ -215,6 +216,25 @@ unsafe impl Allocator for SharedHeapAllocator {
                                         shared_heap
                                             .zone_allocator
                                             .refill_large(layout, large_page)
+                                            .unwrap_or_else(|_| {
+                                                panic!("Cannot refill? layout: {:?}", layout)
+                                            });
+                                    }
+                                } else {
+                                    return Err(AllocError);
+                                }
+                            } else {
+                                if let Some(huge_page) = shared_heap.allocate_huge_page() {
+                                    let addr = huge_page as *mut _ as usize;
+                                    assert!(
+                                        addr % (1024*1024*1024) == 0,
+                                        "addr: {:#0x?} is not huge page aligned",
+                                        addr
+                                    );
+                                    unsafe {
+                                        shared_heap
+                                            .zone_allocator
+                                            .refill_huge(layout, huge_page)
                                             .unwrap_or_else(|_| {
                                                 panic!("Cannot refill? layout: {:?}", layout)
                                             });
@@ -277,7 +297,7 @@ unsafe impl Allocator for SharedHeapAllocator {
                 // An proper reclamation strategy could be implemented here
                 // to release empty pages back from the ZoneAllocator to the SharedHeap
             }
-            _ => todo!("Handle object size larger than 2MB"),
+            _ => todo!("Handle object size larger than 1GB"),
         }
     }
 }
