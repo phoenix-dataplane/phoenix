@@ -15,10 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     smol::block_on(async {
         let mut reqs = vec![];
         for _ in 0..256 {
-            let mut name = Vec::new_in(SharedHeapAllocator);
-            for _ in 0..1000000 {
-                name.push(42);
-            }
+            let mut name = Vec::with_capacity_in(1000000, SharedHeapAllocator);
+            name.resize(1000000, 42);
             reqs.push(name);
         }
         let start = Instant::now();
