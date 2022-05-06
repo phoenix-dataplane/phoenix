@@ -1,0 +1,5 @@
+[alias]     # command aliases
+rr = "run --release"
+
+[env]
+RUST_BACKTRACE = "1"

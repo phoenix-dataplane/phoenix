@@ -34,7 +34,7 @@ impl ucm::Inner {
         // This WR must be successfully sent.
         let mut sent = false;
         while !sent {
-            service.enqueue_wr_with(|ptr, count| unsafe {
+            service.enqueue_wr_with(|ptr, count| {
                 debug_assert!(count >= 1);
                 ptr.cast::<WorkRequest>().write(req);
                 sent = true;
@@ -110,7 +110,7 @@ impl CmId {
         let service = get_service();
         let mut sent = false;
         while !sent {
-            service.enqueue_wr_with(|ptr, count| unsafe {
+            service.enqueue_wr_with(|ptr, count| {
                 debug_assert!(count >= 1);
                 ptr.cast::<WorkRequest>().write(req);
                 sent = true;
@@ -148,7 +148,7 @@ impl CmId {
         let service = get_service();
         let mut sent = false;
         while !sent {
-            service.enqueue_wr_with(|ptr, count| unsafe {
+            service.enqueue_wr_with(|ptr, count| {
                 debug_assert!(count >= 1);
                 ptr.cast::<WorkRequest>().write(req);
                 sent = true;
@@ -188,7 +188,7 @@ impl CmId {
         let service = get_service();
         let mut sent = false;
         while !sent {
-            service.enqueue_wr_with(|ptr, count| unsafe {
+            service.enqueue_wr_with(|ptr, count| {
                 debug_assert!(count >= 1);
                 ptr.cast::<WorkRequest>().write(req);
                 sent = true;
@@ -228,7 +228,7 @@ impl CmId {
         let service = get_service();
         let mut sent = false;
         while !sent {
-            service.enqueue_wr_with(|ptr, count| unsafe {
+            service.enqueue_wr_with(|ptr, count| {
                 debug_assert!(count >= 1);
                 ptr.cast::<WorkRequest>().write(req);
                 sent = true;
