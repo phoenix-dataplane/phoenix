@@ -7,10 +7,12 @@ function info {
 
 info "miscellaneous code:"
 find src/experimental -type f -name "*.rs" | xargs wc -l
+info "3rdparty slabmalloc:"
+find src/slabmalloc -type f -name "*.rs" | xargs wc -l
 info "rdma bindings:"
 find src/rdma -type f -name "*.rs" | grep -v bindings | xargs wc -l
 info "koala examples:"
 find src/koala_examples -type f -name "*.rs" | xargs wc -l
 
 info "koala total:"
-find src/ -type f -name "*.rs" | grep -v "experimental" | grep -v bindings.rs | grep -v koala_examples | xargs wc -l
+find src/ -type f -name "*.rs" | grep -v "experimental" | grep -v slabmalloc | grep -v bindings.rs | grep -v koala_examples | xargs wc -l
