@@ -15,6 +15,7 @@ pub mod ipc;
 mod aligned_alloc;
 mod regmr;
 mod shmalloc;
+mod mmap_aligned;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

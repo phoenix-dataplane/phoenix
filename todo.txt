@@ -41,7 +41,7 @@ Misc
 Shared memory heap
 - *call rdma-transport directly from rpc_adapter/ulib*
 - rdma mr.rs handle layout (size + alignment) rather than just size
-- find a more efficient way to allocate aligned `shared memory`, maybe
+-[x] find a more efficient way to allocate aligned `shared memory`, maybe
   using map_fixed
 - shared heap dealloc
 - use MAP_FIXED_NOREPLACE

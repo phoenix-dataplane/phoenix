@@ -65,6 +65,9 @@
 // avoid warnings about RDMAmojo, iWARP, InfiniBand, etc. not being in backticks
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::doc_markdown))]
 
+// allow int_roundings for koala
+#![cfg_attr(feature = "koala", feature(int_roundings))]
+
 /// Direct access to low-level libverbs FFI.
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::missing_safety_doc))]
 #[allow(non_upper_case_globals)]

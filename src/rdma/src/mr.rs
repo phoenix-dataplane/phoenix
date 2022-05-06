@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 
 use memfd::{Memfd, MemfdOptions};
 use memmap2::{MmapMut, MmapOptions};
+use memmap_fixed::MmapFixed;
 use thiserror::Error;
 
 use crate::{ffi, ibv, rdmacm};
@@ -24,7 +25,7 @@ pub enum Error {
 pub struct MemoryRegion {
     mr: *mut ffi::ibv_mr,
     // mmap: MmapMut,
-    mmap: MmapAligned,
+    mmap: MmapFixed,
     memfd: Memfd,
     file_off: usize,
 }
@@ -78,7 +79,14 @@ impl MemoryRegion {
 
         // let mut mmap = unsafe { MmapOptions::new().map_mut(memfd.as_file()) }?;
         // assert!(mmap.as_ptr() as usize % page_size() == 0);
-        let (mmap, file_off) = MmapAligned::map_aligned(memfd.as_file())?;
+        // let (mmap, file_off) = MmapAligned::map_aligned(memfd.as_file())?;
+        let align = nbytes
+            .checked_next_power_of_two()
+            .expect("next_power_of_two: {len}");
+        let layout = Layout::from_size_align(nbytes, align).unwrap();
+        let target_addr = ADDRESS_MEDIATOR.allocate(layout);
+        let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
+        let file_off = 0;
 
         let mr = unsafe {
             ffi::ibv_reg_mr(
@@ -144,147 +152,29 @@ where
     }
 }
 
-use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
-use std::fs;
-use std::os::unix::io::AsRawFd;
-use std::ptr;
-use std::slice;
-pub struct MmapAligned {
-    ptr: *mut libc::c_void,
-    len: usize,
+use lazy_static::lazy_static;
+use std::alloc::Layout;
+struct AddressMediator {
+    current: spin::Mutex<usize>,
 }
 
-impl Drop for MmapAligned {
-    fn drop(&mut self) {
-        unsafe {
-            munmap(self.ptr, self.len).unwrap_or_else(|e| eprintln!("failed to munmap: {}", e))
-        };
-    }
-}
+impl AddressMediator {
+    const STARTING_ADDRESS: usize = 0x600000000000;
 
-impl MmapAligned {
-    fn map_aligned(memfile: &fs::File) -> io::Result<(Self, usize)> {
-        let len = memfile.metadata()?.len() as usize;
-        assert_ne!(len, 0);
-        // let align = if len <= 1 << 18 { 4096 } else { 2097152 };
-        let align = match len {
-            0..=4096 => 4096,
-            0..=268435456 => 2097152,
-            0..=1073741824 => 1024 * 1024 * 1024,
-            _ => panic!("impossible: len: {}", len),
-        };
-        assert!(len % align == 0, "len {} vs align {}", len, align);
-
-        let mapped_len = align + len;
-        memfile.set_len(mapped_len as u64)?;
-        let ptr = unsafe {
-            mmap(
-                ptr::null_mut(),
-                mapped_len,
-                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE,
-                memfile.as_raw_fd(),
-                0,
-            )?
-        };
-        let addr = ptr as usize;
-        // cut off the extra head
-        let head_len = align - addr % align;
-        unsafe { munmap(ptr, head_len).unwrap_or_else(|e| eprintln!("failed to munmap: {}", e)) };
-        // cut off the extra tail if any
-        let tail_len = align - head_len;
-        if tail_len > 0 {
-            let tail_addr = addr + mapped_len - tail_len;
-            assert!(tail_addr % align == 0, "tail_addr: {:#0x?}", tail_addr);
-            unsafe {
-                munmap(tail_addr as *mut libc::c_void, tail_len)
-                    .unwrap_or_else(|e| eprintln!("failed to munmap: {}", e))
-            };
+    fn new() -> Self {
+        Self {
+            current: spin::Mutex::new(Self::STARTING_ADDRESS),
         }
-
-        let aligned_ptr = ptr.cast::<u8>().wrapping_add(head_len).cast();
-        log::debug!(
-            "ptr: {:0x?}, align: {}, len: {}, mapped_len: {}, head_len: {}, tail_len: {}, aligned_ptr: {:0x?}",
-            ptr,
-            align,
-            len,
-            mapped_len,
-            head_len,
-            tail_len,
-            aligned_ptr,
-        );
-
-        assert!(aligned_ptr as usize % align == 0);
-        Ok((
-            Self {
-                ptr: aligned_ptr,
-                len,
-            },
-            head_len,
-        ))
     }
 
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns a raw pointer to the memory mapped file.
-    ///
-    /// Before dereferencing this pointer, you have to make sure that the file has not been
-    /// truncated since the memory map was created.
-    /// Avoiding this will not introduce memory safety issues in Rust terms,
-    /// but will cause SIGBUS (or equivalent) signal.
-    #[inline]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.ptr as *const u8
-    }
-
-    /// Returns an unsafe mutable pointer to the memory mapped file.
-    ///
-    /// Before dereferencing this pointer, you have to make sure that the file has not been
-    /// truncated since the memory map was created.
-    /// Avoiding this will not introduce memory safety issues in Rust terms,
-    /// but will cause SIGBUS (or equivalent) signal.
-    #[inline]
-    pub fn as_mut_ptr(&self) -> *mut u8 {
-        self.ptr as *mut u8
+    fn allocate(&self, layout: Layout) -> usize {
+        let mut current = self.current.lock();
+        let next = current.next_multiple_of(layout.align());
+        *current = next + layout.size();
+        next
     }
 }
 
-// Why this is safe?
-unsafe impl Sync for MmapAligned {}
-unsafe impl Send for MmapAligned {}
-
-impl Deref for MmapAligned {
-    type Target = [u8];
-
-    #[inline]
-    fn deref(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.as_ptr(), self.len()) }
-    }
-}
-
-impl AsRef<[u8]> for MmapAligned {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        self.deref()
-    }
-}
-
-impl DerefMut for MmapAligned {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
-    }
-}
-
-use std::fmt;
-impl fmt::Debug for MmapAligned {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("MmapAligned")
-            .field("ptr", &self.as_ptr())
-            .field("len", &self.len())
-            .finish()
-    }
+lazy_static! {
+    static ref ADDRESS_MEDIATOR: AddressMediator = AddressMediator::new();
 }
