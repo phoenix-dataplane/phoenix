@@ -38,28 +38,3 @@ egress = [
 ingress = [
   ["rpc-adapter", "mrpc.0"],
 ]
-
-# [[egress]]
-# from = "mrpc.0"
-# to = "overload"
-
-# instances = [
-#     {
-#         "id": 1,
-#         "type":"mrpc",
-#         "tx_output": [2],
-#         "rx_input": [3]
-#     },
-#     {
-#         "id": 2,
-#         "type":"overload",
-#         "tx_input": [1],
-#         "tx_output": [3]
-#     },
-#     {
-#         "id": 3,
-#         "type":"adapter",
-#         "tx_input": [2],
-#         "rx_output": [1]
-#     }
-# ]

@@ -533,7 +533,7 @@ dependencies = [
  "ringbuf",
  "serde",
  "shmem-ipc",
- "slabmalloc",
+ "slabmalloc 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin",
  "structopt",
  "thiserror",
@@ -848,7 +848,6 @@ dependencies = [
  "libc",
  "libkoala",
  "scheduler",
- "slabmalloc",
  "smol",
  "structopt",
  "thiserror",
@@ -893,7 +892,7 @@ dependencies = [
  "memmap2 0.5.0",
  "nix",
  "serde",
- "slabmalloc",
+ "slabmalloc 0.10.0",
  "spin",
  "thiserror",
  "unique",
@@ -1383,13 +1382,16 @@ dependencies = [
  "dns-lookup",
  "interface",
  "ipc",
+ "lazy_static",
  "libc",
  "log",
  "memfd",
+ "memmap-fixed",
  "memmap2 0.5.0",
  "nix",
  "serde",
  "socket2",
+ "spin",
  "static_assertions",
  "thiserror",
 ]
@@ -1551,6 +1553,16 @@ name = "slab"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c307a32c1c5c437f38c7fd45d753050587732ba8628319fbdf12a7e289ccc590"
+
+[[package]]
+name = "slabmalloc"
+version = "0.10.0"
+dependencies = [
+ "env_logger 0.9.0",
+ "log",
+ "rand 0.8.4",
+ "spin",
+]
 
 [[package]]
 name = "slabmalloc"

@@ -34,7 +34,7 @@ impl cm::Inner {
             // This WR must be successfully sent.
             let mut sent = false;
             while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                ctx.service.enqueue_wr_with(|ptr, count| {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
@@ -114,7 +114,7 @@ impl CmId {
         KL_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                ctx.service.enqueue_wr_with(|ptr, count| {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
@@ -158,7 +158,7 @@ impl CmId {
         KL_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                ctx.service.enqueue_wr_with(|ptr, count| {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
@@ -202,7 +202,7 @@ impl CmId {
         KL_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
-                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                ctx.service.enqueue_wr_with(|ptr, count| {
                     debug_assert!(count >= 1);
                     ptr.cast::<WorkRequest>().write(req);
                     sent = true;
