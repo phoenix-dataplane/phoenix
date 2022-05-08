@@ -12,8 +12,8 @@ pub mod mrpc;
 pub use transport::{cm, verbs, Error};
 
 
-// TODO(cjr): make this configurable, see koala.toml
-const KOALA_PATH: &str = "/tmp/koala/koala-control.sock";
+const DEFAULT_KOALA_PATH: &str = "/tmp/koala";
+const DEFAULT_KOALA_CONTROL: &str = "koala-control.sock";
 
 #[doc(hidden)]
 #[macro_export]

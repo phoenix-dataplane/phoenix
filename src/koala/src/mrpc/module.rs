@@ -17,6 +17,7 @@ use ipc::unix::DomainSocket;
 
 use super::state::State;
 use super::engine::MrpcEngine;
+use crate::config::MrpcConfig;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
@@ -76,12 +77,13 @@ impl MrpcEngineBuilder {
 }
 
 pub struct MrpcModule {
+    config: MrpcConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
 
 impl MrpcModule {
-    pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
-        MrpcModule { runtime_manager }
+    pub fn new(config: MrpcConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+        MrpcModule { config, runtime_manager }
     }
 
     pub fn handle_request(
@@ -111,8 +113,8 @@ impl MrpcModule {
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
-        // TODO(cjr): make this configurable
-        let engine_path = PathBuf::from(format!("/tmp/koala/koala-mrpc-engine-{}.sock", uuid));
+        let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
+        let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
         let customer =

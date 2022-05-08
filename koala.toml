@@ -8,6 +8,15 @@ modules = ["Mrpc", "RpcAdapter", "Overload"]
 prefix = "/tmp/koala"
 path = "koala-control.sock"
 
+[mrpc]
+prefix = "/tmp/koala"
+engine_basename = "koala-mrpc-engine"
+
+[transport-tcp]
+prefix = "/tmp/koala"
+engine_basename = "koala-transport-engine-tcp"
+
+
 [transport-rdma]
 prefix = "/tmp/koala"
 engine_basename = "koala-transport-engine-rdma"
