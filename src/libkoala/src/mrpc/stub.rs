@@ -35,12 +35,11 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Request,
         };
-        Box::new_in(
+        Box::new(
             Self {
                 meta,
                 val: Unique::new(Box::into_raw(val)).unwrap(),
-            },
-            SharedHeapAllocator,
+            }
         )
     }
 
@@ -52,12 +51,11 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Response,
         };
-        Box::new_in(
+        Box::new(
             Self {
                 meta,
                 val: Unique::new(Box::into_raw(val)).unwrap(),
             },
-            SharedHeapAllocator,
         )
     }
 }
