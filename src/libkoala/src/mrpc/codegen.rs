@@ -217,8 +217,8 @@ impl<T: Greeter> Service for GreeterServer<T> {
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
         let raw = req.shmptr as *mut MessageTemplate<HelloRequest>;
-        let msg = unsafe { mrpc::alloc::Box::from_raw_in(raw, SharedHeapAllocator) };
-        let req = unsafe { mrpc::alloc::Box::from_raw_in(msg.val.as_ptr(), SharedHeapAllocator) };
+        let msg = unsafe { mrpc::alloc::Box::from_raw(raw) };
+        let req = unsafe { mrpc::alloc::Box::from_raw(msg.val.as_ptr()) };
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {
