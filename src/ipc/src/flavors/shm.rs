@@ -289,18 +289,33 @@ where
     }
 
     pub fn register<P: AsRef<Path>>(
-        service_path: P,
+        koala_prefix: P,
+        control_path: P,
         engine_type: EngineType,
     ) -> Result<Self, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
-        let sock_path = format!("/tmp/koala/koala-client-{}_{}.sock", appname, uuid);
+        // let koala_path = config.control.prefix.join(&config.control.path);
+        // if koala_path.exists() {
+        //     fs::remove_file(&koala_path).expect("remove_file");
+        // }
+
+        let mut sock_path = PathBuf::new();
+        sock_path.push(&koala_prefix);
+        sock_path.push(format!("koala-client-{}_{}.sock", appname, uuid));
+        if sock_path.exists() {
+            fs::remove_file(&sock_path).expect("remove_file");
+        }
         let mut sock = DomainSocket::bind(sock_path)?;
 
         let req = control::Request::NewClient(SchedulingMode::Dedicate, engine_type);
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
+
+        let mut service_path = PathBuf::new();
+        service_path.push(&koala_prefix);
+        service_path.push(&control_path);
         sock.send_to(&buf, &service_path)?;
 
         // receive NewClient response

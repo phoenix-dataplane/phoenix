@@ -16,6 +16,7 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::tcp::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
+use crate::config::TcpTransportConfig;
 use crate::engine::manager::RuntimeManager;
 use super::engine::TransportEngine;
 use crate::node::Node;
@@ -62,12 +63,13 @@ impl TransportEngineBuilder {
 }
 
 pub struct TransportModule {
+    config: TcpTransportConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
 
 impl TransportModule {
-    pub fn new(runtime_manager: Arc<RuntimeManager>) -> Self {
-        TransportModule { runtime_manager }
+    pub fn new(config: TcpTransportConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+        TransportModule { config, runtime_manager }
     }
 
     pub fn handle_request(
@@ -94,8 +96,8 @@ impl TransportModule {
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
-        // TODO(cjr): make this configurable
-        let engine_path = PathBuf::from(format!("/tmp/koala/koala-transport-engine-{}.sock", uuid));
+        let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
+        let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
         let customer = Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);

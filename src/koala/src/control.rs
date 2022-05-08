@@ -51,6 +51,11 @@ impl Control {
         // TODO(cjr): make all modules optional
         assert!(config.transport_rdma.is_some());
         let rdma_transport_config = config.transport_rdma.clone().unwrap();
+        assert!(config.transport_tcp.is_some());
+        let tcp_transport_config = config.transport_tcp.clone().unwrap();    
+        assert!(config.mrpc.is_some());
+        let mrpc_config = config.mrpc.clone().unwrap();   
+
         Control {
             sock,
             config,
@@ -59,8 +64,8 @@ impl Control {
                 rdma_transport_config,
                 Arc::clone(&runtime_manager),
             ),
-            tcp_transport: tcp::module::TransportModule::new(Arc::clone(&runtime_manager)),
-            mrpc: mrpc::module::MrpcModule::new(Arc::clone(&runtime_manager)),
+            tcp_transport: tcp::module::TransportModule::new(tcp_transport_config, Arc::clone(&runtime_manager)),
+            mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
         }
     }
 
