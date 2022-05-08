@@ -65,20 +65,7 @@ pub struct ShmPtrInner<T: ?Sized> {
     _marker: PhantomPinned,
 }
 
-use std::ops::{Deref, DerefMut};
-impl<T: ?Sized> Deref for ShmPtrInner<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        // This is safe only when ptr is managed by Allocator.
-        unsafe { self.ptr.as_ref() }
-    }
-}
 
-impl<T: ?Sized> DerefMut for ShmPtrInner<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.ptr.as_mut() }
-    }
-}
 
 unsafe impl<T: Send + ?Sized> Send for ShmPtr<T> {}
 
