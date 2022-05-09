@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nix::unistd::Pid;
 
+use crate::engine::EngineLocalStorage;
 use crate::resource::Error as ResourceError;
 use crate::state_mgr::{StateManager, StateTrait};
 
@@ -64,6 +65,11 @@ impl State {
 pub(crate) struct Resource {
     // map from local addr to app addr
     pub(crate) addr_map: spin::Mutex<BTreeMap<usize, ShmBuf>>,
+}
+
+unsafe impl EngineLocalStorage for Resource {
+    #[inline]
+    fn as_any(&self) -> &dyn std::any::Any { self }
 }
 
 impl Resource {

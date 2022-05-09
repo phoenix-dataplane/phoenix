@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -20,12 +18,13 @@ use ipc::unix::DomainSocket;
 use super::engine::TransportEngine;
 use super::state::State;
 use crate::engine::manager::RuntimeManager;
+use crate::engine::container::EngineContainer;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
 use crate::config::RdmaTransportConfig;
 
 lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State<'static>>> = Arc::new(StateManager::new());
+    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
 }
 
 pub type CustomerType =
@@ -46,7 +45,7 @@ impl TransportEngineBuilder {
         }
     }
 
-    fn build(self) -> Result<TransportEngine<'static>> {
+    fn build(self) -> Result<TransportEngine> {
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let node = Node::new(EngineType::RdmaTransport);
@@ -55,12 +54,10 @@ impl TransportEngineBuilder {
             customer: self.customer,
             node,
             cq_err_buffer: VecDeque::new(),
-            dp_spin_cnt: 0,
-            backoff: 1,
             _mode: self.mode,
             state,
             cmd_buffer: None,
-            last_cmd_ts: Instant::now(),
+            indicator: None,
         })
     }
 }
@@ -95,7 +92,7 @@ impl TransportModule {
         customer: CustomerType,
         mode: SchedulingMode,
         client_pid: Pid,
-    ) -> Result<TransportEngine<'static>> {
+    ) -> Result<TransportEngine> {
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
 
@@ -128,7 +125,7 @@ impl TransportModule {
         let engine = builder.build()?;
 
         // submit the engine to a runtime
-        self.runtime_manager.submit(Box::new(engine), mode);
+        self.runtime_manager.submit(EngineContainer::new(engine), mode);
 
         Ok(())
     }

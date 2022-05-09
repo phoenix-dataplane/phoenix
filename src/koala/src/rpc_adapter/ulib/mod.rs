@@ -66,11 +66,12 @@ use super::module::ServiceType;
 #[inline]
 fn get_service() -> &'static ServiceType {
     use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_TLS;
-    ENGINE_TLS.with(|tls| {
-        &tls.borrow()
+    use crate::engine::runtime::ENGINE_LS;
+    ENGINE_LS.with(|els| {
+        &els.borrow()
             .as_ref()
             .unwrap()
+            .as_any()
             .downcast_ref::<TlStorage>()
             .unwrap()
             .service
@@ -80,11 +81,12 @@ fn get_service() -> &'static ServiceType {
 #[inline]
 fn get_cq_buffers() -> &'static super::state::CqBuffers {
     use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_TLS;
-    ENGINE_TLS.with(|tls| {
-        &tls.borrow()
+    use crate::engine::runtime::ENGINE_LS;
+    ENGINE_LS.with(|els| {
+        &els.borrow()
             .as_ref()
             .unwrap()
+            .as_any()
             .downcast_ref::<TlStorage>()
             .unwrap()
             .state

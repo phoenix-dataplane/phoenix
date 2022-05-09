@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::slice;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
@@ -17,27 +17,24 @@ use rdma::rdmacm::CmId;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
-use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use crate::engine::{future, Engine, EngineResult, Indicator, Upgradable, Version, Vertex};
 use crate::node::Node;
 
-pub struct TransportEngine<'ctx> {
+pub struct TransportEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
-
-    pub(crate) dp_spin_cnt: usize,
-    pub(crate) backoff: usize,
     pub(crate) _mode: SchedulingMode,
+    pub(crate) state: State,
 
-    pub(crate) state: State<'ctx>,
     // bufferred control path request
     pub(crate) cmd_buffer: Option<cmd::Command>,
-    // otherwise, the
-    pub(crate) last_cmd_ts: Instant,
+
+    pub(crate) indicator: Option<Indicator>,
 }
 
-impl<'ctx> Upgradable for TransportEngine<'ctx> {
+impl Upgradable for TransportEngine {
     fn version(&self) -> Version {
         unimplemented!();
     }
@@ -59,7 +56,7 @@ impl<'ctx> Upgradable for TransportEngine<'ctx> {
     }
 }
 
-impl<'ctx> Vertex for TransportEngine<'ctx> {
+impl Vertex for TransportEngine {
     crate::impl_vertex_for_engine!(node);
 }
 
@@ -71,46 +68,50 @@ enum Status {
 
 use Status::Progress;
 
-impl<'ctx> Engine for TransportEngine<'ctx> {
+impl Engine for TransportEngine {
+    type Future = impl Future<Output = EngineResult> + 'static;
+
     fn description(&self) -> String {
-        format!("RDMA TransportEngine, user pid: {:?}", self.state.shared.pid)
+        format!(
+            "RDMA TransportEngine, user pid: {:?}",
+            self.state.shared.pid
+        )
     }
 
-    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
-        const DP_LIMIT: usize = 1 << 17;
-        const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Progress(n) = self.check_dp(false)? {
-            if n > 0 {
-                self.backoff = DP_LIMIT.min(self.backoff * 2);
+    fn set_tracker(&mut self, indicator: Indicator) {
+        assert!(
+            self.indicator.replace(indicator).is_none(),
+            "already has a progress tracker"
+        );
+    }
+
+    fn entry(mut self) -> Self::Future {
+        Box::pin(async move { self.mainloop().await })
+    }
+}
+
+impl TransportEngine {
+    async fn mainloop(&mut self) -> EngineResult {
+        loop {
+            let mut nwork = 0;
+            if let Progress(n) = self.check_dp(false)? {
+                nwork += n;
             }
-        }
 
-        self.dp_spin_cnt += 1;
-        if self.dp_spin_cnt < self.backoff {
-            return Ok(EngineStatus::Continue);
-        }
-
-        self.dp_spin_cnt = 0;
-
-        // COMMENT(cjr): these two conditions should be connected with ||
-        if self.customer.has_control_command()
-            || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
-        {
-            self.last_cmd_ts = Instant::now();
-            self.backoff = std::cmp::max(1, self.backoff / 2);
-            self.flush_dp()?;
-            if let Status::Disconnected = self.check_cmd()? {
-                return Ok(EngineStatus::Complete);
+            if self.customer.has_control_command() {
+                self.flush_dp()?;
+                if let Status::Disconnected = self.check_cmd()? {
+                    return Ok(());
+                }
             }
-        } else {
-            self.backoff = DP_LIMIT.min(self.backoff * 2);
-        }
 
-        if self.cmd_buffer.is_some() {
-            self.check_cm_event()?;
-        }
+            if self.cmd_buffer.is_some() {
+                self.check_cm_event()?;
+            }
 
-        Ok(EngineStatus::Continue)
+            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            future::yield_now().await;
+        }
     }
 }
 
@@ -130,7 +131,7 @@ fn prepare_returned_qp(handles: (Handle, Handle, Handle, Handle)) -> returned::Q
     }
 }
 
-impl<'ctx> TransportEngine<'ctx> {
+impl TransportEngine {
     fn flush_dp(&mut self) -> Result<Status, DatapathError> {
         let mut processed = 0;
         let existing_work = self.customer.get_avail_wr_count()?;
@@ -431,7 +432,6 @@ impl<'ctx> TransportEngine<'ctx> {
         Ok(())
     }
 
-
     fn try_flush_cq_err_buffer(&mut self) -> Result<(), DatapathError> {
         if self.cq_err_buffer.is_empty() {
             return Ok(());
@@ -639,7 +639,7 @@ impl<'ctx> TransportEngine<'ctx> {
         qp_init_attr: Option<&interface::QpInitAttr>,
     ) -> Result<
         (
-            Option<Arc<ibv::ProtectionDomain<'ctx>>>,
+            Option<Arc<ibv::ProtectionDomain<'static>>>,
             Option<rdma::ffi::ibv_qp_init_attr>,
         ),
         Error,
@@ -997,13 +997,17 @@ impl<'ctx> TransportEngine<'ctx> {
                 );
                 let pd = self.state.resource().pd_table.get(&pd.0)?;
                 let mr = rdma::mr::MemoryRegion::new(&pd, *nbytes, *access)
-                    .map_err(Error::MemoryRegion).unwrap();
+                    .map_err(Error::MemoryRegion)
+                    .unwrap();
                 // TODO(cjr): If there is an error here, the customer will be confused.
                 // Because the customer blocks at recv_fd.
                 // The customer will never know there is an error actually happens
                 let vaddr = mr.as_ptr() as u64;
                 let fd = mr.memfd().as_raw_fd();
-                self.customer.send_fd(&[fd][..]).map_err(Error::SendFd).unwrap();
+                self.customer
+                    .send_fd(&[fd][..])
+                    .map_err(Error::SendFd)
+                    .unwrap();
                 let rkey = mr.rkey();
                 let new_mr_handle = mr.as_handle();
                 let file_off = mr.file_off() as u64;

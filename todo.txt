@@ -7,7 +7,11 @@ RPC
 -[x] Heap allocator
 
 Engine Framework
-- *Change Engine trait to a huge Generator*
+- *Change Engine trait to a huge Generator*, all block waitings become
+  yields
+- *Call an engine's method from another engine*, some engines go to an
+  separate runtime, some engines become the member of other engines;
+  the original big match arm becomes a series of methods
 -[x] Blocking network APIs in transport engine may block the entire
      runtime
 -[x] What should Engine::run() return?
@@ -18,6 +22,8 @@ Engine Framework
 Misc
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - Build a CI pipeline with all kinds of tests and benchmarks
+- UDP socket send/recv fd must be nonblocking
+- add tracing points at various points in code for performance analysis
 -[x] get configuration from a file to run multiple backends for developing
 -[x] simplify ConnParam. Allow to set fields in QpBuilder.
 -[x] update the code and directory structure of koala_examples

@@ -21,7 +21,7 @@ use crate::control;
 use crate::ipc_channel::{IpcReceiver, IpcSender, IpcSenderNotify};
 use crate::service::MAX_MSG_LEN;
 use crate::unix::DomainSocket;
-use crate::{Error, IpcSendError, IpcRecvError, ShmObject, ShmReceiver, ShmSender, TryRecvError};
+use crate::{Error, IpcRecvError, IpcSendError, ShmObject, ShmReceiver, ShmSender, TryRecvError};
 
 // TODO(cjr): make these configurable, see koala.toml
 const DP_WQ_DEPTH: usize = 32;
@@ -296,14 +296,10 @@ where
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
-        // let koala_path = config.control.prefix.join(&config.control.path);
-        // if koala_path.exists() {
-        //     fs::remove_file(&koala_path).expect("remove_file");
-        // }
 
-        let mut sock_path = PathBuf::new();
-        sock_path.push(&koala_prefix);
-        sock_path.push(format!("koala-client-{}_{}.sock", appname, uuid));
+        let sock_path = koala_prefix
+            .as_ref()
+            .join(format!("koala-client-{}_{}.sock", appname, uuid));
         if sock_path.exists() {
             fs::remove_file(&sock_path).expect("remove_file");
         }
@@ -313,9 +309,7 @@ where
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
 
-        let mut service_path = PathBuf::new();
-        service_path.push(&koala_prefix);
-        service_path.push(&control_path);
+        let service_path = koala_prefix.as_ref().join(control_path);
         sock.send_to(&buf, &service_path)?;
 
         // receive NewClient response

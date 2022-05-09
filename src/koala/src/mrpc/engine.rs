@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::future::Future;
 
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use unique::Unique;
@@ -7,9 +7,11 @@ use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::module::CustomerType;
-use super::state::{Resource, State};
+use super::state::{State, Resource};
 use super::{DatapathError, Error};
-use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use crate::engine::{
+    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
+};
 use crate::mrpc::marshal::{RpcMessage, ShmBuf};
 use crate::node::Node;
 
@@ -21,15 +23,11 @@ pub struct MrpcEngine {
     pub(crate) cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
 
-    pub(crate) dp_spin_cnt: usize,
-    pub(crate) backoff: usize,
     pub(crate) _mode: SchedulingMode,
 
-    // state
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
-    // otherwise, the
-    pub(crate) last_cmd_ts: Instant,
+    pub(crate) indicator: Option<Indicator>,
 }
 
 impl Upgradable for MrpcEngine {
@@ -67,50 +65,49 @@ impl Vertex for MrpcEngine {
 }
 
 impl Engine for MrpcEngine {
+    type Future = impl Future<Output = EngineResult>;
+
     fn description(&self) -> String {
         format!("MrpcEngine, todo show more information")
     }
 
+    fn set_tracker(&mut self, indicator: Indicator) {
+        self.indicator = Some(indicator);
+    }
+
+    fn entry(mut self) -> Self::Future {
+        Box::pin(async move { self.mainloop().await })
+    }
+
     #[inline]
-    unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
+    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         let res = self.state.resource() as *const Resource;
         Some(&*res)
     }
+}
 
-    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
-        const DP_LIMIT: usize = 1 << 17;
-        const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Progress(n) = self.check_customer()? {
-            if n > 0 {
-                self.backoff = DP_LIMIT.min(self.backoff * 2);
+impl MrpcEngine {
+    async fn mainloop(&mut self) -> EngineResult {
+        loop {
+            let mut nwork = 0;
+            if let Progress(n) = self.check_customer()? {
+                nwork += n;
             }
-        }
 
-        self.check_input_queue()?;
+            self.check_input_queue()?;
 
-        self.dp_spin_cnt += 1;
-        if self.dp_spin_cnt < self.backoff {
-            return Ok(EngineStatus::Continue);
-        }
-
-        self.dp_spin_cnt = 0;
-
-        if self.customer.has_control_command()
-            || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
-        {
-            self.last_cmd_ts = Instant::now();
-            self.backoff = std::cmp::max(1, self.backoff / 2);
-            self.flush_dp()?;
-            if let Status::Disconnected = self.check_cmd()? {
-                return Ok(EngineStatus::Complete);
+            if self.customer.has_control_command() {
+                self.flush_dp()?;
+                if let Status::Disconnected = self.check_cmd()? {
+                    return Ok(());
+                }
             }
-        } else {
-            self.backoff = DP_LIMIT.min(self.backoff * 2);
+
+            self.check_new_incoming_connection()?;
+
+            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            future::yield_now().await;
         }
-
-        self.check_new_incoming_connection()?;
-
-        Ok(EngineStatus::Continue)
     }
 }
 

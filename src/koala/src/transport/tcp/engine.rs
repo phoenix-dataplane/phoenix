@@ -1,19 +1,19 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::net::{TcpListener, TcpStream};
-use std::time::{Duration, Instant};
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use interface::{AsHandle, Handle};
-use ipc::transport::tcp::{cmd, dp};
 use ipc::customer::Customer;
+use ipc::transport::tcp::{cmd, dp};
 
 use interface::engine::SchedulingMode;
 
-use crate::engine::{Vertex, Engine, EngineStatus, Upgradable, Version};
 use super::module::CustomerType;
 use super::{DatapathError, Error};
-use crate::resource::ResourceTable;
+use crate::engine::{future, Engine, EngineResult, Indicator, Upgradable, Version, Vertex};
 use crate::node::Node;
+use crate::resource::ResourceTable;
 
 pub(crate) struct State {
     listener_table: ResourceTable<TcpListener>,
@@ -34,17 +34,13 @@ pub struct TransportEngine {
     pub(crate) node: Node,
 
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>,
-
-    pub(crate) dp_spin_cnt: usize,
-    pub(crate) backoff: usize,
     pub(crate) _mode: SchedulingMode,
 
     pub(crate) state: State,
 
     // bufferred control path request
     pub(crate) cmd_buffer: Option<cmd::Command>,
-    // otherwise, the
-    pub(crate) last_cmd_ts: Instant,
+    pub(crate) indicator: Option<Indicator>,
 }
 
 impl Upgradable for TransportEngine {
@@ -82,44 +78,43 @@ impl Vertex for TransportEngine {
 }
 
 impl Engine for TransportEngine {
+    type Future = impl Future<Output = EngineResult>;
+
     fn description(&self) -> String {
         format!("TCP TransportEngine, user pid: update me")
     }
 
-    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
-        const DP_LIMIT: usize = 1 << 17;
-        const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        if let Status::Progress(n) = self.check_dp()? {
-            if n > 0 {
-                self.backoff = DP_LIMIT.min(self.backoff * 2);
+    fn set_tracker(&mut self, indicator: Indicator) {
+        self.indicator = Some(indicator);
+    }
+
+    fn entry(mut self) -> Self::Future {
+        Box::pin(async move { self.mainloop().await })
+    }
+}
+
+impl TransportEngine {
+    async fn mainloop(&mut self) -> EngineResult {
+        loop {
+            let mut nwork = 0;
+            if let Status::Progress(n) = self.check_dp()? {
+                nwork += n;
             }
-        }
 
-        self.dp_spin_cnt += 1;
-        if self.dp_spin_cnt < self.backoff {
-            return Ok(EngineStatus::Continue);
-        }
-
-        self.dp_spin_cnt = 0;
-
-        if self.customer.has_control_command()
-            || self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS)
-        {
-            self.last_cmd_ts = Instant::now();
-            self.backoff = std::cmp::max(1, self.backoff / 2);
-            self.flush_dp()?;
-            if let Status::Disconnected = self.check_cmd()? {
-                return Ok(EngineStatus::Complete);
+            if self.customer.has_control_command() {
+                self.flush_dp()?;
+                if let Status::Disconnected = self.check_cmd()? {
+                    return Ok(());
+                }
             }
-        } else {
-            self.backoff = DP_LIMIT.min(self.backoff * 2);
-        }
 
-        if self.cmd_buffer.is_some() {
-            self.check_cm_event()?;
-        }
+            if self.cmd_buffer.is_some() {
+                self.check_cm_event()?;
+            }
 
-        Ok(EngineStatus::Continue)
+            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            future::yield_now().await;
+        }
     }
 }
 
@@ -146,9 +141,7 @@ impl TransportEngine {
                 // do nothing
                 Ok(Progress(0))
             }
-            Err(ipc::TryRecvError::Disconnected) => {
-                Ok(Status::Disconnected)
-            }
+            Err(ipc::TryRecvError::Disconnected) => Ok(Status::Disconnected),
             Err(ipc::TryRecvError::Other(_e)) => Err(Error::IpcTryRecv),
         }
     }
@@ -160,7 +153,9 @@ impl TransportEngine {
                 let listener = TcpListener::bind(addr).map_err(Error::Socket)?;
                 // listener.set_nonblocking(true)?.map_err(Error::Socket)?;
                 let handle = listener.as_raw_fd().as_handle();
-                self.state.listener_table.open_or_create_resource(handle, listener);
+                self.state
+                    .listener_table
+                    .open_or_create_resource(handle, listener);
                 Ok(CompletionKind::Bind(handle))
             }
             Command::Accept(handle) => {
@@ -168,7 +163,9 @@ impl TransportEngine {
                 let (sock, addr) = listener.accept().map_err(Error::Socket)?;
                 sock.set_nonblocking(true).map_err(Error::Socket)?;
                 let new_handle = sock.as_raw_fd().as_handle();
-                self.state.conn_table.open_or_create_resource(new_handle, sock);
+                self.state
+                    .conn_table
+                    .open_or_create_resource(new_handle, sock);
                 Ok(CompletionKind::Accept(new_handle))
             }
             Command::Connect(addr) => {

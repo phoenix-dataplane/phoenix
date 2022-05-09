@@ -1,5 +1,4 @@
 use std::io;
-use std::path::PathBuf;
 
 use thiserror::Error;
 
@@ -7,7 +6,7 @@ use interface::engine::EngineType;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
 
-use crate::{DEFAULT_KOALA_PATH, DEFAULT_KOALA_CONTROL};
+use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
@@ -20,28 +19,7 @@ pub(crate) struct Context {
 
 impl Context {
     fn register() -> Result<Context, Error> {
-        let koala_prefix = match std::env::var("KOALA_PATH") {
-            Ok(path) => {
-                let path = PathBuf::from(path);
-                if !path.is_dir() {
-                    return Err(Error::Io(io::Error::new(io::ErrorKind::NotFound, "KOALA_PATH is not a directory")));
-                }
-                path
-            }
-            Err(e) => {
-                PathBuf::from(DEFAULT_KOALA_PATH)
-            }
-        };
-        let koala_control = match std::env::var("KOALA_CONTROL") {
-            Ok(path) => {
-                PathBuf::from(path)
-            }
-            Err(e) => {
-                PathBuf::from(DEFAULT_KOALA_CONTROL)
-            }
-        };
-
-        let service = ShmService::register(koala_prefix, koala_control, EngineType::Mrpc)?;
+        let service = ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, EngineType::Mrpc)?;
         Ok(Self { service })
     }
 }

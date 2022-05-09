@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Instant, Duration};
 
 use unique::Unique;
 
@@ -17,13 +17,25 @@ use super::module::ServiceType;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::{Engine, EngineStatus, Upgradable, Version, Vertex};
+use crate::engine::{
+    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
+};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 
 pub struct TlStorage {
     pub(crate) service: ServiceType,
     pub(crate) state: State,
+}
+
+/// WARNING(cjr): This this not true! I unafely mark Sync for TlStorage to cheat the compiler. I
+/// have to do this because runtime.running_engines[i].els() exposes a &EngineLocalStorage, and
+/// runtimes are shared between two threads, so EngineLocalStorage must be Sync.
+unsafe impl Sync for TlStorage {}
+
+unsafe impl EngineLocalStorage for TlStorage {
+    #[inline]
+    fn as_any(&self) -> &dyn std::any::Any { self }
 }
 
 pub struct RpcAdapterEngine {
@@ -37,10 +49,8 @@ pub struct RpcAdapterEngine {
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
     pub(crate) cmd_tx: std::sync::mpsc::Sender<mrpc::cmd::Completion>,
 
-    pub(crate) dp_spin_cnt: usize,
-    pub(crate) backoff: usize,
-    pub(crate) last_cmd_ts: Instant,
     pub(crate) _mode: SchedulingMode,
+    pub(crate) indicator: Option<Indicator>,
 }
 
 impl Upgradable for RpcAdapterEngine {
@@ -78,6 +88,8 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
+    type Future = impl Future<Output = EngineResult>;
+
     fn description(&self) -> String {
         format!(
             "RcpAdapterEngine, user pid: {:?}",
@@ -85,57 +97,49 @@ impl Engine for RpcAdapterEngine {
         )
     }
 
-    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>> {
-        const DP_LIMIT: usize = 1 << 17;
-        const CMD_MAX_INTERVAL_MS: u64 = 1000;
-        let mut work = 0;
+    fn set_tracker(&mut self, indicator: Indicator) {
+        self.indicator = Some(indicator);
+    }
 
-        // check input queue
-        if let Progress(n) = self.check_input_queue()? {
-            work += n;
-        }
-
-        // check service
-        if let Progress(n) = self.check_transport_service()? {
-            work += n;
-        }
-
-        // check input command queue
-        if let Progress(n) = self.check_input_cmd_queue()? {
-            work += n;
-        }
-
-        if work > 0 {
-            self.backoff = DP_LIMIT.min(self.backoff * 2);
-        }
-
-        self.dp_spin_cnt += 1;
-        if self.dp_spin_cnt < self.backoff {
-            return Ok(EngineStatus::Continue);
-        }
-
-        self.dp_spin_cnt = 0;
-
-        // TODO(cjr): check incoming connect request
-        // the CmIdListener::get_request() is currently synchronous.
-        // need to make it asynchronous and low cost to check.
-        if self.last_cmd_ts.elapsed() > Duration::from_millis(CMD_MAX_INTERVAL_MS) {
-            self.last_cmd_ts = Instant::now();
-            self.backoff = std::cmp::max(1, self.backoff / 2);
-            self.check_incoming_connection()?;
-        } else {
-            self.backoff = DP_LIMIT.min(self.backoff * 2);
-        }
-
-        Ok(EngineStatus::Continue)
+    fn entry(mut self) -> Self::Future {
+        Box::pin(async move { self.mainloop().await })
     }
 
     #[inline]
-    unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
-        // let (addr, meta) = (self.tls.as_ref() as *const TlStorage).to_raw_parts();
-        // let tls: *const TlStorage = std::ptr::from_raw_parts(addr, meta);
+    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         let tls = self.tls.as_ref() as *const TlStorage;
         Some(&*tls)
+    }
+}
+
+impl RpcAdapterEngine {
+    async fn mainloop(&mut self) -> EngineResult {
+        loop {
+            let mut work = 0;
+
+            // check input queue
+            if let Progress(n) = self.check_input_queue()? {
+                work += n;
+            }
+
+            // check service
+            if let Progress(n) = self.check_transport_service()? {
+                work += n;
+            }
+
+            // check input command queue
+            if let Progress(n) = self.check_input_cmd_queue()? {
+                work += n;
+            }
+
+            // TODO(cjr): check incoming connect request
+            // the CmIdListener::get_request() is currently synchronous.
+            // need to make it asynchronous and low cost to check.
+            self.check_incoming_connection()?;
+
+            self.indicator.as_ref().unwrap().set_nwork(work);
+            future::yield_now().await;
+        }
     }
 }
 

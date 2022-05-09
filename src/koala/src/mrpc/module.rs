@@ -1,8 +1,6 @@
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -19,6 +17,7 @@ use super::state::State;
 use super::engine::MrpcEngine;
 use crate::config::MrpcConfig;
 use crate::engine::manager::RuntimeManager;
+use crate::engine::container::EngineContainer;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
 
@@ -67,11 +66,9 @@ impl MrpcEngineBuilder {
             node: self.node,
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
-            dp_spin_cnt: 0,
-            backoff: 1,
             _mode: self.mode,
             transport_type: None,
-            last_cmd_ts: Instant::now(),
+            indicator: None,
         })
     }
 }
@@ -129,7 +126,7 @@ impl MrpcModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
-        self.runtime_manager.submit(Box::new(engine), mode);
+        self.runtime_manager.submit(EngineContainer::new(engine), mode);
 
         Ok(())
     }

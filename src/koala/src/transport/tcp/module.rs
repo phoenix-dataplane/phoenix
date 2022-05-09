@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -18,6 +16,7 @@ use ipc::unix::DomainSocket;
 
 use crate::config::TcpTransportConfig;
 use crate::engine::manager::RuntimeManager;
+use crate::engine::container::EngineContainer;
 use super::engine::TransportEngine;
 use crate::node::Node;
 
@@ -52,12 +51,10 @@ impl TransportEngineBuilder {
             customer: self.customer,
             node,
             cq_err_buffer: VecDeque::new(),
-            dp_spin_cnt: 0,
-            backoff: 1,
             _mode: self.mode,
             state: super::engine::State::new(),
             cmd_buffer: None,
-            last_cmd_ts: Instant::now(),
+            indicator: None,
         })
     }
 }
@@ -110,7 +107,7 @@ impl TransportModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
-        self.runtime_manager.submit(Box::new(engine), mode);
+        self.runtime_manager.submit(EngineContainer::new(engine), mode);
 
         Ok(())
     }

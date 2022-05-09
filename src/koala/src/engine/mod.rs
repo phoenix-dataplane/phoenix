@@ -1,56 +1,73 @@
-use unique::Unique;
-use interface::engine::EngineType;
-pub use version::{version, Version};
+use std::future::Future;
 
 pub mod manager;
+
 pub(crate) mod lb;
 pub(crate) mod runtime;
+pub(crate) use runtime::Indicator;
 
-pub(crate) trait Upgradable {
-    fn version(&self) -> Version {
-        version!().parse().unwrap()
-    }
+pub(crate) mod graph;
+pub(crate) use graph::{IQueue, OQueue, Vertex};
 
-    fn check_compatible(&self, other: Version) -> bool;
-    fn suspend(&mut self);
-    fn dump(&self);
-    fn restore(&mut self);
-}
+pub(crate) mod upgradable;
+pub(crate) use upgradable::{Upgradable, Version};
 
-use std::sync::mpsc::{Sender, Receiver};
-use crate::mrpc::marshal::RpcMessage;
+pub(crate) mod container;
+pub(crate) use container::EngineContainer;
 
-// pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
-// pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
-pub(crate) type IQueue = Receiver<Unique<dyn RpcMessage>>;
-pub(crate) type OQueue = Sender<Unique<dyn RpcMessage>>;
+pub(crate) mod future;
 
-pub(crate) trait Vertex {
-    fn id(&self) -> &str;
-    fn engine_type(&self) -> EngineType;
-    fn tx_inputs(&self) -> &Vec<IQueue>;
-    fn tx_outputs(&self) -> &Vec<OQueue>;
-    fn rx_inputs(&self) -> &Vec<IQueue>;
-    fn rx_outputs(&self) -> &Vec<OQueue>;
-}
+pub(crate) trait Engine: Upgradable + Vertex + Send {
+    /// The type of value produced on completion.
+    type Future: Future<Output = EngineResult> + Send + 'static;
 
-pub(crate) trait Engine: Upgradable + Send + Vertex {
+    /// Turn the Engine into an executable `Future`
+    fn entry(self) -> Self::Future;
+
+    /// Set the shared progress tracker.
+    fn set_tracker(&mut self, indicator: Indicator);
+
+    /// Returns a text description of the engine.
     fn description(&self) -> String;
-    /// `resume()` mush be non-blocking and short.
-    fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
+
     #[inline]
-    unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
+    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         None
     }
 }
 
-// NoProgress, MayDemandMoreCPU
-pub(crate) enum EngineStatus {
-    NoWork,
-    Continue,
-    Complete,
+pub(crate) type EngineResult = Result<(), Box<dyn std::error::Error>>;
+
+/// Safety: EngineLocalStorage is only accessed from a thread/runtime at a time. There should be no
+/// concurrent access to it. But since Engine can be moved between Runtimes, the local storage
+/// could be read from different threads _at different times_ (i.e., Send).
+///
+/// The user must ensure their storage type are Send.
+///
+/// WARNING(cjr): EngineLocalStorage is Sync only because runtime is shared between threads, and
+/// they require it to be Sync. They are, in fact, not concurrently accessed, so we even if the
+/// underlying data is not threadsafe, we are still good here.
+///
+/// TODO(cjr): Consider remove this EngineLocalStorage when ShmPtr is ready.
+pub(crate) unsafe trait EngineLocalStorage: std::any::Any + Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
-// pub struct EngineTlStorage {
-//     pub ptr: Box<dyn std::any::Any>,
+// pub(crate) trait AnySend: std::any::Any + Send {}
+// pub(crate) struct EngineLocalStorage(pub(crate) &'static dyn AnySend);
+
+// pub(crate) trait Engine: Upgradable + Send + Vertex {
+//     /// `resume()` mush be non-blocking and short.
+//     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
+//     #[inline]
+//     unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
+//         None
+//     }
+// }
+
+// NoProgress, MayDemandMoreCPU
+// pub(crate) enum EngineStatus {
+//     NoWork,
+//     Continue,
+//     Complete,
 // }
