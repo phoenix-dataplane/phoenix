@@ -8,8 +8,8 @@ use spin::Mutex;
 
 use interface::engine::SchedulingMode;
 
-use crate::engine::runtime::{self, Runtime};
-use crate::engine::Engine;
+use super::runtime::{self, Runtime};
+use super::container::EngineContainer;
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
@@ -22,7 +22,7 @@ struct Inner {
 }
 
 impl Inner {
-    fn schedule_dedicate(&mut self, engine: Box<dyn Engine>) {
+    fn schedule_dedicate(&mut self, engine: EngineContainer) {
         // find a spare runtime
         let rid = match self
             .runtimes
@@ -58,7 +58,7 @@ impl RuntimeManager {
         }
     }
 
-    pub(crate) fn submit(&self, engine: Box<dyn Engine>, mode: SchedulingMode) {
+    pub(crate) fn submit(&self, engine: EngineContainer, mode: SchedulingMode) {
         let mut inner = self.inner.lock();
         match mode {
             SchedulingMode::Dedicate => {
@@ -73,9 +73,8 @@ impl RuntimeManager {
 impl Inner {
     fn start_runtime(&mut self, core: usize) {
         let runtime = Arc::new(Runtime::new(core));
-        self.runtimes.push(runtime);
+        self.runtimes.push(Arc::clone(&runtime));
 
-        let runtime = Arc::clone(self.runtimes.last().unwrap());
         let handle = thread::spawn(move || {
             // check core id
             let num_cpus = num_cpus::get();

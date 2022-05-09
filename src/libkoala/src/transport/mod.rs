@@ -1,5 +1,4 @@
 use std::io;
-use std::path::PathBuf;
 
 use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
@@ -9,9 +8,7 @@ use interface::engine::EngineType;
 use ipc::service::ShmService;
 use ipc::transport::rdma::{cmd, dp};
 
-// Re-exports
-use crate::{DEFAULT_KOALA_PATH, DEFAULT_KOALA_CONTROL};
-
+use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 pub mod cm;
 mod fp;
@@ -34,29 +31,11 @@ pub(crate) struct Context {
 
 impl Context {
     fn register() -> Result<Context, Error> {
-        let koala_prefix = match std::env::var("KOALA_PATH") {
-            Ok(path) => {
-                let path = PathBuf::from(path);
-                if !path.is_dir() {
-                    return Err(Error::Io(io::Error::new(io::ErrorKind::NotFound, "KOALA_PATH is not a directory")));
-                }
-                path
-            }
-            Err(e) => {
-                PathBuf::from(DEFAULT_KOALA_PATH)
-            }
-        };
-        let koala_control = match std::env::var("KOALA_CONTROL") {
-            Ok(path) => {
-                PathBuf::from(path)
-            }
-            Err(e) => {
-                PathBuf::from(DEFAULT_KOALA_CONTROL)
-            }
-        };
-
-
-        let service = ShmService::register(koala_prefix, koala_control, EngineType::RdmaTransport)?;
+        let service = ShmService::register(
+            &*KOALA_PREFIX,
+            &*KOALA_CONTROL_SOCK,
+            EngineType::RdmaTransport,
+        )?;
         Ok(Self { service })
     }
 }

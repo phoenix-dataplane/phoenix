@@ -24,12 +24,12 @@ use crate::resource::ResourceTable;
 use crate::state_mgr::{StateManager, StateTrait};
 
 // TODO(cjr): Make this global lock more fine-grained.
-pub(crate) struct State<'ctx> {
+pub(crate) struct State {
     sm: Arc<StateManager<Self>>,
-    pub(crate) shared: Arc<Shared<'ctx>>,
+    pub(crate) shared: Arc<Shared>,
 }
 
-impl<'ctx> Clone for State<'ctx> {
+impl Clone for State {
     fn clone(&self) -> Self {
         self.shared.alive_engines.fetch_add(1, Ordering::AcqRel);
         State {
@@ -39,7 +39,7 @@ impl<'ctx> Clone for State<'ctx> {
     }
 }
 
-impl<'ctx> Drop for State<'ctx> {
+impl Drop for State {
     fn drop(&mut self) {
         let was_last = self.shared.alive_engines.fetch_sub(1, Ordering::AcqRel) == 1;
         if was_last {
@@ -48,7 +48,7 @@ impl<'ctx> Drop for State<'ctx> {
     }
 }
 
-impl<'ctx> StateTrait for State<'ctx> {
+impl StateTrait for State {
     type Err = io::Error;
     fn new(sm: Arc<StateManager<Self>>, pid: Pid) -> io::Result<Self> {
         Ok(State {
@@ -64,9 +64,9 @@ impl<'ctx> StateTrait for State<'ctx> {
     }
 }
 
-impl<'ctx> State<'ctx> {
+impl State {
     #[inline]
-    pub(crate) fn resource(&self) -> &Resource<'ctx> {
+    pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
     }
 
@@ -167,7 +167,7 @@ impl CmEventManager {
     }
 }
 
-pub(crate) struct Shared<'ctx> {
+pub(crate) struct Shared {
     // Control path operations must be per-process level
     cm_manager: spin::Mutex<CmEventManager>,
     // We use pid as the identifier of this process
@@ -175,7 +175,7 @@ pub(crate) struct Shared<'ctx> {
     // Reference counting
     alive_engines: AtomicUsize,
     // Resources
-    pub(crate) resource: Resource<'ctx>,
+    pub(crate) resource: Resource,
     // Other shared states include L4 policies, buffers, configurations, etc.
     _other: spin::Mutex<()>,
 }
@@ -237,24 +237,24 @@ fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
 
 /// __Safety__: This is safe because only default_pds is non-concurrent-safe, but it is only
 /// accessed when creating the resource.
-unsafe impl<'ctx> Send for Resource<'ctx> {}
-unsafe impl<'ctx> Sync for Resource<'ctx> {}
+unsafe impl Send for Resource {}
+unsafe impl Sync for Resource {}
 
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
-pub(crate) struct Resource<'ctx> {
+pub(crate) struct Resource {
     cmid_cnt: AtomicU32,
     pub(crate) default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
-    pub(crate) cmid_table: ResourceTable<CmId<'ctx>>,
+    pub(crate) cmid_table: ResourceTable<CmId<'static>>,
     pub(crate) event_channel_table: ResourceTable<rdmacm::EventChannel>,
-    pub(crate) qp_table: ResourceTable<ibv::QueuePair<'ctx>>,
+    pub(crate) qp_table: ResourceTable<ibv::QueuePair<'static>>,
     pub(crate) mr_table: ResourceTable<rdma::mr::MemoryRegion>,
-    pub(crate) cq_table: ResourceTable<ibv::CompletionQueue<'ctx>>,
-    pub(crate) pd_table: ResourceTable<ibv::ProtectionDomain<'ctx>>,
+    pub(crate) cq_table: ResourceTable<ibv::CompletionQueue<'static>>,
+    pub(crate) pd_table: ResourceTable<ibv::ProtectionDomain<'static>>,
 }
 
-impl<'ctx> Resource<'ctx> {
+impl Resource {
     pub(crate) fn new() -> io::Result<Self> {
         let mut default_pds = Vec::new();
         let pd_table = ResourceTable::default();
@@ -300,7 +300,7 @@ impl<'ctx> Resource<'ctx> {
 
     pub(crate) fn insert_qp(
         &self,
-        qp: ibv::QueuePair<'ctx>,
+        qp: ibv::QueuePair<'static>,
     ) -> Result<(Handle, Handle, Handle, Handle), Error> {
         // This is safe because we did not drop these inner objects immediately. Instead, they are
         // stored carefully into the resource tables.
@@ -319,7 +319,7 @@ impl<'ctx> Resource<'ctx> {
         Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
     }
 
-    pub(crate) fn insert_cmid(&self, cmid: CmId<'ctx>) -> Result<Handle, Error> {
+    pub(crate) fn insert_cmid(&self, cmid: CmId<'static>) -> Result<Handle, Error> {
         let cmid_handle = self.allocate_new_cmid_handle();
         self.cmid_table.insert(cmid_handle, cmid)?;
         Ok(cmid_handle)

@@ -17,7 +17,7 @@ use ipc::ChannelFlavor;
 
 use crate::config::Config;
 use crate::engine::manager::RuntimeManager;
-use crate::engine::Engine;
+use crate::engine::container::EngineContainer;
 use crate::node::Node;
 use crate::{
     mrpc, rpc_adapter,
@@ -147,7 +147,7 @@ impl Control {
         let nodes = self.build_internal_queues();
 
         // build all engines from nodes
-        let mut engines: Vec<Box<dyn Engine>> = Vec::new();
+        let mut engines: Vec<EngineContainer> = Vec::new();
 
         // establish a specialized channel between mrpc and rpc-adapter
         let (tx, rx) = std::sync::mpsc::channel();
@@ -186,8 +186,8 @@ impl Control {
                     let e2 = self
                         .rdma_transport
                         .create_engine(customer, mode, client_pid)?;
-                    engines.push(Box::new(e1));
-                    engines.push(Box::new(e2));
+                    engines.push(EngineContainer::new(e1));
+                    engines.push(EngineContainer::new(e2));
                 }
                 EngineType::Overload => unimplemented!(),
             };

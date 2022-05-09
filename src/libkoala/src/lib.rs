@@ -4,16 +4,32 @@
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(specialization)]
 use std::borrow::Borrow;
+use std::env;
+use std::path::PathBuf;
 
-pub mod transport;
 pub mod mrpc;
+pub mod transport;
 
 // Re-exports
 pub use transport::{cm, verbs, Error};
 
-
-const DEFAULT_KOALA_PATH: &str = "/tmp/koala";
+const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
 const DEFAULT_KOALA_CONTROL: &str = "koala-control.sock";
+
+lazy_static::lazy_static! {
+    pub(crate) static ref KOALA_PREFIX: PathBuf = {
+        env::var("KOALA_PATH").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+            let path = PathBuf::from(p);
+            assert!(path.is_dir(), "{path:?} is not a directly");
+            path
+        })
+    };
+
+    pub(crate) static ref KOALA_CONTROL_SOCK: PathBuf = {
+        env::var("KOALA_CONTROL")
+            .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
+    };
+}
 
 #[doc(hidden)]
 #[macro_export]
