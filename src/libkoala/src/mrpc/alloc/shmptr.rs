@@ -27,6 +27,17 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     #[inline]
+    pub const fn new_unchecked(ptr: *mut T) -> Self {
+        let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
+        let ptr = unsafe { Unique::new_unchecked(ptr) };
+        let ptr_remote = unsafe { Unique::new_unchecked(ptr_remote) };
+        ShmPtr {
+            ptr,
+            ptr_remote
+        }
+    }
+
+    #[inline]
     pub const fn new_with_remote(ptr: *mut T, ptr_remote: *mut T) -> Option<Self> {
         // SAFETY: the caller must guarantee that `ptr` is non-null.
         if !ptr.is_null() && !ptr_remote.is_null() {

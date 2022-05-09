@@ -24,10 +24,14 @@ use core::task::{Context, Poll};
 // use crate::str::from_boxed_utf8_unchecked;
 // use crate::vec::Vec;
 
+use std::alloc::{handle_alloc_error, WriteCloneIntoRaw};
+use std::alloc::{AllocError, Allocator, Layout};
+
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 
+use super::shmptr::ShmPtr;
 
-#[lang = "owned_box"]
+
 #[fundamental]
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
@@ -35,380 +39,71 @@ use crate::mrpc::shared_heap::SharedHeapAllocator;
 pub struct Box<T: ?Sized>(ShmPtr<T>);
 
 impl<T> Box<T> {
-    /// Allocates memory on the heap and then places `x` into it.
-    ///
-    /// This doesn't actually allocate if `T` is zero-sized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let five = Box::new(5);
-    /// ```
-    #[inline(always)]
-    pub fn new(x: T) -> Self {
-        // box x
-        use crate::mrpc::shared_heap::SharedHeapAllocator;
-        use std::alloc::Allocator;
-        use std::alloc::Layout;
-        let layout = Layout::new::<T>();
-        let ptr = SharedHeapAllocator.allocate(layout).unwrap();
-        unsafe {
-            ptr::copy_nonoverlapping(&x, ptr.as_mut(), 1);
-        }
-        Self(ShmPtr::new(ptr))
-    }
-
-    /// Constructs a new box with uninitialized contents.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(new_uninit)]
-    ///
-    /// let mut five = Box::<u32>::new_uninit();
-    ///
-    /// let five = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5)
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[unstable(feature = "new_uninit", issue = "63291")]
-    #[must_use]
     #[inline]
-    pub fn new_uninit() -> Box<mem::MaybeUninit<T>> {
-        Self::new_uninit_in(Global)
-    }
-
-    /// Constructs a new `Box` with uninitialized contents, with the memory
-    /// being filled with `0` bytes.
-    ///
-    /// See [`MaybeUninit::zeroed`][zeroed] for examples of correct and incorrect usage
-    /// of this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(new_uninit)]
-    ///
-    /// let zero = Box::<u32>::new_zeroed();
-    /// let zero = unsafe { zero.assume_init() };
-    ///
-    /// assert_eq!(*zero, 0)
-    /// ```
-    ///
-    /// [zeroed]: mem::MaybeUninit::zeroed
-    #[cfg(not(no_global_oom_handling))]
-    #[inline]
-    #[unstable(feature = "new_uninit", issue = "63291")]
-    #[must_use]
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
-        Self::new_zeroed_in(Global)
-    }
-
-    /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
-    /// `x` will be pinned in memory and unable to be moved.
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "pin", since = "1.33.0")]
-    #[must_use]
-    #[inline(always)]
-    pub fn pin(x: T) -> Pin<Box<T>> {
-        (box x).into()
-    }
-
-    /// Allocates memory on the heap then places `x` into it,
-    /// returning an error if the allocation fails
-    ///
-    /// This doesn't actually allocate if `T` is zero-sized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api)]
-    ///
-    /// let five = Box::try_new(5)?;
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[inline]
-    pub fn try_new(x: T) -> Result<Self, AllocError> {
-        Self::try_new_in(x, Global)
-    }
-
-    /// Constructs a new box with uninitialized contents on the heap,
-    /// returning an error if the allocation fails
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// let mut five = Box::<u32>::try_new_uninit()?;
-    ///
-    /// let five = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5);
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    #[inline]
-    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_uninit_in(Global)
-    }
-
-    /// Constructs a new `Box` with uninitialized contents, with the memory
-    /// being filled with `0` bytes on the heap
-    ///
-    /// See [`MaybeUninit::zeroed`][zeroed] for examples of correct and incorrect usage
-    /// of this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// let zero = Box::<u32>::try_new_zeroed()?;
-    /// let zero = unsafe { zero.assume_init() };
-    ///
-    /// assert_eq!(*zero, 0);
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    ///
-    /// [zeroed]: mem::MaybeUninit::zeroed
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    #[inline]
-    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_zeroed_in(Global)
-    }
-}
-
-impl<T, A: Allocator> Box<T, A> {
-    /// Allocates memory in the given allocator then places `x` into it.
-    ///
-    /// This doesn't actually allocate if `T` is zero-sized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let five = Box::new_in(5, System);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    #[must_use]
-    #[inline]
-    pub const fn new_in(x: T, alloc: A) -> Self
-    where
-        A: ~const Allocator + ~const Drop,
+    pub const fn new(x: T) -> Self
     {
-        let mut boxed = Self::new_uninit_in(alloc);
+        let mut boxed = Self::new_uninit();
         unsafe {
             boxed.as_mut_ptr().write(x);
             boxed.assume_init()
         }
     }
 
-    /// Allocates memory in the given allocator then places `x` into it,
-    /// returning an error if the allocation fails
-    ///
-    /// This doesn't actually allocate if `T` is zero-sized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let five = Box::try_new_in(5, System)?;
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
     #[inline]
-    pub const fn try_new_in(x: T, alloc: A) -> Result<Self, AllocError>
+    pub const fn try_new(x: T) -> Result<Self, AllocError>
     where
         T: ~const Drop,
-        A: ~const Allocator + ~const Drop,
     {
-        let mut boxed = Self::try_new_uninit_in(alloc)?;
+        let mut boxed = Self::try_new_uninit()?;
         unsafe {
             boxed.as_mut_ptr().write(x);
             Ok(boxed.assume_init())
         }
     }
 
-    /// Constructs a new box with uninitialized contents in the provided allocator.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let mut five = Box::<u32, _>::new_uninit_in(System);
-    ///
-    /// let five = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5)
-    /// ```
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    #[cfg(not(no_global_oom_handling))]
-    #[must_use]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    pub const fn new_uninit_in(alloc: A) -> Box<mem::MaybeUninit<T>, A>
+    pub const fn new_uninit() -> Box<std::mem::MaybeUninit<T>>
+    {
+        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
+        // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
+        // That would make code size bigger.
+        match Box::try_new_uninit() {
+            Ok(m) => m,
+            Err(_) => handle_alloc_error(layout),
+        }
+    }
+
+    pub const fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
+    where
+    {
+        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
+        let ptr = SharedHeapAllocator.allocate(layout)?.cast();
+        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
+    }
+
+    pub const fn new_zeroed() -> Box<mem::MaybeUninit<T>>
     where
         A: ~const Allocator + ~const Drop,
     {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
-        match Box::try_new_uninit_in(alloc) {
+        match Box::try_new_zeroed() {
             Ok(m) => m,
             Err(_) => handle_alloc_error(layout),
         }
     }
 
-    /// Constructs a new box with uninitialized contents in the provided allocator,
-    /// returning an error if the allocation fails
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let mut five = Box::<u32, _>::try_new_uninit_in(System)?;
-    ///
-    /// let five = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5);
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    pub const fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError>
-    where
-        A: ~const Allocator + ~const Drop,
+    pub const fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
     {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = alloc.allocate(layout)?.cast();
-        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
+        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
+        let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
+        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
     }
 
-    /// Constructs a new `Box` with uninitialized contents, with the memory
-    /// being filled with `0` bytes in the provided allocator.
-    ///
-    /// See [`MaybeUninit::zeroed`][zeroed] for examples of correct and incorrect usage
-    /// of this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let zero = Box::<u32, _>::new_zeroed_in(System);
-    /// let zero = unsafe { zero.assume_init() };
-    ///
-    /// assert_eq!(*zero, 0)
-    /// ```
-    ///
-    /// [zeroed]: mem::MaybeUninit::zeroed
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    #[cfg(not(no_global_oom_handling))]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    #[must_use]
-    pub const fn new_zeroed_in(alloc: A) -> Box<mem::MaybeUninit<T>, A>
-    where
-        A: ~const Allocator + ~const Drop,
-    {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
-        // That would make code size bigger.
-        match Box::try_new_zeroed_in(alloc) {
-            Ok(m) => m,
-            Err(_) => handle_alloc_error(layout),
-        }
-    }
-
-    /// Constructs a new `Box` with uninitialized contents, with the memory
-    /// being filled with `0` bytes in the provided allocator,
-    /// returning an error if the allocation fails,
-    ///
-    /// See [`MaybeUninit::zeroed`][zeroed] for examples of correct and incorrect usage
-    /// of this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(allocator_api, new_uninit)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let zero = Box::<u32, _>::try_new_zeroed_in(System)?;
-    /// let zero = unsafe { zero.assume_init() };
-    ///
-    /// assert_eq!(*zero, 0);
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    ///
-    /// [zeroed]: mem::MaybeUninit::zeroed
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    // #[unstable(feature = "new_uninit", issue = "63291")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    pub const fn try_new_zeroed_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError>
-    where
-        A: ~const Allocator + ~const Drop,
-    {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = alloc.allocate_zeroed(layout)?.cast();
-        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
-    }
-
-    /// Constructs a new `Pin<Box<T, A>>`. If `T` does not implement `Unpin`, then
-    /// `x` will be pinned in memory and unable to be moved.
-    #[cfg(not(no_global_oom_handling))]
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    #[must_use]
     #[inline(always)]
-    pub const fn pin_in(x: T, alloc: A) -> Pin<Self>
-    where
-        A: 'static + ~const Allocator + ~const Drop,
+    pub const fn pin(x: T) -> Pin<Self>
     {
-        Self::into_pin(Self::new_in(x, alloc))
+        Self::into_pin(Self::new(x))
     }
 
     /// Converts a `Box<T>` into a `Box<[T]>`
@@ -548,7 +243,6 @@ impl<T> Box<[T]> {
     /// ```
     ///
     /// [zeroed]: mem::MaybeUninit::zeroed
-    #[unstable(feature = "allocator_api", issue = "32838")]
     #[inline]
     pub fn try_new_zeroed_slice(len: usize) -> Result<Box<[mem::MaybeUninit<T>]>, AllocError> {
         unsafe {
@@ -737,107 +431,9 @@ impl<T, A: Allocator> Box<[mem::MaybeUninit<T>], A> {
 }
 
 impl<T: ?Sized> Box<T> {
-    /// Constructs a box from a raw pointer.
-    ///
-    /// After calling this function, the raw pointer is owned by the
-    /// resulting `Box`. Specifically, the `Box` destructor will call
-    /// the destructor of `T` and free the allocated memory. For this
-    /// to be safe, the memory must have been allocated in accordance
-    /// with the [memory layout] used by `Box` .
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because improper use may lead to
-    /// memory problems. For example, a double-free may occur if the
-    /// function is called twice on the same raw pointer.
-    ///
-    /// The safety conditions are described in the [memory layout] section.
-    ///
-    /// # Examples
-    ///
-    /// Recreate a `Box` which was previously converted to a raw pointer
-    /// using [`Box::into_raw`]:
-    /// ```
-    /// let x = Box::new(5);
-    /// let ptr = Box::into_raw(x);
-    /// let x = unsafe { Box::from_raw(ptr) };
-    /// ```
-    /// Manually create a `Box` from scratch by using the global allocator:
-    /// ```
-    /// use std::alloc::{alloc, Layout};
-    ///
-    /// unsafe {
-    ///     let ptr = alloc(Layout::new::<i32>()) as *mut i32;
-    ///     // In general .write is required to avoid attempting to destruct
-    ///     // the (uninitialized) previous contents of `ptr`, though for this
-    ///     // simple example `*ptr = 5` would have worked as well.
-    ///     ptr.write(5);
-    ///     let x = Box::from_raw(ptr);
-    /// }
-    /// ```
-    ///
-    /// [memory layout]: self#memory-layout
-    /// [`Layout`]: crate::Layout
-    #[stable(feature = "box_raw", since = "1.4.0")]
     #[inline]
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
-        unsafe { Self::from_raw_in(raw, Global) }
-    }
-}
-
-impl<T: ?Sized, A: Allocator> Box<T, A> {
-    /// Constructs a box from a raw pointer in the given allocator.
-    ///
-    /// After calling this function, the raw pointer is owned by the
-    /// resulting `Box`. Specifically, the `Box` destructor will call
-    /// the destructor of `T` and free the allocated memory. For this
-    /// to be safe, the memory must have been allocated in accordance
-    /// with the [memory layout] used by `Box` .
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because improper use may lead to
-    /// memory problems. For example, a double-free may occur if the
-    /// function is called twice on the same raw pointer.
-    ///
-    ///
-    /// # Examples
-    ///
-    /// Recreate a `Box` which was previously converted to a raw pointer
-    /// using [`Box::into_raw_with_allocator`]:
-    /// ```
-    /// #![feature(allocator_api)]
-    ///
-    /// use std::alloc::System;
-    ///
-    /// let x = Box::new_in(5, System);
-    /// let (ptr, alloc) = Box::into_raw_with_allocator(x);
-    /// let x = unsafe { Box::from_raw_in(ptr, alloc) };
-    /// ```
-    /// Manually create a `Box` from scratch by using the system allocator:
-    /// ```
-    /// #![feature(allocator_api, slice_ptr_get)]
-    ///
-    /// use std::alloc::{Allocator, Layout, System};
-    ///
-    /// unsafe {
-    ///     let ptr = System.allocate(Layout::new::<i32>())?.as_mut_ptr() as *mut i32;
-    ///     // In general .write is required to avoid attempting to destruct
-    ///     // the (uninitialized) previous contents of `ptr`, though for this
-    ///     // simple example `*ptr = 5` would have worked as well.
-    ///     ptr.write(5);
-    ///     let x = Box::from_raw_in(ptr, System);
-    /// }
-    /// # Ok::<(), std::alloc::AllocError>(())
-    /// ```
-    ///
-    /// [memory layout]: self#memory-layout
-    /// [`Layout`]: crate::Layout
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
-    #[inline]
-    pub const unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
-        Box(unsafe { Unique::new_unchecked(raw) }, alloc)
+    pub const unsafe fn from_raw(raw: *mut T) -> Self {
+        Box(unsafe { ShmPtr::new_unchecked(raw) })
     }
 
     /// Consumes the `Box`, returning a wrapped raw pointer.
@@ -931,81 +527,29 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// ```
     ///
     /// [memory layout]: self#memory-layout
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
     #[inline]
-    pub const fn into_raw_with_allocator(b: Self) -> (*mut T, A) {
-        let (leaked, alloc) = Box::into_unique(b);
-        (leaked.as_ptr(), alloc)
+    pub const fn into_raw(b: Self) -> *mut T {
+        let leaked = Box::into_unique(b);
+        leaked.as_ptr()
     }
 
-    #[unstable(
-        feature = "ptr_internals",
-        issue = "none",
-        reason = "use `Box::leak(b).into()` or `Unique::from(Box::leak(b))` instead"
-    )]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
     #[inline]
-    #[doc(hidden)]
-    pub const fn into_unique(b: Self) -> (Unique<T>, A) {
+    pub const fn into_unique(b: Self) -> Unique<T> {
         // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
         // raw pointer for the type system. Turning it directly into a raw pointer would not be
         // recognized as "releasing" the unique pointer to permit aliased raw accesses,
         // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
         // behaves correctly.
-        let alloc = unsafe { ptr::read(&b.1) };
-        (Unique::from(Box::leak(b)), alloc)
+        Unique::from(Box::leak(b))
     }
 
-    /// Returns a reference to the underlying allocator.
-    ///
-    /// Note: this is an associated function, which means that you have
-    /// to call it as `Box::allocator(&b)` instead of `b.allocator()`. This
-    /// is so that there is no conflict with a method on the inner type.
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
+
     #[inline]
-    pub const fn allocator(b: &Self) -> &A {
-        &b.1
+    pub const fn into_shmptr<'a>(b: Self) -> ShmPtr<T>
+    {
+        unsafe { mem::ManuallyDrop::new(b).0 }
     }
 
-    /// Consumes and leaks the `Box`, returning a mutable reference,
-    /// `&'a mut T`. Note that the type `T` must outlive the chosen lifetime
-    /// `'a`. If the type has only static references, or none at all, then this
-    /// may be chosen to be `'static`.
-    ///
-    /// This function is mainly useful for data that lives for the remainder of
-    /// the program's life. Dropping the returned reference will cause a memory
-    /// leak. If this is not acceptable, the reference should first be wrapped
-    /// with the [`Box::from_raw`] function producing a `Box`. This `Box` can
-    /// then be dropped which will properly destroy `T` and release the
-    /// allocated memory.
-    ///
-    /// Note: this is an associated function, which means that you have
-    /// to call it as `Box::leak(b)` instead of `b.leak()`. This
-    /// is so that there is no conflict with a method on the inner type.
-    ///
-    /// # Examples
-    ///
-    /// Simple usage:
-    ///
-    /// ```
-    /// let x = Box::new(41);
-    /// let static_ref: &'static mut usize = Box::leak(x);
-    /// *static_ref += 1;
-    /// assert_eq!(*static_ref, 42);
-    /// ```
-    ///
-    /// Unsized data:
-    ///
-    /// ```
-    /// let x = vec![1, 2, 3].into_boxed_slice();
-    /// let static_ref = Box::leak(x);
-    /// static_ref[0] = 4;
-    /// assert_eq!(*static_ref, [4, 2, 3]);
-    /// ```
-    #[stable(feature = "box_leak", since = "1.26.0")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
     #[inline]
     pub const fn leak<'a>(b: Self) -> &'a mut T
     where
@@ -1014,13 +558,6 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 
-    /// Converts a `Box<T>` into a `Pin<Box<T>>`
-    ///
-    /// This conversion does not allocate on the heap and happens in place.
-    ///
-    /// This is also available via [`From`].
-    #[unstable(feature = "box_into_pin", issue = "62370")]
-    #[rustc_const_unstable(feature = "const_box", issue = "92521")]
     pub const fn into_pin(boxed: Self) -> Pin<Self>
     where
         A: 'static,
