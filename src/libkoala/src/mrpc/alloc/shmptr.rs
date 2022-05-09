@@ -1,3 +1,5 @@
+use std::ptr::NonNull;
+
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::codegen::SwitchAddressSpace;
 use crate::mrpc::alloc::unique::Unique;
@@ -86,5 +88,14 @@ impl<T: ?Sized> ShmPtr<T> {
         let cast_ptr = unsafe { Unique::new_unchecked(self.ptr.as_ptr() as *mut U) };
         let cast_ptr_remote = unsafe { Unique::new_unchecked(self.ptr_remote() as *mut U) };
         ShmPtr { ptr: cast_ptr, ptr_remote: cast_ptr_remote }
+    }
+}
+
+impl<T: ?Sized> From<ShmPtr<T>> for core::ptr::NonNull<T> {
+    #[inline]
+    fn from(shmptr: ShmPtr<T>) -> Self {
+        // SAFETY: A ShmPtr pointer cannot be null, so the conditions for
+        // new_unchecked() are respected.
+        unsafe { NonNull::new_unchecked(shmptr.as_ptr()) }
     }
 }
