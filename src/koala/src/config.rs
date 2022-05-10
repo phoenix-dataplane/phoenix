@@ -43,6 +43,13 @@ pub struct MrpcConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct SallocConfig {
+    pub prefix: PathBuf,
+    pub engine_basename: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TcpTransportConfig {
     pub prefix: PathBuf,
     pub engine_basename: String,
@@ -68,6 +75,7 @@ pub struct Config {
     #[serde(alias = "transport-rdma")]
     pub transport_rdma: Option<RdmaTransportConfig>,
     pub mrpc: Option<MrpcConfig>,
+    pub salloc: Option<SallocConfig>,
     #[serde(alias = "transport-tcp")]
     pub transport_tcp: Option<TcpTransportConfig>,
     pub node: Vec<Node>,

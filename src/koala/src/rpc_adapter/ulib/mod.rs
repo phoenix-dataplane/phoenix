@@ -3,68 +3,37 @@ use std::io;
 
 use thiserror::Error;
 
+use crate::transport::rdma::{ApiError, DatapathError};
+
 pub mod fp;
 pub mod ucm;
 pub mod uverbs;
 
 #[derive(Error, Debug)]
-pub enum Error {
-    #[error("Service error: {0}")]
-    Service(#[from] ipc::Error),
+pub(crate) enum Error {
+    #[error("Error in RDMA API: {0}")]
+    Api(#[from] ApiError),
+    #[error("Datapath API Error: {0}")]
+    Datapath(#[from] DatapathError),
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
-    #[error("Interface error {0}: {1}")]
-    Interface(&'static str, interface::Error),
+    // #[error("Interface error {0}: {1}")]
+    // Interface(&'static str, interface::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
     #[error("Connect failed: {0}")]
-    Connect(interface::Error),
+    Connect(ApiError),
 }
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! _rx_recv_impl {
-    ($srv:expr, $resp:path) => {
-        match $srv.recv_comp()?.0 {
-            Ok($resp) => Ok(()),
-            Err(e) => Err(Error::Interface(stringify!($resp), e)),
-            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
-        }
-    };
-    ($srv:expr, $resp:path, $ok_block:block) => {
-        match $srv.recv_comp()?.0 {
-            Ok($resp) => $ok_block,
-            Err(e) => Err(Error::Interface(stringify!($resp), e)),
-            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
-        }
-    };
-    ($srv:expr, $resp:path, $inst:ident, $ok_block:block) => {
-        match $srv.recv_comp()?.0 {
-            Ok($resp($inst)) => $ok_block,
-            Err(e) => Err(Error::Interface(stringify!($resp), e)),
-            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
-        }
-    };
-    ($srv:expr, $resp:path, $ok_block:block, $err:ident, $err_block:block) => {
-        match $srv.recv_comp()?.0 {
-            Ok($resp) => $ok_block,
-            Err($err) => $err_block,
-            otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
-        }
-    };
-}
-
-pub(crate) use _rx_recv_impl as rx_recv_impl;
 
 // Get an owned structure from a borrow
-pub trait FromBorrow<Borrowed> {
+pub(crate) trait FromBorrow<Borrowed> {
     fn from_borrow<T: Borrow<Borrowed>>(borrow: &T) -> Self;
 }
 
-use super::module::ServiceType;
+use crate::transport::rdma::ops;
 
 #[inline]
-fn get_service() -> &'static ServiceType {
+fn get_ops() -> &'static ops::Ops {
     use super::engine::TlStorage;
     use crate::engine::runtime::ENGINE_LS;
     ENGINE_LS.with(|els| {
@@ -74,23 +43,21 @@ fn get_service() -> &'static ServiceType {
             .as_any()
             .downcast_ref::<TlStorage>()
             .unwrap()
-            .service
+            .ops
     })
 }
 
-#[inline]
-fn get_cq_buffers() -> &'static super::state::CqBuffers {
-    use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_LS;
-    ENGINE_LS.with(|els| {
-        &els.borrow()
-            .as_ref()
-            .unwrap()
-            .as_any()
-            .downcast_ref::<TlStorage>()
-            .unwrap()
-            .state
-            .shared
-            .cq_buffers
-    })
-}
+// #[inline]
+// fn get_ops_mut() -> &'static mut ops::Ops {
+//     use super::engine::TlStorage;
+//     use crate::engine::runtime::ENGINE_LS;
+//     ENGINE_LS.with(|els| {
+//         &mut els.borrow_mut()
+//             .as_mut()
+//             .unwrap()
+//             .as_any()
+//             .downcast_ref::<TlStorage>()
+//             .unwrap()
+//             .ops
+//     })
+// }

@@ -8,79 +8,72 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 use lazy_static::lazy_static;
 
-use interface::engine::{EngineType, SchedulingMode};
+
+use interface::engine::{SchedulingMode, EngineType};
+use ipc;
 use ipc::customer::{Customer, ShmCustomer};
-use ipc::mrpc::{cmd, control_plane, dp};
+use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use super::state::State;
-use super::engine::MrpcEngine;
-use crate::config::MrpcConfig;
+use crate::config::SallocConfig;
 use crate::engine::manager::RuntimeManager;
 use crate::engine::container::EngineContainer;
+use super::engine::SallocEngine;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
+use super::state::State;
+
 
 lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
 }
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
-pub(crate) struct MrpcEngineBuilder {
+pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
-    node: Node,
     client_pid: Pid,
     mode: SchedulingMode,
-    cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
-    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 }
 
-impl MrpcEngineBuilder {
+impl SallocEngineBuilder {
     fn new(
         customer: CustomerType,
-        node: Node,
         client_pid: Pid,
         mode: SchedulingMode,
-        cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
     ) -> Self {
-        MrpcEngineBuilder {
+        SallocEngineBuilder {
             customer,
-            cmd_tx,
-            cmd_rx,
-            node,
             client_pid,
             mode,
         }
     }
 
-    fn build(self) -> Result<MrpcEngine> {
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        assert_eq!(self.node.engine_type, EngineType::Mrpc);
+    fn build(self) -> Result<SallocEngine> {
+        // share the state with rpc adapter
+        let adpater_state = crate::rpc_adapter::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        let salloc_state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let node = Node::new(EngineType::Salloc);
 
-        Ok(MrpcEngine {
-            state,
+        Ok(SallocEngine {
             customer: self.customer,
-            node: self.node,
-            cmd_tx: self.cmd_tx,
-            cmd_rx: self.cmd_rx,
-            _mode: self.mode,
-            transport_type: None,
+            node,
             indicator: None,
+            state: salloc_state,
+            adapter_state: adpater_state,
         })
     }
 }
 
-pub struct MrpcModule {
-    config: MrpcConfig,
+pub struct SallocModule {
+    config: SallocConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
 
-impl MrpcModule {
-    pub fn new(config: MrpcConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        MrpcModule { config, runtime_manager }
+impl SallocModule {
+    pub fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+        SallocModule { config, runtime_manager }
     }
 
     pub fn handle_request(
@@ -104,9 +97,6 @@ impl MrpcModule {
         client_path: P,
         mode: SchedulingMode,
         cred: &UCred,
-        node: Node,
-        cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
@@ -114,19 +104,17 @@ impl MrpcModule {
         let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
-        let customer =
-            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer = Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
-        // the mrpc module is responsible for initializing and starting the mrpc engines
+        // the transport module is responsible for initializing and starting the transport engines
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
-        // 4. create the engine
-        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode, cmd_tx, cmd_rx);
+        let builder = SallocEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
 
-        // 5. submit the engine to a runtime
-        self.runtime_manager.submit(EngineContainer::new(engine), mode);
+        // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
+        self.runtime_manager.submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
 
         Ok(())
     }

@@ -12,10 +12,13 @@ path = "koala-control.sock"
 prefix = "/tmp/koala"
 engine_basename = "koala-mrpc-engine"
 
+[salloc]
+prefix = "/tmp/koala"
+engine_basename = "koala-salloc"
+
 [transport-tcp]
 prefix = "/tmp/koala"
 engine_basename = "koala-transport-engine-tcp"
-
 
 [transport-rdma]
 prefix = "/tmp/koala"

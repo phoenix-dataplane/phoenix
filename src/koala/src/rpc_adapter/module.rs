@@ -9,8 +9,7 @@ use nix::unistd::Pid;
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc;
-use ipc::service::Service;
-use ipc::transport::rdma::{cmd, control_plane, dp};
+use ipc::transport::rdma::control_plane;
 use ipc::unix::DomainSocket;
 
 use super::engine::{RpcAdapterEngine, TlStorage};
@@ -19,33 +18,27 @@ use crate::node::Node;
 use crate::state_mgr::StateManager;
 
 lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
 }
-
-pub(crate) type ServiceType =
-    Service<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct RpcAdapterEngineBuilder {
     node: Node,
-    service: ServiceType,
     client_pid: Pid,
     mode: SchedulingMode,
-    cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
-    cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
 }
 
 impl RpcAdapterEngineBuilder {
     fn new(
         node: Node,
-        service: ServiceType,
         client_pid: Pid,
         mode: SchedulingMode,
-        cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
-        cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ) -> Self {
         RpcAdapterEngineBuilder {
             node,
-            service,
             client_pid,
             mode,
             cmd_rx,
@@ -56,6 +49,7 @@ impl RpcAdapterEngineBuilder {
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         // The cq can only be created lazily. Because the engine on other side is not run at this
@@ -67,9 +61,10 @@ impl RpcAdapterEngineBuilder {
 
         Ok(RpcAdapterEngine {
             tls: Box::new(TlStorage {
-                service: self.service,
+                ops: crate::transport::rdma::module::create_ops(self.client_pid)?,
                 state,
             }),
+            salloc: salloc_state,
             cq: None,
             recent_listener_handle: None,
             local_buffer: VecDeque::new(),
@@ -87,6 +82,7 @@ pub struct RpcAdapterModule;
 impl RpcAdapterModule {
     pub fn handle_request(
         &mut self,
+        // NOTE(cjr): Why I am using rdma's control_plane request
         req: &control_plane::Request,
         _sock: &DomainSocket,
         sender: &SocketAddr,
@@ -102,13 +98,12 @@ impl RpcAdapterModule {
 
     pub(crate) fn create_engine(
         n: Node,
-        service: ServiceType,
         mode: SchedulingMode,
         client_pid: Pid,
-        cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
-        cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ) -> Result<RpcAdapterEngine> {
-        let builder = RpcAdapterEngineBuilder::new(n, service, client_pid, mode, cmd_rx, cmd_tx);
+        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx);
         let engine = builder.build()?;
 
         Ok(engine)

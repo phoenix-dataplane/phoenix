@@ -11,8 +11,10 @@ pub enum SchedulingMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EngineType {
     RdmaTransport,
+    RdmaConnMgmt,
     TcpTransport,
     Mrpc,
     RpcAdapter,
     Overload,
+    Salloc,
 }

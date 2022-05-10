@@ -15,13 +15,15 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
+use super::cm::engine::CmEngine;
 use super::engine::TransportEngine;
+use super::ops::Ops;
 use super::state::State;
-use crate::engine::manager::RuntimeManager;
+use crate::config::RdmaTransportConfig;
 use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
-use crate::config::RdmaTransportConfig;
 
 lazy_static! {
     static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
@@ -29,6 +31,14 @@ lazy_static! {
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+
+/// Create API Operations.
+pub(crate) fn create_ops(client_pid: Pid) -> Result<Ops> {
+    // create or get the state of the process
+    let state = STATE_MGR.get_or_create_state(client_pid)?;
+
+    Ok(Ops::new(state))
+}
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
@@ -47,17 +57,16 @@ impl TransportEngineBuilder {
 
     fn build(self) -> Result<TransportEngine> {
         // create or get the state of the process
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let node = Node::new(EngineType::RdmaTransport);
+        let ops = create_ops(self.client_pid)?;
 
         Ok(TransportEngine {
             customer: self.customer,
             node,
-            cq_err_buffer: VecDeque::new(),
-            _mode: self.mode,
-            state,
-            cmd_buffer: None,
             indicator: None,
+            _mode: self.mode,
+            ops,
+            cq_err_buffer: VecDeque::new(),
         })
     }
 }
@@ -69,7 +78,10 @@ pub struct TransportModule {
 
 impl TransportModule {
     pub fn new(config: RdmaTransportConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        TransportModule { config, runtime_manager }
+        TransportModule {
+            config,
+            runtime_manager,
+        }
     }
 
     pub fn handle_request(
@@ -87,6 +99,17 @@ impl TransportModule {
         }
     }
 
+    pub(crate) fn create_cm_engine(&mut self, client_pid: Pid) -> Result<()> {
+        let state = STATE_MGR.get_or_create_state(client_pid)?;
+        let node = Node::new(EngineType::RdmaConnMgmt);
+        let cm_engine = CmEngine::new(node, state);
+
+        // always submit the engine to a dedicate runtime
+        self.runtime_manager
+            .submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+        Ok(())
+    }
+
     pub(crate) fn create_engine(
         &mut self,
         customer: CustomerType,
@@ -95,6 +118,9 @@ impl TransportModule {
     ) -> Result<TransportEngine> {
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
+
+        // also build the cm engine
+        self.create_cm_engine(client_pid)?;
 
         Ok(engine)
     }
@@ -125,7 +151,11 @@ impl TransportModule {
         let engine = builder.build()?;
 
         // submit the engine to a runtime
-        self.runtime_manager.submit(EngineContainer::new(engine), mode);
+        self.runtime_manager
+            .submit(EngineContainer::new(engine), mode);
+
+        // also build the cm engine
+        self.create_cm_engine(client_pid)?;
 
         Ok(())
     }

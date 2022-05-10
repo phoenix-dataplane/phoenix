@@ -3,17 +3,12 @@
 #![feature(allocator_api)]
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(specialization)]
+#![feature(strict_provenance)]
 
-
-#![feature(async_iterator)]
-#![feature(generator_trait)]
-#![feature(unboxed_closures)]
-#![feature(fn_traits)]
-#![feature(ptr_internals)]
-#![feature(const_try)]
-#![feature(unsize)]
-#![feature(receiver_trait)]
+// boxed.rs
+// TODO: clean up
 #![feature(exact_size_is_empty)]
+#![feature(ptr_internals)]
 #![feature(ptr_metadata)]
 #![feature(core_intrinsics)]
 #![feature(ptr_const_cast)]
@@ -23,6 +18,7 @@ use std::env;
 use std::path::PathBuf;
 
 pub mod mrpc;
+pub(crate) mod salloc;
 pub mod transport;
 
 // Re-exports
