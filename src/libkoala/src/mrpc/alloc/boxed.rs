@@ -8,10 +8,10 @@ use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::iter::FromIterator;
 use core::iter::{FusedIterator, Iterator};
-use core::marker::{Unpin, Unsize};
+use core::marker::Unpin;
 use core::mem;
 use core::ops::{
-    CoerceUnsized, Deref, DerefMut, DispatchFromDyn, Generator, GeneratorState, Receiver,
+    Deref, DerefMut, Generator, GeneratorState, Receiver,
 };
 use core::pin::Pin;
 use core::ptr::{self, Unique};
@@ -24,7 +24,7 @@ use core::task::{Context, Poll};
 // use crate::str::from_boxed_utf8_unchecked;
 // use crate::vec::Vec;
 
-use std::alloc::{handle_alloc_error, WriteCloneIntoRaw};
+use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Allocator, Layout};
 
 use crate::mrpc::shared_heap::SharedHeapAllocator;
@@ -32,15 +32,14 @@ use crate::mrpc::shared_heap::SharedHeapAllocator;
 use super::shmptr::ShmPtr;
 
 
-#[fundamental]
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
 // on `box_free` for more details.
-pub(crate) struct Box<T: ?Sized>(ShmPtr<T>);
+pub struct Box<T: ?Sized>(ShmPtr<T>);
 
 impl<T> Box<T> {
     #[inline]
-    pub const fn new(x: T) -> Self
+    pub fn new(x: T) -> Self
     {
         let mut boxed = Self::new_uninit();
         unsafe {
@@ -50,9 +49,9 @@ impl<T> Box<T> {
     }
 
     #[inline]
-    pub const fn try_new(x: T) -> Result<Self, AllocError>
+    pub fn try_new(x: T) -> Result<Self, AllocError>
     where
-        T: ~const Drop,
+        T: Drop,
     {
         let mut boxed = Self::try_new_uninit()?;
         unsafe {
@@ -61,7 +60,7 @@ impl<T> Box<T> {
         }
     }
 
-    pub const fn new_uninit() -> Box<std::mem::MaybeUninit<T>>
+    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>>
     {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
@@ -72,7 +71,7 @@ impl<T> Box<T> {
         }
     }
 
-    pub const fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
+    pub fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
     where
     {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
@@ -80,9 +79,7 @@ impl<T> Box<T> {
         unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
     }
 
-    pub const fn new_zeroed() -> Box<mem::MaybeUninit<T>>
-    where
-        A: ~const Allocator + ~const Drop,
+    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>>
     {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
@@ -93,7 +90,7 @@ impl<T> Box<T> {
         }
     }
 
-    pub const fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
+    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
     {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
@@ -101,20 +98,20 @@ impl<T> Box<T> {
     }
 
     #[inline(always)]
-    pub const fn pin(x: T) -> Pin<Self>
+    pub fn pin(x: T) -> Pin<Self>
     {
         Self::into_pin(Self::new(x))
     }
 
-    pub const fn into_boxed_slice(boxed: Self) -> Box<[T], A> {
+    pub fn into_boxed_slice(boxed: Self) -> Box<[T]> {
         let raw = Box::into_raw(boxed);
         unsafe { Box::from_raw(raw as *mut [T; 1]) }
     }
 
     #[inline]
-    pub const fn into_inner(boxed: Self) -> T
+    pub fn into_inner(boxed: Self) -> T
     where
-        Self: ~const Drop,
+        Self: Drop,
     {
         let mut dst = std::mem::MaybeUninit::uninit();
         let src = Self::into_raw(boxed);
@@ -122,9 +119,12 @@ impl<T> Box<T> {
             // copy the content from shared heap to stack
             std::ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
             // drop the content on the shared heap
+            let size = core::intrinsics::size_of_val(src.as_const());
+            let align = core::intrinsics::min_align_of_val(src.as_const());
             std::ptr::drop_in_place(src);
-            let non_null: std::ptr::NonNull<T> = self.0.into();
-            SharedHeapAllocator.deallocate(non_null.cast(), Layout::new::<T>());
+            let non_null: std::ptr::NonNull<T> = std::ptr::NonNull::new_unchecked(src);
+            let layout = Layout::from_size_align_unchecked(size, align);
+            SharedHeapAllocator.deallocate(non_null.cast(), layout);
             dst.assume_init()
         }   
     }
@@ -310,13 +310,13 @@ impl<T> Box<T> {
 
 impl<T> Box<std::mem::MaybeUninit<T>> {
     #[inline]
-    pub const unsafe fn assume_init(self) -> Box<T> {
+    pub unsafe fn assume_init(self) -> Box<T> {
         let raw = Box::into_raw(self);
         unsafe { Box::from_raw(raw as *mut T) }
     }
 
     #[inline]
-    pub const fn write(mut boxed: Self, value: T) -> Box<T> {
+    pub fn write(mut boxed: Self, value: T) -> Box<T> {
         unsafe {
             (*boxed).write(value);
             boxed.assume_init()
@@ -334,18 +334,18 @@ impl<T> Box<[std::mem::MaybeUninit<T>]> {
 
 impl<T: ?Sized> Box<T> {
     #[inline]
-    pub const unsafe fn from_raw(raw: *mut T) -> Self {
+    pub unsafe fn from_raw(raw: *mut T) -> Self {
         Box(unsafe { ShmPtr::new_unchecked(raw) })
     }
 
     #[inline]
-    pub const fn into_raw(b: Self) -> *mut T {
+    pub fn into_raw(b: Self) -> *mut T {
         let leaked = Box::into_unique(b);
         leaked.as_ptr()
     }
 
     #[inline]
-    pub const fn into_unique(b: Self) -> Unique<T> {
+    pub fn into_unique(b: Self) -> Unique<T> {
         // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
         // raw pointer for the type system. Turning it directly into a raw pointer would not be
         // recognized as "releasing" the unique pointer to permit aliased raw accesses,
@@ -355,22 +355,18 @@ impl<T: ?Sized> Box<T> {
     }
 
     #[inline]
-    pub const fn into_shmptr<'a>(b: Self) -> ShmPtr<T>
+    pub fn into_shmptr<'a>(b: Self) -> ShmPtr<T>
     {
         unsafe { mem::ManuallyDrop::new(b).0 }
     }
 
     #[inline]
-    pub const fn leak<'a>(b: Self) -> &'a mut T
-    where
-        A: 'a,
+    pub fn leak<'a>(b: Self) -> &'a mut T
     {
         unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 
-    pub const fn into_pin(boxed: Self) -> Pin<Self>
-    where
-        A: 'static,
+    pub fn into_pin(boxed: Self) -> Pin<Self>
     {
         // It's not possible to move or replace the insides of a `Pin<Box<T>>`
         // when `T: !Unpin`,  so it's safe to pin it directly without any
@@ -379,12 +375,15 @@ impl<T: ?Sized> Box<T> {
     }
 }
 
-unsafe impl<T: ?Sized> Drop for Box<T> {
+impl<T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
         unsafe {
+            let size = core::intrinsics::size_of_val(self.0.as_ref());
+            let align = core::intrinsics::min_align_of_val(self.0.as_ref());
             std::ptr::drop_in_place(self.0.as_ptr());
             let non_null: std::ptr::NonNull<T> = self.0.into();
-            SharedHeapAllocator.deallocate(non_null.cast(), Layout::new::<T>());
+            let layout = Layout::from_size_align_unchecked(size, align);
+            SharedHeapAllocator.deallocate(non_null.cast(), layout);
         }
     }
 }
@@ -395,22 +394,22 @@ impl<T: Default> Default for Box<T> {
     }
 }
 
-impl<T> Default for Box<[T]> {
-    fn default() -> Self {
-        Box::<[T; 0]>::new([])
-    }
-}
+// impl<T> Default for Box<[T]> {
+//     fn default() -> Self {
+//         Box::<[T; 0]>::new([])
+//     }
+// }
 
 #[inline]
 pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
     unsafe { Box::from_raw(Box::into_raw(v) as *mut str) }
 }
 
-impl Default for Box<str> {
-    fn default() -> Self {
-        unsafe { from_boxed_utf8_unchecked(Default::default()) }
-    }
-}
+// impl Default for Box<str> {
+//     fn default() -> Self {
+//         unsafe { from_boxed_utf8_unchecked(Default::default()) }
+//     }
+// }
 
 pub(crate) trait WriteCloneIntoRaw: Sized {
     unsafe fn write_clone_into_raw(&self, target: *mut Self);
@@ -450,13 +449,13 @@ impl<T: Clone> Clone for Box<T> {
     }
 }
 
-impl Clone for Box<str> {
-    fn clone(&self) -> Self {
-        // this makes a copy of the data
-        let buf: Box<[u8]> = self.as_bytes().into();
-        unsafe { from_boxed_utf8_unchecked(buf) }
-    }
-}
+// impl Clone for Box<str> {
+//     fn clone(&self) -> Self {
+//         // this makes a copy of the data
+//         let buf: Box<[u8]> = self.as_bytes().into();
+//         unsafe { from_boxed_utf8_unchecked(buf) }
+//     }
+// }
 
 impl<T: ?Sized + PartialEq> PartialEq for Box<T> {
     #[inline]
@@ -558,7 +557,7 @@ impl<T> From<T> for Box<T> {
     }
 }
 
-impl<T: ?Sized> const From<Box<T>> for Pin<Box<T>>
+impl<T: ?Sized> From<Box<T>> for Pin<Box<T>>
 {
     fn from(boxed: Box<T>) -> Self {
         Box::into_pin(boxed)
@@ -805,7 +804,7 @@ impl<T: ?Sized> Deref for Box<T> {
     }
 }
 
-impl<T: ?Sized> const DerefMut for Box<T> {
+impl<T: ?Sized> DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.0.as_mut() }
     }
@@ -848,7 +847,7 @@ impl<I: Iterator + ?Sized> BoxIter for Box<I> {
 
 impl<I: Iterator> BoxIter for Box<I> {
     fn last(self) -> Option<I::Item> {
-        (*self).last()
+        Box::into_inner(self).last()
     }
 }
 
@@ -871,29 +870,29 @@ impl<I: ExactSizeIterator + ?Sized> ExactSizeIterator for Box<I> {
 
 impl<I: FusedIterator + ?Sized> FusedIterator for Box<I> {}
 
-impl<Args, F: FnOnce<Args> + ?Sized> FnOnce<Args> for Box<F> {
-    type Output = <F as FnOnce<Args>>::Output;
+// impl<Args, F: FnOnce<Args> + ?Sized> FnOnce<Args> for Box<F> {
+//     type Output = <F as FnOnce<Args>>::Output;
 
-    extern "rust-call" fn call_once(self, args: Args) -> Self::Output {
-        <F as FnOnce<Args>>::call_once(*self, args)
-    }
-}
+//     extern "rust-call" fn call_once(self, args: Args) -> Self::Output {
+//         <F as FnOnce<Args>>::call_once(*self, args)
+//     }
+// }
 
-impl<Args, F: FnMut<Args> + ?Sized> FnMut<Args> for Box<F> {
-    extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output {
-        <F as FnMut<Args>>::call_mut(self, args)
-    }
-}
+// impl<Args, F: FnMut<Args> + ?Sized> FnMut<Args> for Box<F> {
+//     extern "rust-call" fn call_mut(&mut self, args: Args) -> Self::Output {
+//         <F as FnMut<Args>>::call_mut(self, args)
+//     }
+// }
 
-impl<Args, F: Fn<Args> + ?Sized> Fn<Args> for Box<F> {
-    extern "rust-call" fn call(&self, args: Args) -> Self::Output {
-        <F as Fn<Args>>::call(self, args)
-    }
-}
+// impl<Args, F: Fn<Args> + ?Sized> Fn<Args> for Box<F> {
+//     extern "rust-call" fn call(&self, args: Args) -> Self::Output {
+//         <F as Fn<Args>>::call(self, args)
+//     }
+// }
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U, A>> for Box<T> {}
+// impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}
 
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
+// impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 // #[cfg(not(no_global_oom_handling))]
 // #[stable(feature = "boxed_slice_from_iter", since = "1.32.0")]
@@ -946,43 +945,43 @@ impl<T: ?Sized> AsMut<T> for Box<T> {
 
 impl<T: ?Sized> Unpin for Box<T> {}
 
-impl<G: ?Sized + Generator<R> + Unpin, R> Generator<R> for Box<G>
-{
-    type Yield = G::Yield;
-    type Return = G::Return;
+// impl<G: ?Sized + Generator<R> + Unpin, R> Generator<R> for Box<G>
+// {
+//     type Yield = G::Yield;
+//     type Return = G::Return;
 
-    fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-        G::resume(Pin::new(&mut *self), arg)
-    }
-}
+//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
+//         G::resume(Pin::new(&mut *self), arg)
+//     }
+// }
 
-impl<G: ?Sized + Generator<R>, R> Generator<R> for Pin<Box<G>>
-{
-    type Yield = G::Yield;
-    type Return = G::Return;
+// impl<G: ?Sized + Generator<R>, R> Generator<R> for Pin<Box<G>>
+// {
+//     type Yield = G::Yield;
+//     type Return = G::Return;
 
-    fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-        G::resume((*self).as_mut(), arg)
-    }
-}
+//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
+//         G::resume((*self).as_mut(), arg)
+//     }
+// }
 
-impl<F: ?Sized + Future + Unpin> Future for Box<F>
-{
-    type Output = F::Output;
+// impl<F: ?Sized + Future + Unpin> Future for Box<F>
+// {
+//     type Output = F::Output;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        F::poll(Pin::new(&mut *self), cx)
-    }
-}
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         F::poll(Pin::new(&mut *self), cx)
+//     }
+// }
 
-impl<S: ?Sized + AsyncIterator + Unpin> AsyncIterator for Box<S> {
-    type Item = S::Item;
+// impl<S: ?Sized + AsyncIterator + Unpin> AsyncIterator for Box<S> {
+//     type Item = S::Item;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut **self).poll_next(cx)
-    }
+//     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+//         Pin::new(&mut **self).poll_next(cx)
+//     }
 
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (**self).size_hint()
-    }
-}
+//     fn size_hint(&self) -> (usize, Option<usize>) {
+//         (**self).size_hint()
+//     }
+// }

@@ -26,7 +26,6 @@ use crate::ops::{CoerceUnsized, DispatchFromDyn};
 /// for any type which upholds Unique's aliasing requirements.
 
 #[repr(transparent)]
-#[rustc_layout_scalar_valid_range_start(1)]
 pub struct Unique<T: ?Sized> {
     pointer: *const T,
     // NOTE: this marker has no consequences for variance, but is necessary
@@ -49,7 +48,6 @@ unsafe impl<T: Send + ?Sized> Send for Unique<T> {}
 /// `Unique` must enforce it.
 unsafe impl<T: Sync + ?Sized> Sync for Unique<T> {}
 
-#[unstable(feature = "ptr_internals", issue = "none")]
 impl<T: Sized> Unique<T> {
     /// Creates a new `Unique` that is dangling, but well-aligned.
     ///

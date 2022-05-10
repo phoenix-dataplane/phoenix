@@ -3,6 +3,21 @@
 #![feature(allocator_api)]
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(specialization)]
+
+
+#![feature(async_iterator)]
+#![feature(generator_trait)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(ptr_internals)]
+#![feature(const_try)]
+#![feature(unsize)]
+#![feature(receiver_trait)]
+#![feature(exact_size_is_empty)]
+#![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
+#![feature(ptr_const_cast)]
+
 use std::borrow::Borrow;
 
 pub mod transport;

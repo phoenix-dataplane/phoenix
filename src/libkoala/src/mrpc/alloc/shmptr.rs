@@ -1,11 +1,10 @@
 use std::ptr::NonNull;
+use std::ptr::Unique;
 
 use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::codegen::SwitchAddressSpace;
-use crate::mrpc::alloc::unique::Unique;
 
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct ShmPtr<T: ?Sized> {
     ptr: Unique<T>,
     ptr_remote: Unique<T>
@@ -13,9 +12,14 @@ pub struct ShmPtr<T: ?Sized> {
 
 impl<T: ?Sized> ShmPtr<T> {
     #[inline]
-    pub const fn new(ptr: *mut T) -> Option<Self> {
+    pub fn new(ptr: *mut T) -> Option<Self> {
         if !ptr.is_null() {
-            let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
+            // let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
+            // NOTE: unsafe
+            let addr = ptr as *const () as usize;
+            let metadata = std::ptr::metadata(ptr);
+            let remote_addr = addr as isize + SharedHeapAllocator::query_shm_offset(addr);
+            let ptr_remote = std::ptr::from_raw_parts::<T>(remote_addr as *const (), metadata).as_mut();
             let ptr = unsafe { Unique::new_unchecked(ptr) };
             let ptr_remote = unsafe { Unique::new_unchecked(ptr_remote) };
             Some(ShmPtr {
@@ -29,8 +33,12 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     #[inline]
-    pub const fn new_unchecked(ptr: *mut T) -> Self {
-        let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
+    pub fn new_unchecked(ptr: *mut T) -> Self {
+        // let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
+        let addr = (ptr as *const u8) as usize;
+        let metadata = std::ptr::metadata(ptr);
+        let remote_addr = addr as isize + SharedHeapAllocator::query_shm_offset(addr);
+        let ptr_remote = std::ptr::from_raw_parts::<T>(remote_addr as *const (), metadata).as_mut();
         let ptr = unsafe { Unique::new_unchecked(ptr) };
         let ptr_remote = unsafe { Unique::new_unchecked(ptr_remote) };
         ShmPtr {
@@ -40,7 +48,7 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     #[inline]
-    pub const fn new_with_remote(ptr: *mut T, ptr_remote: *mut T) -> Option<Self> {
+    pub fn new_with_remote(ptr: *mut T, ptr_remote: *mut T) -> Option<Self> {
         // SAFETY: the caller must guarantee that `ptr` is non-null.
         if !ptr.is_null() && !ptr_remote.is_null() {
             let ptr = unsafe { Unique::new_unchecked(ptr) };
@@ -56,7 +64,7 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Acquires the underlying `*mut` pointer.
-    pub const fn as_ptr(self) -> *mut T {
+    pub fn as_ptr(self) -> *mut T {
         self.ptr.as_ptr()
     }
 
@@ -65,7 +73,7 @@ impl<T: ?Sized> ShmPtr<T> {
     /// The resulting lifetime is bound to self so this behaves "as if"
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&*my_ptr.as_ptr()`.
-    pub const unsafe fn as_ref(&self) -> &T {
+    pub unsafe fn as_ref(&self) -> &T {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
         unsafe { self.ptr.as_ref() }
@@ -77,16 +85,16 @@ impl<T: ?Sized> ShmPtr<T> {
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&mut *my_ptr.as_ptr()`.
     #[inline]
-    pub const unsafe fn as_mut(&mut self) -> &mut T {
+    pub unsafe fn as_mut(&mut self) -> &mut T {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a mutable reference.        
         unsafe { self.ptr.as_mut() }
     }
 
     /// Casts to a pointer of another type
-    pub const fn cast<U>(self) -> ShmPtr<U> {
+    pub fn cast<U>(self) -> ShmPtr<U> {
         let cast_ptr = unsafe { Unique::new_unchecked(self.ptr.as_ptr() as *mut U) };
-        let cast_ptr_remote = unsafe { Unique::new_unchecked(self.ptr_remote() as *mut U) };
+        let cast_ptr_remote = unsafe { Unique::new_unchecked(self.ptr_remote.as_ptr() as *mut U) };
         ShmPtr { ptr: cast_ptr, ptr_remote: cast_ptr_remote }
     }
 }
@@ -99,3 +107,12 @@ impl<T: ?Sized> From<ShmPtr<T>> for core::ptr::NonNull<T> {
         unsafe { NonNull::new_unchecked(shmptr.as_ptr()) }
     }
 }
+
+impl<T: ?Sized> Clone for ShmPtr<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        ShmPtr { ptr: self.ptr, ptr_remote: self.ptr_remote }
+    }
+}
+
+impl<T: ?Sized> Copy for ShmPtr<T> {}
