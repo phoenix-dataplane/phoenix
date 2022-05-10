@@ -47,9 +47,11 @@ impl Unmarshal for MessageMeta {
     type Error = ();
     unsafe fn unmarshal(sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
         if sg_list.0.len() != 1 {
+            debug!("META UNMARSHAL FAIL 1");
             return Err(());
         }
         if sg_list.0[0].len != mem::size_of::<Self>() {
+            debug!("META UNMARSHAL FAIL 2, MSGMETA_SIZE={}, MSGHEADER_SIZE {}, LEN={}", std::mem::size_of::<MessageMeta>(), std::mem::size_of::<MessageTemplateErased>(), sg_list.0[0].len);
             return Err(());
         }
         let this = Unique::new(sg_list.0[0].ptr as *mut Self).unwrap();
@@ -62,6 +64,7 @@ impl Marshal for MessageTemplateErased {
     fn marshal(&self) -> Result<SgList, Self::Error> {
         let selfptr = self as *const _ as usize;
         let len = mem::size_of::<Self>();
+        debug!("MARSHAL LENTH {}", len);
         let sgl = SgList(vec![ShmBuf { ptr: selfptr, len }]);
         Ok(sgl)
     }
@@ -73,11 +76,22 @@ impl Unmarshal for MessageTemplateErased {
         if sg_list.0.len() <= 1 {
             return Err(());
         }
+        debug!("START TO UNMSRAHL MessageTemplateErased");
+
         let mut header_sgl = sg_list.0.remove(0);
+        // TODO(wyj): this counts for MessageMeta's unique
         header_sgl.len -= mem::size_of::<u64>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
+        debug!("META UNMARSHAL SUCESSED");
+
         let mut this = meta.cast::<Self>();
-        this.as_mut().shmptr = sg_list.0[0].ptr as _;
+        // TODO(wyj): check correctness
+        let local_addr = sg_list.0[0].ptr as usize;
+        this.as_mut().shm_addr = local_addr as u64;
+        debug!("WRITE SHMADDR SUCESSED");
+        // let remote_msg_addr  = local_addr as isize + query_shm_offset(local_addr);
+        let remote_msg_addr  = local_addr;
+        this.as_mut().shm_addr_remote = remote_msg_addr as u64;
         Ok(this)
     }
 }
@@ -101,7 +115,7 @@ pub struct MessageTemplate<T> {
 impl<T> MessageTemplate<T> {
     pub unsafe fn new(erased: MessageTemplateErased) -> Unique<Self> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
-        let this = Unique::new(erased.shmptr as *mut MessageTemplate<T>).unwrap();
+        let this = Unique::new(erased.shm_addr as *mut MessageTemplate<T>).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
         log::debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this

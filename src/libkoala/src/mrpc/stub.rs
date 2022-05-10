@@ -86,7 +86,8 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
         as u64;
     let erased = MessageTemplateErased {
         meta,
-        shmptr: remote_shmptr,
+        shm_addr: remote_shmptr,
+        shm_addr_remote: local_ptr as *const() as u64
     };
     let req = dp::WorkRequest::Call(erased);
     MRPC_CTX.with(|ctx| {

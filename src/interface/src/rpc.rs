@@ -32,5 +32,6 @@ pub struct MessageMeta {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MessageTemplateErased {
     pub meta: MessageMeta,
-    pub shmptr: u64,
+    pub shm_addr: u64,
+    pub shm_addr_remote: u64
 }

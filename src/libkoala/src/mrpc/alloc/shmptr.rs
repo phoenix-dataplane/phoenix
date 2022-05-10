@@ -33,23 +33,12 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     #[inline]
-    pub fn new_unchecked(ptr: *mut T) -> Self {
-        // let ptr_remote = ptr.map_addr(|addr| addr + SharedHeapAllocator::query_shm_offset(addr));
-        let addr = (ptr as *const u8) as usize;
-        let metadata = std::ptr::metadata(ptr);
-        let remote_addr = addr as isize + SharedHeapAllocator::query_shm_offset(addr);
-        let ptr_remote = std::ptr::from_raw_parts::<T>(remote_addr as *const (), metadata).as_mut();
-        let ptr = unsafe { Unique::new_unchecked(ptr) };
-        let ptr_remote = unsafe { Unique::new_unchecked(ptr_remote) };
-        ShmPtr {
-            ptr,
-            ptr_remote
-        }
+    pub unsafe fn new_unchecked(ptr: *mut T) -> Self {
+       Self::new(ptr).unwrap()
     }
 
     #[inline]
     pub fn new_with_remote(ptr: *mut T, ptr_remote: *mut T) -> Option<Self> {
-        // SAFETY: the caller must guarantee that `ptr` is non-null.
         if !ptr.is_null() && !ptr_remote.is_null() {
             let ptr = unsafe { Unique::new_unchecked(ptr) };
             let ptr_remote = unsafe { Unique::new_unchecked(ptr_remote) };
@@ -61,6 +50,11 @@ impl<T: ?Sized> ShmPtr<T> {
         else {
             None
         }
+    }
+
+    #[inline]
+    pub unsafe fn new_unchecked_with_remote(ptr: *mut T, ptr_remote: *mut T) -> Self {
+        Self::new_with_remote(ptr, ptr_remote).unwrap()
     }
 
     /// Acquires the underlying `*mut` pointer.

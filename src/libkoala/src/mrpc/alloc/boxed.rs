@@ -128,6 +128,11 @@ impl<T> Box<T> {
             dst.assume_init()
         }   
     }
+
+    #[inline]
+    pub fn unbox(self) -> T {
+        Self::into_inner(self)
+    }
 }
 
 // impl<T> Box<[T]> {
@@ -336,6 +341,11 @@ impl<T: ?Sized> Box<T> {
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
         Box(unsafe { ShmPtr::new_unchecked(raw) })
+    }
+
+    #[inline]
+    pub unsafe fn from_raw_with_remote(raw: *mut T, raw_remote: *mut T) -> Self {
+        Box(unsafe { ShmPtr::new_unchecked_with_remote(raw, raw_remote) })
     }
 
     #[inline]
