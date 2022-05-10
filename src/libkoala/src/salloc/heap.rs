@@ -10,10 +10,10 @@ use lazy_static::lazy_static;
 use memfd::Memfd;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
-use ipc::mrpc::cmd;
+use ipc::salloc::cmd;
 
-use crate::mrpc::{Error as MrpcError, MRPC_CTX};
-use crate::verbs::MemoryRegion;
+use super::region::SharedRegion;
+use super::{Error, SA_CTX};
 
 thread_local! {
     /// thread-local shared heap
@@ -21,40 +21,27 @@ thread_local! {
 }
 
 lazy_static! {
-    static ref REGIONS: spin::Mutex<BTreeMap<usize, MemoryRegion<u8>>> =
+    static ref REGIONS: spin::Mutex<BTreeMap<usize, SharedRegion>> =
         spin::Mutex::new(BTreeMap::new());
 }
 
 struct SharedHeap {
-    // COMMET(cjr): currently, one shared heap must be exclusively associated with a protection domain.
-    // pd: &'static ProtectionDomain,
-    // vaddr -> MR
     zone_allocator: ZoneAllocator<'static>,
 }
 
 impl SharedHeap {
-    // fn new() -> Self {
-    //     // We use the first default pd. It should direct to the first NIC.
-    //     // TODO(cjr): Add multi-NIC support!
-    //     let default_pds = ProtectionDomain::default_pds();
-    //     assert_eq!(default_pds.len(), 1);
-    //     SharedHeap {
-    //         pd: &default_pds[0],
-    //         // mrs: HashMap::default(),
-    //         zone_allocator: ZoneAllocator::new(),
-    //     }
-    // }
-
     fn new() -> Self {
         SharedHeap {
             zone_allocator: ZoneAllocator::new(),
         }
     }
 
-    fn allocate_shm(&self, len: usize) -> Result<MemoryRegion<u8>, MrpcError> {
+    fn allocate_shm(&self, len: usize) -> Result<SharedRegion, Error> {
         assert!(len > 0);
-        MRPC_CTX.with(|ctx| {
-            let req = cmd::Command::AllocShm(len);
+        SA_CTX.with(|ctx| {
+            // TODO(cjr): use a correct align
+            let align = len;
+            let req = cmd::Command::AllocShm(len, align);
             ctx.service.send_cmd(req)?;
             let fds = ctx.service.recv_fd()?;
 
@@ -65,29 +52,23 @@ impl SharedHeap {
             assert!(file_len >= len);
 
             match ctx.service.recv_comp().unwrap().0 {
-                Ok(cmd::CompletionKind::AllocShm(mr)) => Ok(MemoryRegion::new(
-                    mr.pd,
-                    mr.handle,
-                    mr.rkey,
-                    mr.vaddr,
-                    len,
-                    mr.file_off,
-                    memfd,
-                )
-                .unwrap()),
-                Err(e) => Err(MrpcError::Interface("AllocShm", e)),
+                Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => {
+                    Ok(SharedRegion::new(remote_addr, len, file_off, memfd).unwrap())
+                }
+                Err(e) => Err(Error::Interface("AllocShm", e)),
                 otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
             }
         })
     }
+
     #[inline]
     fn allocate_huge_page(&mut self) -> Option<&'static mut HugeObjectPage<'static>> {
         match self.allocate_shm(HugeObjectPage::SIZE) {
-            Ok(mr) => {
-                let addr = mr.as_ptr() as usize;
+            Ok(sr) => {
+                let addr = sr.as_ptr().addr();
                 assert!(addr & (HugeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let huge_object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 huge_object_page
             }
             Err(e) => {
@@ -103,11 +84,11 @@ impl SharedHeap {
         // use mem::transmute to coerce an address to LargeObjectPage, make sure the size is
         // correct
         match self.allocate_shm(LargeObjectPage::SIZE) {
-            Ok(mr) => {
-                let addr = mr.as_ptr() as usize;
+            Ok(sr) => {
+                let addr = sr.as_ptr().addr();
                 assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 large_object_page
             }
             Err(e) => {
@@ -120,11 +101,11 @@ impl SharedHeap {
     #[inline]
     fn allocate_page(&mut self) -> Option<&'static mut ObjectPage<'static>> {
         match self.allocate_shm(ObjectPage::SIZE) {
-            Ok(mr) => {
-                let addr = mr.as_ptr() as usize;
+            Ok(sr) => {
+                let addr = sr.as_ptr().addr();
                 assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 object_page
             }
             Err(e) => {
@@ -132,6 +113,11 @@ impl SharedHeap {
                 None
             }
         }
+    }
+
+    #[inline]
+    fn release_huge_page(&mut self, _p: &'static mut HugeObjectPage<'static>) {
+        todo!()
     }
 
     #[inline]
@@ -170,7 +156,7 @@ impl SharedHeapAllocator {
                     *kv.0,
                     kv.1.len()
                 );
-                kv.1.remote_addr as isize - *kv.0 as isize
+                kv.1.remote_addr() as isize - *kv.0 as isize
             }
             None => panic!(
                 "addr: {:0x} not found in allocated pages, number of pages allocated: {}",
@@ -228,7 +214,7 @@ unsafe impl Allocator for SharedHeapAllocator {
                                 if let Some(huge_page) = shared_heap.allocate_huge_page() {
                                     let addr = huge_page as *mut _ as usize;
                                     assert!(
-                                        addr % (1024*1024*1024) == 0,
+                                        addr % (1024 * 1024 * 1024) == 0,
                                         "addr: {:#0x?} is not huge page aligned",
                                         addr
                                     );
@@ -260,16 +246,17 @@ unsafe impl Allocator for SharedHeapAllocator {
             _ => {
                 log::error!(
                     "Requested: {} bytes. Please handle object size larger than {}",
-                    layout.size(), ZoneAllocator::MAX_ALLOC_SIZE
+                    layout.size(),
+                    ZoneAllocator::MAX_ALLOC_SIZE
                 );
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let shared_heap = shared_heap.borrow_mut();
                     let aligned_size = layout.align_to(4096).unwrap().pad_to_align().size();
                     match shared_heap.allocate_shm(aligned_size) {
-                        Ok(mr) => {
-                            let addr = mr.as_ptr() as usize;
-                            let nptr = NonNull::new(mr.as_mut_ptr()).unwrap();
-                            REGIONS.lock().insert(addr, mr).ok_or(()).unwrap_err();
+                        Ok(sr) => {
+                            let addr = sr.as_ptr().addr();
+                            let nptr = NonNull::new(sr.as_mut_ptr()).unwrap();
+                            REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                             Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
                         }
                         Err(e) => {
