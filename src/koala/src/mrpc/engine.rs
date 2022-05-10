@@ -312,8 +312,9 @@ impl MrpcEngine {
                 // TODO(cjr): switch_address_space
                 // msg.switch_address_space();
                 let msg_mut = unsafe { msg.as_mut() };
-                // switch to backend's address space
                 msg_mut.switch_address_space();
+                // NOTE(wyj): this is the address of the pointer to `msg_mut`
+                // while switch_address_space swithces the address of the actual payload
                 let remote_msg_addr =
                     msg.as_ptr()
                         .cast::<u8>()
