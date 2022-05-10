@@ -38,27 +38,29 @@ impl Node {
 
 #[macro_export]
 macro_rules! impl_vertex_for_engine {
-    ($node:ident) => {
-        #[inline]
-        fn id(&self) -> &str {
-            &self.$node.id
+    ($engine:ident, $node:ident) => {
+        impl crate::engine::Vertex for $engine {
+            #[inline]
+            fn id(&self) -> &str {
+                &self.$node.id
+            }
+            #[inline]
+            fn engine_type(&self) -> interface::engine::EngineType {
+                self.$node.engine_type
+            }
+            #[inline]
+            fn tx_inputs(&self) -> &Vec<crate::engine::IQueue> {
+                &self.$node.tx_input
+            }
+            fn tx_outputs(&self) -> &Vec<crate::engine::OQueue> {
+                &self.$node.tx_output
+            }
+            fn rx_inputs(&self) -> &Vec<crate::engine::IQueue> {
+                &self.$node.rx_input
+            }
+            fn rx_outputs(&self) -> &Vec<crate::engine::OQueue> {
+                &self.$node.rx_output
+            }
         }
-        #[inline]
-        fn engine_type(&self) -> interface::engine::EngineType {
-            self.$node.engine_type
-        }
-        #[inline]
-        fn tx_inputs(&self) -> &Vec<crate::engine::IQueue> {
-            &self.$node.tx_input
-        }
-        fn tx_outputs(&self) -> &Vec<crate::engine::OQueue> {
-            &self.$node.tx_output
-        }
-        fn rx_inputs(&self) -> &Vec<crate::engine::IQueue> {
-            &self.$node.rx_input
-        }
-        fn rx_outputs(&self) -> &Vec<crate::engine::OQueue> {
-            &self.$node.rx_output
-        }
-    }
+    };
 }

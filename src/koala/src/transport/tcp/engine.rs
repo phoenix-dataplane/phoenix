@@ -11,7 +11,7 @@ use interface::engine::SchedulingMode;
 
 use super::module::CustomerType;
 use super::{DatapathError, Error};
-use crate::engine::{future, Engine, EngineResult, Indicator, Upgradable, Version, Vertex};
+use crate::engine::{future, Engine, EngineResult, Indicator};
 use crate::node::Node;
 use crate::resource::ResourceTable;
 
@@ -43,27 +43,8 @@ pub struct TransportEngine {
     pub(crate) indicator: Option<Indicator>,
 }
 
-impl Upgradable for TransportEngine {
-    fn version(&self) -> Version {
-        unimplemented!();
-    }
-
-    fn check_compatible(&self, _v2: Version) -> bool {
-        unimplemented!();
-    }
-
-    fn suspend(&mut self) {
-        unimplemented!();
-    }
-
-    fn dump(&self) {
-        unimplemented!();
-    }
-
-    fn restore(&mut self) {
-        unimplemented!();
-    }
-}
+crate::unimplemented_ungradable!(TransportEngine);
+crate::impl_vertex_for_engine!(TransportEngine, node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -72,10 +53,6 @@ enum Status {
 }
 
 use Status::Progress;
-
-impl Vertex for TransportEngine {
-    crate::impl_vertex_for_engine!(node);
-}
 
 impl Engine for TransportEngine {
     type Future = impl Future<Output = EngineResult>;

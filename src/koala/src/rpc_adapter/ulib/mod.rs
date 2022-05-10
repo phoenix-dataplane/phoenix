@@ -78,6 +78,23 @@ fn get_service() -> &'static ServiceType {
     })
 }
 
+use crate::transport::rdma::engine::TransportEngine;
+
+#[inline]
+fn get_api() -> &'static TransportEngine {
+    use super::engine::TlStorage;
+    use crate::engine::runtime::ENGINE_LS;
+    ENGINE_LS.with(|els| {
+        &els.borrow()
+            .as_ref()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<TlStorage>()
+            .unwrap()
+            .api_engine
+    })
+}
+
 #[inline]
 fn get_cq_buffers() -> &'static super::state::CqBuffers {
     use super::engine::TlStorage;

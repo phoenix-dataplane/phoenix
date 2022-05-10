@@ -27,7 +27,6 @@ impl Context {
 // mRPC library
 pub mod alloc;
 pub mod codegen;
-pub mod shared_heap;
 pub mod stub;
 
 // pub mod shmptr;

@@ -45,7 +45,18 @@ Misc
   --affinity=[none,hyperthread,numa,crossnuma/inter_numa/inter_cpu]
   --affinity=[casual,l1,l3,mem]
 
+- SAllocEngine and CmEngine should be per-process one engine. optmize
+  the number of engines to build.
+
 Shared memory heap
+- SharedHeapAllocator should not use MemoryRegion any more. The pd and
+  rkey, inner_handle are unnecessary. And TCP does not have these
+  fields, either.
+- remove file_off (it should be all zero now, given the existence of
+  AddressMediator)
+- need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
+  rpc_adapter.
+- use pointer strict provenance
 - check if a read only shm file descriptor can be open with write
   permission and really written
 - *call rdma-transport directly from rpc_adapter/ulib*

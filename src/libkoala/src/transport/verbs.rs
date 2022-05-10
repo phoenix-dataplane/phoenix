@@ -202,6 +202,7 @@ pub struct SharedReceiveQueue {
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
     // mmap: MmapRaw,
+    // TODO(cjr): maybe change back to MmapRaw
     mmap: MmapFixed,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes

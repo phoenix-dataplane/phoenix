@@ -17,14 +17,14 @@ use super::module::ServiceType;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
-};
+use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
+use crate::transport::rdma::engine::TransportEngine;
 
 pub struct TlStorage {
     pub(crate) service: ServiceType,
+    pub(crate) api_engine: TransportEngine,
     pub(crate) state: State,
 }
 
@@ -35,7 +35,9 @@ unsafe impl Sync for TlStorage {}
 
 unsafe impl EngineLocalStorage for TlStorage {
     #[inline]
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct RpcAdapterEngine {
@@ -53,31 +55,8 @@ pub struct RpcAdapterEngine {
     pub(crate) indicator: Option<Indicator>,
 }
 
-impl Upgradable for RpcAdapterEngine {
-    fn version(&self) -> Version {
-        unimplemented!();
-    }
-
-    fn check_compatible(&self, _v2: Version) -> bool {
-        unimplemented!();
-    }
-
-    fn suspend(&mut self) {
-        unimplemented!();
-    }
-
-    fn dump(&self) {
-        unimplemented!();
-    }
-
-    fn restore(&mut self) {
-        unimplemented!();
-    }
-}
-
-impl Vertex for RpcAdapterEngine {
-    crate::impl_vertex_for_engine!(node);
-}
+crate::unimplemented_ungradable!(RpcAdapterEngine);
+crate::impl_vertex_for_engine!(RpcAdapterEngine, node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -156,8 +135,6 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        // TODO(cjr): check from local queue
-        // TODO(cjr): check credit
         use std::sync::mpsc::TryRecvError;
         use ulib::uverbs::SendFlags;
         while let Some(msg) = self.local_buffer.pop_front() {

@@ -339,11 +339,13 @@ impl CmEvent {
     /// Only valid for a new connect request.
     #[inline]
     pub fn get_request<'a>(&self) -> (CmId<'a>, Option<ibv::QueuePair<'a>>) {
+        // A bunch of sanity checks
         assert!(!self.0.is_null());
         let event = unsafe { &*self.0 };
         assert!(event.event == ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST);
         assert_eq!(event.status, 0);
         assert!(!event.id.is_null());
+
         let ret_cmid = CmId(event.id, PhantomData);
         let qp = unsafe { &*event.id }.qp;
         if qp.is_null() {

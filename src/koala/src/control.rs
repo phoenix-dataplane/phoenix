@@ -16,11 +16,11 @@ use ipc::unix::DomainSocket;
 use ipc::ChannelFlavor;
 
 use crate::config::Config;
-use crate::engine::manager::RuntimeManager;
 use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
-    mrpc, rpc_adapter,
+    mrpc, rpc_adapter, salloc,
     transport::{rdma, tcp},
 };
 
@@ -31,6 +31,7 @@ pub struct Control {
     rdma_transport: rdma::module::TransportModule,
     tcp_transport: tcp::module::TransportModule,
     mrpc: mrpc::module::MrpcModule,
+    salloc: salloc::module::SallocModule,
 }
 
 impl Control {
@@ -52,9 +53,11 @@ impl Control {
         assert!(config.transport_rdma.is_some());
         let rdma_transport_config = config.transport_rdma.clone().unwrap();
         assert!(config.transport_tcp.is_some());
-        let tcp_transport_config = config.transport_tcp.clone().unwrap();    
+        let tcp_transport_config = config.transport_tcp.clone().unwrap();
         assert!(config.mrpc.is_some());
-        let mrpc_config = config.mrpc.clone().unwrap();   
+        let mrpc_config = config.mrpc.clone().unwrap();
+        assert!(config.salloc.is_some());
+        let salloc_config = config.salloc.clone().unwrap();
 
         Control {
             sock,
@@ -64,8 +67,12 @@ impl Control {
                 rdma_transport_config,
                 Arc::clone(&runtime_manager),
             ),
-            tcp_transport: tcp::module::TransportModule::new(tcp_transport_config, Arc::clone(&runtime_manager)),
+            tcp_transport: tcp::module::TransportModule::new(
+                tcp_transport_config,
+                Arc::clone(&runtime_manager),
+            ),
             mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
+            salloc: salloc::module::SallocModule::new(salloc_config, Arc::clone(&runtime_manager)),
         }
     }
 
@@ -103,7 +110,7 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = std::sync::mpsc::channel();
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -119,7 +126,7 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = std::sync::mpsc::channel();
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -170,6 +177,9 @@ impl Control {
                         tx.take().unwrap(),
                         rx2.take().unwrap(),
                     )?;
+                }
+                EngineType::Salloc => {
+                    panic!("salloc engine should not appear in the graph, koala will handle it specially");
                 }
                 EngineType::RpcAdapter => {
                     // for now, we create the adapter for tcp
@@ -231,6 +241,10 @@ impl Control {
                     }
                     EngineType::Mrpc => {
                         self.build_graph(client_path, mode, cred)?;
+                    }
+                    EngineType::Salloc => {
+                        self.salloc
+                            .handle_new_client(&self.sock, &client_path, mode, cred)?;
                     }
                     _ => unimplemented!(),
                 }

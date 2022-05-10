@@ -46,6 +46,7 @@ impl Indicator {
 
     #[inline]
     pub(crate) fn set_nwork(&self, nwork: usize) {
+        // TODO(cjr): double-check if this is OK
         self.0.store(nwork, Ordering::Relaxed)
     }
 

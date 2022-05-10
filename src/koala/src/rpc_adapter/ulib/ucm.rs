@@ -104,6 +104,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             .ok_or(Error::NoAddrResolved)?;
         let service = get_service();
         // create_id
+        // let api = get_api();
+        // let cmid = api.create_id(PortSpace::TCP)?;
         let req = Command::CreateId(PortSpace::TCP);
         service.send_cmd(req)?;
         let cmid = rx_recv_impl!(service, CompletionKind::CreateId, cmid, { Ok(cmid) })?;

@@ -1,4 +1,4 @@
-use std::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use unique::Unique;
 
 use interface::engine::EngineType;
@@ -8,8 +8,8 @@ use crate::mrpc::marshal::RpcMessage;
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
-pub(crate) type IQueue = Receiver<Unique<dyn RpcMessage>>;
-pub(crate) type OQueue = Sender<Unique<dyn RpcMessage>>;
+pub(crate) type IQueue = UnboundedReceiver<Unique<dyn RpcMessage>>;
+pub(crate) type OQueue = UnboundedSender<Unique<dyn RpcMessage>>;
 
 pub(crate) trait Vertex {
     fn id(&self) -> &str;

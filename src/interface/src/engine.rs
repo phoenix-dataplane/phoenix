@@ -15,4 +15,5 @@ pub enum EngineType {
     Mrpc,
     RpcAdapter,
     Overload,
+    Salloc,
 }

@@ -7,11 +7,9 @@ use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::module::CustomerType;
-use super::state::{State, Resource};
+use super::state::{Resource, State};
 use super::{DatapathError, Error};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
-};
+use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
 use crate::mrpc::marshal::{RpcMessage, ShmBuf};
 use crate::node::Node;
 
@@ -30,27 +28,8 @@ pub struct MrpcEngine {
     pub(crate) indicator: Option<Indicator>,
 }
 
-impl Upgradable for MrpcEngine {
-    fn version(&self) -> Version {
-        unimplemented!();
-    }
-
-    fn check_compatible(&self, _v2: Version) -> bool {
-        unimplemented!();
-    }
-
-    fn suspend(&mut self) {
-        unimplemented!();
-    }
-
-    fn dump(&self) {
-        unimplemented!();
-    }
-
-    fn restore(&mut self) {
-        unimplemented!();
-    }
-}
+crate::unimplemented_ungradable!(MrpcEngine);
+crate::impl_vertex_for_engine!(MrpcEngine, node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -59,10 +38,6 @@ enum Status {
 }
 
 use Status::Progress;
-
-impl Vertex for MrpcEngine {
-    crate::impl_vertex_for_engine!(node);
-}
 
 impl Engine for MrpcEngine {
     type Future = impl Future<Output = EngineResult>;

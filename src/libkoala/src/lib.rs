@@ -3,8 +3,10 @@
 #![feature(allocator_api)]
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(specialization)]
+#![feature(strict_provenance)]
 
-
+// added by boxed.rs
+// TODO(cjr): remove unused feature.
 #![feature(async_iterator)]
 #![feature(generator_trait)]
 #![feature(unboxed_closures)]
@@ -23,6 +25,7 @@ use std::env;
 use std::path::PathBuf;
 
 pub mod mrpc;
+pub(crate) mod salloc;
 pub mod transport;
 
 // Re-exports

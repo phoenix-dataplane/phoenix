@@ -15,6 +15,7 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::rdma::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
+use super::cm::engine::CmEngine;
 use super::engine::TransportEngine;
 use super::state::State;
 use crate::engine::manager::RuntimeManager;
@@ -56,7 +57,6 @@ impl TransportEngineBuilder {
             cq_err_buffer: VecDeque::new(),
             _mode: self.mode,
             state,
-            cmd_buffer: None,
             indicator: None,
         })
     }
@@ -126,6 +126,15 @@ impl TransportModule {
 
         // submit the engine to a runtime
         self.runtime_manager.submit(EngineContainer::new(engine), mode);
+
+        // 5. also build the cm engine
+        let state = STATE_MGR.get_or_create_state(client_pid)?;
+        let node = Node::new(EngineType::RdmaTransport);
+        let cm_engine = CmEngine::new(node, state);
+
+        // submit the engine to a dedicate runtime
+        let mode = SchedulingMode::Dedicate;
+        self.runtime_manager.submit(EngineContainer::new(cm_engine), mode);
 
         Ok(())
     }

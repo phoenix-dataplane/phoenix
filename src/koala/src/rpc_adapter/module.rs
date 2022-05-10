@@ -19,7 +19,7 @@ use crate::node::Node;
 use crate::state_mgr::StateManager;
 
 lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
 }
 
 pub(crate) type ServiceType =

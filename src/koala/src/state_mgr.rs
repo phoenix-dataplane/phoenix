@@ -10,7 +10,7 @@ pub(crate) trait StateTrait: Clone {
     fn new(sm: Arc<StateManager<Self>>, pid: Pid) -> Result<Self, Self::Err>;
 }
 
-// Per-process state
+// Per-user-application-process state
 pub(crate) struct StateManager<S> {
     pub(crate) states: spin::Mutex<HashMap<Pid, S>>,
 }

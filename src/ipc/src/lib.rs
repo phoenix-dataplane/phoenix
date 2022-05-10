@@ -18,6 +18,7 @@ pub(crate) use crate::shmem_ipc::{ShmReceiver, ShmSender};
 pub mod control;
 pub mod mrpc;
 pub mod transport;
+pub mod salloc;
 
 /// Provides Range
 pub mod buf;
