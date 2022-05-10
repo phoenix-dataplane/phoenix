@@ -51,8 +51,8 @@ impl From<ipc::Error> for DatapathError {
     }
 }
 
-impl<T> From<std::sync::mpsc::SendError<T>> for DatapathError {
-    fn from(_other: std::sync::mpsc::SendError<T>) -> Self {
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for DatapathError {
+    fn from(_other: tokio::sync::mpsc::error::SendError<T>) -> Self {
         DatapathError::InternalQueueSend
     }
 }

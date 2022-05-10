@@ -17,6 +17,7 @@ use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::State;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
+use crate::transport::rdma::engine::TransportEngine;
 
 lazy_static! {
     pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
@@ -32,6 +33,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     mode: SchedulingMode,
     cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
     cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+    api_engine: TransportEngine,
 }
 
 impl RpcAdapterEngineBuilder {
@@ -42,6 +44,7 @@ impl RpcAdapterEngineBuilder {
         mode: SchedulingMode,
         cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
         cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+        api_engine: TransportEngine,
     ) -> Self {
         RpcAdapterEngineBuilder {
             node,
@@ -50,6 +53,7 @@ impl RpcAdapterEngineBuilder {
             mode,
             cmd_rx,
             cmd_tx,
+            api_engine,
         }
     }
 
@@ -68,6 +72,7 @@ impl RpcAdapterEngineBuilder {
         Ok(RpcAdapterEngine {
             tls: Box::new(TlStorage {
                 service: self.service,
+                api_engine: self.api_engine,
                 state,
             }),
             cq: None,
@@ -107,8 +112,9 @@ impl RpcAdapterModule {
         client_pid: Pid,
         cmd_rx: std::sync::mpsc::Receiver<ipc::mrpc::cmd::Command>,
         cmd_tx: std::sync::mpsc::Sender<ipc::mrpc::cmd::Completion>,
+        api_engine: TransportEngine,
     ) -> Result<RpcAdapterEngine> {
-        let builder = RpcAdapterEngineBuilder::new(n, service, client_pid, mode, cmd_rx, cmd_tx);
+        let builder = RpcAdapterEngineBuilder::new(n, service, client_pid, mode, cmd_rx, cmd_tx, api_engine);
         let engine = builder.build()?;
 
         Ok(engine)

@@ -265,7 +265,7 @@ impl MrpcEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(mut msg) => {
                 // deliver the msg to application

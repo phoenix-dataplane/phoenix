@@ -27,7 +27,7 @@ use core::task::{Context, Poll};
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Allocator, Layout};
 
-use crate::mrpc::shared_heap::SharedHeapAllocator;
+use crate::salloc::heap::SharedHeapAllocator;
 
 use super::shmptr::ShmPtr;
 

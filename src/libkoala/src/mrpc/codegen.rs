@@ -9,7 +9,7 @@ use unique::Unique;
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::shared_heap::SharedHeapAllocator;
+use crate::salloc::heap::SharedHeapAllocator;
 use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service,
 };

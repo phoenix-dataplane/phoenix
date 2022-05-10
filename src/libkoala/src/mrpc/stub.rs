@@ -14,7 +14,7 @@ pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::mrpc::alloc::Box;
 use crate::mrpc::codegen::SwitchAddressSpace;
-use crate::mrpc::shared_heap::SharedHeapAllocator;
+use crate::salloc::heap::SharedHeapAllocator;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
 use crate::verbs::MemoryRegion;

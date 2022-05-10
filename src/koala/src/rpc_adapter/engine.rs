@@ -135,7 +135,7 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         use ulib::uverbs::SendFlags;
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id

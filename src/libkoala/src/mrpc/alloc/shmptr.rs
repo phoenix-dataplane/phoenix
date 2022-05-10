@@ -1,7 +1,7 @@
 use std::ptr::NonNull;
 use std::ptr::Unique;
 
-use crate::mrpc::shared_heap::SharedHeapAllocator;
+use crate::salloc::heap::SharedHeapAllocator;
 use crate::mrpc::codegen::SwitchAddressSpace;
 
 #[derive(Debug)]

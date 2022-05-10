@@ -103,8 +103,7 @@ impl SallocModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
-        let mode = SchedulingMode::Dedicate;
-        self.runtime_manager.submit(EngineContainer::new(engine), mode);
+        self.runtime_manager.submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
 
         Ok(())
     }

@@ -87,6 +87,16 @@ impl TransportModule {
         }
     }
 
+    pub(crate) fn create_cm_engine(&mut self, client_pid: Pid) -> Result<()> {
+        let state = STATE_MGR.get_or_create_state(client_pid)?;
+        let node = Node::new(EngineType::RdmaConnMgmt);
+        let cm_engine = CmEngine::new(node, state);
+
+        // always submit the engine to a dedicate runtime
+        self.runtime_manager.submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+        Ok(())
+    }
+
     pub(crate) fn create_engine(
         &mut self,
         customer: CustomerType,
@@ -95,6 +105,9 @@ impl TransportModule {
     ) -> Result<TransportEngine> {
         let builder = TransportEngineBuilder::new(customer, client_pid, mode);
         let engine = builder.build()?;
+
+        // also build the cm engine
+        self.create_cm_engine(client_pid)?;
 
         Ok(engine)
     }
@@ -127,14 +140,8 @@ impl TransportModule {
         // submit the engine to a runtime
         self.runtime_manager.submit(EngineContainer::new(engine), mode);
 
-        // 5. also build the cm engine
-        let state = STATE_MGR.get_or_create_state(client_pid)?;
-        let node = Node::new(EngineType::RdmaTransport);
-        let cm_engine = CmEngine::new(node, state);
-
-        // submit the engine to a dedicate runtime
-        let mode = SchedulingMode::Dedicate;
-        self.runtime_manager.submit(EngineContainer::new(cm_engine), mode);
+        // also build the cm engine
+        self.create_cm_engine(client_pid)?;
 
         Ok(())
     }

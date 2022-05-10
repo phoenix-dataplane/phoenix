@@ -1,10 +1,7 @@
 //! Per-process state that is shared among multiple transport engines.
-use fnv::FnvHashMap as HashMap;
-use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomPinned;
 use std::mem::ManuallyDrop;
-use std::os::unix::io::AsRawFd;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -18,8 +15,8 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use super::ApiError;
 use super::cm::CmEventManager;
+use super::ApiError;
 use crate::resource::ResourceTable;
 use crate::state_mgr::{StateManager, StateTrait};
 

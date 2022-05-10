@@ -166,6 +166,7 @@ impl Control {
         for n in nodes {
             match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
+                EngineType::RdmaConnMgmt => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
                     self.mrpc.handle_new_client(
@@ -185,6 +186,9 @@ impl Control {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let (service, customer) = ipc::create_channel(ChannelFlavor::Concurrent);
+                    let e2 = self
+                        .rdma_transport
+                        .create_engine(customer, mode, client_pid)?;
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
                         n,
                         service,
@@ -192,10 +196,8 @@ impl Control {
                         client_pid,
                         rx.take().unwrap(),
                         tx2.take().unwrap(),
+                        e2,
                     )?;
-                    let e2 = self
-                        .rdma_transport
-                        .create_engine(customer, mode, client_pid)?;
                     engines.push(EngineContainer::new(e1));
                     engines.push(EngineContainer::new(e2));
                 }
