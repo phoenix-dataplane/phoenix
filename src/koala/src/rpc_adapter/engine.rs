@@ -5,7 +5,7 @@ use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use unique::Unique;
+use ipc::shmalloc::ShmPtr;
 
 use ipc::mrpc;
 
@@ -13,18 +13,17 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageTemplateErased, RpcMsgType};
 use interface::{AsHandle, Handle};
 
-use super::module::ServiceType;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
-};
+use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
+use crate::salloc::state::State as SallocState;
+use crate::transport::rdma::ops;
 
 pub struct TlStorage {
-    pub(crate) service: ServiceType,
+    pub(crate) ops: ops::Ops,
     pub(crate) state: State,
 }
 
@@ -35,49 +34,30 @@ unsafe impl Sync for TlStorage {}
 
 unsafe impl EngineLocalStorage for TlStorage {
     #[inline]
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
+    pub(crate) salloc: SallocState,
+
     // shared completion queue model
     pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
-    pub(crate) local_buffer: VecDeque<Unique<dyn RpcMessage>>,
+    pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
 
     pub(crate) node: Node,
-    pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
-    pub(crate) cmd_tx: std::sync::mpsc::Sender<mrpc::cmd::Completion>,
+    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
+    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Option<Indicator>,
 }
 
-impl Upgradable for RpcAdapterEngine {
-    fn version(&self) -> Version {
-        unimplemented!();
-    }
-
-    fn check_compatible(&self, _v2: Version) -> bool {
-        unimplemented!();
-    }
-
-    fn suspend(&mut self) {
-        unimplemented!();
-    }
-
-    fn dump(&self) {
-        unimplemented!();
-    }
-
-    fn restore(&mut self) {
-        unimplemented!();
-    }
-}
-
-impl Vertex for RpcAdapterEngine {
-    crate::impl_vertex_for_engine!(node);
-}
+crate::unimplemented_ungradable!(RpcAdapterEngine);
+crate::impl_vertex_for_engine!(RpcAdapterEngine, node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -128,14 +108,15 @@ impl RpcAdapterEngine {
             }
 
             // check input command queue
-            if let Progress(n) = self.check_input_cmd_queue()? {
+            if let Progress(n) = self.check_input_cmd_queue().await? {
                 work += n;
             }
 
             // TODO(cjr): check incoming connect request
             // the CmIdListener::get_request() is currently synchronous.
             // need to make it asynchronous and low cost to check.
-            self.check_incoming_connection()?;
+            // TODO(cjr): remove this to another engine and runtime
+            self.check_incoming_connection().await?;
 
             self.indicator.as_ref().unwrap().set_nwork(work);
             future::yield_now().await;
@@ -145,10 +126,10 @@ impl RpcAdapterEngine {
 
 impl RpcAdapterEngine {
     fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
-        // this function is not supposed to be called concurrent.
+        // this function is not supposed to be called concurrently.
         if self.cq.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.service).unwrap();
+            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
             let ctx = &ctx_list[0];
             self.cq = Some(ctx.create_cq(1024, 0).unwrap());
         }
@@ -156,9 +137,7 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        // TODO(cjr): check from local queue
-        // TODO(cjr): check credit
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         use ulib::uverbs::SendFlags;
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
@@ -226,7 +205,7 @@ impl RpcAdapterEngine {
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
         log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
-        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
+        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
         let meta = &mut unsafe { erased.as_mut() }.meta;
         meta.conn_id = conn_ctx.cmid.as_handle();
 
@@ -245,12 +224,12 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl).unwrap()
+                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl, &self.salloc.shared).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -260,12 +239,12 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl).unwrap()
+                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl, &self.salloc.shared).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -337,7 +316,7 @@ impl RpcAdapterEngine {
         Ok(Status::Progress(0))
     }
 
-    fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
+    async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
         // TODO(cjr): should check for each connection.......... shit!
         if let Some(recent) = self.recent_listener_handle.as_ref() {
             let listener = self.tls.state.resource().listener_table.get(recent)?;
@@ -354,7 +333,7 @@ impl RpcAdapterEngine {
                 let mut recv_mrs = Vec::with_capacity(128);
                 let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
                 // accept
-                let id = pre_id.accept(None)?;
+                let id = pre_id.accept(None).await?;
                 let handle = id.as_handle();
                 // insert resources after connection establishment
                 self.tls.state.resource().insert_cmid(id, 128)?;
@@ -381,7 +360,7 @@ impl RpcAdapterEngine {
         &self,
         pre_id: &mut ulib::ucm::PreparedCmId,
         recv_mrs: &mut Vec<ulib::uverbs::MemoryRegion<u8>>,
-    ) -> Result<(Vec<interface::returned::MemoryRegion>, Vec<RawFd>), ControlPathError> {
+    ) -> Result<(Vec<(Handle, usize, usize, i64)>, Vec<RawFd>), ControlPathError> {
         // create 128 receive mrs, post recv requestse and
         // This is safe because even though recv_mr is moved, the backing memfd and
         // mapped memory regions are still there, and nothing of this mr is changed.
@@ -395,7 +374,7 @@ impl RpcAdapterEngine {
             let wr_id = recv_mr.as_handle().0 as u64;
             let wr_ctx = WrContext {
                 conn_id: pre_id.as_handle(),
-                mr_addr: recv_mr.as_ptr() as usize,
+                mr_addr: recv_mr.as_ptr().addr(),
             };
             unsafe {
                 pre_id.post_recv(recv_mr, .., wr_id)?;
@@ -409,24 +388,22 @@ impl RpcAdapterEngine {
         let mut returned_mrs = Vec::with_capacity(128);
         let mut fds = Vec::with_capacity(128);
         for recv_mr in recv_mrs {
-            returned_mrs.push(interface::returned::MemoryRegion {
-                handle: recv_mr.inner,
-                rkey: recv_mr.rkey(),
-                vaddr: recv_mr.as_ptr() as u64,
-                map_len: recv_mr.len() as u64,
-                file_off: recv_mr.file_off,
-                pd: recv_mr.pd().inner,
-            });
+            returned_mrs.push((
+                recv_mr.as_handle(),
+                recv_mr.as_ptr().addr(),
+                recv_mr.len(),
+                recv_mr.file_off() as i64,
+            ));
             fds.push(recv_mr.memfd().as_raw_fd());
         }
         Ok((returned_mrs, fds))
     }
 
-    fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
-        use std::sync::mpsc::TryRecvError;
+    async fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
             Ok(req) => {
-                let result = self.process_cmd(&req);
+                let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.cmd_tx.send(mrpc::cmd::Completion(Ok(res)))?,
                     Err(ControlPathError::InProgress) => return Ok(Progress(0)),
@@ -440,7 +417,7 @@ impl RpcAdapterEngine {
         }
     }
 
-    fn process_cmd(
+    async fn process_cmd(
         &mut self,
         req: &mrpc::cmd::Command,
     ) -> Result<mrpc::cmd::CompletionKind, ControlPathError> {
@@ -448,41 +425,41 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::SetTransport(_) => {
                 unreachable!();
             }
-            mrpc::cmd::Command::AllocShm(nbytes) => {
-                log::trace!("AllocShm, nbytes: {}", *nbytes);
-                let pd = &self.tls.state.resource().default_pds()[0];
-                let access = ulib::uverbs::AccessFlags::REMOTE_READ
-                    | ulib::uverbs::AccessFlags::REMOTE_WRITE
-                    | ulib::uverbs::AccessFlags::LOCAL_WRITE;
-                let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
-                let returned_mr = interface::returned::MemoryRegion {
-                    handle: mr.inner,
-                    rkey: mr.rkey(),
-                    vaddr: mr.as_ptr() as u64,
-                    map_len: mr.len() as u64,
-                    file_off: mr.file_off,
-                    pd: mr.pd().inner,
-                };
-                // store the allocated MRs for later memory address translation
-                let memfd = mr.memfd().as_raw_fd();
-                // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
-                // log::debug!(
-                //     "mr_table: {:0x?}",
-                //     self.tls
-                //         .state
-                //         .resource()
-                //         .mr_table
-                //         .lock()
-                //         .keys()
-                //         .copied()
-                //         .collect::<Vec<usize>>()
-                // );
-                self.tls.state.resource().insert_mr(mr)?;
-                Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
-                    returned_mr,
-                    memfd,
-                ))
-            }
+            // mrpc::cmd::Command::AllocShm(nbytes) => {
+            //     log::trace!("AllocShm, nbytes: {}", *nbytes);
+            //     let pd = &self.tls.state.resource().default_pds()[0];
+            //     let access = ulib::uverbs::AccessFlags::REMOTE_READ
+            //         | ulib::uverbs::AccessFlags::REMOTE_WRITE
+            //         | ulib::uverbs::AccessFlags::LOCAL_WRITE;
+            //     let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
+            //     let returned_mr = interface::returned::MemoryRegion {
+            //         handle: mr.inner,
+            //         rkey: mr.rkey(),
+            //         vaddr: mr.as_ptr() as u64,
+            //         map_len: mr.len() as u64,
+            //         file_off: mr.file_off,
+            //         pd: mr.pd().inner,
+            //     };
+            //     // store the allocated MRs for later memory address translation
+            //     let memfd = mr.memfd().as_raw_fd();
+            //     // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
+            //     // log::debug!(
+            //     //     "mr_table: {:0x?}",
+            //     //     self.tls
+            //     //         .state
+            //     //         .resource()
+            //     //         .mr_table
+            //     //         .lock()
+            //     //         .keys()
+            //     //         .copied()
+            //     //         .collect::<Vec<usize>>()
+            //     // );
+            //     self.tls.state.resource().insert_mr(mr)?;
+            //     Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
+            //         returned_mr,
+            //         memfd,
+            //     ))
+            // }
             mrpc::cmd::Command::Connect(addr) => {
                 log::trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
@@ -492,13 +469,13 @@ impl RpcAdapterEngine {
                     .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
-                    .resolve_route(addr)?;
+                    .resolve_route(addr).await?;
                 let mut pre_id = builder.build()?;
                 // prepare and post receive buffers
                 let mut recv_mrs = Vec::with_capacity(128);
                 let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
                 // connect
-                let id = pre_id.connect(None)?;
+                let id = pre_id.connect(None).await?;
                 let handle = id.as_handle();
 
                 // insert resources after connection establishment
@@ -519,7 +496,7 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::Bind(addr) => {
                 log::trace!("Bind, addr: {:?}", addr);
                 // create CmIdBuilder
-                let listener = ulib::ucm::CmIdBuilder::new().bind(addr)?;
+                let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();
                 self.tls
                     .state
@@ -529,17 +506,17 @@ impl RpcAdapterEngine {
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
             }
-            mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
-                // find those existing mrs, and update their app_vaddrs
-                let mut ret = Vec::new();
-                for (mr_handle, app_vaddr) in app_vaddrs {
-                    let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
-                    mr.set_app_vaddr(*app_vaddr);
-                    ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-                }
-                Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
-                // Err(ControlPathError::NoResponse)
-            }
+            // mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
+            //     // find those existing mrs, and update their app_vaddrs
+            //     let mut ret = Vec::new();
+            //     for (mr_handle, app_vaddr) in app_vaddrs {
+            //         let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
+            //         mr.set_app_vaddr(*app_vaddr);
+            //         ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
+            //     }
+            //     Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
+            //     // Err(ControlPathError::NoResponse)
+            // }
         }
     }
 }

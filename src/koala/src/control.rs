@@ -16,11 +16,11 @@ use ipc::unix::DomainSocket;
 use ipc::ChannelFlavor;
 
 use crate::config::Config;
-use crate::engine::manager::RuntimeManager;
 use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
-    mrpc, rpc_adapter,
+    mrpc, rpc_adapter, salloc,
     transport::{rdma, tcp},
 };
 
@@ -31,6 +31,7 @@ pub struct Control {
     rdma_transport: rdma::module::TransportModule,
     tcp_transport: tcp::module::TransportModule,
     mrpc: mrpc::module::MrpcModule,
+    salloc: salloc::module::SallocModule,
 }
 
 impl Control {
@@ -52,9 +53,11 @@ impl Control {
         assert!(config.transport_rdma.is_some());
         let rdma_transport_config = config.transport_rdma.clone().unwrap();
         assert!(config.transport_tcp.is_some());
-        let tcp_transport_config = config.transport_tcp.clone().unwrap();    
+        let tcp_transport_config = config.transport_tcp.clone().unwrap();
         assert!(config.mrpc.is_some());
-        let mrpc_config = config.mrpc.clone().unwrap();   
+        let mrpc_config = config.mrpc.clone().unwrap();
+        assert!(config.salloc.is_some());
+        let salloc_config = config.salloc.clone().unwrap();
 
         Control {
             sock,
@@ -64,8 +67,12 @@ impl Control {
                 rdma_transport_config,
                 Arc::clone(&runtime_manager),
             ),
-            tcp_transport: tcp::module::TransportModule::new(tcp_transport_config, Arc::clone(&runtime_manager)),
+            tcp_transport: tcp::module::TransportModule::new(
+                tcp_transport_config,
+                Arc::clone(&runtime_manager),
+            ),
             mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
+            salloc: salloc::module::SallocModule::new(salloc_config, Arc::clone(&runtime_manager)),
         }
     }
 
@@ -103,7 +110,7 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = std::sync::mpsc::channel();
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -119,7 +126,7 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = std::sync::mpsc::channel();
+            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -150,15 +157,16 @@ impl Control {
         let mut engines: Vec<EngineContainer> = Vec::new();
 
         // establish a specialized channel between mrpc and rpc-adapter
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let mut tx = Some(tx);
         let mut rx = Some(rx);
-        let (tx2, rx2) = std::sync::mpsc::channel();
+        let (tx2, rx2) = tokio::sync::mpsc::unbounded_channel();
         let mut tx2 = Some(tx2);
         let mut rx2 = Some(rx2);
         for n in nodes {
             match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
+                EngineType::RdmaConnMgmt => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
                     self.mrpc.handle_new_client(
@@ -171,23 +179,20 @@ impl Control {
                         rx2.take().unwrap(),
                     )?;
                 }
+                EngineType::Salloc => {
+                    panic!("salloc engine should not appear in the graph, koala will handle it specially");
+                }
                 EngineType::RpcAdapter => {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
-                    let (service, customer) = ipc::create_channel(ChannelFlavor::Concurrent);
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
                         n,
-                        service,
                         mode,
                         client_pid,
                         rx.take().unwrap(),
                         tx2.take().unwrap(),
                     )?;
-                    let e2 = self
-                        .rdma_transport
-                        .create_engine(customer, mode, client_pid)?;
                     engines.push(EngineContainer::new(e1));
-                    engines.push(EngineContainer::new(e2));
                 }
                 EngineType::Overload => unimplemented!(),
             };
@@ -231,6 +236,10 @@ impl Control {
                     }
                     EngineType::Mrpc => {
                         self.build_graph(client_path, mode, cred)?;
+                    }
+                    EngineType::Salloc => {
+                        self.salloc
+                            .handle_new_client(&self.sock, &client_path, mode, cred)?;
                     }
                     _ => unimplemented!(),
                 }

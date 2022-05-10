@@ -1,14 +1,10 @@
 //! Per-process state that is shared among multiple transport engines.
-use fnv::FnvHashMap as HashMap;
-use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomPinned;
 use std::mem::ManuallyDrop;
-use std::os::unix::io::AsRawFd;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
@@ -19,7 +15,8 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use super::Error;
+use super::cm::CmEventManager;
+use super::ApiError;
 use crate::resource::ResourceTable;
 use crate::state_mgr::{StateManager, StateTrait};
 
@@ -54,7 +51,7 @@ impl StateTrait for State {
         Ok(State {
             sm,
             shared: Arc::new(Shared {
-                cm_manager: spin::Mutex::new(CmEventManager::new()?),
+                cm_manager: tokio::sync::Mutex::new(CmEventManager::new()?),
                 pid,
                 alive_engines: AtomicUsize::new(0),
                 resource: Resource::new()?,
@@ -69,108 +66,13 @@ impl State {
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
     }
-
-    pub(crate) fn register_event_channel(
-        &self,
-        channel_handle: Handle,
-        channel: &rdmacm::EventChannel,
-    ) -> Result<(), Error> {
-        self.shared
-            .cm_manager
-            .lock()
-            .poll
-            .registry()
-            .register(
-                &mut mio::unix::SourceFd(&channel.as_raw_fd()),
-                mio::Token(channel_handle.0 as _),
-                mio::Interest::READABLE,
-            )
-            .map_err(Error::Mio)?;
-        Ok(())
-    }
-
-    pub(crate) fn poll_cm_event_once(&self) -> Result<(), Error> {
-        self.shared
-            .cm_manager
-            .try_lock()
-            .map_or(Ok(()), |mut manager| {
-                manager.poll_cm_event_once(&self.resource().event_channel_table)
-            })
-    }
-
-    pub(crate) fn get_one_cm_event(
-        &self,
-        event_channel_handle: &Handle,
-        event_type: rdma::ffi::rdma_cm_event_type::Type,
-    ) -> Option<rdmacm::CmEvent> {
-        self.shared.cm_manager.try_lock().and_then(|mut manager| {
-            // Get an event that match the req event type
-            // If there's any event matches, return the first one,
-            // otherwise, return None.
-            let event_queue = manager
-                .event_channel_buffer
-                .entry(*event_channel_handle)
-                .or_insert_with(VecDeque::default);
-
-            if let Some(pos) = event_queue.iter().position(|e| e.event() == event_type) {
-                event_queue.remove(pos)
-            } else {
-                None
-            }
-        })
-    }
-}
-
-struct CmEventManager {
-    poll: mio::Poll,
-    event_channel_buffer: HashMap<interface::Handle, VecDeque<rdmacm::CmEvent>>,
-}
-
-impl CmEventManager {
-    fn new() -> io::Result<Self> {
-        Ok(CmEventManager {
-            poll: mio::Poll::new()?,
-            event_channel_buffer: HashMap::default(),
-        })
-    }
-
-    fn poll_cm_event_once(
-        &mut self,
-        event_channel_table: &ResourceTable<rdmacm::EventChannel>,
-    ) -> Result<(), Error> {
-        let mut events = mio::Events::with_capacity(1);
-        self.poll
-            .poll(&mut events, Some(Duration::from_millis(1)))
-            .map_err(Error::Mio)?;
-        if let Some(io_event) = events.iter().next() {
-            let handle = Handle(io_event.token().0 as _);
-            let event_channel = event_channel_table.get(&handle)?;
-            // read one event
-            let cm_event = event_channel.get_cm_event().map_err(Error::RdmaCm)?;
-            // reregister everytime to simulate level-trigger
-            self.poll
-                .registry()
-                .reregister(
-                    &mut mio::unix::SourceFd(&event_channel.as_raw_fd()),
-                    io_event.token(),
-                    mio::Interest::READABLE,
-                )
-                .map_err(Error::Mio)?;
-            // append to the local buffer
-            self.event_channel_buffer
-                .entry(handle)
-                .or_insert_with(VecDeque::default)
-                .push_back(cm_event);
-            return Ok(());
-        }
-        Err(Error::NoCmEvent)
-    }
 }
 
 pub(crate) struct Shared {
     // Control path operations must be per-process level
-    cm_manager: spin::Mutex<CmEventManager>,
-    // We use pid as the identifier of this process
+    // We use an async-friendly Mutex here
+    pub(crate) cm_manager: tokio::sync::Mutex<CmEventManager>,
+    // Pid as the identifier of this process
     pub(crate) pid: Pid,
     // Reference counting
     alive_engines: AtomicUsize,
@@ -301,7 +203,7 @@ impl Resource {
     pub(crate) fn insert_qp(
         &self,
         qp: ibv::QueuePair<'static>,
-    ) -> Result<(Handle, Handle, Handle, Handle), Error> {
+    ) -> Result<(Handle, Handle, Handle, Handle), ApiError> {
         // This is safe because we did not drop these inner objects immediately. Instead, they are
         // stored carefully into the resource tables.
         let (pd, send_cq, recv_cq) = unsafe { qp.take_inner_objects() };
@@ -319,7 +221,7 @@ impl Resource {
         Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
     }
 
-    pub(crate) fn insert_cmid(&self, cmid: CmId<'static>) -> Result<Handle, Error> {
+    pub(crate) fn insert_cmid(&self, cmid: CmId<'static>) -> Result<Handle, ApiError> {
         let cmid_handle = self.allocate_new_cmid_handle();
         self.cmid_table.insert(cmid_handle, cmid)?;
         Ok(cmid_handle)

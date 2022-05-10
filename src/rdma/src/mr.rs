@@ -21,6 +21,7 @@ pub enum Error {
     Io(#[from] io::Error),
 }
 
+#[derive(Debug)]
 pub struct MemoryRegion {
     mr: *mut ffi::ibv_mr,
     // mmap: MmapMut,
@@ -135,6 +136,12 @@ impl MemoryRegion {
     #[inline]
     pub fn file_off(&self) -> usize {
         self.file_off
+    }
+}
+
+impl AsRef<MemoryRegion> for MemoryRegion {
+    fn as_ref(&self) -> &MemoryRegion {
+        &self
     }
 }
 

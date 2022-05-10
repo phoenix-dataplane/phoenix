@@ -3,12 +3,18 @@ use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
+pub mod ops;
 pub mod engine;
 pub mod module;
 pub mod state;
 
+/// Module for connection management. It runs an IO reactor, listening for OS events and pass them
+/// back to the event subscriber. It must be run in a separate runtime to make sure not interfere 
+/// with other engines.
+pub mod cm;
+
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub(crate) enum ApiError {
     // Below are errors that return to the user.
     #[error("rdmacm internal error: {0}")]
     RdmaCm(io::Error),
@@ -30,6 +36,13 @@ pub(crate) enum Error {
     NoCmEvent,
     #[error("Transport specific error: {0}")]
     Transport(i32),
+}
+
+/// Control path error.
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    #[error("Error in API: {0}")]
+    Api(#[from] ApiError),
 
     // Below are errors that does not return to the user.
     #[error("Operation in progress")]
@@ -48,11 +61,11 @@ impl From<Error> for interface::Error {
     }
 }
 
-impl From<ResourceError> for Error {
+impl From<ResourceError> for ApiError {
     fn from(other: ResourceError) -> Self {
         match other {
-            ResourceError::NotFound => Error::NotFound,
-            ResourceError::Exists => Error::Exists,
+            ResourceError::NotFound => ApiError::NotFound,
+            ResourceError::Exists => ApiError::Exists,
         }
     }
 }

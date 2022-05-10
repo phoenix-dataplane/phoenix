@@ -12,7 +12,7 @@ use super::{EngineContainer, EngineLocalStorage, EngineResult};
 
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
-    pub static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
+    pub(crate) static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
 }
 
 /// This indicates the runtime of an engine's status.
@@ -46,6 +46,7 @@ impl Indicator {
 
     #[inline]
     pub(crate) fn set_nwork(&self, nwork: usize) {
+        // TODO(cjr): double-check if this is OK
         self.0.store(nwork, Ordering::Relaxed)
     }
 

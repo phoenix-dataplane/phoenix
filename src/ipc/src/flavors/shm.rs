@@ -59,6 +59,13 @@ impl From<crate::ipc_channel::IpcRecvError> for IpcRecvError {
     }
 }
 
+/// # Safety
+///
+/// This is safe, because dp_wq and dp_cq requires mutable reference to access. It is impossible to
+/// duplicate the mutable references.
+unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Customer<A, B, C, D> {}
+unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Service<A, B, C, D> {}
+
 pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     /// This is the path of the domain socket which is client side is listening on.
     /// The mainly purpose of keeping is to send file descriptors to the client.

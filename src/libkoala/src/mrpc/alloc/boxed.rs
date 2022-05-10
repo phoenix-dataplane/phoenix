@@ -1,21 +1,15 @@
 use core::any::Any;
-use core::async_iter::AsyncIterator;
 use core::borrow;
 use core::cmp::Ordering;
-use core::convert::{From, TryFrom};
+use core::convert::From;
 use core::fmt;
-use core::future::Future;
 use core::hash::{Hash, Hasher};
-use core::iter::FromIterator;
 use core::iter::{FusedIterator, Iterator};
 use core::marker::Unpin;
 use core::mem;
-use core::ops::{
-    Deref, DerefMut, Generator, GeneratorState, Receiver,
-};
+use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
-use core::ptr::{self, Unique};
-use core::task::{Context, Poll};
+use core::ptr::Unique;
 
 // use crate::alloc::{handle_alloc_error, WriteCloneIntoRaw};
 // use crate::alloc::{AllocError, Allocator, Global, Layout};
@@ -27,10 +21,9 @@ use core::task::{Context, Poll};
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Allocator, Layout};
 
-use crate::mrpc::shared_heap::SharedHeapAllocator;
+use ipc::shmalloc::ShmPtr;
 
-use super::shmptr::ShmPtr;
-
+use crate::salloc::heap::SharedHeapAllocator;
 
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
@@ -39,8 +32,7 @@ pub struct Box<T: ?Sized>(ShmPtr<T>);
 
 impl<T> Box<T> {
     #[inline]
-    pub fn new(x: T) -> Self
-    {
+    pub fn new(x: T) -> Self {
         let mut boxed = Self::new_uninit();
         unsafe {
             boxed.as_mut_ptr().write(x);
@@ -60,8 +52,7 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>>
-    {
+    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>> {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
@@ -72,15 +63,13 @@ impl<T> Box<T> {
     }
 
     pub fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-    where
-    {
+where {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
-        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
+        unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>>
-    {
+    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
@@ -90,22 +79,20 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-    {
+    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError> {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
-        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
+        unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
     #[inline(always)]
-    pub fn pin(x: T) -> Pin<Self>
-    {
+    pub fn pin(x: T) -> Pin<Self> {
         Self::into_pin(Self::new(x))
     }
 
     pub fn into_boxed_slice(boxed: Self) -> Box<[T]> {
-        let raw = Box::into_raw(boxed);
-        unsafe { Box::from_raw(raw as *mut [T; 1]) }
+        let raw = Box::into_raw(boxed).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut [T; 1]) }
     }
 
     #[inline]
@@ -114,7 +101,7 @@ impl<T> Box<T> {
         Self: Drop,
     {
         let mut dst = std::mem::MaybeUninit::uninit();
-        let src = Self::into_raw(boxed);
+        let src = Self::into_raw(boxed).0;
         unsafe {
             // copy the content from shared heap to stack
             std::ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
@@ -126,7 +113,7 @@ impl<T> Box<T> {
             let layout = Layout::from_size_align_unchecked(size, align);
             SharedHeapAllocator.deallocate(non_null.cast(), layout);
             dst.assume_init()
-        }   
+        }
     }
 
     #[inline]
@@ -316,8 +303,8 @@ impl<T> Box<T> {
 impl<T> Box<std::mem::MaybeUninit<T>> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T> {
-        let raw = Box::into_raw(self);
-        unsafe { Box::from_raw(raw as *mut T) }
+        let raw = Box::into_raw(self).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut T) }
     }
 
     #[inline]
@@ -332,26 +319,35 @@ impl<T> Box<std::mem::MaybeUninit<T>> {
 impl<T> Box<[std::mem::MaybeUninit<T>]> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T]> {
-        let raw = Box::into_raw(self);
-        unsafe { Box::from_raw(raw as *mut [T]) }
+        let raw = Box::into_raw(self).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut [T]) }
     }
 }
 
 impl<T: ?Sized> Box<T> {
+    unsafe fn from_raw_query_remote(raw: *mut T) -> Self {
+        let addr = raw as *const () as usize;
+        let addr_remote = SharedHeapAllocator::query_backend_addr(addr);
+        Box::from_raw(raw, addr_remote)
+    }
+}
+
+impl<T: ?Sized> Box<T> {
+    // TODO(wyj): shouldn't drop the Box if it is createdby the backend
     #[inline]
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Box(unsafe { ShmPtr::new_unchecked(raw) })
+    pub unsafe fn from_raw(raw: *mut T, addr_remote: usize) -> Self {
+        Box(ShmPtr::new_unchecked(raw, addr_remote))
+    }
+
+    pub unsafe fn from_shmptr(raw: ShmPtr<T>) -> Self {
+        Box(raw)
     }
 
     #[inline]
-    pub unsafe fn from_raw_with_remote(raw: *mut T, raw_remote: *mut T) -> Self {
-        Box(unsafe { ShmPtr::new_unchecked_with_remote(raw, raw_remote) })
-    }
-
-    #[inline]
-    pub fn into_raw(b: Self) -> *mut T {
+    pub fn into_raw(b: Self) -> (*mut T, usize) {
+        let addr_remote = b.0.get_remote_addr();
         let leaked = Box::into_unique(b);
-        leaked.as_ptr()
+        (leaked.as_ptr(), addr_remote)
     }
 
     #[inline]
@@ -365,19 +361,16 @@ impl<T: ?Sized> Box<T> {
     }
 
     #[inline]
-    pub fn into_shmptr<'a>(b: Self) -> ShmPtr<T>
-    {
-        unsafe { mem::ManuallyDrop::new(b).0 }
+    pub fn into_shmptr<'a>(b: Self) -> ShmPtr<T> {
+        mem::ManuallyDrop::new(b).0
     }
 
     #[inline]
-    pub fn leak<'a>(b: Self) -> &'a mut T
-    {
+    pub fn leak<'a>(b: Self) -> &'a mut T {
         unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 
-    pub fn into_pin(boxed: Self) -> Pin<Self>
-    {
+    pub fn into_pin(boxed: Self) -> Pin<Self> {
         // It's not possible to move or replace the insides of a `Pin<Box<T>>`
         // when `T: !Unpin`,  so it's safe to pin it directly without any
         // additional requirements.
@@ -412,7 +405,7 @@ impl<T: Default> Default for Box<T> {
 
 #[inline]
 pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
-    unsafe { Box::from_raw(Box::into_raw(v) as *mut str) }
+    Box::from_raw_query_remote(Box::into_raw(v).0 as *mut str)
 }
 
 // impl Default for Box<str> {
@@ -430,7 +423,7 @@ impl<T: Clone> WriteCloneIntoRaw for T {
     default unsafe fn write_clone_into_raw(&self, target: *mut Self) {
         // Having allocated *first* may allow the optimizer to create
         // the cloned value in-place, skipping the local and move.
-        unsafe { target.write(self.clone()) };
+        target.write(self.clone());
     }
 }
 
@@ -438,7 +431,7 @@ impl<T: Copy> WriteCloneIntoRaw for T {
     #[inline]
     unsafe fn write_clone_into_raw(&self, target: *mut Self) {
         // We can always copy in-place, without ever involving a local value.
-        unsafe { target.copy_from_nonoverlapping(self, 1) };
+        target.copy_from_nonoverlapping(self, 1);
     }
 }
 
@@ -567,8 +560,7 @@ impl<T> From<T> for Box<T> {
     }
 }
 
-impl<T: ?Sized> From<Box<T>> for Pin<Box<T>>
-{
+impl<T: ?Sized> From<Box<T>> for Pin<Box<T>> {
     fn from(boxed: Box<T>) -> Self {
         Box::into_pin(boxed)
     }
@@ -742,15 +734,19 @@ impl Box<dyn Any> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
         // NOTE(wyj): is check is performed on *self, i.e., dyn Any
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut dyn Any = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut dyn Any = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -758,15 +754,19 @@ impl Box<dyn Any> {
 impl Box<dyn Any + Send> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut (dyn Any + Send) = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut (dyn Any + Send) = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -774,15 +774,19 @@ impl Box<dyn Any + Send> {
 impl Box<dyn Any + Send + Sync> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -819,8 +823,6 @@ impl<T: ?Sized> DerefMut for Box<T> {
         unsafe { self.0.as_mut() }
     }
 }
-
-impl<T: ?Sized> Receiver for Box<T> {}
 
 impl<I: Iterator + ?Sized> Iterator for Box<I> {
     type Item = I::Item;
@@ -954,44 +956,3 @@ impl<T: ?Sized> AsMut<T> for Box<T> {
 }
 
 impl<T: ?Sized> Unpin for Box<T> {}
-
-// impl<G: ?Sized + Generator<R> + Unpin, R> Generator<R> for Box<G>
-// {
-//     type Yield = G::Yield;
-//     type Return = G::Return;
-
-//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-//         G::resume(Pin::new(&mut *self), arg)
-//     }
-// }
-
-// impl<G: ?Sized + Generator<R>, R> Generator<R> for Pin<Box<G>>
-// {
-//     type Yield = G::Yield;
-//     type Return = G::Return;
-
-//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-//         G::resume((*self).as_mut(), arg)
-//     }
-// }
-
-// impl<F: ?Sized + Future + Unpin> Future for Box<F>
-// {
-//     type Output = F::Output;
-
-//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         F::poll(Pin::new(&mut *self), cx)
-//     }
-// }
-
-// impl<S: ?Sized + AsyncIterator + Unpin> AsyncIterator for Box<S> {
-//     type Item = S::Item;
-
-//     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-//         Pin::new(&mut **self).poll_next(cx)
-//     }
-
-//     fn size_hint(&self) -> (usize, Option<usize>) {
-//         (**self).size_hint()
-//     }
-// }

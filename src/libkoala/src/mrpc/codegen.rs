@@ -9,23 +9,24 @@ use unique::Unique;
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::shared_heap::SharedHeapAllocator;
 use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service,
 };
 use crate::mrpc::MRPC_CTX;
 
+use ipc::shmalloc::SwitchAddressSpace;
+
 // mimic the generated code of tonic-helloworld
 
-/// # Safety
-///
-/// The zero-copy inter-process communication thing is beyond what the compiler
-/// can check. The programmer must ensure that everything is fine.
-pub unsafe trait SwitchAddressSpace {
-    // An unsafe trait is unsafe to implement but safe to use.
-    // The user of this trait does not need to satisfy any special condition.
-    fn switch_address_space(&mut self);
-}
+// /// # Safety
+// ///
+// /// The zero-copy inter-process communication thing is beyond what the compiler
+// /// can check. The programmer must ensure that everything is fine.
+// pub unsafe trait SwitchAddressSpace {
+//     // An unsafe trait is unsafe to implement but safe to use.
+//     // The user of this trait does not need to satisfy any special condition.
+//     fn switch_address_space(&mut self);
+// }
 
 // #[derive(Debug)]
 // struct HelloRequestInner {
@@ -221,24 +222,21 @@ impl<T: Greeter> Service for GreeterServer<T> {
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
-        let raw_remote = req.shm_addr_remote as *mut MessageTemplate<HelloRequest>;
-        let msg = unsafe { mrpc::alloc::Box::from_raw_with_remote(raw, raw_remote) };
-        let req = unsafe { mrpc::alloc::Box::from_raw_with_remote(msg.val.as_ptr(), msg.val.as_ptr()) };
+        let addr_remote = req.shm_addr_remote;
+        let msg = unsafe { mrpc::alloc::Box::from_raw(raw, addr_remote) };
+        let req = unsafe { mrpc::alloc::Box::from_shmptr(msg.val) };
+        // TODO(wyj): should not be forget. 
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {
                 let mut msg = MessageTemplate::new_reply(reply, conn_id, Self::FUNC_ID, call_id);
                 let meta = msg.meta;
                 msg.switch_address_space();
-                let local_ptr = mrpc::alloc::Box::into_raw(msg);
-                let remote_shmptr = local_ptr
-                    .cast::<u8>()
-                    .wrapping_offset(SharedHeapAllocator::query_shm_offset(local_ptr as _))
-                    as u64;
+                let (local_ptr, addr_remote) = mrpc::alloc::Box::into_raw(msg);
                 let erased = MessageTemplateErased {
                     meta,
-                    shm_addr: remote_shmptr,
-                    shm_addr_remote: local_ptr as *const () as u64
+                    shm_addr: addr_remote,
+                    shm_addr_remote: local_ptr as *const () as usize
                 };
                 erased
             }

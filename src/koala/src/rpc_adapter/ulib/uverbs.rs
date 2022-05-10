@@ -1,52 +1,38 @@
 use std::any::Any;
 use std::borrow::Borrow;
-use std::collections::VecDeque;
-use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use memfd::Memfd;
-use memmap2::{MmapOptions, MmapRaw};
-use memmap_fixed::MmapFixed;
 
 use interface::{returned, AsHandle, Handle};
-use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use super::super::module::ServiceType;
-use super::{get_cq_buffers, get_service, rx_recv_impl, Error, FromBorrow};
+use super::{get_ops, Error, FromBorrow};
 
 // Re-exports
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
 pub(crate) fn get_default_verbs_contexts(
-    service: &ServiceType,
+    ops: &crate::transport::rdma::ops::Ops,
 ) -> Result<Vec<VerbsContext>, Error> {
-    let req = Command::GetDefaultContexts;
-    service.send_cmd(req)?;
-    rx_recv_impl!(service, CompletionKind::GetDefaultContexts, ctx_list, {
-        ctx_list
-            .into_iter()
-            .map(|ctx| VerbsContext::new(ctx))
-            .collect::<Result<Vec<_>, Error>>()
-    })
+    let ctx_list = ops.get_default_contexts()?;
+    ctx_list
+        .into_iter()
+        .map(|ctx| VerbsContext::new(ctx))
+        .collect::<Result<Vec<_>, Error>>()
 }
 
 pub(crate) fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
-    let service = get_service();
-    let req = Command::GetDefaultPds;
-    service.send_cmd(req)?;
-    rx_recv_impl!(service, CompletionKind::GetDefaultPds, pds, {
-        pds.into_iter()
-            .map(|pd| ProtectionDomain::open(pd))
-            .collect::<Result<Vec<_>, Error>>()
-    })
+    let pds = get_ops().get_default_pds()?;
+    pds.into_iter()
+        .map(|pd| ProtectionDomain::open(pd))
+        .collect::<Result<Vec<_>, Error>>()
 }
 
 #[derive(Debug)]
@@ -68,12 +54,8 @@ impl VerbsContext {
         min_cq_entries: i32,
         cq_context: u64,
     ) -> Result<CompletionQueue, Error> {
-        let service = get_service();
-        let req = Command::CreateCq(self.inner, min_cq_entries, cq_context);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::CreateCq, cq, {
-            Ok(CompletionQueue::open(cq)?)
-        })
+        let cq = get_ops().create_cq(&self.inner, min_cq_entries, cq_context)?;
+        Ok(CompletionQueue::open(cq)?)
     }
 }
 
@@ -84,136 +66,52 @@ pub struct ProtectionDomain {
 
 impl Drop for ProtectionDomain {
     fn drop(&mut self) {
-        (|| {
-            let service = get_service();
-            let req = Command::DeallocPd(self.inner);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::DeallocPd)
-        })()
-        .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
+        get_ops()
+            .dealloc_pd(&self.inner)
+            .unwrap_or_else(|e| eprintln!("Dropping ProtectionDomain: {}", e));
     }
 }
 
 impl ProtectionDomain {
     pub(crate) fn open(pd: returned::ProtectionDomain) -> Result<Self, Error> {
-        let service = get_service();
         let inner = pd.handle;
-        let req = Command::OpenPd(inner);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::OpenPd, {
-            Ok(ProtectionDomain { inner })
-        })
+        get_ops().open_pd(&inner)?;
+        Ok(ProtectionDomain { inner })
     }
 
-    pub fn allocate<T: Sized + Copy>(
+    pub(crate) fn allocate<T: Sized + Copy>(
         &self,
         len: usize,
         access: interface::AccessFlags,
     ) -> Result<MemoryRegion<T>, Error> {
         let nbytes = len * mem::size_of::<T>();
         assert!(nbytes > 0);
-        let service = get_service();
-        let req = Command::RegMr(self.inner, nbytes, access);
-        service.send_cmd(req)?;
-        let fds = service.recv_fd()?;
+        let mr = get_ops().reg_mr(&self.inner, nbytes, access)?;
 
-        assert_eq!(fds.len(), 1);
-
-        let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error())?;
-        let file_len = memfd.as_file().metadata()?.len() as usize;
-        assert!(file_len >= nbytes);
-
-        rx_recv_impl!(service, CompletionKind::RegMr, mr, {
-            // use the kaddr by default, this is fine only whey the shared memory is mapped to the
-            // same address space
-            assert_eq!(nbytes, mr.map_len as usize);
-            let kaddr = mr.vaddr;
-            MemoryRegion::new(
-                self.inner,
-                mr.handle,
-                mr.rkey,
-                kaddr,
-                nbytes,
-                mr.file_off,
-                memfd,
-            )
-        })
+        assert_eq!(nbytes, mr.len());
+        let kaddr = mr.as_ptr().addr();
+        Ok(MemoryRegion::new(mr, kaddr)?)
     }
 }
 
 #[derive(Debug)]
 pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
-    pub(crate) outstanding: AtomicBool,
-    pub(crate) buffer: CqBuffer,
-}
-
-#[derive(Debug)]
-pub(crate) struct CqBuffer {
-    pub(crate) queue: Arc<spin::Mutex<VecDeque<WorkCompletion>>>,
-}
-
-impl Clone for CqBuffer {
-    fn clone(&self) -> Self {
-        CqBuffer {
-            queue: Arc::clone(&self.queue),
-        }
-    }
-}
-
-impl CqBuffer {
-    fn new() -> Self {
-        CqBuffer {
-            queue: Arc::new(spin::Mutex::new(VecDeque::new())),
-        }
-    }
-
-    #[inline]
-    fn refcnt(&self) -> usize {
-        Arc::strong_count(&self.queue)
-    }
 }
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
-        (|| {
-            let mut cq_buffers = get_cq_buffers().lock();
-            let ref_cnt = cq_buffers[&self.inner].refcnt();
-            if ref_cnt == 2 {
-                // this is the last CQ
-                // should I flush the remaining completions in the buffer?
-                cq_buffers.remove(&self.inner);
-            }
-            drop(cq_buffers);
-
-            let service = get_service();
-            let req = Command::DestroyCq(self.inner);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::DestroyCq)
-        })()
-        .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
+        get_ops()
+            .destroy_cq(&self.inner)
+            .unwrap_or_else(|e| eprintln!("Dropping CompletionQueue: {}", e));
     }
 }
 
 impl CompletionQueue {
     pub(crate) fn open(returned_cq: returned::CompletionQueue) -> Result<Self, Error> {
-        let service = get_service();
-        // allocate a buffer in the thread local context
-        let buffer = get_cq_buffers()
-            .lock()
-            .entry(returned_cq.handle)
-            .or_insert_with(CqBuffer::new)
-            .clone();
         let inner = returned_cq.handle;
-        let req = Command::OpenCq(inner);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::OpenCq, _cap, {
-            Ok(CompletionQueue {
-                inner,
-                outstanding: AtomicBool::new(false),
-                buffer,
-            })
-        })
+        let ops = get_ops().open_cq(&inner)?;
+        Ok(CompletionQueue { inner })
     }
 }
 
@@ -223,14 +121,8 @@ pub struct SharedReceiveQueue {
 
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
-    pub(crate) inner: interface::MemoryRegion,
-    // mmap: MmapRaw,
-    mmap: MmapFixed,
-    rkey: RemoteKey,
-    pub(crate) app_vaddr: AtomicU64,
-    memfd: Memfd,
-    pd: ProtectionDomain,
-    pub(crate) file_off: u64,
+    pub(crate) inner: rdma::mr::MemoryRegion,
+    pub(crate) app_vaddr: AtomicUsize,
     _marker: PhantomData<T>,
 }
 
@@ -239,8 +131,8 @@ impl<T> Deref for MemoryRegion<T> {
     fn deref(&self) -> &Self::Target {
         unsafe {
             slice::from_raw_parts(
-                self.mmap.as_ptr().cast(),
-                self.mmap.len() / mem::size_of::<T>(),
+                self.inner.as_ptr().cast(),
+                self.inner.len() / mem::size_of::<T>(),
             )
         }
     }
@@ -250,101 +142,76 @@ impl<T> DerefMut for MemoryRegion<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
             slice::from_raw_parts_mut(
-                self.mmap.as_mut_ptr().cast(),
-                self.mmap.len() / mem::size_of::<T>(),
+                self.inner.as_mut_ptr().cast(),
+                self.inner.len() / mem::size_of::<T>(),
             )
         }
     }
 }
 
-impl<T> Drop for MemoryRegion<T> {
-    fn drop(&mut self) {
-        (|| {
-            let service = get_service();
-            let req = Command::DeregMr(self.inner);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::DeregMr)
-        })()
-        .unwrap_or_else(|e| eprintln!("Dropping MemoryRegion: {}", e));
-    }
-}
-
 impl<T> AsHandle for MemoryRegion<T> {
     fn as_handle(&self) -> Handle {
-        self.inner.0
+        self.inner.as_handle()
     }
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(
-        pd: interface::ProtectionDomain,
-        inner: interface::MemoryRegion,
-        rkey: RemoteKey,
-        app_vaddr: u64,
-        nbytes: usize,
-        file_off: u64,
-        memfd: Memfd,
-    ) -> Result<Self, Error> {
-        // let mmap = MmapOptions::new()
-        //     .offset(file_off)
-        //     .len(nbytes)
-        //     .map_raw(memfd.as_file())?;
-        let mmap = MmapFixed::new(app_vaddr as usize, nbytes, file_off as i64, memfd.as_file())?;
+    fn new(inner: rdma::mr::MemoryRegion, app_vaddr: usize) -> Result<Self, Error> {
         Ok(MemoryRegion {
             inner,
-            rkey,
-            mmap,
-            app_vaddr: AtomicU64::new(app_vaddr),
-            pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
-            memfd,
-            file_off,
+            app_vaddr: AtomicUsize::new(app_vaddr),
             _marker: PhantomData,
         })
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &[T] {
+    pub(crate) fn as_slice(&self) -> &[T] {
         self
     }
 
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [T] {
         self
     }
 
     #[inline]
-    pub fn memfd(&self) -> &Memfd {
-        &self.memfd
+    pub(crate) fn memfd(&self) -> &Memfd {
+        self.inner.memfd()
     }
 
     #[inline]
-    pub fn rkey(&self) -> RemoteKey {
-        self.rkey
+    pub(crate) fn rkey(&self) -> RemoteKey {
+        self.inner.rkey()
+    }
+
+    // #[inline]
+    // pub fn pd(&self) -> &ProtectionDomain {
+    //     &self.inner.pd()
+    // }
+
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const T {
+        self.inner.as_ptr().cast()
     }
 
     #[inline]
-    pub fn pd(&self) -> &ProtectionDomain {
-        &self.pd
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut T {
+        self.inner.as_mut_ptr().cast()
     }
 
     #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        self.mmap.as_ptr() as *const T
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&self) -> *mut T {
-        self.mmap.as_mut_ptr() as *mut T
-    }
-
-    #[inline]
-    pub fn set_app_vaddr(&self, app_vaddr: u64) {
+    pub(crate) fn set_app_vaddr(&self, app_vaddr: usize) {
         self.app_vaddr.store(app_vaddr, Ordering::SeqCst);
     }
 
     #[inline]
-    pub fn app_vaddr(&self) -> u64 {
+    pub(crate) fn app_vaddr(&self) -> usize {
         self.app_vaddr.load(Ordering::SeqCst)
+    }
+    
+    #[inline]
+    pub(crate) fn file_off(&self) -> usize {
+        self.inner.file_off()
     }
 }
 
@@ -358,57 +225,49 @@ pub struct QueuePair {
 
 impl QueuePair {
     pub(crate) fn open(returned_qp: returned::QueuePair) -> Result<Self, Error> {
-        let service = get_service();
         let inner = returned_qp.handle;
-        let req = Command::OpenQp(inner);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::OpenQp, {
-            Ok(QueuePair {
-                inner,
-                pd: ProtectionDomain::open(returned_qp.pd)?,
-                send_cq: CompletionQueue::open(returned_qp.send_cq)?,
-                recv_cq: CompletionQueue::open(returned_qp.recv_cq)?,
-            })
+        get_ops().open_qp(&inner)?;
+        Ok(QueuePair {
+            inner,
+            pd: ProtectionDomain::open(returned_qp.pd)?,
+            send_cq: CompletionQueue::open(returned_qp.send_cq)?,
+            recv_cq: CompletionQueue::open(returned_qp.recv_cq)?,
         })
     }
 
     #[inline]
-    pub fn pd(&self) -> &ProtectionDomain {
+    pub(crate) fn pd(&self) -> &ProtectionDomain {
         &self.pd
     }
 
     #[inline]
-    pub fn send_cq(&self) -> &CompletionQueue {
+    pub(crate) fn send_cq(&self) -> &CompletionQueue {
         &self.send_cq
     }
 
     #[inline]
-    pub fn recv_cq(&self) -> &CompletionQueue {
+    pub(crate) fn recv_cq(&self) -> &CompletionQueue {
         &self.recv_cq
     }
 }
 
 impl Drop for QueuePair {
     fn drop(&mut self) {
-        (|| {
-            let service = get_service();
-            let req = Command::DestroyQp(self.inner);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::DestroyQp)
-        })()
-        .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));
+        get_ops()
+            .destroy_qp(&self.inner)
+            .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));
     }
 }
 
 #[derive(Clone)]
-pub struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
-    pub qp_context: Option<&'ctx dyn Any>,
-    pub send_cq: Option<&'scq CompletionQueue>,
-    pub recv_cq: Option<&'rcq CompletionQueue>,
-    pub srq: Option<&'srq SharedReceiveQueue>,
-    pub cap: QpCapability,
-    pub qp_type: QpType,
-    pub sq_sig_all: bool,
+pub(crate) struct QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
+    pub(crate) qp_context: Option<&'ctx (dyn Any + Send + Sync)>,
+    pub(crate) send_cq: Option<&'scq CompletionQueue>,
+    pub(crate) recv_cq: Option<&'rcq CompletionQueue>,
+    pub(crate) srq: Option<&'srq SharedReceiveQueue>,
+    pub(crate) cap: QpCapability,
+    pub(crate) qp_type: QpType,
+    pub(crate) sq_sig_all: bool,
 }
 
 impl<'ctx, 'scq, 'rcq, 'srq> Default for QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
@@ -448,15 +307,15 @@ impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
 }
 
 #[derive(Debug, Clone)]
-pub struct ConnParam<'priv_data> {
-    pub private_data: Option<&'priv_data [u8]>,
-    pub responder_resources: u8,
-    pub initiator_depth: u8,
-    pub flow_control: u8,
-    pub retry_count: u8,
-    pub rnr_retry_count: u8,
-    pub srq: u8,
-    pub qp_num: u32,
+pub(crate) struct ConnParam<'priv_data> {
+    pub(crate) private_data: Option<&'priv_data [u8]>,
+    pub(crate) responder_resources: u8,
+    pub(crate) initiator_depth: u8,
+    pub(crate) flow_control: u8,
+    pub(crate) retry_count: u8,
+    pub(crate) rnr_retry_count: u8,
+    pub(crate) srq: u8,
+    pub(crate) qp_num: u32,
 }
 
 impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for interface::ConnParam {

@@ -1,6 +1,17 @@
 #![feature(unix_socket_ancillary_data)]
 #![feature(peer_credentials_unix_socket)]
 #![feature(slice_index_methods)]
+
+// added by boxed.rs
+// TODO(cjr): remove unused feature.
+#![feature(specialization)]
+#![feature(strict_provenance)]
+#![feature(ptr_internals)]
+#![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
+#![feature(ptr_const_cast)]
+
+
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::os::unix::net::UCred;
@@ -18,6 +29,8 @@ pub(crate) use crate::shmem_ipc::{ShmReceiver, ShmSender};
 pub mod control;
 pub mod mrpc;
 pub mod transport;
+pub mod salloc;
+pub mod shmalloc;
 
 /// Provides Range
 pub mod buf;

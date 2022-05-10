@@ -1,18 +1,16 @@
 use std::future::Future;
 
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
-use unique::Unique;
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
+use ipc::shmalloc::ShmPtr;
 
 use super::module::CustomerType;
-use super::state::{State, Resource};
+use super::state::State;
 use super::{DatapathError, Error};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, Indicator, Upgradable, Version, Vertex,
-};
-use crate::mrpc::marshal::{RpcMessage, ShmBuf};
+use crate::engine::{future, Engine, EngineResult, Indicator, Vertex};
+use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -20,8 +18,8 @@ pub struct MrpcEngine {
 
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
-    pub(crate) cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
-    pub(crate) cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
 
@@ -30,27 +28,8 @@ pub struct MrpcEngine {
     pub(crate) indicator: Option<Indicator>,
 }
 
-impl Upgradable for MrpcEngine {
-    fn version(&self) -> Version {
-        unimplemented!();
-    }
-
-    fn check_compatible(&self, _v2: Version) -> bool {
-        unimplemented!();
-    }
-
-    fn suspend(&mut self) {
-        unimplemented!();
-    }
-
-    fn dump(&self) {
-        unimplemented!();
-    }
-
-    fn restore(&mut self) {
-        unimplemented!();
-    }
-}
+crate::unimplemented_ungradable!(MrpcEngine);
+crate::impl_vertex_for_engine!(MrpcEngine, node);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -59,10 +38,6 @@ enum Status {
 }
 
 use Status::Progress;
-
-impl Vertex for MrpcEngine {
-    crate::impl_vertex_for_engine!(node);
-}
 
 impl Engine for MrpcEngine {
     type Future = impl Future<Output = EngineResult>;
@@ -78,12 +53,6 @@ impl Engine for MrpcEngine {
     fn entry(mut self) -> Self::Future {
         Box::pin(async move { self.mainloop().await })
     }
-
-    #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let res = self.state.resource() as *const Resource;
-        Some(&*res)
-    }
 }
 
 impl MrpcEngine {
@@ -98,7 +67,7 @@ impl MrpcEngine {
 
             if self.customer.has_control_command() {
                 self.flush_dp()?;
-                if let Status::Disconnected = self.check_cmd()? {
+                if let Status::Disconnected = self.check_cmd().await? {
                     return Ok(());
                 }
             }
@@ -117,11 +86,11 @@ impl MrpcEngine {
         Ok(Status::Progress(0))
     }
 
-    fn check_cmd(&mut self) -> Result<Status, Error> {
+    async fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.customer.try_recv_cmd() {
             // handle request
             Ok(req) => {
-                let result = self.process_cmd(&req);
+                let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
                     Err(Error::NoReponse) => {} // no need to do anything
@@ -142,7 +111,7 @@ impl MrpcEngine {
         self.transport_type = Some(transport_type);
     }
 
-    fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
+    async fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
         use ipc::mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(transport_type) => {
@@ -153,19 +122,19 @@ impl MrpcEngine {
                     Ok(CompletionKind::SetTransport)
                 }
             }
-            Command::AllocShm(nbytes) => {
-                self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
-                    Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
-                        self.customer.send_fd(&[memfd]).unwrap();
-                        Ok(CompletionKind::AllocShm(returned_mr))
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
-            }
+            // Command::AllocShm(nbytes) => {
+            //     self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
+            //     match self.cmd_rx.recv().unwrap().0 {
+            //         Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
+            //             self.customer.send_fd(&[memfd]).unwrap();
+            //             Ok(CompletionKind::AllocShm(returned_mr))
+            //         }
+            //         other => panic!("unexpected: {:?}", other),
+            //     }
+            // }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
+                match self.cmd_rx.recv().await.unwrap().0 {
                     Ok(CompletionKind::ConnectInternal(handle, recv_mrs, fds)) => {
                         self.customer.send_fd(&fds).unwrap();
                         Ok(CompletionKind::Connect((handle, recv_mrs)))
@@ -175,7 +144,7 @@ impl MrpcEngine {
             }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
+                match self.cmd_rx.recv().await.unwrap().0 {
                     Ok(CompletionKind::Bind(listener_handle)) => {
                         // just forward it
                         Ok(CompletionKind::Bind(listener_handle))
@@ -183,33 +152,33 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
-            Command::NewMappedAddrs(app_vaddrs) => {
-                // just forward it
-                self.cmd_tx
-                    .send(Command::NewMappedAddrs(app_vaddrs.clone()))
-                    .unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
-                    Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
-                        for tup in addr_map {
-                            let local_addr = tup.0;
-                            let buf = ShmBuf {
-                                ptr: tup.1,
-                                len: tup.2,
-                            };
-                            log::debug!(
-                                "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
-                                local_addr,
-                                buf.ptr,
-                                buf.len
-                            );
-                            self.state.resource().insert_addr_map(local_addr, buf)?;
-                        }
-                        Ok(CompletionKind::NewMappedAddrs)
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
-                // Err(Error::NoReponse)
-            }
+            // Command::NewMappedAddrs(app_vaddrs) => {
+            //     // just forward it
+            //     self.cmd_tx
+            //         .send(Command::NewMappedAddrs(app_vaddrs.clone()))
+            //         .unwrap();
+            //     match self.cmd_rx.recv().unwrap().0 {
+            //         Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
+            //             for tup in addr_map {
+            //                 let local_addr = tup.0;
+            //                 let buf = ShmBuf {
+            //                     ptr: tup.1,
+            //                     len: tup.2,
+            //                 };
+            //                 log::debug!(
+            //                     "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
+            //                     local_addr,
+            //                     buf.ptr,
+            //                     buf.len
+            //                 );
+            //                 self.state.resource().insert_addr_map(local_addr, buf)?;
+            //             }
+            //             Ok(CompletionKind::NewMappedAddrs)
+            //         }
+            //         other => panic!("unexpected: {:?}", other),
+            //     }
+            //     // Err(Error::NoReponse)
+            // }
         }
     }
 
@@ -252,6 +221,7 @@ impl MrpcEngine {
         use dp::WorkRequest;
         match req {
             WorkRequest::Call(erased) => {
+                // TODO(wyj): sanity check on the addr contained in erased
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
@@ -263,8 +233,8 @@ impl MrpcEngine {
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         log::debug!("end marshal");
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -278,8 +248,8 @@ impl MrpcEngine {
                             unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -290,7 +260,7 @@ impl MrpcEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(mut msg) => {
                 // deliver the msg to application
@@ -312,12 +282,6 @@ impl MrpcEngine {
                 msg_mut.switch_address_space();
                 // NOTE(wyj): this is the address of the pointer to `msg_mut`
                 // while switch_address_space swithces the address of the actual payload
-                let remote_msg_addr =
-                    msg.as_ptr()
-                        .cast::<u8>()
-                        .wrapping_offset(super::marshal::query_shm_offset(
-                            msg.as_ptr() as *mut () as _
-                        )) as u64;
                 // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
                 // NOTE(wyj): This is message from backend to app
                 // MessageTemplateErased is a just a message header
@@ -326,8 +290,8 @@ impl MrpcEngine {
                 let erased = MessageTemplateErased {
                     meta,
                     // casting to thin pointer first, drop the Pointee::Metadata
-                    shm_addr: remote_msg_addr,
-                    shm_addr_remote: msg.as_ptr() as *const () as u64,
+                    shm_addr: msg.get_remote_addr(),
+                    shm_addr_remote: msg.as_ptr() as *const () as usize,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
                 let mut sent = false;
@@ -348,7 +312,7 @@ impl MrpcEngine {
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
         use ipc::mrpc::cmd::{Completion, CompletionKind};
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {

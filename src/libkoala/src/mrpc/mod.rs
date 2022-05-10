@@ -10,7 +10,12 @@ use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
-    pub(crate) static MRPC_CTX: Context = Context::register().expect("koala mRPC register failed");
+    pub(crate) static MRPC_CTX: Context = {
+        crate::salloc::SA_CTX.with(|_ctx| {
+            // do nothing, just to ensure SA_CTX is initialized before MRPC_CTX
+        });
+        Context::register().expect("koala mRPC register failed")
+    }
 }
 
 pub(crate) struct Context {
@@ -27,7 +32,6 @@ impl Context {
 // mRPC library
 pub mod alloc;
 pub mod codegen;
-pub mod shared_heap;
 pub mod stub;
 
 // pub mod shmptr;

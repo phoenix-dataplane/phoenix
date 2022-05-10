@@ -3,9 +3,9 @@ use std::mem;
 use std::net::ToSocketAddrs;
 
 use interface::{AsHandle, Handle};
-use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use super::{get_service, rx_recv_impl, uverbs, Error, FromBorrow};
+use super::get_ops;
+use super::{uverbs, Error, FromBorrow};
 use uverbs::AccessFlags;
 use uverbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
@@ -13,7 +13,7 @@ use uverbs::{ConnParam, ProtectionDomain, QpInitAttr};
 pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 #[derive(Clone)]
-pub struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+pub(crate) struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     handle: interface::CmId,
     pd: Option<&'pd ProtectionDomain>,
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
@@ -26,7 +26,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq,
 }
 
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         CmIdBuilder {
             handle: interface::CmId(interface::Handle::INVALID),
             pd: None,
@@ -34,12 +34,12 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         }
     }
 
-    pub fn set_pd(&mut self, pd: &'pd ProtectionDomain) -> &mut Self {
+    pub(crate) fn set_pd(&mut self, pd: &'pd ProtectionDomain) -> &mut Self {
         self.pd = Some(pd);
         self
     }
 
-    pub fn set_qp_init_attr<'a>(
+    pub(crate) fn set_qp_init_attr<'a>(
         &mut self,
         qp_init_attr: &'a QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
     ) -> &mut Self {
@@ -47,104 +47,90 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         self
     }
 
-    pub fn set_qp_context(&mut self, qp_context: &'ctx dyn Any) -> &mut Self {
+    pub(crate) fn set_qp_context(&mut self, qp_context: &'ctx (dyn Any + Send + Sync)) -> &mut Self {
         self.qp_init_attr.qp_context = Some(qp_context);
         self
     }
 
-    pub fn set_send_cq(&mut self, send_cq: &'scq uverbs::CompletionQueue) -> &mut Self {
+    pub(crate) fn set_send_cq(&mut self, send_cq: &'scq uverbs::CompletionQueue) -> &mut Self {
         self.qp_init_attr.send_cq = Some(send_cq);
         self
     }
 
-    pub fn set_recv_cq(&mut self, recv_cq: &'rcq uverbs::CompletionQueue) -> &mut Self {
+    pub(crate) fn set_recv_cq(&mut self, recv_cq: &'rcq uverbs::CompletionQueue) -> &mut Self {
         self.qp_init_attr.recv_cq = Some(recv_cq);
         self
     }
 
-    pub fn set_cap(&mut self, cap: uverbs::QpCapability) -> &mut Self {
+    pub(crate) fn set_cap(&mut self, cap: uverbs::QpCapability) -> &mut Self {
         self.qp_init_attr.cap = cap;
         self
     }
 
-    pub fn set_max_send_wr(&mut self, max_send_wr: u32) -> &mut Self {
+    pub(crate) fn set_max_send_wr(&mut self, max_send_wr: u32) -> &mut Self {
         self.qp_init_attr.cap.max_send_wr = max_send_wr;
         self
     }
 
-    pub fn set_max_recv_wr(&mut self, max_recv_wr: u32) -> &mut Self {
+    pub(crate) fn set_max_recv_wr(&mut self, max_recv_wr: u32) -> &mut Self {
         self.qp_init_attr.cap.max_recv_wr = max_recv_wr;
         self
     }
 
-    pub fn set_max_send_sge(&mut self, max_send_sge: u32) -> &mut Self {
+    pub(crate) fn set_max_send_sge(&mut self, max_send_sge: u32) -> &mut Self {
         self.qp_init_attr.cap.max_send_sge = max_send_sge;
         self
     }
 
-    pub fn set_max_recv_sge(&mut self, max_recv_sge: u32) -> &mut Self {
+    pub(crate) fn set_max_recv_sge(&mut self, max_recv_sge: u32) -> &mut Self {
         self.qp_init_attr.cap.max_recv_sge = max_recv_sge;
         self
     }
 
-    pub fn set_max_inline_data(&mut self, max_inline_data: u32) -> &mut Self {
+    pub(crate) fn set_max_inline_data(&mut self, max_inline_data: u32) -> &mut Self {
         self.qp_init_attr.cap.max_inline_data = max_inline_data;
         self
     }
 
-    pub fn signal_all(&mut self) -> &mut Self {
+    pub(crate) fn signal_all(&mut self) -> &mut Self {
         self.qp_init_attr.sq_sig_all = true;
         self
     }
 
-    pub fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdListener, Error> {
+    pub(crate) async fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdListener, Error> {
         let listen_addr = addr
             .to_socket_addrs()?
             .next()
             .ok_or(Error::NoAddrResolved)?;
-        let service = get_service();
+        let ops = get_ops();
         // create_id
-        let req = Command::CreateId(PortSpace::TCP);
-        service.send_cmd(req)?;
-        let cmid = rx_recv_impl!(service, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
+        let cmid = ops.create_id(PortSpace::TCP).await?;
         assert!(cmid.qp.is_none());
-        // auto drop if any of the following step failed
+        // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
         // bind_addr
-        let req = Command::BindAddr(cmid.handle.0, listen_addr);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::BindAddr)?;
+        ops.bind_addr(cmid.handle.0, &listen_addr)?;
         // listen
-        let req = Command::Listen(cmid.handle.0, 512);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::Listen)?;
+        ops.listen(cmid.handle.0, 512)?;
         mem::forget(drop_cmid);
-        Ok(CmIdListener {
-            handle: cmid.handle,
-        })
+        Ok(CmIdListener { handle: cmid.handle })
     }
 
-    pub fn resolve_route<A: ToSocketAddrs>(&self, addr: A) -> Result<Self, Error> {
+    pub(crate) async fn resolve_route<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
         let connect_addr = addr
             .to_socket_addrs()?
             .next()
             .ok_or(Error::NoAddrResolved)?;
-        let service = get_service();
+        let ops = get_ops();
         // create_id
-        let req = Command::CreateId(PortSpace::TCP);
-        service.send_cmd(req)?;
-        let cmid = rx_recv_impl!(service, CompletionKind::CreateId, cmid, { Ok(cmid) })?;
+        let cmid = ops.create_id(PortSpace::TCP).await?;
         assert!(cmid.qp.is_none());
-        // auto drop if any of the following step failed
+        // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
         // resolve_addr
-        let req = Command::ResolveAddr(cmid.handle.0, connect_addr);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::ResolveAddr)?;
+        ops.resolve_addr(cmid.handle.0, &connect_addr).await?;
         // resolve_route
-        let req = Command::ResolveRoute(cmid.handle.0, 2000);
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::ResolveRoute)?;
+        ops.resolve_route(cmid.handle.0, 2000).await?;
         assert!(cmid.qp.is_none());
         let mut builder = self.clone();
         builder.handle = cmid.handle;
@@ -152,17 +138,10 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         Ok(builder)
     }
 
-    pub fn build(&self) -> Result<PreparedCmId, Error> {
-        let service = get_service();
+    pub(crate) fn build(&self) -> Result<PreparedCmId, Error> {
         // create_qp
         let pd = self.pd.map(|pd| pd.inner);
-        let req = Command::CmCreateQp(
-            self.handle.0,
-            pd,
-            interface::QpInitAttr::from_borrow(&self.qp_init_attr),
-        );
-        service.send_cmd(req)?;
-        let qp = rx_recv_impl!(service, CompletionKind::CmCreateQp, qp, { Ok(qp) })?;
+        let qp = get_ops().cm_create_qp(self.handle.0, pd.as_ref(), &interface::QpInitAttr::from_borrow(&self.qp_init_attr))?;
         Ok(PreparedCmId {
             inner: Inner {
                 handle: self.handle,
@@ -176,20 +155,15 @@ struct DropCmId(interface::CmId);
 
 impl Drop for DropCmId {
     fn drop(&mut self) {
-        (|| {
-            let service = get_service();
-            let req = Command::DestroyId(self.0);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::DestroyId)?;
-            Ok(())
-        })()
-        .unwrap_or_else(|e: Error| eprintln!("Destroying CmId: {}", e));
+        get_ops()
+            .destroy_id(&self.0)
+            .unwrap_or_else(|e| eprintln!("Destroying CmId: {}", e));
     }
 }
 
 // COMMENT(cjr): here we remove some functionalities of the CmIdListener from the libkoala so that
 // the 5 lifetime generices does not need to propagate.
-pub struct CmIdListener {
+pub(crate) struct CmIdListener {
     pub(crate) handle: interface::CmId,
 }
 
@@ -207,46 +181,38 @@ impl Drop for CmIdListener {
 }
 
 impl CmIdListener {
-    pub fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
-        CmIdBuilder::new().bind(addr)
+    pub(crate) async fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
+        CmIdBuilder::new().bind(addr).await
     }
 
-    pub fn get_request<'pd, 'ctx, 'scq, 'rcq, 'srq>(
+    pub(crate) async fn get_request<'pd, 'ctx, 'scq, 'rcq, 'srq>(
         &self,
     ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
-        let service = get_service();
-        let req = Command::GetRequest(self.handle.0);
-        service.send_cmd(req)?;
-        let cmid = rx_recv_impl!(service, CompletionKind::GetRequest, cmid, { Ok(cmid) })?;
+        let cmid = get_ops().get_request(self.handle.0).await?;
         assert!(cmid.qp.is_none());
         let mut builder = CmIdBuilder::new();
         builder.handle = cmid.handle;
         Ok(builder)
     }
 
-    pub fn try_get_request<'pd, 'ctx, 'scq, 'rcq, 'srq>(
+    pub(crate) fn try_get_request<'pd, 'ctx, 'scq, 'rcq, 'srq>(
         &self,
     ) -> Result<Option<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>>, Error> {
-        let service = get_service();
-        let req = Command::TryGetRequest(self.handle.0);
-        service.send_cmd(req)?;
-        let maybe_cmid = rx_recv_impl!(service, CompletionKind::TryGetRequest, maybe_cmid, {
-            match maybe_cmid {
-                Some(cmid) => {
-                    assert!(cmid.qp.is_none());
-                    let mut builder = CmIdBuilder::new();
-                    builder.handle = cmid.handle;
-                    Ok(Some(builder))
-                }
-                None => Ok(None),
-            }
-        })?;
-        Ok(maybe_cmid)
+        let maybe_cmid = get_ops().try_get_request(self.handle.0)?;
+        let builder = if let Some(cmid) = maybe_cmid.as_ref() {
+            assert!(cmid.qp.is_none());
+            let mut builder = CmIdBuilder::new();
+            builder.handle = cmid.handle;
+            Some(builder)
+        } else {
+            None
+        };
+        Ok(builder)
     }
 }
 
 #[derive(Debug)]
-pub struct PreparedCmId {
+pub(crate) struct PreparedCmId {
     pub(crate) inner: Inner,
 }
 
@@ -258,38 +224,21 @@ impl AsHandle for PreparedCmId {
 }
 
 impl PreparedCmId {
-    pub fn accept(self, conn_param: Option<&ConnParam>) -> Result<CmId, Error> {
-        let service = get_service();
-        // accept
-        let req = Command::Accept(
-            self.inner.handle.0,
-            conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
-        );
-        service.send_cmd(req)?;
-        rx_recv_impl!(service, CompletionKind::Accept)?;
+    pub(crate) async fn accept<'a>(self, conn_param: Option<&'a ConnParam<'a>>) -> Result<CmId, Error> {
+        let conn_param = conn_param.map(|param| interface::ConnParam::from_borrow(&param));
+        get_ops().accept(self.inner.handle.0, conn_param.as_ref()).await?;
         Ok(CmId { inner: self.inner })
     }
 
-    pub fn connect(self, conn_param: Option<&ConnParam>) -> Result<CmId, Error> {
-        let service = get_service();
-        // connect
-        let req = Command::Connect(
-            self.inner.handle.0,
-            conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
-        );
-        service.send_cmd(req)?;
-        rx_recv_impl!(
-            service,
-            CompletionKind::Connect,
-            { Ok(CmId { inner: self.inner }) },
-            e,
-            { Err(Error::Connect(e)) }
-        )
+    pub(crate) async fn connect<'a>(self, conn_param: Option<&'a ConnParam<'a>>) -> Result<CmId, Error> {
+        let conn_param = conn_param.map(|param| interface::ConnParam::from_borrow(&param));
+        get_ops().connect(self.inner.handle.0, conn_param.as_ref()).await.map_err(Error::Connect)?;
+        Ok(CmId { inner: self.inner })
     }
 }
 
 #[derive(Debug)]
-pub struct CmId {
+pub(crate) struct CmId {
     pub(crate) inner: Inner,
 }
 
@@ -302,48 +251,42 @@ impl AsHandle for CmId {
 
 impl Drop for CmId {
     fn drop(&mut self) {
-        (|| {
-            let service = get_service();
-            let req = Command::Disconnect(self.inner.handle);
-            service.send_cmd(req)?;
-            rx_recv_impl!(service, CompletionKind::Disconnect)?;
-
-            Ok(())
-        })()
-        .unwrap_or_else(|e: Error| eprintln!("Disconnecting CmId: {}", e));
+        futures::executor::block_on(async {
+            get_ops().disconnect(&self.inner.handle).await.unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
+        });
     }
 }
 
 impl CmId {
-    pub fn resolve_route<'pd, 'ctx, 'scq, 'rcq, 'srq, A: ToSocketAddrs>(
+    pub(crate) async fn resolve_route<'pd, 'ctx, 'scq, 'rcq, 'srq, A: ToSocketAddrs>(
         addr: A,
     ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
-        CmIdBuilder::new().resolve_route(addr)
+        CmIdBuilder::new().resolve_route(addr).await
     }
 }
 
 macro_rules! impl_for_cmid {
     ($type:ty, $member:ident) => {
         impl $type {
-            pub fn qp(&self) -> &uverbs::QueuePair {
+            pub(crate) fn qp(&self) -> &uverbs::QueuePair {
                 &self.$member.qp
             }
 
-            pub fn alloc_msgs<T: Sized + Copy>(
+            pub(crate) fn alloc_msgs<T: Sized + Copy>(
                 &self,
                 len: usize,
             ) -> Result<uverbs::MemoryRegion<T>, Error> {
                 self.$member.alloc_msgs(len)
             }
 
-            pub fn alloc_write<T: Sized + Copy>(
+            pub(crate) fn alloc_write<T: Sized + Copy>(
                 &self,
                 len: usize,
             ) -> Result<uverbs::MemoryRegion<T>, Error> {
                 self.$member.alloc_write(len)
             }
 
-            pub fn alloc_read<T: Sized + Copy>(
+            pub(crate) fn alloc_read<T: Sized + Copy>(
                 &self,
                 len: usize,
             ) -> Result<uverbs::MemoryRegion<T>, Error> {
@@ -373,14 +316,14 @@ impl Drop for Inner {
 
 impl Inner {
     // /// Creates an identifier that is used to track communication information.
-    pub fn alloc_msgs<T: Sized + Copy>(
+    pub(crate) fn alloc_msgs<T: Sized + Copy>(
         &self,
         len: usize,
     ) -> Result<uverbs::MemoryRegion<T>, Error> {
         self.qp.pd.allocate(len, AccessFlags::LOCAL_WRITE)
     }
 
-    pub fn alloc_write<T: Sized + Copy>(
+    pub(crate) fn alloc_write<T: Sized + Copy>(
         &self,
         len: usize,
     ) -> Result<uverbs::MemoryRegion<T>, Error> {
@@ -389,7 +332,7 @@ impl Inner {
             .allocate(len, AccessFlags::LOCAL_WRITE | AccessFlags::REMOTE_WRITE)
     }
 
-    pub fn alloc_read<T: Sized + Copy>(
+    pub(crate) fn alloc_read<T: Sized + Copy>(
         &self,
         len: usize,
     ) -> Result<uverbs::MemoryRegion<T>, Error> {

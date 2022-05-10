@@ -22,8 +22,9 @@ Engine Framework
 Misc
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - Build a CI pipeline with all kinds of tests and benchmarks
-- UDP socket send/recv fd must be nonblocking
-- add tracing points at various points in code for performance analysis
+- *UDP socket send/recv fd must be nonblocking*
+- *add static tracing* points at various points in code for performance
+  analysis
 -[x] get configuration from a file to run multiple backends for developing
 -[x] simplify ConnParam. Allow to set fields in QpBuilder.
 -[x] update the code and directory structure of koala_examples
@@ -45,7 +46,18 @@ Misc
   --affinity=[none,hyperthread,numa,crossnuma/inter_numa/inter_cpu]
   --affinity=[casual,l1,l3,mem]
 
+- SAllocEngine and CmEngine should be per-process one engine. optmize
+  the number of engines to build.
+
 Shared memory heap
+- SharedHeapAllocator should not use MemoryRegion any more. The pd and
+  rkey, inner_handle are unnecessary. And TCP does not have these
+  fields, either.
+- remove file_off (it should be all zero now, given the existence of
+  AddressMediator)
+- need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
+  rpc_adapter.
+- use pointer strict provenance
 - check if a read only shm file descriptor can be open with write
   permission and really written
 - *call rdma-transport directly from rpc_adapter/ulib*
@@ -63,6 +75,7 @@ Shared memory heap
 - prost codegen service interface
 
 RPC init version
+- ODP
 - needs to spend a lot of time checking new incoming connections
 - get sglist right after jumping into koala space
 - fix bug in runtime.is_spinning()
