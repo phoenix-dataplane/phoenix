@@ -1,3 +1,5 @@
+// TODO(wyj): rewrite this file
+
 use std::fmt;
 use std::mem;
 
@@ -73,11 +75,21 @@ impl Unmarshal for MessageTemplateErased {
         if sg_list.0.len() <= 1 {
             return Err(());
         }
+        debug!("START TO UNMSRAHL MessageTemplateErased");
+
         let mut header_sgl = sg_list.0.remove(0);
+        // NOTE(wyj): this counts for MessageMeta's unique
         header_sgl.len -= mem::size_of::<u64>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
+        // TODO(wyj): check will SGList be modified during transmit?
         let mut this = meta.cast::<Self>();
-        this.as_mut().shmptr = sg_list.0[0].ptr as _;
+        // TODO(wyj): check correctness
+        let local_addr = sg_list.0[0].ptr as usize;
+        this.as_mut().shm_addr = local_addr as u64;
+        // WARNING; TODO(wyj): we temporarily use the same addr as local
+        // since we assume the app's addr space and backend's are mapped to the same location
+        let remote_msg_addr  = local_addr;
+        this.as_mut().shm_addr_remote = remote_msg_addr as u64;
         Ok(this)
     }
 }
@@ -101,7 +113,7 @@ pub struct MessageTemplate<T> {
 impl<T> MessageTemplate<T> {
     pub unsafe fn new(erased: MessageTemplateErased) -> Unique<Self> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
-        let this = Unique::new(erased.shmptr as *mut MessageTemplate<T>).unwrap();
+        let this = Unique::new(erased.shm_addr as *mut MessageTemplate<T>).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
         log::debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this

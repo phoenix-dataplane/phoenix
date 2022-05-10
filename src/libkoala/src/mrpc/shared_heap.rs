@@ -160,7 +160,8 @@ impl SharedHeapAllocator {
         // The assumption does not hold for sure
         // let addr_aligned = addr & !(LargeObjectPage::SIZE - 1);
         // REGIONS.lock()[&addr_aligned].offset
-        match REGIONS.lock().range(0..=addr).last() {
+        let guard = REGIONS.lock();
+        match guard.range(0..=addr).last() {
             Some(kv) => {
                 assert!(
                     *kv.0 <= addr && *kv.0 + kv.1.len() > addr,
@@ -174,7 +175,7 @@ impl SharedHeapAllocator {
             None => panic!(
                 "addr: {:0x} not found in allocated pages, number of pages allocated: {}",
                 addr,
-                REGIONS.lock().len()
+                guard.len()
             ),
         }
     }

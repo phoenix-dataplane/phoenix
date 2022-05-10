@@ -76,9 +76,10 @@ impl<'a> Future for ReqFuture<'a> {
         let this = self.get_mut();
         check_completion(&this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
+            // TODO(wyj): do we need to constrct a box that includes remote ptr
             // unmarshal
             let msg: Unique<MessageTemplate<HelloReply>> =
-                Unique::new(erased.shmptr as *mut _).unwrap();
+                Unique::new(erased.shm_addr as *mut _).unwrap();
             // TODO(cjr): when to drop the reply
             let msg = unsafe { msg.as_ref().val.as_ref().clone() };
             Poll::Ready(Ok(msg))
@@ -216,9 +217,13 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let raw = req.shmptr as *mut MessageTemplate<HelloRequest>;
-        let msg = unsafe { mrpc::alloc::Box::from_raw(raw) };
-        let req = unsafe { mrpc::alloc::Box::from_raw(msg.val.as_ptr()) };
+        let raw = req.shm_addr as *mut MessageTemplate<HelloRequest>;
+        // TODO(wyj): refine the following line, this pointer may be invalid.
+        // should we directly constrct a pointer using remote addr?
+        // or just keep the addr u64?
+        let raw_remote = req.shm_addr_remote as *mut MessageTemplate<HelloRequest>;
+        let msg = unsafe { mrpc::alloc::Box::from_raw_with_remote(raw, raw_remote) };
+        let req = unsafe { mrpc::alloc::Box::from_raw_with_remote(msg.val.as_ptr(), msg.val.as_ptr()) };
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {
@@ -232,7 +237,8 @@ impl<T: Greeter> Service for GreeterServer<T> {
                     as u64;
                 let erased = MessageTemplateErased {
                     meta,
-                    shmptr: remote_shmptr,
+                    shm_addr: remote_shmptr,
+                    shm_addr_remote: local_ptr as *const () as u64
                 };
                 erased
             }

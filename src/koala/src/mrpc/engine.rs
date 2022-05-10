@@ -310,16 +310,24 @@ impl MrpcEngine {
                 // msg.switch_address_space();
                 let msg_mut = unsafe { msg.as_mut() };
                 msg_mut.switch_address_space();
+                // NOTE(wyj): this is the address of the pointer to `msg_mut`
+                // while switch_address_space swithces the address of the actual payload
                 let remote_msg_addr =
                     msg.as_ptr()
                         .cast::<u8>()
                         .wrapping_offset(super::marshal::query_shm_offset(
                             msg.as_ptr() as *mut () as _
                         )) as u64;
+                // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
+                // NOTE(wyj): This is message from backend to app
+                // MessageTemplateErased is a just a message header
+                // it does not holder actual payload
+                // but a pointer to the payload on shared memory
                 let erased = MessageTemplateErased {
                     meta,
                     // casting to thin pointer first, drop the Pointee::Metadata
-                    shmptr: remote_msg_addr as *mut MessageTemplateErased as u64,
+                    shm_addr: remote_msg_addr,
+                    shm_addr_remote: msg.as_ptr() as *const () as u64,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
                 let mut sent = false;
