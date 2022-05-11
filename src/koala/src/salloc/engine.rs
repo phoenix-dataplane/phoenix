@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::io;
+use std::os::unix::prelude::AsRawFd;
 
 use ipc::customer::Customer;
 use ipc::salloc::cmd;
@@ -8,13 +9,16 @@ use super::module::CustomerType;
 use super::ControlPathError;
 use crate::engine::{future, Engine, EngineResult, Indicator};
 use crate::node::Node;
-use crate::rpc_adapter::state::State;
+
+use crate::rpc_adapter;
+use crate::rpc_adapter::state::State as RpcAdapterState;
+
 
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
     pub(crate) indicator: Option<Indicator>,
-    pub(crate) state: State,
+    pub(crate) adapter_state: RpcAdapterState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,8 +83,33 @@ impl SallocEngine {
 
     fn process_cmd(&mut self, req: cmd::Command) -> Result<cmd::CompletionKind, ControlPathError> {
         use cmd::{Command, CompletionKind};
+        let api_guard = self.state.shared.api_engine.lock();
         match req {
-            Command::AllocShm(size, align) => {
+            Command::AllocShm(size, _align) => {
+                // TODO(wyj): implement backend heap allocator to properly handle align 
+                let nbytes = size;
+                log::trace!("AllocShm, nbytes: {}", nbytes);
+                let pd = self.adapter_state.shared.resource.default_pds()[0];
+                let access = rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_READ
+                    | rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_WRITE
+                    | rpc_adapter::ulib::uverbs::AccessFlags::LOCAL_WRITE;
+                let mr: rpc_adapter::ulib::uverbs::MemoryRegion<u8> = pd.allocate(nbytes, access)?;
+                let returned_mr = interface::returned::MemoryRegion {
+                    handle: mr.inner,
+                    rkey: mr.rkey(),
+                    vaddr: mr.as_ptr() as u64,
+                    map_len: mr.len() as u64,
+                    file_off: mr.file_off,
+                    pd: mr.pd().inner,
+                };
+                // mr's addr on backend side
+                let remote_addr = mr.as_ptr() as u64;
+                let file_off = mr.file_off as u64;
+                self.adapter_state.shared.resource.insert_mr(mr)?;
+                Ok(cmd::CompletionKind::AllocShm(
+                    returned_mr,
+                    memfd,
+                ))
             }
             Command::DeallocShm(addr) => {
             }

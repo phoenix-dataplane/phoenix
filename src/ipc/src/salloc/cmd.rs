@@ -14,7 +14,7 @@ pub enum Command {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompletionKind {
     // remote_addr, file_off
-    AllocShm(usize, i64),
+    AllocShm(usize, u64),
     DeallocShm,
 }
 
