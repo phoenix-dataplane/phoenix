@@ -12,6 +12,7 @@ use crate::mrpc::marshal::{SgList, ShmBuf};
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
+use crate::transport::rdma::engine::TransportEngine;
 
 pub(crate) struct State {
     sm: Arc<StateManager<Self>>,
@@ -58,7 +59,8 @@ pub(crate) type CqBuffers =
 pub(crate) struct Shared {
     pub(crate) pid: Pid,
     alive_engines: AtomicUsize,
-    resource: Resource,
+    pub(crate) api_engine: spin::Mutex<TransportEngine>,
+    pub(crate) resource: Resource,
     pub(crate) cq_buffers: CqBuffers,
 }
 
