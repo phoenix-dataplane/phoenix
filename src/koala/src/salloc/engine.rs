@@ -112,6 +112,9 @@ impl SallocEngine {
                 ))
             }
             Command::DeallocShm(addr) => {
+                // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table. 
+                // DeregMr will be performed during drop.
+                unimplemented!()
             }
         }
     }

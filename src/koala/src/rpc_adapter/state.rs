@@ -59,7 +59,6 @@ pub(crate) type CqBuffers =
 pub(crate) struct Shared {
     pub(crate) pid: Pid,
     alive_engines: AtomicUsize,
-    pub(crate) api_engine: spin::Mutex<TransportEngine>,
     pub(crate) resource: Resource,
     pub(crate) cq_buffers: CqBuffers,
 }

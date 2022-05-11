@@ -19,6 +19,7 @@ pub mod control;
 pub mod mrpc;
 pub mod transport;
 pub mod salloc;
+pub mod shmalloc;
 
 /// Provides Range
 pub mod buf;
