@@ -49,7 +49,7 @@ impl SallocEngineBuilder {
         Ok(SallocEngine {
             customer: self.customer,
             node,
-            state,
+            adapter_state: state,
             indicator: None,
         })
     }

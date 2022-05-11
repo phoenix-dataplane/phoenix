@@ -1,13 +1,15 @@
 // TODO(wyj): rewrite this file
-
 use std::fmt;
 use std::mem;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use unique::Unique;
 
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use interface::Handle;
+
+use crate::salloc::state::Shared as SallocShared;
 
 // #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 // pub(crate) struct ShmBuf {
@@ -33,7 +35,7 @@ pub(crate) trait Unmarshal: Sized {
     type Error: fmt::Debug;
     // An unsafe method is a method whose caller must satisfy certain assertions.
     // Returns a Unique<Self> to allow zerocopy unmarshal.
-    unsafe fn unmarshal(sg_list: SgList) -> Result<Unique<Self>, Self::Error>;
+    unsafe fn unmarshal(sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<Unique<Self>, Self::Error>;
 }
 
 impl Marshal for MessageMeta {
@@ -47,7 +49,7 @@ impl Marshal for MessageMeta {
 
 impl Unmarshal for MessageMeta {
     type Error = ();
-    unsafe fn unmarshal(sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
+    unsafe fn unmarshal(sg_list: SgList, _salloc_state: &Arc<SallocShared>) -> Result<Unique<Self>, Self::Error> {
         if sg_list.0.len() != 1 {
             return Err(());
         }
@@ -61,6 +63,7 @@ impl Unmarshal for MessageMeta {
 
 impl Marshal for MessageTemplateErased {
     type Error = ();
+    // NOTE(wyj): this method is not used
     fn marshal(&self) -> Result<SgList, Self::Error> {
         let selfptr = self as *const _ as usize;
         let len = mem::size_of::<Self>();
@@ -71,24 +74,20 @@ impl Marshal for MessageTemplateErased {
 
 impl Unmarshal for MessageTemplateErased {
     type Error = ();
-    unsafe fn unmarshal(mut sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
+    unsafe fn unmarshal(mut sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<Unique<Self>, Self::Error> {
         if sg_list.0.len() <= 1 {
             return Err(());
         }
-        debug!("START TO UNMSRAHL MessageTemplateErased");
 
         let mut header_sgl = sg_list.0.remove(0);
-        // NOTE(wyj): this counts for MessageMeta's unique
-        header_sgl.len -= mem::size_of::<u64>();
-        let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]))?;
-        // TODO(wyj): check will SGList be modified during transmit?
+        // NOTE(wyj): this counts for MessageMeta's unique ptr's size
+        // as the received sg_list is marshaled from MessageTemplate (instead of MessageTemplateErased)
+        header_sgl.len -= mem::size_of::<Unique<()>>();
+        let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]), salloc_state)?;
         let mut this = meta.cast::<Self>();
-        // TODO(wyj): check correctness
         let local_addr = sg_list.0[0].ptr as usize;
-        this.as_mut().shm_addr = local_addr as u64;
-        // WARNING; TODO(wyj): we temporarily use the same addr as local
-        // since we assume the app's addr space and backend's are mapped to the same location
-        let remote_msg_addr  = local_addr;
+        this.as_mut().shm_addr = local_addr as u64;zzz
+        let remote_msg_addr  = salloc_state.resource.query_app_addr(local_addr).unwrap();
         this.as_mut().shm_addr_remote = remote_msg_addr as u64;
         Ok(this)
     }
@@ -107,6 +106,7 @@ pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
 #[derive(Debug)]
 pub struct MessageTemplate<T> {
     meta: MessageMeta,
+    // TODO(wyj): replace with ShmPtr
     val: Unique<T>,
 }
 
@@ -139,7 +139,7 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
 
 impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
     type Error = ();
-    unsafe fn unmarshal(mut sg_list: SgList) -> Result<Unique<Self>, Self::Error> {
+    unsafe fn unmarshal(mut sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<Unique<Self>, Self::Error> {
         log::debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
         if sg_list.0.len() <= 1 {
             return Err(());
@@ -150,7 +150,7 @@ impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
         log::debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
         let mut this = meta.cast::<Self>();
         log::debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
-        let val = T::unmarshal(sg_list).or(Err(()))?;
+        let val = T::unmarshal(sg_list, salloc_state).or(Err(()))?;
         log::debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
         this.as_mut().val = val;
         Ok(this)
@@ -193,29 +193,6 @@ pub unsafe trait SwitchAddressSpace {
     // An unsafe trait is unsafe to implement but safe to use.
     // The user of this trait does not need to satisfy any special condition.
     fn switch_address_space(&mut self);
-}
-
-#[inline]
-pub(crate) fn query_shm_offset(addr: usize) -> isize {
-    // crate::mrpc::query_shm_offset(addr)
-    use crate::engine::runtime::ENGINE_LS;
-    use super::state::Resource;
-    ENGINE_LS.with(|els| {
-        let buf = ShmBuf {
-            ptr: addr,
-            len: 0
-        };
-        log::debug!("query_shm_offset: {:#0x}", addr);
-        let app_addr = els.borrow()
-            .as_ref()
-            .unwrap()
-            .as_any()
-            .downcast_ref::<Resource>()
-            .unwrap()
-            .query_app_addr(buf)
-            .unwrap();
-        app_addr as isize - addr as isize
-    })
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {

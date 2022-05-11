@@ -7,7 +7,7 @@ use crate::mrpc::codegen::SwitchAddressSpace;
 #[derive(Debug)]
 pub struct ShmPtr<T: ?Sized> {
     ptr: Unique<T>,
-    ptr_remote: Unique<T>
+    ptr_remote: Unique<T>,
 }
 
 impl<T: ?Sized> ShmPtr<T> {
