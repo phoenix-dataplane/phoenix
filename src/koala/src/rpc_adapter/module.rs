@@ -60,6 +60,7 @@ impl RpcAdapterEngineBuilder {
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         // The cq can only be created lazily. Because the engine on other side is not run at this
@@ -75,6 +76,7 @@ impl RpcAdapterEngineBuilder {
                 api_engine: self.api_engine,
                 state,
             }),
+            salloc: salloc_state,
             cq: None,
             recent_listener_handle: None,
             local_buffer: VecDeque::new(),

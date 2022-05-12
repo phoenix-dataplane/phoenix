@@ -21,6 +21,7 @@ use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator,
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::transport::rdma::engine::TransportEngine;
+use crate::salloc::state::State as SallocState;
 
 pub struct TlStorage {
     pub(crate) service: ServiceType,
@@ -42,6 +43,8 @@ unsafe impl EngineLocalStorage for TlStorage {
 
 pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
+    pub(crate) salloc: SallocState,
+
     // shared completion queue model
     pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
@@ -203,7 +206,7 @@ impl RpcAdapterEngine {
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
         log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
-        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone()) }.unwrap();
+        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
         let meta = &mut unsafe { erased.as_mut() }.meta;
         meta.conn_id = conn_ctx.cmid.as_handle();
 
@@ -222,12 +225,12 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl).unwrap()
+                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl, &self.salloc.shared).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                            unsafe { msg.cast::<dyn RpcMessage>() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -237,7 +240,7 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl).unwrap()
+                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl, &self.salloc.shared).unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
@@ -505,17 +508,6 @@ impl RpcAdapterEngine {
                     .insert(handle, listener)?;
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
-            }
-            mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
-                // find those existing mrs, and update their app_vaddrs
-                let mut ret = Vec::new();
-                for (mr_handle, app_vaddr) in app_vaddrs {
-                    let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
-                    mr.set_app_vaddr(*app_vaddr);
-                    ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-                }
-                Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
-                // Err(ControlPathError::NoResponse)
             }
         }
     }

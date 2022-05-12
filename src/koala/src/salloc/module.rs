@@ -6,6 +6,8 @@ use anyhow::anyhow;
 use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
+use lazy_static::lazy_static;
+
 
 use interface::engine::{SchedulingMode, EngineType};
 use ipc;
@@ -18,6 +20,13 @@ use crate::engine::manager::RuntimeManager;
 use crate::engine::container::EngineContainer;
 use super::engine::SallocEngine;
 use crate::node::Node;
+use crate::state_mgr::StateManager;
+use super::state::State;
+
+
+lazy_static! {
+    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+}
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -43,14 +52,16 @@ impl SallocEngineBuilder {
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let state = crate::rpc_adapter::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        let adpater_state = crate::rpc_adapter::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        let salloc_state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let node = Node::new(EngineType::Salloc);
 
         Ok(SallocEngine {
             customer: self.customer,
             node,
-            adapter_state: state,
             indicator: None,
+            state: salloc_state,
+            adapter_state: adpater_state,
         })
     }
 }
