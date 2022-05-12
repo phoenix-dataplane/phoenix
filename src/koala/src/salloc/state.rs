@@ -102,7 +102,7 @@ impl Resource {
         match addr_map.range(0..=local_addr).last() {
             Some(kv) => {
                 if kv.0 + kv.1.len >= local_addr {
-                    let offset = local_addr;
+                    let offset = local_addr & (align - 1);
                     Ok(kv.1.ptr + offset)
                 } else {
                     Err(ResourceError::NotFound)

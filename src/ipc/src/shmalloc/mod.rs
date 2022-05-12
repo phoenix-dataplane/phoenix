@@ -1,5 +1,7 @@
 pub mod shmptr;
 
+pub use shmptr::ShmPtr;
+
 pub unsafe trait SwitchAddressSpace {
     // An unsafe trait is unsafe to implement but safe to use.
     // The user of this trait does not need to satisfy any special condition.

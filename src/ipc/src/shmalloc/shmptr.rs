@@ -1,6 +1,8 @@
 use std::ptr::NonNull;
 use std::ptr::Unique;
 
+use unique::Unique;
+
 use super::SwitchAddressSpace;
 
 #[derive(Debug)]
@@ -65,7 +67,7 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Casts to a pointer of another type
-    pub fn cast<U>(self) -> ShmPtr<U> {
+    pub fn cast<U: ?Sized>(self) -> ShmPtr<U> {
         let cast_ptr = unsafe { Unique::new_unchecked(self.ptr.as_ptr() as *mut U) };
         ShmPtr { ptr: cast_ptr, addr_remote: self.addr_remote }
     }
@@ -92,7 +94,12 @@ impl<T: ?Sized> Copy for ShmPtr<T> {}
 
 unsafe impl<T: ?Sized> SwitchAddressSpace for ShmPtr<T> {
     fn switch_address_space(&mut self) {
-        self.p
+        let addr = self.ptr.as_ptr() as *const () as usize;
+        let metadata = std::ptr::metadata(self.ptr.as_ptr());
+        let ptr = std::ptr::from_raw_parts::<T>(self.addr_remote, metadata).as_mut();
+        let ptr = unsafe { Unique::new_unchecked(ptr) };
+        self.ptr = ptr;
+        self.addr_remote = addr;
     }
 }
 

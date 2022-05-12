@@ -4,34 +4,28 @@ use std::{net::SocketAddr, os::unix::prelude::RawFd};
 use serde::{Deserialize, Serialize};
 
 use super::control_plane::TransportType;
-use interface::{returned, Handle};
+use interface::Handle;
 
 type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Command {
     SetTransport(TransportType),
-    AllocShm(usize),
     Connect(SocketAddr),
     Bind(SocketAddr),
-    NewMappedAddrs(Vec<(Handle, u64)>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompletionKind {
     SetTransport,
-    AllocShmInternal(returned::MemoryRegion, RawFd),
-    AllocShm(returned::MemoryRegion),
     // connection handle, receive mrs
-    ConnectInternal(Handle, Vec<returned::MemoryRegion>, Vec<RawFd>),
-    Connect((Handle, Vec<returned::MemoryRegion>)),
+    ConnectInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
+    Connect((Handle, Vec<(Handle, usize, usize, i64)>)),
     Bind(Handle),
     // These are actually commands which go by a reverse direction.
-    NewConnectionInternal(Handle, Vec<returned::MemoryRegion>, Vec<RawFd>),
-    NewConnection((Handle, Vec<returned::MemoryRegion>)),
-    NewMappedAddrs,
-    // local_addr, remote_addr, len
-    NewMappedAddrsInternal(Vec<(usize, usize, usize)>),
+    // conn_handle, (mr_handle, kaddr, len, file_off)
+    NewConnectionInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
+    NewConnection((Handle, Vec<(Handle, usize, usize, i64)>)),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

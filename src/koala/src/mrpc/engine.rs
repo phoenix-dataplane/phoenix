@@ -158,33 +158,6 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
-            Command::NewMappedAddrs(app_vaddrs) => {
-                // just forward it
-                self.cmd_tx
-                    .send(Command::NewMappedAddrs(app_vaddrs.clone()))
-                    .unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
-                    Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
-                        for tup in addr_map {
-                            let local_addr = tup.0;
-                            let buf = ShmBuf {
-                                ptr: tup.1,
-                                len: tup.2,
-                            };
-                            log::debug!(
-                                "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
-                                local_addr,
-                                buf.ptr,
-                                buf.len
-                            );
-                            self.state.resource().insert_addr_map(local_addr, buf)?;
-                        }
-                        Ok(CompletionKind::NewMappedAddrs)
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
-                // Err(Error::NoReponse)
-            }
         }
     }
 
@@ -227,6 +200,7 @@ impl MrpcEngine {
         use dp::WorkRequest;
         match req {
             WorkRequest::Call(erased) => {
+                // TODO(wyj): sanity check on the addr contained in erased
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
@@ -238,8 +212,7 @@ impl MrpcEngine {
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         log::debug!("end marshal");
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = unsafe { msg.cast::<dyn RpcMessage>() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -253,8 +226,7 @@ impl MrpcEngine {
                             unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = unsafe { msg.cast::<dyn RpcMessage>() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
