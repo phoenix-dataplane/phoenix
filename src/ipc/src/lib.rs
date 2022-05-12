@@ -1,6 +1,25 @@
 #![feature(unix_socket_ancillary_data)]
 #![feature(peer_credentials_unix_socket)]
 #![feature(slice_index_methods)]
+
+// added by boxed.rs
+// TODO(cjr): remove unused feature.
+#![feature(specialization)]
+#![feature(strict_provenance)]
+#![feature(async_iterator)]
+#![feature(generator_trait)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(ptr_internals)]
+#![feature(const_try)]
+#![feature(unsize)]
+#![feature(receiver_trait)]
+#![feature(exact_size_is_empty)]
+#![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
+#![feature(ptr_const_cast)]
+
+
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::os::unix::net::UCred;
