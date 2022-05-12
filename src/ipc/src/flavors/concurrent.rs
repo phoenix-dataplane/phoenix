@@ -91,8 +91,8 @@ where
 
 /// # Safety
 ///
-/// This is safe, because dp_wq and dp_cq requires mutable reference to access. It is impossible to
-/// duplicate the mutable references.
+/// This is safe, because dp_wq and dp_cq require mutable reference to access. It is impossible to
+/// alias a mutable reference.
 unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Customer<A, B, C, D> {}
 unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Service<A, B, C, D> {}
 

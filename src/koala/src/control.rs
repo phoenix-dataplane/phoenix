@@ -157,10 +157,10 @@ impl Control {
         let mut engines: Vec<EngineContainer> = Vec::new();
 
         // establish a specialized channel between mrpc and rpc-adapter
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let mut tx = Some(tx);
         let mut rx = Some(rx);
-        let (tx2, rx2) = std::sync::mpsc::channel();
+        let (tx2, rx2) = tokio::sync::mpsc::unbounded_channel();
         let mut tx2 = Some(tx2);
         let mut rx2 = Some(rx2);
         for n in nodes {
@@ -185,21 +185,14 @@ impl Control {
                 EngineType::RpcAdapter => {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
-                    let (service, customer) = ipc::create_channel(ChannelFlavor::Concurrent);
-                    let e2 = self
-                        .rdma_transport
-                        .create_engine(customer, mode, client_pid)?;
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
                         n,
-                        service,
                         mode,
                         client_pid,
                         rx.take().unwrap(),
                         tx2.take().unwrap(),
-                        e2,
                     )?;
                     engines.push(EngineContainer::new(e1));
-                    engines.push(EngineContainer::new(e2));
                 }
                 EngineType::Overload => unimplemented!(),
             };

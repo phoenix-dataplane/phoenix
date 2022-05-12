@@ -19,8 +19,8 @@ pub struct MrpcEngine {
 
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
-    pub(crate) cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
-    pub(crate) cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
 
@@ -74,7 +74,7 @@ impl MrpcEngine {
 
             if self.customer.has_control_command() {
                 self.flush_dp()?;
-                if let Status::Disconnected = self.check_cmd()? {
+                if let Status::Disconnected = self.check_cmd().await? {
                     return Ok(());
                 }
             }
@@ -93,11 +93,11 @@ impl MrpcEngine {
         Ok(Status::Progress(0))
     }
 
-    fn check_cmd(&mut self) -> Result<Status, Error> {
+    async fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.customer.try_recv_cmd() {
             // handle request
             Ok(req) => {
-                let result = self.process_cmd(&req);
+                let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
                     Err(Error::NoReponse) => {} // no need to do anything
@@ -118,7 +118,7 @@ impl MrpcEngine {
         self.transport_type = Some(transport_type);
     }
 
-    fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
+    async fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
         use ipc::mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(transport_type) => {
@@ -141,7 +141,7 @@ impl MrpcEngine {
             // }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
+                match self.cmd_rx.recv().await.unwrap().0 {
                     Ok(CompletionKind::ConnectInternal(handle, recv_mrs, fds)) => {
                         self.customer.send_fd(&fds).unwrap();
                         Ok(CompletionKind::Connect((handle, recv_mrs)))
@@ -151,7 +151,7 @@ impl MrpcEngine {
             }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
+                match self.cmd_rx.recv().await.unwrap().0 {
                     Ok(CompletionKind::Bind(listener_handle)) => {
                         // just forward it
                         Ok(CompletionKind::Bind(listener_handle))
@@ -159,6 +159,33 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
+            // Command::NewMappedAddrs(app_vaddrs) => {
+            //     // just forward it
+            //     self.cmd_tx
+            //         .send(Command::NewMappedAddrs(app_vaddrs.clone()))
+            //         .unwrap();
+            //     match self.cmd_rx.recv().unwrap().0 {
+            //         Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
+            //             for tup in addr_map {
+            //                 let local_addr = tup.0;
+            //                 let buf = ShmBuf {
+            //                     ptr: tup.1,
+            //                     len: tup.2,
+            //                 };
+            //                 log::debug!(
+            //                     "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
+            //                     local_addr,
+            //                     buf.ptr,
+            //                     buf.len
+            //                 );
+            //                 self.state.resource().insert_addr_map(local_addr, buf)?;
+            //             }
+            //             Ok(CompletionKind::NewMappedAddrs)
+            //         }
+            //         other => panic!("unexpected: {:?}", other),
+            //     }
+            //     // Err(Error::NoReponse)
+            // }
         }
     }
 
@@ -292,7 +319,7 @@ impl MrpcEngine {
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
         use ipc::mrpc::cmd::{Completion, CompletionKind};
-        use std::sync::mpsc::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {

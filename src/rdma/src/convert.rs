@@ -236,6 +236,11 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             qp_num: other.qp_num,
             ud_src_qp: other.qp_num,
             wc_flags,
+            // not very relevant
+            pkey_index: other.pkey_index,
+            slid: other.slid,
+            sl: other.sl,
+            dlid_path_bits: other.dlid_path_bits,
         }
     }
 }

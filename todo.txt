@@ -74,6 +74,7 @@ Shared memory heap
 - prost codegen service interface
 
 RPC init version
+- ODP
 - needs to spend a lot of time checking new incoming connections
 - get sglist right after jumping into koala space
 - fix bug in runtime.is_spinning()

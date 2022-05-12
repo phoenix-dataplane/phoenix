@@ -239,6 +239,11 @@ pub struct WorkCompletion {
     pub qp_num: u32,
     pub ud_src_qp: u32,
     pub wc_flags: WcFlags,
+    // user should not bother with these following fields
+    pub pkey_index: u16,
+    pub slid: u16,
+    pub sl: u8,
+    pub dlid_path_bits: u8,
 }
 
 impl WorkCompletion {
@@ -253,6 +258,10 @@ impl WorkCompletion {
             qp_num: 0,
             ud_src_qp: 0,
             wc_flags: WcFlags::empty(),
+            pkey_index: 0,
+            slid: 0,
+            sl: 0,
+            dlid_path_bits: 0,
         }
     }
 
@@ -267,6 +276,10 @@ impl WorkCompletion {
             qp_num: 0,
             ud_src_qp: 0,
             wc_flags: WcFlags::empty(),
+            pkey_index: 0,
+            slid: 0,
+            sl: 0,
+            dlid_path_bits: 0,
         }
     }
 }
@@ -279,5 +292,5 @@ mod sa {
 
     const_assert_eq!(size_of::<WcStatus>(), 4);
     const_assert_eq!(size_of::<WcOpcode>(), 4);
-    const_assert_eq!(size_of::<WorkCompletion>(), 40);
+    const_assert_eq!(size_of::<WorkCompletion>(), 48);
 }

@@ -36,7 +36,7 @@ impl From<ControlPathError> for interface::Error {
     }
 }
 
-use std::sync::mpsc::SendError;
+use tokio::sync::mpsc::error::SendError;
 impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {
         Self::SendCommand

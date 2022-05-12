@@ -14,19 +14,17 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageTemplateErased, RpcMsgType};
 use interface::{AsHandle, Handle};
 
-use super::module::ServiceType;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
-use crate::transport::rdma::engine::TransportEngine;
 use crate::salloc::state::State as SallocState;
+use crate::transport::rdma::ops;
 
 pub struct TlStorage {
-    pub(crate) service: ServiceType,
-    pub(crate) api_engine: TransportEngine,
+    pub(crate) ops: ops::Ops,
     pub(crate) state: State,
 }
 
@@ -52,8 +50,8 @@ pub struct RpcAdapterEngine {
     pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
 
     pub(crate) node: Node,
-    pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
-    pub(crate) cmd_tx: std::sync::mpsc::Sender<mrpc::cmd::Completion>,
+    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
+    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Option<Indicator>,
@@ -111,14 +109,15 @@ impl RpcAdapterEngine {
             }
 
             // check input command queue
-            if let Progress(n) = self.check_input_cmd_queue()? {
+            if let Progress(n) = self.check_input_cmd_queue().await? {
                 work += n;
             }
 
             // TODO(cjr): check incoming connect request
             // the CmIdListener::get_request() is currently synchronous.
             // need to make it asynchronous and low cost to check.
-            self.check_incoming_connection()?;
+            // TODO(cjr): remove this to another engine and runtime
+            self.check_incoming_connection().await?;
 
             self.indicator.as_ref().unwrap().set_nwork(work);
             future::yield_now().await;
@@ -128,10 +127,10 @@ impl RpcAdapterEngine {
 
 impl RpcAdapterEngine {
     fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
-        // this function is not supposed to be called concurrent.
+        // this function is not supposed to be called concurrently.
         if self.cq.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.service).unwrap();
+            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
             let ctx = &ctx_list[0];
             self.cq = Some(ctx.create_cq(1024, 0).unwrap());
         }
@@ -318,7 +317,7 @@ impl RpcAdapterEngine {
         Ok(Status::Progress(0))
     }
 
-    fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
+    async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
         // TODO(cjr): should check for each connection.......... shit!
         if let Some(recent) = self.recent_listener_handle.as_ref() {
             let listener = self.tls.state.resource().listener_table.get(recent)?;
@@ -335,7 +334,7 @@ impl RpcAdapterEngine {
                 let mut recv_mrs = Vec::with_capacity(128);
                 let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
                 // accept
-                let id = pre_id.accept(None)?;
+                let id = pre_id.accept(None).await?;
                 let handle = id.as_handle();
                 // insert resources after connection establishment
                 self.tls.state.resource().insert_cmid(id, 128)?;
@@ -401,11 +400,11 @@ impl RpcAdapterEngine {
         Ok((returned_mrs, fds))
     }
 
-    fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
-        use std::sync::mpsc::TryRecvError;
+    async fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
+        use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
             Ok(req) => {
-                let result = self.process_cmd(&req);
+                let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.cmd_tx.send(mrpc::cmd::Completion(Ok(res)))?,
                     Err(ControlPathError::InProgress) => return Ok(Progress(0)),
@@ -419,7 +418,7 @@ impl RpcAdapterEngine {
         }
     }
 
-    fn process_cmd(
+    async fn process_cmd(
         &mut self,
         req: &mrpc::cmd::Command,
     ) -> Result<mrpc::cmd::CompletionKind, ControlPathError> {
@@ -471,13 +470,13 @@ impl RpcAdapterEngine {
                     .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
-                    .resolve_route(addr)?;
+                    .resolve_route(addr).await?;
                 let mut pre_id = builder.build()?;
                 // prepare and post receive buffers
                 let mut recv_mrs = Vec::with_capacity(128);
                 let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
                 // connect
-                let id = pre_id.connect(None)?;
+                let id = pre_id.connect(None).await?;
                 let handle = id.as_handle();
 
                 // insert resources after connection establishment
@@ -498,7 +497,7 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::Bind(addr) => {
                 log::trace!("Bind, addr: {:?}", addr);
                 // create CmIdBuilder
-                let listener = ulib::ucm::CmIdBuilder::new().bind(addr)?;
+                let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();
                 self.tls
                     .state
@@ -508,6 +507,17 @@ impl RpcAdapterEngine {
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
             }
+            // mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
+            //     // find those existing mrs, and update their app_vaddrs
+            //     let mut ret = Vec::new();
+            //     for (mr_handle, app_vaddr) in app_vaddrs {
+            //         let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
+            //         mr.set_app_vaddr(*app_vaddr);
+            //         ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
+            //     }
+            //     Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
+            //     // Err(ControlPathError::NoResponse)
+            // }
         }
     }
 }

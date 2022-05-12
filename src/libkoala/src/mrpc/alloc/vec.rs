@@ -26,10 +26,8 @@ impl<T> Vec<T> {
 
     #[inline]
     pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
-        unsafe {
-            Vec {
-                inner: std::vec::Vec::from_raw_parts_in(ptr, length, capacity, SharedHeapAllocator),
-            }
+        Vec {
+            inner: std::vec::Vec::from_raw_parts_in(ptr, length, capacity, SharedHeapAllocator),
         }
     }
 }

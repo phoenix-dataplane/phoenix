@@ -14,8 +14,8 @@ pub(crate) type OQueue = UnboundedSender<ShmPtr<dyn RpcMessage>>;
 pub(crate) trait Vertex {
     fn id(&self) -> &str;
     fn engine_type(&self) -> EngineType;
-    fn tx_inputs(&self) -> &Vec<IQueue>;
+    fn tx_inputs(&mut self) -> &mut Vec<IQueue>;
     fn tx_outputs(&self) -> &Vec<OQueue>;
-    fn rx_inputs(&self) -> &Vec<IQueue>;
+    fn rx_inputs(&mut self) -> &mut Vec<IQueue>;
     fn rx_outputs(&self) -> &Vec<OQueue>;
 }
