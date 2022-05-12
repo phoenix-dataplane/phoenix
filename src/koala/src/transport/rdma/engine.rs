@@ -10,23 +10,21 @@ use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
 use rdma::ibv;
-use rdma::rdmacm;
 
 use super::module::CustomerType;
-use super::state::State;
-use super::{DatapathError, Error, ApiError};
+use super::ops::Ops;
+use super::{ApiError, DatapathError, Error};
 use crate::engine::{future, Engine, EngineResult, Indicator};
 use crate::node::Node;
 
-pub struct TransportEngine {
+pub(crate) struct TransportEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
-
-    pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
-    pub(crate) _mode: SchedulingMode,
-    pub(crate) state: State,
-
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) _mode: SchedulingMode,
+
+    pub(crate) ops: Ops,
+    pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
 }
 
 crate::unimplemented_ungradable!(TransportEngine);
@@ -46,7 +44,7 @@ impl Engine for TransportEngine {
     fn description(&self) -> String {
         format!(
             "RDMA TransportEngine, user pid: {:?}",
-            self.state.shared.pid
+            self.ops.state.shared.pid
         )
     }
 
@@ -80,22 +78,6 @@ impl TransportEngine {
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }
-    }
-}
-
-fn prepare_returned_qp(handles: (Handle, Handle, Handle, Handle)) -> returned::QueuePair {
-    let (qp_handle, pd_handle, scq_handle, rcq_handle) = handles;
-    returned::QueuePair {
-        handle: interface::QueuePair(qp_handle),
-        pd: returned::ProtectionDomain {
-            handle: interface::ProtectionDomain(pd_handle),
-        },
-        send_cq: returned::CompletionQueue {
-            handle: interface::CompletionQueue(scq_handle),
-        },
-        recv_cq: returned::CompletionQueue {
-            handle: interface::CompletionQueue(rcq_handle),
-        },
     }
 }
 
@@ -229,7 +211,7 @@ impl TransportEngine {
             | WorkRequest::PostSendWithImm(cmid_handle, wr_id, ..) => {
                 // if the cq_handle does not exists at all, set it to
                 // Handle::INVALID.
-                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -240,7 +222,7 @@ impl TransportEngine {
                 }
             }
             WorkRequest::PostRecv(cmid_handle, wr_id, ..) => {
-                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.recv_cq().as_handle()), *wr_id)
                     } else {
@@ -252,7 +234,7 @@ impl TransportEngine {
             }
             WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
             WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -263,7 +245,7 @@ impl TransportEngine {
                 }
             }
             WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.state.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -384,59 +366,32 @@ impl TransportEngine {
         use dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
-                // trace!(
-                //     "cmid_handle: {:?}, wr_id: {:?}, range: {:x?}, mr_handle: {:?}",
-                //     cmid_handle,
-                //     wr_id,
-                //     user_buf,
-                //     mr_handle
-                // );
-                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
-                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
-
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
                 unsafe {
-                    // since post_recv itself is already unsafe, it is the user's responsibility to
-                    // make sure the received data is valid. The user must avoid post_recv a same
-                    // buffer multiple times (e.g. from a single thread or from multiple threads)
-                    // without any synchronization.
-                    let rdma_mr = rdmacm::MemoryRegion::from(&mr);
-                    let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
-                    let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-                    cmid.post_recv(*wr_id, buf_mut, &rdma_mr)
-                        .map_err(DatapathError::RdmaCm)?;
-                };
+                    self.ops.post_recv(*cmid_handle, &mr, *range, *wr_id)?;
+                }
                 Ok(())
             }
             WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
-                // trace!(
-                //     "cmid_handle: {:?}, wr_id: {:?}, range: {:x?}, mr_handle: {:?}, send_flags: {:?}",
-                //     cmid_handle,
-                //     wr_id,
-                //     user_buf,
-                //     mr_handle,
-                //     send_flags,
-                // );
-                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
-                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
-
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
-                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
-
-                let flags: ibv::SendFlags = (*send_flags).into();
-                unsafe { cmid.post_send(*wr_id, buf, &rdma_mr, flags.0) }
-                    .map_err(DatapathError::RdmaCm)?;
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                unsafe {
+                    self.ops
+                        .post_send(*cmid_handle, &mr, *range, *wr_id, *send_flags)?;
+                }
                 Ok(())
             }
             WorkRequest::PostSendWithImm(cmid_handle, wr_id, range, mr_handle, send_flags, imm) => {
-                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
-                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
-
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
-                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
-
-                let flags: ibv::SendFlags = (*send_flags).into();
-                unsafe { cmid.post_send_with_imm(*wr_id, buf, &rdma_mr, flags.0, *imm) }
-                    .map_err(DatapathError::RdmaCm)?;
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                unsafe {
+                    self.ops.post_send_with_imm(
+                        *cmid_handle,
+                        &mr,
+                        *range,
+                        *wr_id,
+                        *send_flags,
+                        *imm,
+                    )?;
+                }
                 Ok(())
             }
             WorkRequest::PostWrite(
@@ -448,17 +403,18 @@ impl TransportEngine {
                 rkey,
                 send_flags,
             ) => {
-                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
-                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
-
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
-                let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
-                let remote_addr = rkey.addr + remote_offset;
-
-                let flags: ibv::SendFlags = (*send_flags).into();
-                unsafe { cmid.post_write(*wr_id, buf, &rdma_mr, flags.0, remote_addr, rkey.rkey) }
-                    .map_err(DatapathError::RdmaCm)?;
-
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                unsafe {
+                    self.ops.post_write(
+                        *cmid_handle,
+                        &mr,
+                        *range,
+                        *wr_id,
+                        *rkey,
+                        *remote_offset,
+                        *send_flags,
+                    )?;
+                }
                 Ok(())
             }
             WorkRequest::PostRead(
@@ -470,25 +426,24 @@ impl TransportEngine {
                 rkey,
                 send_flags,
             ) => {
-                let cmid = self.state.resource().cmid_table.get_dp(cmid_handle)?;
-                let mr = self.state.resource().mr_table.get_dp(mr_handle)?;
-
-                let remote_addr = rkey.addr + remote_offset;
-                let flags: ibv::SendFlags = (*send_flags).into();
-
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
                 unsafe {
-                    let rdma_mr = rdmacm::MemoryRegion::from(&mr);
-                    let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
-                    let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-                    cmid.post_read(*wr_id, buf_mut, &rdma_mr, flags.0, remote_addr, rkey.rkey)
-                        .map_err(DatapathError::RdmaCm)?;
-                };
+                    self.ops.post_read(
+                        *cmid_handle,
+                        &mr,
+                        *range,
+                        *wr_id,
+                        *rkey,
+                        *remote_offset,
+                        *send_flags,
+                    )?;
+                }
                 Ok(())
             }
             WorkRequest::PollCq(cq_handle) => {
                 // trace!("cq_handle: {:?}", cq_handle);
                 self.try_flush_cq_err_buffer()?;
-                let cq = self.state.resource().cq_table.get_dp(&cq_handle.0)?;
+                let cq = self.ops.resource().cq_table.get_dp(&cq_handle.0)?;
 
                 // Poll the completions and put them directly into the shared memory queue.
                 //
@@ -563,55 +518,59 @@ impl TransportEngine {
         use cmd::{Command, CompletionKind};
         match req {
             Command::GetAddrInfo(node, service, hints) => {
-                let ai = self.get_addr_info(node.as_deref(), service.as_deref(), hints.as_ref())?;
+                let ai =
+                    self.ops
+                        .get_addr_info(node.as_deref(), service.as_deref(), hints.as_ref())?;
                 Ok(CompletionKind::GetAddrInfo(ai))
             }
             Command::CreateEp(ai, pd, qp_init_attr) => {
-                let ret_cmid = self.create_ep(ai, pd.as_ref(), qp_init_attr.as_ref())?;
+                let ret_cmid = self.ops.create_ep(ai, pd.as_ref(), qp_init_attr.as_ref())?;
                 Ok(CompletionKind::CreateEp(ret_cmid))
             }
             Command::CreateId(port_space) => {
-                let ret_cmid = self.create_id(*port_space).await?;
+                let ret_cmid = self.ops.create_id(*port_space).await?;
                 Ok(CompletionKind::CreateId(ret_cmid))
             }
             Command::Listen(cmid_handle, backlog) => {
-                self.listen(*cmid_handle, *backlog)?;
+                self.ops.listen(*cmid_handle, *backlog)?;
                 Ok(CompletionKind::Listen)
             }
             Command::GetRequest(listener_handle) => {
-                let ret_cmid = self.get_request(*listener_handle).await?;
+                let ret_cmid = self.ops.get_request(*listener_handle).await?;
                 Ok(CompletionKind::GetRequest(ret_cmid))
             }
             Command::TryGetRequest(listener_handle) => {
-                let ret_cmid = self.try_get_request(*listener_handle)?;
+                let ret_cmid = self.ops.try_get_request(*listener_handle)?;
                 Ok(CompletionKind::TryGetRequest(ret_cmid))
             }
             Command::Accept(cmid_handle, conn_param) => {
-                self.accept(*cmid_handle, conn_param.as_ref()).await?;
+                self.ops.accept(*cmid_handle, conn_param.as_ref()).await?;
                 Ok(CompletionKind::Accept)
             }
             Command::Connect(cmid_handle, conn_param) => {
-                self.connect(*cmid_handle, conn_param.as_ref()).await?;
+                self.ops.connect(*cmid_handle, conn_param.as_ref()).await?;
                 Ok(CompletionKind::Connect)
             }
             Command::BindAddr(cmid_handle, sockaddr) => {
-                self.bind_addr(*cmid_handle, sockaddr)?;
+                self.ops.bind_addr(*cmid_handle, sockaddr)?;
                 Ok(CompletionKind::BindAddr)
             }
             Command::ResolveAddr(cmid_handle, sockaddr) => {
-                self.resolve_addr(*cmid_handle, sockaddr).await?;
+                self.ops.resolve_addr(*cmid_handle, sockaddr).await?;
                 Ok(CompletionKind::ResolveAddr)
             }
             Command::ResolveRoute(cmid_handle, timeout_ms) => {
-                self.resolve_route(*cmid_handle, *timeout_ms).await?;
+                self.ops.resolve_route(*cmid_handle, *timeout_ms).await?;
                 Ok(CompletionKind::ResolveRoute)
             }
             Command::CmCreateQp(cmid_handle, pd, qp_init_attr) => {
-                let ret_qp = self.cm_create_qp(*cmid_handle, pd.as_ref(), qp_init_attr)?;
+                let ret_qp = self
+                    .ops
+                    .cm_create_qp(*cmid_handle, pd.as_ref(), qp_init_attr)?;
                 Ok(CompletionKind::CmCreateQp(ret_qp))
             }
             Command::RegMr(pd, nbytes, access) => {
-                let mr = self.reg_mr(pd, *nbytes, *access)?;
+                let mr = self.ops.reg_mr(pd, *nbytes, *access)?;
 
                 // TODO(cjr): If there is an error above, the customer will be confused.
                 // Because the customer blocks at recv_fd.
@@ -627,7 +586,11 @@ impl TransportEngine {
                 let new_mr_handle = mr.as_handle();
                 let file_off = mr.file_off() as u64;
                 let pd_handle = mr.pd().as_handle();
-                self.state.resource().mr_table.insert(new_mr_handle, mr).map_err(ApiError::from)?;
+                self.ops
+                    .resource()
+                    .mr_table
+                    .insert(new_mr_handle, mr)
+                    .map_err(ApiError::from)?;
 
                 let ret_mr = returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
@@ -642,52 +605,56 @@ impl TransportEngine {
             }
             Command::DeregMr(mr) => {
                 trace!("DeregMr, mr: {:?}", mr);
-                self.state.resource().mr_table.close_resource(&mr.0).map_err(ApiError::from)?;
+                self.ops
+                    .resource()
+                    .mr_table
+                    .close_resource(&mr.0)
+                    .map_err(ApiError::from)?;
                 Ok(CompletionKind::DeregMr)
             }
             Command::DeallocPd(pd) => {
-                self.dealloc_pd(pd)?;
+                self.ops.dealloc_pd(pd)?;
                 Ok(CompletionKind::DeallocPd)
             }
             Command::DestroyCq(cq) => {
-                self.destroy_cq(cq)?;
+                self.ops.destroy_cq(cq)?;
                 Ok(CompletionKind::DestroyCq)
             }
             Command::DestroyQp(qp) => {
-                self.destroy_qp(qp)?;
+                self.ops.destroy_qp(qp)?;
                 Ok(CompletionKind::DestroyQp)
             }
             Command::Disconnect(cmid) => {
-                self.disconnect(cmid).await?;
+                self.ops.disconnect(cmid).await?;
                 Ok(CompletionKind::Disconnect)
             }
             Command::DestroyId(cmid) => {
-                self.destroy_id(cmid)?;
+                self.ops.destroy_id(cmid)?;
                 Ok(CompletionKind::DestroyId)
             }
 
             Command::OpenPd(pd) => {
-                self.open_pd(pd)?;
+                self.ops.open_pd(pd)?;
                 Ok(CompletionKind::OpenPd)
             }
             Command::OpenCq(cq) => {
-                let cq_cap = self.open_cq(cq)?;
+                let cq_cap = self.ops.open_cq(cq)?;
                 Ok(CompletionKind::OpenCq(cq_cap))
             }
             Command::OpenQp(qp) => {
-                self.open_qp(qp)?;
+                self.ops.open_qp(qp)?;
                 Ok(CompletionKind::OpenQp)
             }
             Command::GetDefaultPds => {
-                let pds = self.get_default_pds()?;
+                let pds = self.ops.get_default_pds()?;
                 Ok(CompletionKind::GetDefaultPds(pds))
             }
             Command::GetDefaultContexts => {
-                let ctx_list = self.get_default_contexts()?;
+                let ctx_list = self.ops.get_default_contexts()?;
                 Ok(CompletionKind::GetDefaultContexts(ctx_list))
             }
             Command::CreateCq(ctx, min_cq_entries, cq_context) => {
-                let ret_cq = self.create_cq(ctx, *min_cq_entries, *cq_context)?;
+                let ret_cq = self.ops.create_cq(ctx, *min_cq_entries, *cq_context)?;
                 Ok(CompletionKind::CreateCq(ret_cq))
             }
         }

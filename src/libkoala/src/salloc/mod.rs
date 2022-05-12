@@ -14,7 +14,7 @@ thread_local! {
 }
 
 pub(crate) struct Context {
-    service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    pub(crate) service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
 impl Context {

@@ -33,8 +33,8 @@ pub(crate) struct MrpcEngineBuilder {
     node: Node,
     client_pid: Pid,
     mode: SchedulingMode,
-    cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
-    cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 }
 
 impl MrpcEngineBuilder {
@@ -43,8 +43,8 @@ impl MrpcEngineBuilder {
         node: Node,
         client_pid: Pid,
         mode: SchedulingMode,
-        cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
-        cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
     ) -> Self {
         MrpcEngineBuilder {
             customer,
@@ -105,8 +105,8 @@ impl MrpcModule {
         mode: SchedulingMode,
         cred: &UCred,
         node: Node,
-        cmd_tx: std::sync::mpsc::Sender<cmd::Command>,
-        cmd_rx: std::sync::mpsc::Receiver<cmd::Completion>,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
     ) -> Result<()> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();

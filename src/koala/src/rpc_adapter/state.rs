@@ -3,7 +3,6 @@ use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
 
-use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
 
 use interface::AsHandle;
@@ -28,7 +27,6 @@ impl StateTrait for State {
                 pid,
                 alive_engines: AtomicUsize::new(0),
                 resource: Resource::new(),
-                cq_buffers: spin::Mutex::new(HashMap::default()),
             }),
         })
     }
@@ -53,14 +51,10 @@ impl Drop for State {
     }
 }
 
-pub(crate) type CqBuffers =
-    spin::Mutex<HashMap<interface::CompletionQueue, ulib::uverbs::CqBuffer>>;
-
 pub(crate) struct Shared {
     pub(crate) pid: Pid,
     alive_engines: AtomicUsize,
-    pub(crate) resource: Resource,
-    pub(crate) cq_buffers: CqBuffers,
+    resource: Resource,
 }
 
 #[derive(Debug)]
