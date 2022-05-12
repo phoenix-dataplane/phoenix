@@ -5,21 +5,6 @@
 #![feature(specialization)]
 #![feature(strict_provenance)]
 
-// added by boxed.rs
-// TODO(cjr): remove unused feature.
-#![feature(async_iterator)]
-#![feature(generator_trait)]
-#![feature(unboxed_closures)]
-#![feature(fn_traits)]
-#![feature(ptr_internals)]
-#![feature(const_try)]
-#![feature(unsize)]
-#![feature(receiver_trait)]
-#![feature(exact_size_is_empty)]
-#![feature(ptr_metadata)]
-#![feature(core_intrinsics)]
-#![feature(ptr_const_cast)]
-
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;
