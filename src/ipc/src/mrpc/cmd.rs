@@ -24,6 +24,7 @@ pub enum CompletionKind {
     Bind(Handle),
     // These are actually commands which go by a reverse direction.
     // conn_handle, (mr_handle, kaddr, len, file_off)
+    // TODO(wyj): pass align
     NewConnectionInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
     NewConnection((Handle, Vec<(Handle, usize, usize, i64)>)),
 }

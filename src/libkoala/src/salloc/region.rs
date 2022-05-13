@@ -13,6 +13,7 @@ use crate::rx_recv_impl;
 pub(crate) struct SharedRegion {
     mmap: MmapFixed,
     remote_addr: usize,
+    pub(crate) align: usize,
     _memfd: Memfd,
 }
 
@@ -46,6 +47,7 @@ impl SharedRegion {
     pub(crate) fn new(
         remote_addr: usize,
         nbytes: usize,
+        align: usize,
         file_off: i64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
@@ -57,6 +59,7 @@ impl SharedRegion {
         Ok(SharedRegion {
             mmap,
             remote_addr,
+            align,
             _memfd: memfd,
         })
     }

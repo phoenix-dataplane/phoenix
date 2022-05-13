@@ -5,6 +5,14 @@
 #![feature(specialization)]
 #![feature(strict_provenance)]
 
+// boxed.rs
+// TODO: clean up
+#![feature(exact_size_is_empty)]
+#![feature(ptr_internals)]
+#![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
+#![feature(ptr_const_cast)]
+
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;

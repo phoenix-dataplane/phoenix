@@ -52,7 +52,7 @@ impl Unmarshal for MessageMeta {
         if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }
-        let this_remote_addr = salloc_state.resource.query_app_addr(sg_list.0[0].ptr)?;
+        let this_remote_addr = salloc_state.resource.query_app_addr(sg_list.0[0].ptr).unwrap();
         let this = ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr).unwrap();
         Ok(this)
     }
@@ -82,9 +82,9 @@ impl Unmarshal for MessageTemplateErased {
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]), salloc_state)?;
         let mut this = meta.cast::<Self>();
         let local_addr = sg_list.0[0].ptr as usize;
-        this.as_mut().shm_addr = local_addr as u64;
-        let remote_msg_addr  = salloc_state.resource.query_app_addr(local_addr)?;
-        this.as_mut().shm_addr_remote = remote_msg_addr as u64;
+        this.as_mut().shm_addr = local_addr;
+        let remote_msg_addr  = salloc_state.resource.query_app_addr(local_addr).unwrap();
+        this.as_mut().shm_addr_remote = remote_msg_addr;
         Ok(this)
     }
 }

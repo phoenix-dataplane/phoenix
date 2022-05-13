@@ -5,6 +5,7 @@ use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use ipc::shmalloc::ShmPtr;
 use unique::Unique;
 
 use ipc::mrpc;
@@ -48,7 +49,7 @@ pub struct RpcAdapterEngine {
     // shared completion queue model
     pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
-    pub(crate) local_buffer: VecDeque<Unique<dyn RpcMessage>>,
+    pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: std::sync::mpsc::Receiver<mrpc::cmd::Command>,
@@ -229,8 +230,8 @@ impl RpcAdapterEngine {
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { msg.cast::<dyn RpcMessage>() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -244,8 +245,8 @@ impl RpcAdapterEngine {
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg =
-                            unsafe { Unique::new(msg.as_mut() as *mut dyn RpcMessage).unwrap() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -361,7 +362,7 @@ impl RpcAdapterEngine {
         &self,
         pre_id: &mut ulib::ucm::PreparedCmId,
         recv_mrs: &mut Vec<ulib::uverbs::MemoryRegion<u8>>,
-    ) -> Result<(Vec<interface::returned::MemoryRegion>, Vec<RawFd>), ControlPathError> {
+    ) -> Result<(Vec<(Handle, usize, usize, i64)>, Vec<RawFd>), ControlPathError> {
         // create 128 receive mrs, post recv requestse and
         // This is safe because even though recv_mr is moved, the backing memfd and
         // mapped memory regions are still there, and nothing of this mr is changed.
@@ -375,7 +376,7 @@ impl RpcAdapterEngine {
             let wr_id = recv_mr.as_handle().0 as u64;
             let wr_ctx = WrContext {
                 conn_id: pre_id.as_handle(),
-                mr_addr: recv_mr.as_ptr() as usize,
+                mr_addr: recv_mr.as_ptr().addr(),
             };
             unsafe {
                 pre_id.post_recv(recv_mr, .., wr_id)?;
@@ -389,14 +390,12 @@ impl RpcAdapterEngine {
         let mut returned_mrs = Vec::with_capacity(128);
         let mut fds = Vec::with_capacity(128);
         for recv_mr in recv_mrs {
-            returned_mrs.push(interface::returned::MemoryRegion {
-                handle: recv_mr.inner,
-                rkey: recv_mr.rkey(),
-                vaddr: recv_mr.as_ptr() as u64,
-                map_len: recv_mr.len() as u64,
-                file_off: recv_mr.file_off,
-                pd: recv_mr.pd().inner,
-            });
+            returned_mrs.push((
+                recv_mr.as_handle(),
+                recv_mr.as_ptr().addr(),
+                recv_mr.len(),
+                recv_mr.file_off() as i64,
+            ));
             fds.push(recv_mr.memfd().as_raw_fd());
         }
         Ok((returned_mrs, fds))
@@ -428,41 +427,41 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::SetTransport(_) => {
                 unreachable!();
             }
-            mrpc::cmd::Command::AllocShm(nbytes) => {
-                log::trace!("AllocShm, nbytes: {}", *nbytes);
-                let pd = &self.tls.state.resource().default_pds()[0];
-                let access = ulib::uverbs::AccessFlags::REMOTE_READ
-                    | ulib::uverbs::AccessFlags::REMOTE_WRITE
-                    | ulib::uverbs::AccessFlags::LOCAL_WRITE;
-                let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
-                let returned_mr = interface::returned::MemoryRegion {
-                    handle: mr.inner,
-                    rkey: mr.rkey(),
-                    vaddr: mr.as_ptr() as u64,
-                    map_len: mr.len() as u64,
-                    file_off: mr.file_off,
-                    pd: mr.pd().inner,
-                };
-                // store the allocated MRs for later memory address translation
-                let memfd = mr.memfd().as_raw_fd();
-                // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
-                // log::debug!(
-                //     "mr_table: {:0x?}",
-                //     self.tls
-                //         .state
-                //         .resource()
-                //         .mr_table
-                //         .lock()
-                //         .keys()
-                //         .copied()
-                //         .collect::<Vec<usize>>()
-                // );
-                self.tls.state.resource().insert_mr(mr)?;
-                Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
-                    returned_mr,
-                    memfd,
-                ))
-            }
+            // mrpc::cmd::Command::AllocShm(nbytes) => {
+            //     log::trace!("AllocShm, nbytes: {}", *nbytes);
+            //     let pd = &self.tls.state.resource().default_pds()[0];
+            //     let access = ulib::uverbs::AccessFlags::REMOTE_READ
+            //         | ulib::uverbs::AccessFlags::REMOTE_WRITE
+            //         | ulib::uverbs::AccessFlags::LOCAL_WRITE;
+            //     let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
+            //     let returned_mr = interface::returned::MemoryRegion {
+            //         handle: mr.inner,
+            //         rkey: mr.rkey(),
+            //         vaddr: mr.as_ptr() as u64,
+            //         map_len: mr.len() as u64,
+            //         file_off: mr.file_off,
+            //         pd: mr.pd().inner,
+            //     };
+            //     // store the allocated MRs for later memory address translation
+            //     let memfd = mr.memfd().as_raw_fd();
+            //     // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
+            //     // log::debug!(
+            //     //     "mr_table: {:0x?}",
+            //     //     self.tls
+            //     //         .state
+            //     //         .resource()
+            //     //         .mr_table
+            //     //         .lock()
+            //     //         .keys()
+            //     //         .copied()
+            //     //         .collect::<Vec<usize>>()
+            //     // );
+            //     self.tls.state.resource().insert_mr(mr)?;
+            //     Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
+            //         returned_mr,
+            //         memfd,
+            //     ))
+            // }
             mrpc::cmd::Command::Connect(addr) => {
                 log::trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
