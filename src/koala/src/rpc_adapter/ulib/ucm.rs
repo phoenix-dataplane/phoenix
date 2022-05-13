@@ -199,15 +199,14 @@ impl CmIdListener {
         &self,
     ) -> Result<Option<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>>, Error> {
         let maybe_cmid = get_ops().try_get_request(self.handle.0)?;
-        let builder = if let Some(cmid) = maybe_cmid.as_ref() {
+        if let Some(cmid) = maybe_cmid.as_ref() {
             assert!(cmid.qp.is_none());
             let mut builder = CmIdBuilder::new();
             builder.handle = cmid.handle;
-            Some(builder)
+            Ok(Some(builder))
         } else {
-            None
-        };
-        Ok(builder)
+            Ok(None)
+        }
     }
 }
 

@@ -246,6 +246,22 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             Ok(builder)
         })
     }
+
+    pub fn try_get_request(&self) -> Result<Option<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>>, Error> {
+        KL_CTX.with(|ctx| {
+            let req = Command::TryGetRequest(self.handle.0);
+            ctx.service.send_cmd(req)?;
+            let maybe_cmid = rx_recv_impl!(ctx.service, CompletionKind::TryGetRequest, cmid, { Ok(cmid) })?;
+            if let Some(cmid) = maybe_cmid.as_ref() {
+                assert!(cmid.qp.is_none());
+                let mut builder = self.builder.clone();
+                builder.handle = cmid.handle;
+                Ok(Some(builder))
+            } else {
+                Ok(None)
+            }
+        })
+    }
 }
 
 #[derive(Debug)]

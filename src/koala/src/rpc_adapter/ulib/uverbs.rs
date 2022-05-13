@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use memfd::Memfd;
 
@@ -89,8 +88,7 @@ impl ProtectionDomain {
         let mr = get_ops().reg_mr(&self.inner, nbytes, access)?;
 
         assert_eq!(nbytes, mr.len());
-        let kaddr = mr.as_ptr().addr();
-        Ok(MemoryRegion::new(mr, kaddr)?)
+        Ok(MemoryRegion::new(mr)?)
     }
 }
 
@@ -110,7 +108,7 @@ impl Drop for CompletionQueue {
 impl CompletionQueue {
     pub(crate) fn open(returned_cq: returned::CompletionQueue) -> Result<Self, Error> {
         let inner = returned_cq.handle;
-        let ops = get_ops().open_cq(&inner)?;
+        get_ops().open_cq(&inner)?;
         Ok(CompletionQueue { inner })
     }
 }
@@ -122,7 +120,6 @@ pub struct SharedReceiveQueue {
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
     pub(crate) inner: rdma::mr::MemoryRegion,
-    pub(crate) app_vaddr: AtomicUsize,
     _marker: PhantomData<T>,
 }
 
@@ -156,10 +153,9 @@ impl<T> AsHandle for MemoryRegion<T> {
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(inner: rdma::mr::MemoryRegion, app_vaddr: usize) -> Result<Self, Error> {
+    fn new(inner: rdma::mr::MemoryRegion) -> Result<Self, Error> {
         Ok(MemoryRegion {
             inner,
-            app_vaddr: AtomicUsize::new(app_vaddr),
             _marker: PhantomData,
         })
     }
@@ -199,16 +195,6 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         self.inner.as_mut_ptr().cast()
     }
 
-    #[inline]
-    pub(crate) fn set_app_vaddr(&self, app_vaddr: usize) {
-        self.app_vaddr.store(app_vaddr, Ordering::SeqCst);
-    }
-
-    #[inline]
-    pub(crate) fn app_vaddr(&self) -> usize {
-        self.app_vaddr.load(Ordering::SeqCst)
-    }
-    
     #[inline]
     pub(crate) fn file_off(&self) -> usize {
         self.inner.file_off()

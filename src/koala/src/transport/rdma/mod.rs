@@ -45,8 +45,6 @@ pub(crate) enum Error {
     Api(#[from] ApiError),
 
     // Below are errors that does not return to the user.
-    #[error("Operation in progress")]
-    InProgress,
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     // #[error("IPC send error: {0}")]

@@ -17,8 +17,6 @@ pub(crate) enum Error {
     Resource(#[from] ResourceError),
 
     // Below are errors that does not return to the user.
-    #[error("No Response is required. Note, this is not an error")]
-    NoReponse,
     #[error("ipc-channel TryRecvError")]
     IpcTryRecv,
     #[error("Customer error: {0}")]
