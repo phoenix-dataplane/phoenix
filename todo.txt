@@ -22,8 +22,9 @@ Engine Framework
 Misc
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - Build a CI pipeline with all kinds of tests and benchmarks
-- UDP socket send/recv fd must be nonblocking
-- add tracing points at various points in code for performance analysis
+- *UDP socket send/recv fd must be nonblocking*
+- *add static tracing* points at various points in code for performance
+  analysis
 -[x] get configuration from a file to run multiple backends for developing
 -[x] simplify ConnParam. Allow to set fields in QpBuilder.
 -[x] update the code and directory structure of koala_examples
