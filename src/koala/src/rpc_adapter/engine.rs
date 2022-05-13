@@ -6,7 +6,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use ipc::shmalloc::ShmPtr;
-use unique::Unique;
 
 use ipc::mrpc;
 

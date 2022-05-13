@@ -94,6 +94,7 @@ pub mod returned {
         pub qp: Option<QueuePair>,
     }
 
+    // TODO(cjr): remove redundant fields
     #[derive(Debug, Serialize, Deserialize)]
     pub struct MemoryRegion {
         pub handle: super::MemoryRegion,

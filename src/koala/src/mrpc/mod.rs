@@ -56,18 +56,3 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for DatapathError {
         DatapathError::InternalQueueSend
     }
 }
-
-#[inline]
-fn get_salloc() -> &'static TransportEngine {
-    use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_LS;
-    ENGINE_LS.with(|els| {
-        &els.borrow()
-            .as_ref()
-            .unwrap()
-            .as_any()
-            .downcast_ref::<TlStorage>()
-            .unwrap()
-            .api_engine
-    })
-}

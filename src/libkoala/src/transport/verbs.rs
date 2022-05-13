@@ -10,9 +10,8 @@ use std::sync::Arc;
 
 use lazy_static::lazy_static;
 use memfd::Memfd;
-use memmap2::{MmapOptions, MmapRaw};
-use memmap_fixed::MmapFixed;
 use utils::bounded_vec::BoundedVecDeque;
+use memmap2::{MmapRaw, MmapOptions};
 
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
@@ -96,9 +95,6 @@ impl ProtectionDomain {
                     self.inner,
                     mr.handle,
                     mr.rkey,
-                    mr.vaddr,
-                    nbytes,
-                    mr.file_off,
                     memfd,
                 )
             })
@@ -201,12 +197,9 @@ pub struct SharedReceiveQueue {
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
     pub(crate) inner: interface::MemoryRegion,
-    // mmap: MmapRaw,
-    // TODO(cjr): maybe change back to MmapRaw
-    mmap: MmapFixed,
+    mmap: MmapRaw,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes
-    pub(crate) remote_addr: u64,
     _memfd: Memfd,
     _pd: ProtectionDomain,
     _marker: PhantomData<T>,
@@ -253,27 +246,13 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         pd: interface::ProtectionDomain,
         inner: interface::MemoryRegion,
         rkey: RemoteKey,
-        remote_addr: u64,
-        nbytes: usize,
-        file_off: u64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
-        // Map to the same address as remote_addr, panic if it does not work
-        // TODO(cjr): will design a mechanism to make sure the uniqueness of addresses in the future
-        eprintln!("remote_addr: {:#0x?}", remote_addr);
-        assert!(remote_addr % 4096 == 0, "remote_addr: {:#0x?}", remote_addr);
-        let mmap = MmapFixed::new(remote_addr as _, nbytes, file_off as i64, memfd.as_file())?;
-        assert!(
-            mmap.as_ptr() as usize % 4096 == 0,
-            "mmap: {:#0x?}",
-            mmap.as_ptr() as usize
-        );
-        // let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
+        let mmap = MmapOptions::new().map_raw(memfd.as_file())?;
         Ok(MemoryRegion {
             inner,
             rkey,
             mmap,
-            remote_addr,
             _pd: ProtectionDomain::open(returned::ProtectionDomain { handle: pd })?,
             _memfd: memfd,
             _marker: PhantomData,
