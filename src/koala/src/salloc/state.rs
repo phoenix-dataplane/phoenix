@@ -1,12 +1,17 @@
+use std::alloc::Layout;
 use std::collections::BTreeMap;
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
+use interface::AsHandle;
 use nix::unistd::Pid;
 
+use super::region::SharedRegion;
+use super::ControlPathError;
 use crate::engine::EngineLocalStorage;
-use crate::resource::Error as ResourceError;
+use crate::mrpc::marshal::ShmBuf;
+use crate::resource::{Error as ResourceError, ResourceTable};
 use crate::state_mgr::{StateManager, StateTrait};
 
 pub(crate) struct ShmMr {
@@ -69,21 +74,47 @@ impl State {
 pub(crate) struct Resource {
     // map from recv mr's local (backend) addr to app addr
     pub(crate) recv_mr_addr_map: spin::Mutex<BTreeMap<usize, ShmMr>>,
+    // TODO(wyj): redesign these states
+    pub(crate) recv_mr_table: ResourceTable<SharedRegion>,
+    // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
+    pub(crate) mr_table: spin::Mutex<BTreeMap<usize, Arc<SharedRegion>>>,
 }
 
 unsafe impl EngineLocalStorage for Resource {
     #[inline]
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl Resource {
     fn new() -> Self {
         Self {
             recv_mr_addr_map: spin::Mutex::new(BTreeMap::new()),
+            recv_mr_table: ResourceTable::default(),
+            mr_table: spin::Mutex::new(BTreeMap::default()),
         }
     }
 
-    pub(crate) fn insert_addr_map(&self, local_addr: usize, remote_buf: ShmMr) -> Result<(), ResourceError> {
+    pub(crate) fn allocate_recv_mr(
+        &self,
+        size: usize,
+    ) -> Result<Arc<SharedRegion>, ControlPathError> {
+        // TODO(cjr): update this
+        let align = 8 * 1024 * 1024;
+        let layout = Layout::from_size_align(size, align)?;
+        let region = SharedRegion::new(layout)?;
+        let handle = region.as_handle();
+        self.recv_mr_table.insert(handle, region)?;
+        let ret = self.recv_mr_table.get(&handle)?;
+        Ok(ret)
+    }
+
+    pub(crate) fn insert_addr_map(
+        &self,
+        local_addr: usize,
+        remote_buf: ShmMr,
+    ) -> Result<(), ResourceError> {
         // SAFETY: it is the caller's responsibility to ensure the ShmMr is power-of-two aligned.
 
         // NOTE(wyj): local_addr is actually the pointer to the start of the recv_mr on backend side
@@ -93,8 +124,8 @@ impl Resource {
             .lock()
             .insert(local_addr, remote_buf)
             .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
-    
     }
+
     #[inline]
     pub(crate) fn query_app_addr(&self, local_addr: usize) -> Result<usize, ResourceError> {
         // local_addr is the address on the backend side
@@ -111,4 +142,19 @@ impl Resource {
             None => Err(ResourceError::NotFound),
         }
     }
+
+    // #[inline]
+    // pub(crate) fn query_mr(&self, sge: ShmBuf) -> Result<Arc<SharedRegion>, ResourceError> {
+    //     let mr_table = self.mr_table.lock();
+    //     match mr_table.range(0..=sge.ptr).last() {
+    //         Some(kv) => {
+    //             if kv.0 + kv.1.len() >= sge.ptr + sge.len {
+    //                 Ok(Arc::clone(kv.1))
+    //             } else {
+    //                 Err(ResourceError::NotFound)
+    //             }
+    //         }
+    //         None => Err(ResourceError::NotFound),
+    //     }
+    // }
 }

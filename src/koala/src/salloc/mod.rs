@@ -1,10 +1,12 @@
 //! this engine translate RPC messages into transport-level work requests / completions
+use std::alloc::LayoutError;
 use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
 pub mod engine;
 pub mod module;
+pub mod region;
 pub mod state;
 
 #[derive(Error, Debug)]
@@ -13,6 +15,10 @@ pub(crate) enum ControlPathError {
     // Below are errors that return to the user.
     #[error("Resource error: {0}")]
     Resource(#[from] ResourceError),
+    #[error("Invalid layout: {0}")]
+    Layout(#[from] LayoutError),
+    #[error("SharedRegion allocate error: {0}")]
+    SharedRegion(#[from] region::Error),
 
     // Below are errors that does not return to the user.
     #[error("Ipc-channel TryRecvError")]

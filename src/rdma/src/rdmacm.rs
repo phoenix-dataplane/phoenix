@@ -10,6 +10,9 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr;
 use std::slice;
 
+#[cfg(feature = "koala")]
+use std::ops::DerefMut;
+
 use log::warn;
 use socket2::SockAddr;
 
@@ -484,6 +487,47 @@ impl<'a> AsHandle for MemoryRegion<'a> {
     fn as_handle(&self) -> Handle {
         assert!(!self.0.is_null());
         Handle(unsafe { &*self.0 }.handle)
+    }
+}
+
+impl<'a> MemoryRegion<'a> {
+    pub fn new_on_demand_paging(pd: *mut ffi::ibv_pd) -> io::Result<Self> {
+        let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
+            | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
+            | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ
+            | ffi::ibv_access_flags::IBV_ACCESS_ON_DEMAND;
+        let mr = unsafe {
+            ffi::ibv_reg_mr(
+                pd,
+                ptr::null_mut(),
+                usize::MAX as _,
+                access.0 as i32,
+            )
+        };
+        if mr.is_null() {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(Self(mr, PhantomData))
+        }
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'a> Deref for MemoryRegion<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        assert!(!self.0.is_null());
+        let mr = unsafe { &*self.0 };
+        unsafe { slice::from_raw_parts(mr.addr.cast(), mr.length as _) }
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'a> DerefMut for MemoryRegion<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        assert!(!self.0.is_null());
+        let mr = unsafe { &*self.0 };
+        unsafe { slice::from_raw_parts_mut(mr.addr.cast(), mr.length as _) }
     }
 }
 

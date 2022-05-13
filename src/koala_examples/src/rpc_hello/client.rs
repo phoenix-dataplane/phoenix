@@ -12,6 +12,7 @@ const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let mut client = GreeterClient::connect((SERVER_ADDR, SERVER_PORT))?;
+    eprintln!("connection setup");
     smol::block_on(async {
         let mut reqs = vec![];
         for _ in 0..256 {

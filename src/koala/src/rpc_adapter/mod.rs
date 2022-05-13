@@ -1,6 +1,7 @@
 //! this engine translate RPC messages into transport-level work requests / completions
 use thiserror::Error;
 
+use crate::salloc::ControlPathError as SallocError;
 use crate::resource::Error as ResourceError;
 
 pub mod engine;
@@ -16,6 +17,8 @@ pub(crate) enum ControlPathError {
     Ulib(#[from] ulib::Error),
     #[error("Resource error: {0}")]
     Resource(#[from] ResourceError),
+    #[error("Salloc error: {0}")]
+    Salloc(#[from] SallocError),
 
     // Below are errors that does not return to the user.
     #[error("Send command error")]
