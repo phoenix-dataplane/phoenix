@@ -4,6 +4,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(generic_associated_types)]
 #![feature(strict_provenance)]
+#![feature(int_roundings)]
 
 #[macro_use]
 extern crate log;

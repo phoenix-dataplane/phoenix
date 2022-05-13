@@ -70,6 +70,7 @@ impl RpcAdapterEngineBuilder {
                 state,
             }),
             salloc: salloc_state,
+            odp_mr: None,
             cq: None,
             recent_listener_handle: None,
             local_buffer: VecDeque::new(),

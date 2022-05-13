@@ -19,6 +19,7 @@ use super::{ControlPathError, DatapathError};
 use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
+use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
 
@@ -44,6 +45,7 @@ pub struct RpcAdapterEngine {
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
+    pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
     pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
     pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
@@ -125,13 +127,23 @@ impl RpcAdapterEngine {
 }
 
 impl RpcAdapterEngine {
+    fn get_or_init_odp_mr(&mut self) -> &mut ulib::uverbs::MemoryRegion<u8> {
+        // this function is not supposed to be called concurrently.
+        if self.odp_mr.is_none() {
+            // TODO(cjr): we currently by default use the first ibv_context.
+            let pd_list = ulib::uverbs::get_default_pds().unwrap();
+            let pd = &pd_list[0];
+            let odp_mr = self.tls.ops.create_mr_on_demand_paging(&pd.inner).unwrap();
+            self.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
+        }
+        self.odp_mr.as_mut().unwrap()
+    }
+
     fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
         // this function is not supposed to be called concurrently.
         if self.cq.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list =
-                ulib::uverbs::get_default_verbs_contexts(&self.tls.ops)
-                    .unwrap();
+            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
             let ctx = &ctx_list[0];
             self.cq = Some(ctx.create_cq(1024, 0).unwrap());
         }
@@ -164,20 +176,22 @@ impl RpcAdapterEngine {
                 });
             }
             // TODO(cjr): credit handle logic for response
+            let odp_mr = self.get_or_init_odp_mr();
             for (i, &sge) in sglist.0.iter().enumerate() {
                 // query mr from each sge
-                let mr = self.tls.state.resource().query_mr(sge)?;
-                let off = sge.ptr - mr.as_ptr() as usize;
+                // let mr = self.salloc.resource().query_mr(sge)?;
+                // let off = sge.ptr - mr.as_ptr() as usize;
+                let off = sge.ptr;
                 if i + 1 < sglist.0.len() {
                     // post send
                     unsafe {
-                        cmid.post_send(&mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                        cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
                     }
                 } else {
                     // post send with imm
                     unsafe {
                         cmid.post_send_with_imm(
-                            &mr,
+                            odp_mr,
                             off..off + sge.len,
                             0,
                             SendFlags::SIGNALED,
@@ -304,17 +318,20 @@ impl RpcAdapterEngine {
                             // XXX(cjr): only when the upper layer app finish using the data
                             // we can repost the receives
                             let cmid = &conn_ctx.cmid;
+
                             let recv_mr = self
-                                .tls
-                                .state
+                                .salloc
                                 .resource()
                                 .recv_mr_table
                                 .get(&Handle(wc.wr_id as u32))?;
+                            let mut odp_mr = self.get_or_init_odp_mr();
+                            let off = recv_mr.as_ptr().expose_addr();
+                            let len = recv_mr.len();
+
                             unsafe {
-                                // TODO(cjr): check the correctness of this unsafe operation
-                                let recv_mr: &mut ulib::uverbs::MemoryRegion<u8> =
-                                    &mut *(recv_mr.as_ref() as *const _ as *mut _);
-                                cmid.post_recv(recv_mr, .., wc.wr_id)?;
+                                // TODO(wyj, cjr): This is incorrect. The backend should only
+                                // post_recv when the user completes the usage.
+                                cmid.post_recv(&mut odp_mr, off..off + len, wc.wr_id)?;
                             }
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
@@ -345,20 +362,12 @@ impl RpcAdapterEngine {
                     .set_max_recv_wr(128)
                     .build()?;
                 // prepare and post receive buffers
-                let mut recv_mrs = Vec::with_capacity(128);
-                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
+                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id)?;
                 // accept
                 let id = pre_id.accept(None).await?;
                 let handle = id.as_handle();
                 // insert resources after connection establishment
                 self.tls.state.resource().insert_cmid(id, 128)?;
-                for recv_mr in recv_mrs {
-                    self.tls
-                        .state
-                        .resource()
-                        .recv_mr_table
-                        .insert(recv_mr.as_handle(), recv_mr)?;
-                }
                 // pass these resources back to the user
                 let comp = mrpc::cmd::Completion(Ok(
                     mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
@@ -372,27 +381,35 @@ impl RpcAdapterEngine {
     }
 
     fn prepare_recv_buffers(
-        &self,
+        &mut self,
         pre_id: &mut ulib::ucm::PreparedCmId,
-        recv_mrs: &mut Vec<ulib::uverbs::MemoryRegion<u8>>,
     ) -> Result<(Vec<(Handle, usize, usize, i64)>, Vec<RawFd>), ControlPathError> {
         // create 128 receive mrs, post recv requestse and
         // This is safe because even though recv_mr is moved, the backing memfd and
         // mapped memory regions are still there, and nothing of this mr is changed.
         // We also make sure the lifetime of the mr is longer by storing it in the
         // state.
+        let mut recv_mrs = Vec::new();
         for _ in 0..128 {
-            let recv_mr: ulib::uverbs::MemoryRegion<u8> = pre_id.alloc_msgs(8 * 1024 * 1024)?;
+            let recv_mr: Arc<SharedRegion> =
+                self.salloc.resource().allocate_recv_mr(8 * 1024 * 1024)?;
             recv_mrs.push(recv_mr);
         }
+        // for _ in 0..128 {
+        //     let recv_mr: ulib::uverbs::MemoryRegion<u8> = pre_id.alloc_msgs(8 * 1024 * 1024)?;
+        //     recv_mrs.push(recv_mr);
+        // }
         for recv_mr in recv_mrs.iter_mut() {
+            let mut odp_mr = self.get_or_init_odp_mr();
             let wr_id = recv_mr.as_handle().0 as u64;
             let wr_ctx = WrContext {
                 conn_id: pre_id.as_handle(),
                 mr_addr: recv_mr.as_ptr().addr(),
             };
+            let off = recv_mr.as_ptr().addr();
+            let len = recv_mr.len();
             unsafe {
-                pre_id.post_recv(recv_mr, .., wr_id)?;
+                pre_id.post_recv(&mut odp_mr, off..off + len, wr_id)?;
             }
             self.tls
                 .state
@@ -403,11 +420,12 @@ impl RpcAdapterEngine {
         let mut returned_mrs = Vec::with_capacity(128);
         let mut fds = Vec::with_capacity(128);
         for recv_mr in recv_mrs {
+            let file_off = 0;
             returned_mrs.push((
                 recv_mr.as_handle(),
                 recv_mr.as_ptr().addr(),
                 recv_mr.len(),
-                recv_mr.file_off() as i64,
+                file_off,
             ));
             fds.push(recv_mr.memfd().as_raw_fd());
         }
@@ -486,21 +504,13 @@ impl RpcAdapterEngine {
                     .await?;
                 let mut pre_id = builder.build()?;
                 // prepare and post receive buffers
-                let mut recv_mrs = Vec::with_capacity(128);
-                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id, &mut recv_mrs)?;
+                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id)?;
                 // connect
                 let id = pre_id.connect(None).await?;
                 let handle = id.as_handle();
 
                 // insert resources after connection establishment
                 self.tls.state.resource().insert_cmid(id, 128)?;
-                for recv_mr in recv_mrs {
-                    self.tls
-                        .state
-                        .resource()
-                        .recv_mr_table
-                        .insert(recv_mr.as_handle(), recv_mr)?;
-                }
                 Ok(mrpc::cmd::CompletionKind::ConnectInternal(
                     handle,
                     returned_mrs,
@@ -519,17 +529,7 @@ impl RpcAdapterEngine {
                     .insert(handle, listener)?;
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
-            } // mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
-              //     // find those existing mrs, and update their app_vaddrs
-              //     let mut ret = Vec::new();
-              //     for (mr_handle, app_vaddr) in app_vaddrs {
-              //         let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
-              //         mr.set_app_vaddr(*app_vaddr);
-              //         ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-              //     }
-              //     Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
-              //     // Err(ControlPathError::NoResponse)
-              // }
+            }
         }
     }
 }

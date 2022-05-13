@@ -65,7 +65,7 @@ impl Ops {
     pub(crate) unsafe fn post_recv(
         &self,
         cmid_handle: Handle,
-        mr: &MemoryRegion,
+        mr: &rdmacm::MemoryRegion,
         range: ipc::buf::Range,
         wr_id: u64,
     ) -> std::result::Result<(), DatapathError> {
@@ -82,10 +82,10 @@ impl Ops {
         // make sure the received data is valid. The user must avoid post_recv a same
         // buffer multiple times (e.g. from a single thread or from multiple threads)
         // without any synchronization.
-        let rdma_mr = rdmacm::MemoryRegion::from(mr);
+        // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
         let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-        cmid.post_recv(wr_id, buf_mut, &rdma_mr)
+        cmid.post_recv(wr_id, buf_mut, &mr)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
@@ -94,7 +94,7 @@ impl Ops {
     pub(crate) unsafe fn post_send(
         &self,
         cmid_handle: Handle,
-        mr: &MemoryRegion,
+        mr: &rdmacm::MemoryRegion,
         range: ipc::buf::Range,
         wr_id: u64,
         send_flags: interface::SendFlags,
@@ -109,11 +109,11 @@ impl Ops {
         // );
         let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
 
-        let rdma_mr = rdmacm::MemoryRegion::from(mr);
+        // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_send(wr_id, buf, &rdma_mr, flags.0)
+        cmid.post_send(wr_id, buf, &mr, flags.0)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
@@ -122,7 +122,7 @@ impl Ops {
     pub(crate) unsafe fn post_send_with_imm(
         &self,
         cmid_handle: Handle,
-        mr: &MemoryRegion,
+        mr: &rdmacm::MemoryRegion,
         range: ipc::buf::Range,
         wr_id: u64,
         send_flags: interface::SendFlags,
@@ -130,11 +130,11 @@ impl Ops {
     ) -> std::result::Result<(), DatapathError> {
         let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
 
-        let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+        // let rdma_mr = rdmacm::MemoryRegion::from(&mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_send_with_imm(wr_id, buf, &rdma_mr, flags.0, imm)
+        cmid.post_send_with_imm(wr_id, buf, &mr, flags.0, imm)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
@@ -143,7 +143,7 @@ impl Ops {
     pub(crate) unsafe fn post_write(
         &self,
         cmid_handle: Handle,
-        mr: &MemoryRegion,
+        mr: &rdmacm::MemoryRegion,
         range: ipc::buf::Range,
         wr_id: u64,
         rkey: interface::RemoteKey,
@@ -152,12 +152,12 @@ impl Ops {
     ) -> std::result::Result<(), DatapathError> {
         let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
 
-        let rdma_mr = rdmacm::MemoryRegion::from(mr);
+        // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
         let remote_addr = rkey.addr + remote_offset;
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_write(wr_id, buf, &rdma_mr, flags.0, remote_addr, rkey.rkey)
+        cmid.post_write(wr_id, buf, &mr, flags.0, remote_addr, rkey.rkey)
             .map_err(DatapathError::RdmaCm)?;
 
         Ok(())
@@ -167,7 +167,7 @@ impl Ops {
     pub(crate) unsafe fn post_read(
         &self,
         cmid_handle: Handle,
-        mr: &MemoryRegion,
+        mr: &rdmacm::MemoryRegion,
         range: ipc::buf::Range,
         wr_id: u64,
         rkey: interface::RemoteKey,
@@ -179,10 +179,10 @@ impl Ops {
         let remote_addr = rkey.addr + remote_offset;
         let flags: ibv::SendFlags = send_flags.into();
 
-        let rdma_mr = rdmacm::MemoryRegion::from(mr);
+        // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
         let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-        cmid.post_read(wr_id, buf_mut, &rdma_mr, flags.0, remote_addr, rkey.rkey)
+        cmid.post_read(wr_id, buf_mut, &mr, flags.0, remote_addr, rkey.rkey)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
@@ -632,6 +632,14 @@ impl Ops {
             })
             .collect();
         Ok(ctx_list)
+    }
+
+    pub(crate) fn create_mr_on_demand_paging(
+        &self,
+        pd_handle: &interface::ProtectionDomain,
+    ) -> Result<rdmacm::MemoryRegion<'static>> {
+        let pd = self.resource().pd_table.get(&pd_handle.0)?;
+        Ok(rdmacm::MemoryRegion::new_on_demand_paging(pd.pd()).map_err(ApiError::Ibv)?)
     }
 
     fn get_qp_params(

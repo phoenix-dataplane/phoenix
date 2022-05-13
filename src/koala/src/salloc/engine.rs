@@ -1,4 +1,7 @@
+use std::alloc::Layout;
 use std::future::Future;
+use std::sync::Arc;
+use std::os::unix::io::AsRawFd;
 
 use ipc::salloc::cmd;
 
@@ -6,17 +9,16 @@ use super::module::CustomerType;
 use super::ControlPathError;
 use crate::engine::{future, Engine, EngineResult, Indicator};
 use crate::node::Node;
+use crate::resource::Error as ResourceError;
 
-use crate::rpc_adapter;
-use crate::rpc_adapter::state::State as RpcAdapterState;
-use crate::salloc::state::{State as SallocState, ShmMr};
+use super::region::SharedRegion;
+use crate::salloc::state::{ShmMr, State as SallocState};
 
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
     pub(crate) indicator: Option<Indicator>,
     pub(crate) state: SallocState,
-    pub(crate) adapter_state: RpcAdapterState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,33 +84,36 @@ impl SallocEngine {
     fn process_cmd(&mut self, req: cmd::Command) -> Result<cmd::CompletionKind, ControlPathError> {
         use cmd::{Command, CompletionKind};
         match req {
-            Command::AllocShm(size, _align) => {
-                // TODO(wyj): implement backend heap allocator to properly handle align 
-                let nbytes = size;
-                log::trace!("AllocShm, nbytes: {}", nbytes);
-                let pd = &self.adapter_state.resource().default_pds()[0];
-                let access = rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_READ
-                    | rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_WRITE
-                    | rpc_adapter::ulib::uverbs::AccessFlags::LOCAL_WRITE;
-                let mr: rpc_adapter::ulib::uverbs::MemoryRegion<u8> = pd.allocate(nbytes, access).unwrap();
+            Command::AllocShm(size, align) => {
+                // TODO(wyj): implement backend heap allocator to properly handle align
+                log::trace!("AllocShm, size: {}", size);
+                let layout = Layout::from_size_align(size, align)?;
+                let region = SharedRegion::new(layout)?;
                 // mr's addr on backend side
-                let remote_addr = mr.as_ptr().expose_addr();
-                let file_off = mr.file_off() as i64;
-                self.adapter_state.resource().insert_mr(mr)?;
-                Ok(cmd::CompletionKind::AllocShm(
-                    remote_addr,
-                    file_off,
-                ))
+                let remote_addr = region.as_ptr().expose_addr();
+                let file_off = 0;
+
+                // send fd
+                self.customer.send_fd(&[region.memfd().as_raw_fd()][..])?;
+
+                self.state
+                    .resource()
+                    .mr_table
+                    .lock()
+                    .insert(remote_addr, Arc::new(region))
+                    .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))?;
+                Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off))
             }
             Command::DeallocShm(_addr) => {
-                // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table. 
+                // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table.
                 // DeregMr will be performed during drop.
                 unimplemented!()
             }
             Command::NewMappedAddrs(app_vaddrs) => {
+                // TODO(wyj): rewrite
                 let mut ret = Vec::new();
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
-                    let mr = self.adapter_state.resource().recv_mr_table.get(mr_handle)?;
+                    let mr = self.state.resource().recv_mr_table.get(mr_handle)?;
                     ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
                     let mr_local_addr = mr.as_ptr().expose_addr();
                     let mr_remote_mapped = ShmMr {
@@ -117,7 +122,9 @@ impl SallocEngine {
                         // TODO(cjr): update this
                         align: 8 * 1024 * 1024,
                     };
-                    self.state.resource().insert_addr_map(mr_local_addr, mr_remote_mapped)?;
+                    self.state
+                        .resource()
+                        .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
                 }
                 Ok(CompletionKind::NewMappedAddrs)
             }

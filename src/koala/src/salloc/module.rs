@@ -52,7 +52,6 @@ impl SallocEngineBuilder {
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let adpater_state = crate::rpc_adapter::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         let salloc_state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let node = Node::new(EngineType::Salloc);
 
@@ -61,7 +60,6 @@ impl SallocEngineBuilder {
             node,
             indicator: None,
             state: salloc_state,
-            adapter_state: adpater_state,
         })
     }
 }

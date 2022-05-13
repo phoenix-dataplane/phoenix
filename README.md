@@ -23,5 +23,4 @@ cargo rr --bin send_bw -- -c rdma0.danyang-06
 
 
 # TODO
-- [] Make sock file path configurable.
 - [] Integrate Rust std's `Vec` and `Box` implementations into `mrpc/alloc`

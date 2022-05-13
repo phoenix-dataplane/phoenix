@@ -1097,6 +1097,15 @@ impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
 }
 
 #[cfg(feature = "koala")]
+impl<'ctx> ProtectionDomain<'ctx> {
+    /// Exposes the inner pd structure.
+    #[inline]
+    pub fn pd(&self) -> *mut ffi::ibv_pd {
+        self.pd
+    }
+}
+
+#[cfg(feature = "koala")]
 impl<'ctx> AsHandle for ProtectionDomain<'ctx> {
     /// Returns the inner handle of this protection domain.
     #[inline]

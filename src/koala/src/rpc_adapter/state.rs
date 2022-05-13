@@ -91,9 +91,7 @@ impl ConnectionContext {
 pub(crate) struct Resource {
     default_pd_flag: Once,
     default_pds: Vec<ulib::uverbs::ProtectionDomain>,
-    pub(crate) mr_table: spin::Mutex<BTreeMap<usize, Arc<ulib::uverbs::MemoryRegion<u8>>>>,
     // TODO(cjr): we do not release any receive mr now. DO it in later version.
-    pub(crate) recv_mr_table: ResourceTable<ulib::uverbs::MemoryRegion<u8>>,
     pub(crate) cmid_table: ResourceTable<ConnectionContext>,
     pub(crate) listener_table: ResourceTable<ulib::ucm::CmIdListener>,
     // wr_id -> WrContext
@@ -105,8 +103,6 @@ impl Resource {
         Self {
             default_pd_flag: Once::new(),
             default_pds: Vec::new(),
-            mr_table: spin::Mutex::new(BTreeMap::default()),
-            recv_mr_table: ResourceTable::default(),
             cmid_table: ResourceTable::default(),
             listener_table: ResourceTable::default(),
             wr_contexts: ResourceTableGeneric::default(),
@@ -133,33 +129,6 @@ impl Resource {
                 *default_pds = ulib::uverbs::get_default_pds().expect("Failed to get default PDs");
             });
             &self.default_pds
-        }
-    }
-
-    pub(crate) fn insert_mr(
-        &self,
-        mr: ulib::uverbs::MemoryRegion<u8>,
-    ) -> Result<(), ResourceError> {
-        self.mr_table
-            .lock()
-            .insert(mr.as_ptr() as usize, Arc::new(mr))
-            .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
-    }
-
-    pub(crate) fn query_mr(
-        &self,
-        sge: ShmBuf,
-    ) -> Result<Arc<ulib::uverbs::MemoryRegion<u8>>, ResourceError> {
-        let mr_table = self.mr_table.lock();
-        match mr_table.range(0..=sge.ptr).last() {
-            Some(kv) => {
-                if kv.0 + kv.1.len() >= sge.ptr + sge.len {
-                    Ok(Arc::clone(kv.1))
-                } else {
-                    Err(ResourceError::NotFound)
-                }
-            }
-            None => Err(ResourceError::NotFound),
         }
     }
 }
