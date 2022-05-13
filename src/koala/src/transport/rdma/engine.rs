@@ -10,6 +10,7 @@ use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
 use rdma::ibv;
+use rdma::rdmacm;
 
 use super::module::CustomerType;
 use super::ops::Ops;
@@ -363,25 +364,28 @@ impl TransportEngine {
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 unsafe {
-                    self.ops.post_recv(*cmid_handle, &mr, *range, *wr_id)?;
+                    self.ops.post_recv(*cmid_handle, &rdma_mr, *range, *wr_id)?;
                 }
                 Ok(())
             }
             WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 unsafe {
                     self.ops
-                        .post_send(*cmid_handle, &mr, *range, *wr_id, *send_flags)?;
+                        .post_send(*cmid_handle, &rdma_mr, *range, *wr_id, *send_flags)?;
                 }
                 Ok(())
             }
             WorkRequest::PostSendWithImm(cmid_handle, wr_id, range, mr_handle, send_flags, imm) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 unsafe {
                     self.ops.post_send_with_imm(
                         *cmid_handle,
-                        &mr,
+                        &rdma_mr,
                         *range,
                         *wr_id,
                         *send_flags,
@@ -400,10 +404,11 @@ impl TransportEngine {
                 send_flags,
             ) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 unsafe {
                     self.ops.post_write(
                         *cmid_handle,
-                        &mr,
+                        &rdma_mr,
                         *range,
                         *wr_id,
                         *rkey,
@@ -423,10 +428,11 @@ impl TransportEngine {
                 send_flags,
             ) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
                 unsafe {
                     self.ops.post_read(
                         *cmid_handle,
-                        &mr,
+                        &rdma_mr,
                         *range,
                         *wr_id,
                         *rkey,
