@@ -337,7 +337,9 @@ impl Ops {
         trace!("GetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
-        let event = self.wait_cm_event(&listener_handle, event_type).await?;
+        let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
+        let ec_handle = listener_cmid.event_channel().as_handle();
+        let event = self.wait_cm_event(&ec_handle, event_type).await?;
 
         // The following part executes when an cm_event occurs
         self.handle_connect_request(event)
@@ -350,7 +352,9 @@ impl Ops {
         trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
-        let res = self.try_get_cm_event(&listener_handle, event_type);
+        let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
+        let ec_handle = listener_cmid.event_channel().as_handle();
+        let res = self.try_get_cm_event(&ec_handle, event_type);
         if res.is_none() {
             return Ok(None);
         }
@@ -378,7 +382,8 @@ impl Ops {
 
         // wait until the accept is done
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ESTABLISHED;
-        let _event = self.wait_cm_event(&cmid_handle, event_type).await?;
+        let ec_handle = cmid.event_channel().as_handle();
+        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
         Ok(())
     }
@@ -400,7 +405,8 @@ impl Ops {
 
         // wait until the accept is done
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ESTABLISHED;
-        let _event = self.wait_cm_event(&cmid_handle, event_type).await?;
+        let ec_handle = cmid.event_channel().as_handle();
+        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
         Ok(())
     }
@@ -432,7 +438,10 @@ impl Ops {
         cmid.resolve_addr(sockaddr).map_err(ApiError::RdmaCm)?;
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ADDR_RESOLVED;
-        let _event = self.wait_cm_event(&cmid_handle, event_type).await?;
+        let ec_handle = cmid.event_channel().as_handle();
+        log::debug!("before wait_cm_event");
+        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
+        log::debug!("after wait_cm_event");
 
         Ok(())
     }
@@ -448,7 +457,8 @@ impl Ops {
         cmid.resolve_route(timeout_ms).map_err(ApiError::RdmaCm)?;
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ROUTE_RESOLVED;
-        let _event = self.wait_cm_event(&cmid_handle, event_type).await?;
+        let ec_handle = cmid.event_channel().as_handle();
+        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
         Ok(())
     }
@@ -568,7 +578,8 @@ impl Ops {
         cmid.disconnect().map_err(ApiError::RdmaCm)?;
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED;
-        let _event = self.wait_cm_event(&cmid_handle, event_type).await?;
+        let ec_handle = cmid.event_channel().as_handle();
+        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
         Ok(())
     }
@@ -724,7 +735,17 @@ impl Ops {
         event_channel_handle: &Handle,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<Result<rdmacm::CmEvent>> {
+        log::debug!(
+            "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
+            event_channel_handle,
+            event_type
+        );
         if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
+            log::trace!(
+                "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
+                event_channel_handle,
+                cm_event
+            );
             use std::cmp;
             match cm_event.status().cmp(&0) {
                 cmp::Ordering::Equal => {}
@@ -738,6 +759,11 @@ impl Ops {
             return Some(Ok(cm_event));
         }
         if let Some(err) = self.pop_first_cm_error() {
+            log::warn!(
+                "try_get_cm_event, got error: ec_handle: {:?}, err: {:?}",
+                event_channel_handle,
+                err
+            );
             return Some(Err(err));
         }
         None

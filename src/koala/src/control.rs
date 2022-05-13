@@ -185,6 +185,7 @@ impl Control {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
+                        &self.runtime_manager,
                         n,
                         mode,
                         client_pid,

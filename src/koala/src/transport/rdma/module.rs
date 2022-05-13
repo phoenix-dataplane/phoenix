@@ -33,39 +33,53 @@ pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 /// Create API Operations.
-pub(crate) fn create_ops(client_pid: Pid) -> Result<Ops> {
+pub(crate) fn create_ops(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<Ops> {
+    // first create cm engine
+    create_cm_engine(runtime_manager, client_pid)?;
+
     // create or get the state of the process
     let state = STATE_MGR.get_or_create_state(client_pid)?;
 
     Ok(Ops::new(state))
 }
 
+pub(crate) fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> { let state = STATE_MGR.get_or_create_state(client_pid)?;
+    let node = Node::new(EngineType::RdmaConnMgmt);
+    let cm_engine = CmEngine::new(node, state);
+
+    // always submit the engine to a dedicate runtime
+    runtime_manager
+        .submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+    Ok(())
+}
+
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
     client_pid: Pid,
     mode: SchedulingMode,
+    ops: Ops,
 }
 
 impl TransportEngineBuilder {
-    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode) -> Self {
+    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode, ops: Ops) -> Self {
         TransportEngineBuilder {
             customer,
             client_pid,
             mode,
+            ops,
         }
     }
 
     fn build(self) -> Result<TransportEngine> {
         // create or get the state of the process
         let node = Node::new(EngineType::RdmaTransport);
-        let ops = create_ops(self.client_pid)?;
 
         Ok(TransportEngine {
             customer: self.customer,
             node,
             indicator: None,
             _mode: self.mode,
-            ops,
+            ops: self.ops,
             cq_err_buffer: VecDeque::new(),
         })
     }
@@ -99,17 +113,6 @@ impl TransportModule {
         }
     }
 
-    pub(crate) fn create_cm_engine(&mut self, client_pid: Pid) -> Result<()> {
-        let state = STATE_MGR.get_or_create_state(client_pid)?;
-        let node = Node::new(EngineType::RdmaConnMgmt);
-        let cm_engine = CmEngine::new(node, state);
-
-        // always submit the engine to a dedicate runtime
-        self.runtime_manager
-            .submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
-        Ok(())
-    }
-
     pub fn handle_new_client<P: AsRef<Path>>(
         &mut self,
         sock: &DomainSocket,
@@ -131,16 +134,16 @@ impl TransportModule {
         // the transport module is responsible for initializing and starting the transport engines
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
+        // 3.1. create the ops and cm engine
+        let ops = create_ops(&self.runtime_manager, client_pid)?;
+
         // 4. create the engine
-        let builder = TransportEngineBuilder::new(customer, client_pid, mode);
+        let builder = TransportEngineBuilder::new(customer, client_pid, mode, ops);
         let engine = builder.build()?;
 
         // submit the engine to a runtime
         self.runtime_manager
             .submit(EngineContainer::new(engine), mode);
-
-        // also build the cm engine
-        self.create_cm_engine(client_pid)?;
 
         Ok(())
     }
