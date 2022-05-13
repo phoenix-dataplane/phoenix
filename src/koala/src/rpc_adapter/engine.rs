@@ -20,10 +20,10 @@ use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator,
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::salloc::state::State as SallocState;
-use crate::transport::rdma::ops;
+use crate::transport::rdma::ops::Ops;
 
 pub struct TlStorage {
-    pub(crate) ops: ops::Ops,
+    pub(crate) ops: Ops,
     pub(crate) state: State,
 }
 
@@ -115,7 +115,7 @@ impl RpcAdapterEngine {
             // TODO(cjr): check incoming connect request
             // the CmIdListener::get_request() is currently synchronous.
             // need to make it asynchronous and low cost to check.
-            // TODO(cjr): remove this to another engine and runtime
+            // TODO(cjr): move this to another engine and runtime
             self.check_incoming_connection().await?;
 
             self.indicator.as_ref().unwrap().set_nwork(work);
@@ -129,7 +129,9 @@ impl RpcAdapterEngine {
         // this function is not supposed to be called concurrently.
         if self.cq.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
+            let ctx_list =
+                ulib::uverbs::get_default_verbs_contexts(&self.tls.ops)
+                    .unwrap();
             let ctx = &ctx_list[0];
             self.cq = Some(ctx.create_cq(1024, 0).unwrap());
         }
@@ -205,7 +207,8 @@ impl RpcAdapterEngine {
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
         log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
-        let mut erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
+        let mut erased =
+            unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
         let meta = &mut unsafe { erased.as_mut() }.meta;
         meta.conn_id = conn_ctx.cmid.as_handle();
 
@@ -224,12 +227,18 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloRequest>::unmarshal(sgl, &self.salloc.shared).unwrap()
+                            MessageTemplate::<codegen::HelloRequest>::unmarshal(
+                                sgl,
+                                &self.salloc.shared,
+                            )
+                            .unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg = 
-                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
+                        let dyn_msg = unsafe {
+                            ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr())
+                                .unwrap()
+                        };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -239,12 +248,18 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            MessageTemplate::<codegen::HelloReply>::unmarshal(sgl, &self.salloc.shared).unwrap()
+                            MessageTemplate::<codegen::HelloReply>::unmarshal(
+                                sgl,
+                                &self.salloc.shared,
+                            )
+                            .unwrap()
                         };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg = 
-                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
+                        let dyn_msg = unsafe {
+                            ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr())
+                                .unwrap()
+                        };
                         dyn_msg
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
@@ -406,8 +421,6 @@ impl RpcAdapterEngine {
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.cmd_tx.send(mrpc::cmd::Completion(Ok(res)))?,
-                    Err(ControlPathError::InProgress) => return Ok(Progress(0)),
-                    Err(ControlPathError::NoResponse) => return Ok(Progress(1)),
                     Err(e) => self.cmd_tx.send(mrpc::cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
@@ -469,7 +482,8 @@ impl RpcAdapterEngine {
                     .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
-                    .resolve_route(addr).await?;
+                    .resolve_route(addr)
+                    .await?;
                 let mut pre_id = builder.build()?;
                 // prepare and post receive buffers
                 let mut recv_mrs = Vec::with_capacity(128);
@@ -505,18 +519,17 @@ impl RpcAdapterEngine {
                     .insert(handle, listener)?;
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
-            }
-            // mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
-            //     // find those existing mrs, and update their app_vaddrs
-            //     let mut ret = Vec::new();
-            //     for (mr_handle, app_vaddr) in app_vaddrs {
-            //         let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
-            //         mr.set_app_vaddr(*app_vaddr);
-            //         ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-            //     }
-            //     Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
-            //     // Err(ControlPathError::NoResponse)
-            // }
+            } // mrpc::cmd::Command::NewMappedAddrs(app_vaddrs) => {
+              //     // find those existing mrs, and update their app_vaddrs
+              //     let mut ret = Vec::new();
+              //     for (mr_handle, app_vaddr) in app_vaddrs {
+              //         let mr = self.tls.state.resource().recv_mr_table.get(mr_handle)?;
+              //         mr.set_app_vaddr(*app_vaddr);
+              //         ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
+              //     }
+              //     Ok(mrpc::cmd::CompletionKind::NewMappedAddrsInternal(ret))
+              //     // Err(ControlPathError::NoResponse)
+              // }
         }
     }
 }

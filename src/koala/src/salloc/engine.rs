@@ -109,7 +109,6 @@ impl SallocEngine {
                 let mut ret = Vec::new();
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
                     let mr = self.adapter_state.resource().recv_mr_table.get(mr_handle)?;
-                    mr.set_app_vaddr(*app_vaddr);
                     ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
                     let mr_local_addr = mr.as_ptr().expose_addr();
                     let mr_remote_mapped = ShmMr {

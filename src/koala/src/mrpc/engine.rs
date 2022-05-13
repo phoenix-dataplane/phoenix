@@ -14,7 +14,7 @@ use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
 pub struct MrpcEngine {
-    pub(crate) state: State,
+    pub(crate) _state: State,
 
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
@@ -93,7 +93,6 @@ impl MrpcEngine {
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
-                    Err(Error::NoReponse) => {} // no need to do anything
                     Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))

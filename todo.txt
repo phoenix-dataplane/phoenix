@@ -20,6 +20,7 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
+- Garbage collect CmEngine
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - Build a CI pipeline with all kinds of tests and benchmarks
 - *UDP socket send/recv fd must be nonblocking*

@@ -304,7 +304,7 @@ impl<T> Box<std::mem::MaybeUninit<T>> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T> {
         let raw = Box::into_raw(self).0;
-        unsafe { Box::from_raw_query_remote(raw as *mut T) }
+        Box::from_raw_query_remote(raw as *mut T)
     }
 
     #[inline]
@@ -320,7 +320,7 @@ impl<T> Box<[std::mem::MaybeUninit<T>]> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T]> {
         let raw = Box::into_raw(self).0;
-        unsafe { Box::from_raw_query_remote(raw as *mut [T]) }
+        Box::from_raw_query_remote(raw as *mut [T])
     }
 }
 
@@ -744,10 +744,8 @@ impl Box<dyn Any> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        unsafe {
-            let raw: *mut dyn Any = Box::into_raw(self).0;
-            Box::from_raw_query_remote(raw as *mut T)
-        }
+        let raw: *mut dyn Any = Box::into_raw(self).0;
+        Box::from_raw_query_remote(raw as *mut T)
     }
 }
 
@@ -764,10 +762,8 @@ impl Box<dyn Any + Send> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        unsafe {
-            let raw: *mut (dyn Any + Send) = Box::into_raw(self).0;
-            Box::from_raw_query_remote(raw as *mut T)
-        }
+        let raw: *mut (dyn Any + Send) = Box::into_raw(self).0;
+        Box::from_raw_query_remote(raw as *mut T)
     }
 }
 
@@ -784,10 +780,8 @@ impl Box<dyn Any + Send + Sync> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        unsafe {
-            let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self).0;
-            Box::from_raw_query_remote(raw as *mut T)
-        }
+        let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self).0;
+        Box::from_raw_query_remote(raw as *mut T)
     }
 }
 

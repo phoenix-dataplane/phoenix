@@ -34,7 +34,7 @@ pub type CustomerType =
 pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
     client_pid: Pid,
-    mode: SchedulingMode,
+    _mode: SchedulingMode,
 }
 
 impl SallocEngineBuilder {
@@ -46,7 +46,7 @@ impl SallocEngineBuilder {
         SallocEngineBuilder {
             customer,
             client_pid,
-            mode,
+            _mode: mode,
         }
     }
 
