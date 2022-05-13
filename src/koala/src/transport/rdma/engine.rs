@@ -165,10 +165,6 @@ impl TransportEngine {
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
-                    Err(Error::InProgress) => {
-                        // nothing to do, waiting for some network/device response
-                        return Ok(Progress(0));
-                    }
                     Err(e) => {
                         // better to log the error here, in case sometimes the customer does
                         // not receive the error

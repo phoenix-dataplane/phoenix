@@ -13,7 +13,6 @@ use log::{debug, warn};
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
-use ipc::ChannelFlavor;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
@@ -186,6 +185,7 @@ impl Control {
                     // for now, we create the adapter for tcp
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
+                        &self.runtime_manager,
                         n,
                         mode,
                         client_pid,

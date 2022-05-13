@@ -7,7 +7,7 @@ use libkoala::mrpc::codegen::{GreeterClient, HelloRequest};
 use smol;
 
 // TODO(wyj): make server addr CLI argument
-const SERVER_ADDR: &str = "192.168.211.66";
+const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {

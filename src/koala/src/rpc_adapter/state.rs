@@ -11,7 +11,6 @@ use crate::mrpc::marshal::{SgList, ShmBuf};
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
-use crate::transport::rdma::engine::TransportEngine;
 
 pub(crate) struct State {
     sm: Arc<StateManager<Self>>,

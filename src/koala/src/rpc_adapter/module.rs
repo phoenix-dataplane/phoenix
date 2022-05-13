@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 use std::os::unix::net::{SocketAddr, UCred};
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -14,8 +14,10 @@ use ipc::unix::DomainSocket;
 
 use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::State;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
+use crate::transport::rdma::ops::Ops;
 
 lazy_static! {
     pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
@@ -27,6 +29,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     mode: SchedulingMode,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
+    ops: Ops,
 }
 
 impl RpcAdapterEngineBuilder {
@@ -36,6 +39,7 @@ impl RpcAdapterEngineBuilder {
         mode: SchedulingMode,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
+        ops: Ops,
     ) -> Self {
         RpcAdapterEngineBuilder {
             node,
@@ -43,12 +47,13 @@ impl RpcAdapterEngineBuilder {
             mode,
             cmd_rx,
             cmd_tx,
+            ops,
         }
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let mut state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
@@ -61,7 +66,7 @@ impl RpcAdapterEngineBuilder {
 
         Ok(RpcAdapterEngine {
             tls: Box::new(TlStorage {
-                ops: crate::transport::rdma::module::create_ops(self.client_pid)?,
+                ops: self.ops,
                 state,
             }),
             salloc: salloc_state,
@@ -97,13 +102,16 @@ impl RpcAdapterModule {
     }
 
     pub(crate) fn create_engine(
+        runtime_manager: &RuntimeManager,
         n: Node,
         mode: SchedulingMode,
         client_pid: Pid,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ) -> Result<RpcAdapterEngine> {
-        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx);
+        let ops = crate::transport::rdma::module::create_ops(runtime_manager, client_pid)?;
+
+        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops);
         let engine = builder.build()?;
 
         Ok(engine)

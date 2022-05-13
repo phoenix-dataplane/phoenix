@@ -38,7 +38,13 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
         .expect("Listener bind failed");
     eprintln!("listen_id created");
 
-    let builder = listener.get_request().expect("Get request failed!");
+    let builder = loop {
+        match listener.try_get_request().expect("Get request failed!") {
+            Some(b) => break b,
+            None => {}
+        }
+    };
+    // let builder = listener.get_request().expect("Get request failed!");
     eprintln!("Get a connect request");
     let pre_id = builder.build().expect("Create QP failed!");
     eprintln!("QP created");

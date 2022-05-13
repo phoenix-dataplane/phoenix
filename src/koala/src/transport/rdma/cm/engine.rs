@@ -64,7 +64,7 @@ impl CmEngine {
 impl CmEngine {
     fn check_cm_event(&mut self) -> Result<Status, ApiError> {
         match self.poll_cm_event_once() {
-            Ok(()) => { Ok(Progress(0)) }
+            Ok(()) => { Ok(Progress(1)) }
             Err(ApiError::NoCmEvent) => { Ok(Progress(0)) }
             Err(e @ (ApiError::RdmaCm(_) | ApiError::Mio(_))) => {
                 self.state

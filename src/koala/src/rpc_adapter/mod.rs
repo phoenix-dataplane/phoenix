@@ -18,12 +18,6 @@ pub(crate) enum ControlPathError {
     Resource(#[from] ResourceError),
 
     // Below are errors that does not return to the user.
-    #[error("Operation in progress")]
-    InProgress,
-    #[error("No Response is required. Note, this is not an error")]
-    NoResponse,
-    #[error("Ipc-channel TryRecvError")]
-    IpcTryRecv,
     #[error("Send command error")]
     SendCommand,
     #[error("Service error: {0}")]

@@ -17,8 +17,6 @@ pub(crate) enum Error {
     Datapath(#[from] DatapathError),
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
-    // #[error("Interface error {0}: {1}")]
-    // Interface(&'static str, interface::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
     #[error("Connect failed: {0}")]

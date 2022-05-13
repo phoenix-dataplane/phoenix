@@ -25,7 +25,7 @@ impl CmEventManager {
         Ok(CmEventManager {
             poll: mio::Poll::new()?,
             event_channel_buffer: HashMap::default(),
-            err_buffer: VecDeque::new(), 
+            err_buffer: VecDeque::new(),
         })
     }
 
@@ -79,7 +79,10 @@ impl CmEventManager {
             .poll(&mut events, Some(Duration::from_millis(1)))
             .map_err(ApiError::Mio)?;
 
+        log::debug!("poll_cq_event_once");
         if let Some(io_event) = events.iter().next() {
+            log::debug!("poll_cq_event_once: {:?}", io_event);
+
             let handle = Handle(io_event.token().0 as _);
             let event_channel = event_channel_table.get(&handle)?;
 
@@ -97,6 +100,7 @@ impl CmEventManager {
                 .map_err(ApiError::Mio)?;
 
             // append to the local buffer
+            log::debug!("append to the local buffer, handle: {:?}, cm_event: {:?}", handle, cm_event);
             self.event_channel_buffer
                 .entry(handle)
                 .or_insert_with(VecDeque::default)
