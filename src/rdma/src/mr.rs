@@ -3,6 +3,7 @@
 use std::io;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
+use std::slice;
 
 use memfd::{Memfd, MemfdOptions};
 use memmap_fixed::MmapFixed;
@@ -203,5 +204,54 @@ fn page_size() -> usize {
             page_size
         }
         page_size => page_size,
+    }
+}
+
+#[derive(Debug)]
+pub struct OdpMemoryRegion {
+    pub mr: rdmacm::MemoryRegion<'static>,
+}
+
+unsafe impl Send for OdpMemoryRegion {}
+unsafe impl Sync for OdpMemoryRegion {}
+
+impl Deref for OdpMemoryRegion {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        assert!(!self.mr.0.is_null());
+        let mr = unsafe { &*self.mr.0 };
+        unsafe { slice::from_raw_parts(mr.addr.cast(), mr.length as _) }
+    }
+}
+
+impl DerefMut for OdpMemoryRegion {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        assert!(!self.mr.0.is_null());
+        let mr = unsafe { &*self.mr.0 };
+        unsafe { slice::from_raw_parts_mut(mr.addr.cast(), mr.length as _) }
+    }
+}
+
+impl Drop for OdpMemoryRegion {
+    fn drop(&mut self) {
+        let errno = unsafe { ffi::ibv_dereg_mr(self.mr.0) };
+        if errno != 0 {
+            let e = io::Error::from_raw_os_error(errno);
+            panic!("{}", e);
+        }
+    }
+}
+
+impl AsHandle for OdpMemoryRegion {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        assert!(!self.mr.0.is_null());
+        Handle(unsafe { &*self.mr.0 }.handle)
+    }
+}
+
+impl OdpMemoryRegion {
+    pub fn new(mr: rdmacm::MemoryRegion<'static>) -> Self {
+        Self { mr }
     }
 }

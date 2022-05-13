@@ -226,6 +226,10 @@ impl<T: Greeter> Service for GreeterServer<T> {
         let msg = unsafe { mrpc::alloc::Box::from_raw(raw, addr_remote) };
         let req = unsafe { mrpc::alloc::Box::from_shmptr(msg.val) };
         // TODO(wyj): should not be forget. 
+        // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
+        // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to
+        // indicate that we will no longer use the region of this object, so that the backend can
+        // do post_recv.
         std::mem::forget(msg);
         match self.inner.say_hello(req) {
             Ok(reply) => {

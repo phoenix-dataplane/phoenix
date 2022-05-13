@@ -5,9 +5,9 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
 
-use memfd::Memfd;
-
 use interface::{returned, AsHandle, Handle};
+use rdma::mr::OdpMemoryRegion;
+use rdma::rdmacm;
 
 use super::{get_ops, Error, FromBorrow};
 
@@ -25,7 +25,8 @@ pub(crate) fn get_default_verbs_contexts(
         .collect::<Result<Vec<_>, Error>>()
 }
 
-pub(crate) fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
+pub(crate) fn get_default_pds(
+) -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
     let pds = get_ops().get_default_pds()?;
@@ -83,12 +84,13 @@ impl ProtectionDomain {
         len: usize,
         access: interface::AccessFlags,
     ) -> Result<MemoryRegion<T>, Error> {
-        let nbytes = len * mem::size_of::<T>();
-        assert!(nbytes > 0);
-        let mr = get_ops().reg_mr(&self.inner, nbytes, access)?;
+        todo!()
+        // let nbytes = len * mem::size_of::<T>();
+        // assert!(nbytes > 0);
+        // let mr = get_ops().reg_mr(&self.inner, nbytes, access)?;
 
-        assert_eq!(nbytes, mr.len());
-        Ok(MemoryRegion::new(mr)?)
+        // assert_eq!(nbytes, mr.len());
+        // Ok(MemoryRegion::new(mr)?)
     }
 }
 
@@ -119,7 +121,7 @@ pub struct SharedReceiveQueue {
 
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
-    pub(crate) inner: rdma::mr::MemoryRegion,
+    pub(crate) inner: OdpMemoryRegion,
     _marker: PhantomData<T>,
 }
 
@@ -153,9 +155,9 @@ impl<T> AsHandle for MemoryRegion<T> {
 }
 
 impl<T: Sized + Copy> MemoryRegion<T> {
-    fn new(inner: rdma::mr::MemoryRegion) -> Result<Self, Error> {
+    pub(crate) fn new(mr: rdmacm::MemoryRegion<'static>) -> Result<Self, Error> {
         Ok(MemoryRegion {
-            inner,
+            inner: OdpMemoryRegion::new(mr),
             _marker: PhantomData,
         })
     }
@@ -170,15 +172,10 @@ impl<T: Sized + Copy> MemoryRegion<T> {
         self
     }
 
-    #[inline]
-    pub(crate) fn memfd(&self) -> &Memfd {
-        self.inner.memfd()
-    }
-
-    #[inline]
-    pub(crate) fn rkey(&self) -> RemoteKey {
-        self.inner.rkey()
-    }
+    // #[inline]
+    // pub(crate) fn rkey(&self) -> RemoteKey {
+    //     self.inner.rkey()
+    // }
 
     // #[inline]
     // pub fn pd(&self) -> &ProtectionDomain {
@@ -193,11 +190,6 @@ impl<T: Sized + Copy> MemoryRegion<T> {
     #[inline]
     pub(crate) fn as_mut_ptr(&mut self) -> *mut T {
         self.inner.as_mut_ptr().cast()
-    }
-
-    #[inline]
-    pub(crate) fn file_off(&self) -> usize {
-        self.inner.file_off()
     }
 }
 

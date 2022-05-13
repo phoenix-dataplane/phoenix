@@ -23,7 +23,7 @@ impl ucm::Inner {
     {
         get_ops().post_recv(
             self.handle.0,
-            &mr.inner,
+            &mr.inner.mr,
             buf::Range::new(mr, range),
             context,
         )?;
@@ -88,7 +88,7 @@ impl CmId {
     {
         get_ops().post_send(
             self.inner.handle.0,
-            &mr.inner,
+            &mr.inner.mr,
             buf::Range::new(mr, range),
             context,
             flags,
@@ -115,7 +115,7 @@ impl CmId {
     {
         get_ops().post_send_with_imm(
             self.inner.handle.0,
-            &mr.inner,
+            &mr.inner.mr,
             buf::Range::new(mr, range),
             context,
             flags,
@@ -144,7 +144,7 @@ impl CmId {
     {
         get_ops().post_write(
             self.inner.handle.0,
-            &mr.inner,
+            &mr.inner.mr,
             buf::Range::new(mr, range),
             context,
             rkey,
@@ -174,7 +174,7 @@ impl CmId {
     {
         get_ops().post_read(
             self.inner.handle.0,
-            &mr.inner,
+            &mr.inner.mr,
             buf::Range::new(mr, range),
             context,
             rkey,
