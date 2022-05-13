@@ -1,11 +1,8 @@
 use std::ptr::NonNull;
 use std::ptr::Unique;
 
-use unique::Unique;
-
 use super::SwitchAddressSpace;
 
-#[derive(Debug)]
 pub struct ShmPtr<T: ?Sized> {
     ptr: Unique<T>,
     addr_remote: *const ()
@@ -31,7 +28,7 @@ impl<T: ?Sized> ShmPtr<T> {
     pub unsafe fn new_unchecked(ptr: *mut T, addr_remote: usize) -> Self {
         // SAFETY: it is the user's responsbility to ensure addr_remote is valid
         let addr_remote = addr_remote as *const ();
-        let ptr = unsafe { Unique::new_unchecked(ptr) };
+        let ptr = Unique::new_unchecked(ptr);
         ShmPtr {
             ptr,
             addr_remote
@@ -67,9 +64,14 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Casts to a pointer of another type
-    pub fn cast<U: ?Sized>(self) -> ShmPtr<U> {
+    pub fn cast<U>(self) -> ShmPtr<U> {
         let cast_ptr = unsafe { Unique::new_unchecked(self.ptr.as_ptr() as *mut U) };
         ShmPtr { ptr: cast_ptr, addr_remote: self.addr_remote }
+    }
+
+    #[inline]
+    pub fn get_remote_addr(&self) -> usize {
+        self.addr_remote as usize
     }
 }
 
@@ -91,6 +93,21 @@ impl<T: ?Sized> Clone for ShmPtr<T> {
 
 impl<T: ?Sized> Copy for ShmPtr<T> {}
 
+unsafe impl<T: Send + ?Sized> Send for ShmPtr<T> {}
+
+unsafe impl<T: Sync + ?Sized> Sync for ShmPtr<T> {}
+
+impl<T: ?Sized> std::fmt::Debug for ShmPtr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Pointer::fmt(&self.as_ptr(), f)
+    }
+}
+
+impl<T: ?Sized> std::fmt::Pointer for ShmPtr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Pointer::fmt(&self.as_ptr(), f)
+    }
+}
 
 unsafe impl<T: ?Sized> SwitchAddressSpace for ShmPtr<T> {
     fn switch_address_space(&mut self) {
@@ -99,7 +116,7 @@ unsafe impl<T: ?Sized> SwitchAddressSpace for ShmPtr<T> {
         let ptr = std::ptr::from_raw_parts::<T>(self.addr_remote, metadata).as_mut();
         let ptr = unsafe { Unique::new_unchecked(ptr) };
         self.ptr = ptr;
-        self.addr_remote = addr;
+        self.addr_remote = addr as *const ();
     }
 }
 

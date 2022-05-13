@@ -53,7 +53,7 @@ impl SharedHeap {
 
             match ctx.service.recv_comp().unwrap().0 {
                 Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => {
-                    Ok(SharedRegion::new(remote_addr, len, file_off, memfd).unwrap())
+                    Ok(SharedRegion::new(remote_addr, len,  align, file_off, memfd).unwrap())
                 }
                 Err(e) => Err(Error::Interface("AllocShm", e)),
                 otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
@@ -142,10 +142,7 @@ pub struct SharedHeapAllocator;
 
 impl SharedHeapAllocator {
     #[inline]
-    pub(crate) fn query_shm_offset(addr: usize) -> isize {
-        // The assumption does not hold for sure
-        // let addr_aligned = addr & !(LargeObjectPage::SIZE - 1);
-        // REGIONS.lock()[&addr_aligned].offset
+    pub(crate) fn query_backend_addr(addr: usize) -> usize {
         let guard = REGIONS.lock();
         match guard.range(0..=addr).last() {
             Some(kv) => {
@@ -156,7 +153,9 @@ impl SharedHeapAllocator {
                     *kv.0,
                     kv.1.len()
                 );
-                kv.1.remote_addr() as isize - *kv.0 as isize
+                // retrieve offset within the mr
+                let offset = addr & (kv.1.align - 1);
+                kv.1.remote_addr() + offset
             }
             None => panic!(
                 "addr: {:0x} not found in allocated pages, number of pages allocated: {}",

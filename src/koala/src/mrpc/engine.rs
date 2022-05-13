@@ -5,6 +5,7 @@ use unique::Unique;
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
+use ipc::shmalloc::ShmPtr;
 
 use super::module::CustomerType;
 use super::state::{Resource, State};
@@ -128,16 +129,16 @@ impl MrpcEngine {
                     Ok(CompletionKind::SetTransport)
                 }
             }
-            Command::AllocShm(nbytes) => {
-                self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
-                match self.cmd_rx.recv().unwrap().0 {
-                    Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
-                        self.customer.send_fd(&[memfd]).unwrap();
-                        Ok(CompletionKind::AllocShm(returned_mr))
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
-            }
+            // Command::AllocShm(nbytes) => {
+            //     self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
+            //     match self.cmd_rx.recv().unwrap().0 {
+            //         Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
+            //             self.customer.send_fd(&[memfd]).unwrap();
+            //             Ok(CompletionKind::AllocShm(returned_mr))
+            //         }
+            //         other => panic!("unexpected: {:?}", other),
+            //     }
+            // }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().unwrap().0 {
@@ -212,7 +213,8 @@ impl MrpcEngine {
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         log::debug!("end marshal");
-                        let dyn_msg = unsafe { msg.cast::<dyn RpcMessage>() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -226,7 +228,8 @@ impl MrpcEngine {
                             unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        let dyn_msg = unsafe { msg.cast::<dyn RpcMessage>() };
+                        let dyn_msg = 
+                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
                         self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
@@ -259,12 +262,6 @@ impl MrpcEngine {
                 msg_mut.switch_address_space();
                 // NOTE(wyj): this is the address of the pointer to `msg_mut`
                 // while switch_address_space swithces the address of the actual payload
-                let remote_msg_addr =
-                    msg.as_ptr()
-                        .cast::<u8>()
-                        .wrapping_offset(super::marshal::query_shm_offset(
-                            msg.as_ptr() as *mut () as _
-                        )) as u64;
                 // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
                 // NOTE(wyj): This is message from backend to app
                 // MessageTemplateErased is a just a message header
@@ -273,8 +270,8 @@ impl MrpcEngine {
                 let erased = MessageTemplateErased {
                     meta,
                     // casting to thin pointer first, drop the Pointee::Metadata
-                    shm_addr: remote_msg_addr,
-                    shm_addr_remote: msg.as_ptr() as *const () as u64,
+                    shm_addr: msg.get_remote_addr(),
+                    shm_addr_remote: msg.as_ptr() as *const () as usize,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
                 let mut sent = false;

@@ -85,7 +85,6 @@ impl SallocEngine {
 
     fn process_cmd(&mut self, req: cmd::Command) -> Result<cmd::CompletionKind, ControlPathError> {
         use cmd::{Command, CompletionKind};
-        let api_guard = self.state.shared.api_engine.lock();
         match req {
             Command::AllocShm(size, _align) => {
                 // TODO(wyj): implement backend heap allocator to properly handle align 
@@ -95,14 +94,14 @@ impl SallocEngine {
                 let access = rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_READ
                     | rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_WRITE
                     | rpc_adapter::ulib::uverbs::AccessFlags::LOCAL_WRITE;
-                let mr: rpc_adapter::ulib::uverbs::MemoryRegion<u8> = pd.allocate(nbytes, access)?;
+                let mr: rpc_adapter::ulib::uverbs::MemoryRegion<u8> = pd.allocate(nbytes, access).unwrap();
                 // mr's addr on backend side
                 let remote_addr = mr.as_ptr() as u64;
-                let file_off = mr.file_off as u64;
+                let file_off = mr.file_off as i64;
                 self.adapter_state.resource().insert_mr(mr)?;
                 Ok(cmd::CompletionKind::AllocShm(
                     remote_addr,
-                    memfd,
+                    file_off,
                 ))
             }
             Command::DeallocShm(addr) => {
@@ -116,7 +115,7 @@ impl SallocEngine {
                     let mr = self.adapter_state.resource().recv_mr_table.get(mr_handle)?;
                     mr.set_app_vaddr(*app_vaddr);
                     ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-                    let mr_local_addr = mr.as_pt() as usize;
+                    let mr_local_addr = mr.as_ptr() as usize;
                     let mr_remote_mapped = ShmMr {
                         ptr: *app_vaddr,
                         len: mr.len(),

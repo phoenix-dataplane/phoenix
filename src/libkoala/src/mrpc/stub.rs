@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::ToSocketAddrs;
 
+use ipc::shmalloc::ShmPtr;
 use unique::Unique;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
@@ -13,16 +14,18 @@ use interface::Handle;
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::mrpc::alloc::Box;
-use crate::mrpc::codegen::SwitchAddressSpace;
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
-use crate::verbs::MemoryRegion;
+use crate::salloc::region::SharedRegion;
+use crate::salloc::SA_CTX;
+
+use ipc::shmalloc::SwitchAddressSpace;
 
 #[derive(Debug)]
 pub struct MessageTemplate<T> {
     pub(crate) meta: MessageMeta,
-    pub(crate) val: Unique<T>,
+    pub(crate) val: ShmPtr<T>,
 }
 
 impl<T> MessageTemplate<T> {
@@ -38,7 +41,7 @@ impl<T> MessageTemplate<T> {
         Box::new(
             Self {
                 meta,
-                val: Unique::new(Box::into_raw(val)).unwrap(),
+                val: Box::into_shmptr(val)
             }
         )
     }
@@ -54,23 +57,16 @@ impl<T> MessageTemplate<T> {
         Box::new(
             Self {
                 meta,
-                val: Unique::new(Box::into_raw(val)).unwrap(),
+                val: Box::into_shmptr(val)
             },
         )
     }
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
+    // TODO
     fn switch_address_space(&mut self) {
         unsafe { self.val.as_mut() }.switch_address_space();
-        self.val = Unique::new(
-            self.val
-                .as_ptr()
-                .cast::<u8>()
-                .wrapping_offset(SharedHeapAllocator::query_shm_offset(self.val.as_ptr() as _))
-                .cast(),
-        )
-        .unwrap();
     }
 }
 
@@ -79,15 +75,11 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
 ) -> Result<(), Error> {
     let meta = msg.meta;
     msg.switch_address_space();
-    let local_ptr = Box::into_raw(msg);
-    let remote_shmptr = local_ptr
-        .cast::<u8>()
-        .wrapping_offset(SharedHeapAllocator::query_shm_offset(local_ptr as _))
-        as u64;
+    let (local_ptr, addr_remote) = Box::into_raw(msg);
     let erased = MessageTemplateErased {
         meta,
-        shm_addr: remote_shmptr,
-        shm_addr_remote: local_ptr as *const() as u64
+        shm_addr: addr_remote,
+        shm_addr_remote: local_ptr as *const () as usize
     };
     let req = dp::WorkRequest::Call(erased);
     MRPC_CTX.with(|ctx| {
@@ -122,7 +114,7 @@ pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
 pub struct ClientStub {
     // mRPC connection handle
     handle: Handle,
-    reply_mrs: Vec<MemoryRegion<u8>>,
+    reply_mrs: Vec<SharedRegion>,
 }
 
 impl ClientStub {
@@ -161,25 +153,27 @@ impl ClientStub {
                         let memfd = Memfd::try_from_fd(fd)
                             .map_err(|_| io::Error::last_os_error())
                             .unwrap();
-                        let m = MemoryRegion::new(
-                            mr.pd,
-                            mr.handle,
-                            mr.rkey,
-                            mr.vaddr,
-                            mr.map_len as usize,
-                            mr.file_off,
+                        let m = SharedRegion::new(
+                            mr.1,
+                            mr.2,
+                            8 * 1024 * 1024,
+                            mr.3,
                             memfd,
                         )
                         .unwrap();
-                        vaddrs.push((mr.handle.0, m.as_ptr() as u64));
+                        vaddrs.push((mr.0, m.as_ptr().expose_addr()));
                         m
                     })
                     .collect();
                 // return the mapped addr back
-                let req = Command::NewMappedAddrs(vaddrs);
-                ctx.service.send_cmd(req)?;
-                // COMMENT(cjr): must wait for the reply!
-                rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
+                // TODO(cjr): send to SA_CTX
+                SA_CTX.with(|sa_ctx| {
+                    let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
+                    sa_ctx.service.send_cmd(req)?;
+                    // COMMENT(cjr): must wait for the reply!
+                    rx_recv_impl!(sa_ctx.service, ipc::salloc::cmd::CompletionKind::NewMappedAddrs)?;
+                    Result::<(), Error>::Ok(())
+                })?;
                 Ok(Self {
                     handle: ret.0,
                     reply_mrs,
@@ -192,7 +186,7 @@ impl ClientStub {
 pub struct Server {
     listener_handle: Handle,
     handles: HashSet<Handle>,
-    mrs: HashMap<Handle, MemoryRegion<u8>>,
+    mrs: HashMap<Handle, SharedRegion>,
     // func_id -> Service
     routes: HashMap<u32, std::boxed::Box<dyn Service>>,
 }
@@ -252,27 +246,29 @@ impl Server {
                             let memfd = Memfd::try_from_fd(fd)
                                 .map_err(|_| io::Error::last_os_error())
                                 .unwrap();
-                            let h = mr.handle.0;
-                            let m = MemoryRegion::new(
-                                mr.pd,
-                                mr.handle,
-                                mr.rkey,
-                                mr.vaddr,
-                                mr.map_len as usize,
-                                mr.file_off,
+                            let h = mr.0;
+                            let m = SharedRegion::new(
+                                mr.1,
+                                mr.2,
+                                8 * 1024 * 1024,
+                                mr.3,
                                 memfd,
                             )
                             .unwrap();
-                            vaddrs.push((h, m.as_ptr() as u64));
+                            vaddrs.push((h, m.as_ptr().expose_addr()));
                             self.mrs.insert(h, m);
                         }
                         Ok(())
                     })?;
                     // return the mapped addr back
-                    let req = Command::NewMappedAddrs(vaddrs);
-                    ctx.service.send_cmd(req)?;
-                    // COMMENT(cjr): must wait for the reply!
-                    rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
+                    // TODO(cjr): send to SA_CTX
+                    SA_CTX.with(|sa_ctx| {
+                        let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
+                        sa_ctx.service.send_cmd(req)?;
+                        // COMMENT(cjr): must wait for the reply!
+                        rx_recv_impl!(sa_ctx.service, ipc::salloc::cmd::CompletionKind::NewMappedAddrs)?;
+                        Result::<(), Error>::Ok(())
+                    })?;
                 }
                 Err(ipc::Error::TryRecvFd(ipc::TryRecvError::Empty)) => {}
                 Err(e) => return Err(e.into()),

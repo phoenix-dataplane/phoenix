@@ -1,5 +1,4 @@
 use core::any::Any;
-use core::async_iter::AsyncIterator;
 use core::borrow;
 use core::cmp::Ordering;
 use core::convert::{From, TryFrom};
@@ -10,9 +9,7 @@ use core::iter::FromIterator;
 use core::iter::{FusedIterator, Iterator};
 use core::marker::Unpin;
 use core::mem;
-use core::ops::{
-    Deref, DerefMut, Generator, GeneratorState, Receiver,
-};
+use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
 use core::ptr::{self, Unique};
 use core::task::{Context, Poll};
@@ -27,9 +24,10 @@ use core::task::{Context, Poll};
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Allocator, Layout};
 
+use ipc::shmalloc::ShmPtr;
+
 use crate::salloc::heap::SharedHeapAllocator;
 
-use super::shmptr::ShmPtr;
 
 
 // The declaration of the `Box` struct must be kept in sync with the
@@ -76,7 +74,7 @@ impl<T> Box<T> {
     {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
-        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
+        unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
     pub fn new_zeroed() -> Box<mem::MaybeUninit<T>>
@@ -94,7 +92,7 @@ impl<T> Box<T> {
     {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
-        unsafe { Ok(Box::from_raw(ptr.as_ptr())) }
+        unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
     #[inline(always)]
@@ -104,8 +102,8 @@ impl<T> Box<T> {
     }
 
     pub fn into_boxed_slice(boxed: Self) -> Box<[T]> {
-        let raw = Box::into_raw(boxed);
-        unsafe { Box::from_raw(raw as *mut [T; 1]) }
+        let raw = Box::into_raw(boxed).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut [T; 1]) }
     }
 
     #[inline]
@@ -114,7 +112,7 @@ impl<T> Box<T> {
         Self: Drop,
     {
         let mut dst = std::mem::MaybeUninit::uninit();
-        let src = Self::into_raw(boxed);
+        let src = Self::into_raw(boxed).0;
         unsafe {
             // copy the content from shared heap to stack
             std::ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
@@ -316,8 +314,8 @@ impl<T> Box<T> {
 impl<T> Box<std::mem::MaybeUninit<T>> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T> {
-        let raw = Box::into_raw(self);
-        unsafe { Box::from_raw(raw as *mut T) }
+        let raw = Box::into_raw(self).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut T) }
     }
 
     #[inline]
@@ -332,26 +330,35 @@ impl<T> Box<std::mem::MaybeUninit<T>> {
 impl<T> Box<[std::mem::MaybeUninit<T>]> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T]> {
-        let raw = Box::into_raw(self);
-        unsafe { Box::from_raw(raw as *mut [T]) }
+        let raw = Box::into_raw(self).0;
+        unsafe { Box::from_raw_query_remote(raw as *mut [T]) }
     }
 }
 
 impl<T: ?Sized> Box<T> {
+    unsafe fn from_raw_query_remote(raw: *mut T) -> Self {
+        let addr = raw as *const () as usize;
+        let addr_remote = SharedHeapAllocator::query_backend_addr(addr);
+        Box::from_raw(raw, addr_remote)
+    }
+}
+
+impl<T: ?Sized> Box<T> {
+    // TODO(wyj): shouldn't drop the Box if it is createdby the backend
     #[inline]
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Box(unsafe { ShmPtr::new_unchecked(raw) })
+    pub unsafe fn from_raw(raw: *mut T, addr_remote: usize) -> Self {
+        Box( { ShmPtr::new_unchecked(raw, addr_remote) } )
+    }
+
+    pub unsafe fn from_shmptr(raw: ShmPtr<T>) -> Self {
+        Box ( raw )
     }
 
     #[inline]
-    pub unsafe fn from_raw_with_remote(raw: *mut T, raw_remote: *mut T) -> Self {
-        Box(unsafe { ShmPtr::new_unchecked_with_remote(raw, raw_remote) })
-    }
-
-    #[inline]
-    pub fn into_raw(b: Self) -> *mut T {
+    pub fn into_raw(b: Self) -> (*mut T, usize) {
+        let addr_remote = b.0.get_remote_addr();
         let leaked = Box::into_unique(b);
-        leaked.as_ptr()
+        (leaked.as_ptr(), addr_remote)
     }
 
     #[inline]
@@ -412,7 +419,7 @@ impl<T: Default> Default for Box<T> {
 
 #[inline]
 pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
-    unsafe { Box::from_raw(Box::into_raw(v) as *mut str) }
+    unsafe { Box::from_raw_query_remote(Box::into_raw(v).0 as *mut str) }
 }
 
 // impl Default for Box<str> {
@@ -749,8 +756,8 @@ impl Box<dyn Any> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut dyn Any = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut dyn Any = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -765,8 +772,8 @@ impl Box<dyn Any + Send> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut (dyn Any + Send) = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut (dyn Any + Send) = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -781,8 +788,8 @@ impl Box<dyn Any + Send + Sync> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         unsafe {
-            let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self);
-            Box::from_raw(raw as *mut T)
+            let raw: *mut (dyn Any + Send + Sync) = Box::into_raw(self).0;
+            Box::from_raw_query_remote(raw as *mut T)
         }
     }
 }
@@ -820,7 +827,6 @@ impl<T: ?Sized> DerefMut for Box<T> {
     }
 }
 
-impl<T: ?Sized> Receiver for Box<T> {}
 
 impl<I: Iterator + ?Sized> Iterator for Box<I> {
     type Item = I::Item;
@@ -954,44 +960,3 @@ impl<T: ?Sized> AsMut<T> for Box<T> {
 }
 
 impl<T: ?Sized> Unpin for Box<T> {}
-
-// impl<G: ?Sized + Generator<R> + Unpin, R> Generator<R> for Box<G>
-// {
-//     type Yield = G::Yield;
-//     type Return = G::Return;
-
-//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-//         G::resume(Pin::new(&mut *self), arg)
-//     }
-// }
-
-// impl<G: ?Sized + Generator<R>, R> Generator<R> for Pin<Box<G>>
-// {
-//     type Yield = G::Yield;
-//     type Return = G::Return;
-
-//     fn resume(mut self: Pin<&mut Self>, arg: R) -> GeneratorState<Self::Yield, Self::Return> {
-//         G::resume((*self).as_mut(), arg)
-//     }
-// }
-
-// impl<F: ?Sized + Future + Unpin> Future for Box<F>
-// {
-//     type Output = F::Output;
-
-//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         F::poll(Pin::new(&mut *self), cx)
-//     }
-// }
-
-// impl<S: ?Sized + AsyncIterator + Unpin> AsyncIterator for Box<S> {
-//     type Item = S::Item;
-
-//     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-//         Pin::new(&mut **self).poll_next(cx)
-//     }
-
-//     fn size_hint(&self) -> (usize, Option<usize>) {
-//         (**self).size_hint()
-//     }
-// }
