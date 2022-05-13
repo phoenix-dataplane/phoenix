@@ -61,7 +61,7 @@ impl MrpcEngineBuilder {
         assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
         Ok(MrpcEngine {
-            state,
+            _state: state,
             customer: self.customer,
             node: self.node,
             cmd_tx: self.cmd_tx,

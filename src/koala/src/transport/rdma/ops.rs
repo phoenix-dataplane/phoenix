@@ -113,7 +113,8 @@ impl Ops {
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_send(wr_id, buf, &rdma_mr, flags.0).map_err(DatapathError::RdmaCm)?;
+        cmid.post_send(wr_id, buf, &rdma_mr, flags.0)
+            .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
 
@@ -436,11 +437,7 @@ impl Ops {
         Ok(())
     }
 
-    pub(crate) async fn resolve_route(
-        &self,
-        cmid_handle: Handle,
-        timeout_ms: i32,
-    ) -> Result<()> {
+    pub(crate) async fn resolve_route(&self, cmid_handle: Handle, timeout_ms: i32) -> Result<()> {
         trace!(
             "ResolveRoute: cmid_handle: {:?}, timeout_ms: {:?}",
             cmid_handle,
@@ -691,8 +688,7 @@ impl Ops {
         channel_handle: Handle,
         channel: &rdmacm::EventChannel,
     ) -> Result<()> {
-        self
-            .state
+        self.state
             .shared
             .cm_manager
             .lock()
@@ -729,6 +725,16 @@ impl Ops {
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<Result<rdmacm::CmEvent>> {
         if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
+            use std::cmp;
+            match cm_event.status().cmp(&0) {
+                cmp::Ordering::Equal => {}
+                cmp::Ordering::Less => {
+                    return Some(Err(ApiError::RdmaCm(io::Error::from_raw_os_error(
+                        -cm_event.status(),
+                    ))));
+                }
+                cmp::Ordering::Greater => return Some(Err(ApiError::Transport(cm_event.status()))),
+            }
             return Some(Ok(cm_event));
         }
         if let Some(err) = self.pop_first_cm_error() {

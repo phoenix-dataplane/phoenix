@@ -65,16 +65,6 @@ impl SharedRegion {
     }
 
     #[inline]
-    pub(crate) fn as_slice(&self) -> &[u8] {
-        self
-    }
-
-    #[inline]
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
-        self
-    }
-
-    #[inline]
     pub(crate) fn as_ptr(&self) -> *const u8 {
         self.mmap.as_ptr()
     }

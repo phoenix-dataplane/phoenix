@@ -110,21 +110,6 @@ impl TransportModule {
         Ok(())
     }
 
-    pub(crate) fn create_engine(
-        &mut self,
-        customer: CustomerType,
-        mode: SchedulingMode,
-        client_pid: Pid,
-    ) -> Result<TransportEngine> {
-        let builder = TransportEngineBuilder::new(customer, client_pid, mode);
-        let engine = builder.build()?;
-
-        // also build the cm engine
-        self.create_cm_engine(client_pid)?;
-
-        Ok(engine)
-    }
-
     pub fn handle_new_client<P: AsRef<Path>>(
         &mut self,
         sock: &DomainSocket,

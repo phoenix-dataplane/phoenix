@@ -13,7 +13,6 @@ use log::{debug, warn};
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
-use ipc::ChannelFlavor;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;

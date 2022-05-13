@@ -406,8 +406,6 @@ impl RpcAdapterEngine {
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.cmd_tx.send(mrpc::cmd::Completion(Ok(res)))?,
-                    Err(ControlPathError::InProgress) => return Ok(Progress(0)),
-                    Err(ControlPathError::NoResponse) => return Ok(Progress(1)),
                     Err(e) => self.cmd_tx.send(mrpc::cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
