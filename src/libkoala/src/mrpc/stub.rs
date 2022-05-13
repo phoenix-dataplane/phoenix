@@ -3,7 +3,6 @@ use std::io;
 use std::net::ToSocketAddrs;
 
 use ipc::shmalloc::ShmPtr;
-use unique::Unique;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
@@ -14,7 +13,6 @@ use interface::Handle;
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::mrpc::alloc::Box;
-use crate::salloc::heap::SharedHeapAllocator;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
 use crate::salloc::region::SharedRegion;
@@ -156,6 +154,7 @@ impl ClientStub {
                         let m = SharedRegion::new(
                             mr.1,
                             mr.2,
+                            // TODO(cjr): update this
                             8 * 1024 * 1024,
                             mr.3,
                             memfd,
@@ -250,6 +249,7 @@ impl Server {
                             let m = SharedRegion::new(
                                 mr.1,
                                 mr.2,
+                                // TODO(cjr): update this
                                 8 * 1024 * 1024,
                                 mr.3,
                                 memfd,

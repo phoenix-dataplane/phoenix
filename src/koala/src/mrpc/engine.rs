@@ -1,17 +1,16 @@
 use std::future::Future;
 
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
-use unique::Unique;
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::shmalloc::ShmPtr;
 
 use super::module::CustomerType;
-use super::state::{Resource, State};
+use super::state::State;
 use super::{DatapathError, Error};
-use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
-use crate::mrpc::marshal::{RpcMessage, ShmBuf};
+use crate::engine::{future, Engine, EngineResult, Indicator, Vertex};
+use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -53,12 +52,6 @@ impl Engine for MrpcEngine {
 
     fn entry(mut self) -> Self::Future {
         Box::pin(async move { self.mainloop().await })
-    }
-
-    #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let res = self.state.resource() as *const Resource;
-        Some(&*res)
     }
 }
 

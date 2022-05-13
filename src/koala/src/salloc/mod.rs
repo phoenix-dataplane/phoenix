@@ -5,7 +5,7 @@ use crate::resource::Error as ResourceError;
 
 pub mod engine;
 pub mod module;
-// pub mod state;
+pub mod state;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]

@@ -4,7 +4,6 @@ use std::mem;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use unique::Unique;
 
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use interface::Handle;

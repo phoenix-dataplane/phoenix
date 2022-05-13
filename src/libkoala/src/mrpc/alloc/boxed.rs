@@ -1,18 +1,15 @@
 use core::any::Any;
 use core::borrow;
 use core::cmp::Ordering;
-use core::convert::{From, TryFrom};
+use core::convert::From;
 use core::fmt;
-use core::future::Future;
 use core::hash::{Hash, Hasher};
-use core::iter::FromIterator;
 use core::iter::{FusedIterator, Iterator};
 use core::marker::Unpin;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
-use core::ptr::{self, Unique};
-use core::task::{Context, Poll};
+use core::ptr::Unique;
 
 // use crate::alloc::{handle_alloc_error, WriteCloneIntoRaw};
 // use crate::alloc::{AllocError, Allocator, Global, Layout};
@@ -28,8 +25,6 @@ use ipc::shmalloc::ShmPtr;
 
 use crate::salloc::heap::SharedHeapAllocator;
 
-
-
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
 // on `box_free` for more details.
@@ -37,8 +32,7 @@ pub struct Box<T: ?Sized>(ShmPtr<T>);
 
 impl<T> Box<T> {
     #[inline]
-    pub fn new(x: T) -> Self
-    {
+    pub fn new(x: T) -> Self {
         let mut boxed = Self::new_uninit();
         unsafe {
             boxed.as_mut_ptr().write(x);
@@ -58,8 +52,7 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>>
-    {
+    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>> {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
@@ -70,15 +63,13 @@ impl<T> Box<T> {
     }
 
     pub fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-    where
-    {
+where {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
         unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>>
-    {
+    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
@@ -88,16 +79,14 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-    {
+    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError> {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
         unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
     }
 
     #[inline(always)]
-    pub fn pin(x: T) -> Pin<Self>
-    {
+    pub fn pin(x: T) -> Pin<Self> {
         Self::into_pin(Self::new(x))
     }
 
@@ -124,7 +113,7 @@ impl<T> Box<T> {
             let layout = Layout::from_size_align_unchecked(size, align);
             SharedHeapAllocator.deallocate(non_null.cast(), layout);
             dst.assume_init()
-        }   
+        }
     }
 
     #[inline]
@@ -347,11 +336,11 @@ impl<T: ?Sized> Box<T> {
     // TODO(wyj): shouldn't drop the Box if it is createdby the backend
     #[inline]
     pub unsafe fn from_raw(raw: *mut T, addr_remote: usize) -> Self {
-        Box( { ShmPtr::new_unchecked(raw, addr_remote) } )
+        Box(ShmPtr::new_unchecked(raw, addr_remote))
     }
 
     pub unsafe fn from_shmptr(raw: ShmPtr<T>) -> Self {
-        Box ( raw )
+        Box(raw)
     }
 
     #[inline]
@@ -372,19 +361,16 @@ impl<T: ?Sized> Box<T> {
     }
 
     #[inline]
-    pub fn into_shmptr<'a>(b: Self) -> ShmPtr<T>
-    {
-        unsafe { mem::ManuallyDrop::new(b).0 }
+    pub fn into_shmptr<'a>(b: Self) -> ShmPtr<T> {
+        mem::ManuallyDrop::new(b).0
     }
 
     #[inline]
-    pub fn leak<'a>(b: Self) -> &'a mut T
-    {
+    pub fn leak<'a>(b: Self) -> &'a mut T {
         unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 
-    pub fn into_pin(boxed: Self) -> Pin<Self>
-    {
+    pub fn into_pin(boxed: Self) -> Pin<Self> {
         // It's not possible to move or replace the insides of a `Pin<Box<T>>`
         // when `T: !Unpin`,  so it's safe to pin it directly without any
         // additional requirements.
@@ -419,7 +405,7 @@ impl<T: Default> Default for Box<T> {
 
 #[inline]
 pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
-    unsafe { Box::from_raw_query_remote(Box::into_raw(v).0 as *mut str) }
+    Box::from_raw_query_remote(Box::into_raw(v).0 as *mut str)
 }
 
 // impl Default for Box<str> {
@@ -437,7 +423,7 @@ impl<T: Clone> WriteCloneIntoRaw for T {
     default unsafe fn write_clone_into_raw(&self, target: *mut Self) {
         // Having allocated *first* may allow the optimizer to create
         // the cloned value in-place, skipping the local and move.
-        unsafe { target.write(self.clone()) };
+        target.write(self.clone());
     }
 }
 
@@ -445,7 +431,7 @@ impl<T: Copy> WriteCloneIntoRaw for T {
     #[inline]
     unsafe fn write_clone_into_raw(&self, target: *mut Self) {
         // We can always copy in-place, without ever involving a local value.
-        unsafe { target.copy_from_nonoverlapping(self, 1) };
+        target.copy_from_nonoverlapping(self, 1);
     }
 }
 
@@ -574,8 +560,7 @@ impl<T> From<T> for Box<T> {
     }
 }
 
-impl<T: ?Sized> From<Box<T>> for Pin<Box<T>>
-{
+impl<T: ?Sized> From<Box<T>> for Pin<Box<T>> {
     fn from(boxed: Box<T>) -> Self {
         Box::into_pin(boxed)
     }
@@ -749,7 +734,11 @@ impl Box<dyn Any> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
         // NOTE(wyj): is check is performed on *self, i.e., dyn Any
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
@@ -765,7 +754,11 @@ impl Box<dyn Any> {
 impl Box<dyn Any + Send> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
@@ -781,7 +774,11 @@ impl Box<dyn Any + Send> {
 impl Box<dyn Any + Send + Sync> {
     #[inline]
     pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
-        if self.is::<T>() { unsafe { Ok(self.downcast_unchecked::<T>()) } } else { Err(self) }
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked::<T>()) }
+        } else {
+            Err(self)
+        }
     }
 
     #[inline]
@@ -826,7 +823,6 @@ impl<T: ?Sized> DerefMut for Box<T> {
         unsafe { self.0.as_mut() }
     }
 }
-
 
 impl<I: Iterator + ?Sized> Iterator for Box<I> {
     type Item = I::Item;

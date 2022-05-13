@@ -1,8 +1,5 @@
 use std::future::Future;
-use std::io;
-use std::os::unix::prelude::AsRawFd;
 
-use ipc::customer::Customer;
 use ipc::salloc::cmd;
 
 use super::module::CustomerType;
@@ -12,8 +9,7 @@ use crate::node::Node;
 
 use crate::rpc_adapter;
 use crate::rpc_adapter::state::State as RpcAdapterState;
-use crate::salloc::state::State as SallocState;
-
+use crate::salloc::state::{State as SallocState, ShmMr};
 
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
@@ -90,21 +86,21 @@ impl SallocEngine {
                 // TODO(wyj): implement backend heap allocator to properly handle align 
                 let nbytes = size;
                 log::trace!("AllocShm, nbytes: {}", nbytes);
-                let pd = self.adapter_state.resource().default_pds()[0];
+                let pd = &self.adapter_state.resource().default_pds()[0];
                 let access = rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_READ
                     | rpc_adapter::ulib::uverbs::AccessFlags::REMOTE_WRITE
                     | rpc_adapter::ulib::uverbs::AccessFlags::LOCAL_WRITE;
                 let mr: rpc_adapter::ulib::uverbs::MemoryRegion<u8> = pd.allocate(nbytes, access).unwrap();
                 // mr's addr on backend side
-                let remote_addr = mr.as_ptr() as u64;
-                let file_off = mr.file_off as i64;
+                let remote_addr = mr.as_ptr().expose_addr();
+                let file_off = mr.file_off() as i64;
                 self.adapter_state.resource().insert_mr(mr)?;
                 Ok(cmd::CompletionKind::AllocShm(
                     remote_addr,
                     file_off,
                 ))
             }
-            Command::DeallocShm(addr) => {
+            Command::DeallocShm(_addr) => {
                 // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table. 
                 // DeregMr will be performed during drop.
                 unimplemented!()
@@ -115,13 +111,14 @@ impl SallocEngine {
                     let mr = self.adapter_state.resource().recv_mr_table.get(mr_handle)?;
                     mr.set_app_vaddr(*app_vaddr);
                     ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-                    let mr_local_addr = mr.as_ptr() as usize;
+                    let mr_local_addr = mr.as_ptr().expose_addr();
                     let mr_remote_mapped = ShmMr {
                         ptr: *app_vaddr,
                         len: mr.len(),
+                        // TODO(cjr): update this
                         align: 8 * 1024 * 1024,
                     };
-                    self.state.resource().insert_addr_map(local_addr, mr_remote_mapped)?;
+                    self.state.resource().insert_addr_map(mr_local_addr, mr_remote_mapped)?;
                 }
                 Ok(CompletionKind::NewMappedAddrs)
             }
