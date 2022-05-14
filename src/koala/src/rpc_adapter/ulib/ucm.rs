@@ -17,6 +17,7 @@ pub(crate) struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     handle: interface::CmId,
     pd: Option<&'pd ProtectionDomain>,
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
+    tos: Option<u8>,
 }
 
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
@@ -31,6 +32,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             handle: interface::CmId(interface::Handle::INVALID),
             pd: None,
             qp_init_attr: Default::default(),
+            tos: None,
         }
     }
 
@@ -47,7 +49,10 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         self
     }
 
-    pub(crate) fn set_qp_context(&mut self, qp_context: &'ctx (dyn Any + Send + Sync)) -> &mut Self {
+    pub(crate) fn set_qp_context(
+        &mut self,
+        qp_context: &'ctx (dyn Any + Send + Sync),
+    ) -> &mut Self {
         self.qp_init_attr.qp_context = Some(qp_context);
         self
     }
@@ -97,6 +102,11 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         self
     }
 
+    pub(crate) fn set_tos(&mut self, tos: u8) -> &mut Self {
+        self.tos = Some(tos);
+        self
+    }
+
     pub(crate) async fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdListener, Error> {
         let listen_addr = addr
             .to_socket_addrs()?
@@ -108,15 +118,24 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         assert!(cmid.qp.is_none());
         // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
+        // Set TOS, haven't tested
+        if let Some(tos) = self.tos {
+            ops.set_tos(self.handle.0, tos)?;
+        }
         // bind_addr
         ops.bind_addr(cmid.handle.0, &listen_addr)?;
         // listen
         ops.listen(cmid.handle.0, 512)?;
         mem::forget(drop_cmid);
-        Ok(CmIdListener { handle: cmid.handle })
+        Ok(CmIdListener {
+            handle: cmid.handle,
+        })
     }
 
-    pub(crate) async fn resolve_route<A: ToSocketAddrs>(&self, addr: A) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
+    pub(crate) async fn resolve_route<A: ToSocketAddrs>(
+        &self,
+        addr: A,
+    ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {
         let connect_addr = addr
             .to_socket_addrs()?
             .next()
@@ -127,6 +146,10 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         assert!(cmid.qp.is_none());
         // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
+        // Set TOS, haven't tested
+        if let Some(tos) = self.tos {
+            ops.set_tos(self.handle.0, tos)?;
+        }
         // resolve_addr
         ops.resolve_addr(cmid.handle.0, &connect_addr).await?;
         // resolve_route
@@ -141,7 +164,12 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub(crate) fn build(&self) -> Result<PreparedCmId, Error> {
         // create_qp
         let pd = self.pd.map(|pd| pd.inner);
-        let qp = get_ops().cm_create_qp(self.handle.0, pd.as_ref(), &interface::QpInitAttr::from_borrow(&self.qp_init_attr))?;
+        let qp = get_ops().cm_create_qp(
+            self.handle.0,
+            pd.as_ref(),
+            &interface::QpInitAttr::from_borrow(&self.qp_init_attr),
+        )?;
+
         Ok(PreparedCmId {
             inner: Inner {
                 handle: self.handle,
@@ -223,15 +251,28 @@ impl AsHandle for PreparedCmId {
 }
 
 impl PreparedCmId {
-    pub(crate) async fn accept<'a>(self, conn_param: Option<&'a ConnParam<'a>>) -> Result<CmId, Error> {
+    pub(crate) async fn accept<'a>(
+        self,
+        conn_param: Option<&'a ConnParam<'a>>,
+    ) -> Result<CmId, Error> {
         let conn_param = conn_param.map(|param| interface::ConnParam::from_borrow(&param));
-        get_ops().accept(self.inner.handle.0, conn_param.as_ref()).await?;
+        get_ops()
+            .accept(self.inner.handle.0, conn_param.as_ref())
+            .await?;
+        get_ops().set_rnr_timeout(self.inner.handle.0, 1)?;
         Ok(CmId { inner: self.inner })
     }
 
-    pub(crate) async fn connect<'a>(self, conn_param: Option<&'a ConnParam<'a>>) -> Result<CmId, Error> {
+    pub(crate) async fn connect<'a>(
+        self,
+        conn_param: Option<&'a ConnParam<'a>>,
+    ) -> Result<CmId, Error> {
         let conn_param = conn_param.map(|param| interface::ConnParam::from_borrow(&param));
-        get_ops().connect(self.inner.handle.0, conn_param.as_ref()).await.map_err(Error::Connect)?;
+        get_ops()
+            .connect(self.inner.handle.0, conn_param.as_ref())
+            .await
+            .map_err(Error::Connect)?;
+        get_ops().set_rnr_timeout(self.inner.handle.0, 1)?;
         Ok(CmId { inner: self.inner })
     }
 }
@@ -251,7 +292,10 @@ impl AsHandle for CmId {
 impl Drop for CmId {
     fn drop(&mut self) {
         futures::executor::block_on(async {
-            get_ops().disconnect(&self.inner.handle).await.unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
+            get_ops()
+                .disconnect(&self.inner.handle)
+                .await
+                .unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
         });
     }
 }
