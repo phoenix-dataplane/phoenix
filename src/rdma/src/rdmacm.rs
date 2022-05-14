@@ -496,14 +496,7 @@ impl<'a> MemoryRegion<'a> {
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ
             | ffi::ibv_access_flags::IBV_ACCESS_ON_DEMAND;
-        let mr = unsafe {
-            ffi::ibv_reg_mr(
-                pd,
-                ptr::null_mut(),
-                usize::MAX as _,
-                access.0 as i32,
-            )
-        };
+        let mr = unsafe { ffi::ibv_reg_mr(pd, ptr::null_mut(), usize::MAX as _, access.0 as i32) };
         if mr.is_null() {
             Err(io::Error::last_os_error())
         } else {
@@ -754,6 +747,43 @@ impl<'res> CmId<'res> {
             _phantom: PhantomData,
             qp: unsafe { &*id }.qp,
         })
+    }
+
+    pub fn set_tos(&self, tos: u8) -> io::Result<()> {
+        let id = self.0;
+        assert!(self.qp().is_none());
+        let mut val: u8 = tos;
+        let rc = unsafe {
+            ffi::rdma_set_option(
+                id,
+                ffi::RDMA_OPTION_ID as _,
+                ffi::RDMA_OPTION_ID_TOS as _,
+                &mut val as *mut u8 as *mut c_void,
+                mem::size_of_val(&val) as _,
+            )
+        };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    pub fn set_rnr_timeout(&self, min_rnr_timer: u8) -> io::Result<()> {
+        assert!(self.qp().is_some());
+        let qp = self.qp().unwrap().qp;
+        // RTS->RTS
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_RTS,
+            min_rnr_timer,
+            ..Default::default()
+        };
+        let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
+            | ffi::ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER;
+        let rc = unsafe { ffi::ibv_modify_qp(qp, &mut attr, mask.0 as _) };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     pub fn connect(&self, conn_param: Option<&ffi::rdma_conn_param>) -> io::Result<()> {
