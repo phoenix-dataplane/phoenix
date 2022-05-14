@@ -496,6 +496,22 @@ impl Ops {
         Ok(prepare_returned_qp(handles))
     }
 
+    /// Must be set before resolve_addr
+    pub(crate) fn set_tos(&self, cmid_handle: Handle, tos: u8) -> Result<()> {
+        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        // assert!(cmid.qp().is_some(), "this must be called after QP is created");
+        cmid.set_tos(tos).map_err(ApiError::RdmaCm)?;
+        Ok(())
+    }
+
+    /// Must be after connect/accept
+    pub(crate) fn set_rnr_timeout(&self, cmid_handle: Handle, min_rnr_timer: u8) -> Result<()> {
+        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        // assert!(cmid.qp().is_some(), "this must be called after QP is created");
+        cmid.set_rnr_timeout(min_rnr_timer).map_err(ApiError::RdmaCm)?;
+        Ok(())
+    }
+
     // NOTE(cjr): reg_mr does not insert the MR to its table.
     pub(crate) fn reg_mr(
         &self,
