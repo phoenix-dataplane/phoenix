@@ -16,6 +16,9 @@ use crate::node::Node;
 pub struct MrpcEngine {
     pub(crate) _state: State,
 
+    pub(crate) total_exec_time: i64,
+    pub(crate) num_execs: i64,
+
     pub(crate) flag: bool,
 
     pub(crate) customer: CustomerType,
@@ -60,12 +63,26 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+
             let mut nwork = 0;
+
+            let start = chrono::Utc::now().timestamp_nanos();
+
             if let Progress(n) = self.check_customer()? {
                 nwork += n;
+                let end = chrono::Utc::now().timestamp_nanos();
+                if n > 0 {
+                    self.total_exec_time += end - start;
+                    self.num_execs += 1;
+                }
             }
 
-            self.check_input_queue()?;
+
+
+            if let Progress(n) = self.check_input_queue()? {
+                nwork += n;
+
+            }
 
             if self.customer.has_control_command() {
                 self.flush_dp()?;
@@ -77,7 +94,19 @@ impl MrpcEngine {
             self.check_new_incoming_connection()?;
 
             self.indicator.as_ref().unwrap().set_nwork(nwork);
+
+            self.log_exec_time();
+
+
             future::yield_now().await;
+        }
+    }
+
+    fn log_exec_time(&mut self) {
+        if self.num_execs % 1000 == 0 && self.num_execs > 1 {
+            log::warn!("MrpcEngine check_customer avg. exec time {}, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
+            self.total_exec_time = 0;
+            self.num_execs = 0;
         }
     }
 }
@@ -213,7 +242,7 @@ impl MrpcEngine {
             self.process_dp(wr)?;
         }
 
-        Ok(Progress(0))
+        Ok(Progress(count))
     }
 
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
@@ -306,7 +335,7 @@ impl MrpcEngine {
                         1
                     })?;
                 }
-                Ok(Progress(0))
+                Ok(Progress(1))
             }
             Err(TryRecvError::Empty) => Ok(Progress(0)),
             Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),

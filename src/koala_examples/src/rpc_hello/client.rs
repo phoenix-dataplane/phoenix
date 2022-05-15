@@ -35,7 +35,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let start = Instant::now();
         for i in 0..8192 {
             let resp = client.say_hello(&mut reqs[0]).await.unwrap();
-            log::info!("client main got reply from mRPC engine");
+            // log::info!("client main got reply from mRPC engine");
 
             // eprintln!("resp {}: {:?}", i, resp);
             // eprintln!("resp {} received, len: {}", i, resp.name.len());

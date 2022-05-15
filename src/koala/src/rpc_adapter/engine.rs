@@ -44,6 +44,9 @@ pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
     pub(crate) flag: bool,
 
+    pub(crate) total_exec_time: i64,
+    pub(crate) num_execs: i64,
+
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
@@ -99,17 +102,28 @@ impl Engine for RpcAdapterEngine {
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+
             let mut work = 0;
 
             // check input queue
+            let start = chrono::Utc::now().timestamp_nanos();
             if let Progress(n) = self.check_input_queue()? {
                 work += n;
+                let end = chrono::Utc::now().timestamp_nanos();
+                if n > 0 {
+                    self.total_exec_time += end - start;
+                    self.num_execs += 1;
+                }
             }
+
 
             // check service
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
+
             }
+
+
 
             // check input command queue
             if let Progress(n) = self.check_input_cmd_queue().await? {
@@ -123,7 +137,19 @@ impl RpcAdapterEngine {
             self.check_incoming_connection().await?;
 
             self.indicator.as_ref().unwrap().set_nwork(work);
+
+
+            self.log_exec_time();
+
             future::yield_now().await;
+        }
+    }
+
+    fn log_exec_time(&mut self) {
+        if self.num_execs % 1000 == 0 && self.num_execs > 1 {
+            log::warn!("RpcAdapterEngine check_input_queue avg. exec time {}, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
+            self.total_exec_time = 0;
+            self.num_execs = 0;
         }
     }
 }
@@ -157,14 +183,18 @@ impl RpcAdapterEngine {
         use ulib::uverbs::SendFlags;
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
+
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
+
             let conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
                 // some random number for now TODO(cjr): update this
                 self.local_buffer.push_front(msg);
                 break;
             }
+
             let cmid = &conn_ctx.cmid;
             // Sender marshals the data (gets an SgList)
             let sglist = msg_ref.marshal();
@@ -177,6 +207,8 @@ impl RpcAdapterEngine {
                     sg_len: sglist.0.len(),
                 });
             }
+
+
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
             for (i, &sge) in sglist.0.iter().enumerate() {
@@ -202,6 +234,7 @@ impl RpcAdapterEngine {
                         )?;
                     }
                 }
+                
             }
             // Sender posts an extra SendWithImm
             return Ok(Progress(1));
