@@ -126,7 +126,7 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
         let sge1 = ShmBuf { ptr: selfptr, len };
         let mut sgl = unsafe { self.val.as_ref() }.marshal()?;
         sgl.0.insert(0, sge1);
-        eprintln!("MessageTemplate<T>, marshal, sgl: {:0x?}", sgl);
+        // eprintln!("MessageTemplate<T>, marshal, sgl: {:0x?}", sgl);
         Ok(sgl)
     }
 }

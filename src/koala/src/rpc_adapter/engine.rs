@@ -42,6 +42,8 @@ unsafe impl EngineLocalStorage for TlStorage {
 
 pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
+    pub(crate) flag: bool,
+
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
@@ -189,6 +191,7 @@ impl RpcAdapterEngine {
                     }
                 } else {
                     // post send with imm
+                    log::info!("post_send_imm, len={}", sge.len);
                     unsafe {
                         cmid.post_send_with_imm(
                             odp_mr,
@@ -296,6 +299,9 @@ impl RpcAdapterEngine {
                     match wc.opcode {
                         WcOpcode::Send => {
                             // send completed, do nothing
+                            if wc.wc_flags.contains(WcFlags::WITH_IMM) {
+                                log::info!("post_send_imm completed!");
+                            }
                         }
                         WcOpcode::Recv => {
                             let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
@@ -311,6 +317,7 @@ impl RpcAdapterEngine {
                             conn_ctx.receiving_sgl.lock().0.push(sge);
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
+                                log::info!("post_recv received complete message");
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
@@ -350,6 +357,8 @@ impl RpcAdapterEngine {
 
     async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
         // TODO(cjr): should check for each connection.......... shit!
+        if self.flag { return Ok(Status::Progress(0)) }
+
         if let Some(recent) = self.recent_listener_handle.as_ref() {
             let listener = self.tls.state.resource().listener_table.get(recent)?;
             if let Some(mut builder) = listener.try_get_request()? {
@@ -373,6 +382,7 @@ impl RpcAdapterEngine {
                     mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
                 ));
                 self.cmd_tx.send(comp)?;
+                self.flag = true;
             }
             Ok(Status::Progress(1))
         } else {

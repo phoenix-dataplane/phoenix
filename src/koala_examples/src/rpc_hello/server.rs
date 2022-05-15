@@ -1,31 +1,38 @@
 #![feature(allocator_api)]
 use libkoala::mrpc::alloc::Vec;
 use libkoala::mrpc::codegen::{Greeter, GreeterServer, HelloReply, HelloRequest};
+use libkoala::mrpc::stub::{MessageTemplate, NamedService};
 
 #[derive(Debug)]
-struct MyGreeter;
+struct MyGreeter {
+    reply: libkoala::mrpc::alloc::Box::<MessageTemplate<HelloReply>>
+}
 
 impl Greeter for MyGreeter {
     fn say_hello(
-        &self,
-        request: libkoala::mrpc::alloc::Box<HelloRequest>,
-    ) -> Result<libkoala::mrpc::alloc::Box<HelloReply>, libkoala::mrpc::Status> {
-        // eprintln!("resp: {:?}", request);
-        let mut name = Vec::new();
-        // name.extend(request.name);
-        // NOTE(wyj): With our wrapped Box, we cannot perform DerefMove
-        // see: https://manishearth.github.io/blog/2017/01/10/rust-tidbits-box-is-special/
-        // we rely instead on an unbox method
-        name.extend(request.unbox().name);
-        let reply = libkoala::mrpc::alloc::Box::new(HelloReply { name });
+        &mut self,
+        _request: libkoala::mrpc::alloc::Box<HelloRequest>,
+    ) -> Result<&mut libkoala::mrpc::alloc::Box<MessageTemplate<HelloReply>>, libkoala::mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
-        Ok(reply)
+        Ok(&mut self.reply)
     }
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    let mut name = Vec::with_capacity(1000000);
+    name.resize(1000000, 42);
+
+    let reply = libkoala::mrpc::alloc::Box::new(HelloReply { name });
+
+    let msg = MessageTemplate::new_reply(
+        reply,
+        interface::Handle(0), 
+        GreeterServer::<MyGreeter>::FUNC_ID, 
+        0
+    );
+
     let _server = libkoala::mrpc::stub::Server::bind("0.0.0.0:5000")?
-        .add_service(GreeterServer::new(MyGreeter))
+        .add_service(GreeterServer::new(MyGreeter { reply: msg }))
         .serve()?;
     Ok(())
 }

@@ -69,15 +69,15 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
 }
 
 pub(crate) fn post_request<T: SwitchAddressSpace>(
-    mut msg: Box<MessageTemplate<T>>,
+    msg: &mut Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
     let meta = msg.meta;
     msg.switch_address_space();
-    let (local_ptr, addr_remote) = Box::into_raw(msg);
+    let ptr = msg.as_shmptr();
     let erased = MessageTemplateErased {
         meta,
-        shm_addr: addr_remote,
-        shm_addr_remote: local_ptr as *const () as usize
+        shm_addr: ptr.get_remote_addr(),
+        shm_addr_remote: ptr.as_ptr() as *const () as usize
     };
     let req = dp::WorkRequest::Call(erased);
     MRPC_CTX.with(|ctx| {
@@ -222,7 +222,9 @@ impl Server {
     pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         loop {
             // check new incoming connections
-            self.check_new_incoming_connection()?;
+            if self.handles.is_empty() {
+                self.check_new_incoming_connection()?;
+            }
             // check new requests
             let msgs = self.poll_requests()?;
             self.post_replies(msgs)?;
