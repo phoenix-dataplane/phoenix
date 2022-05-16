@@ -106,12 +106,13 @@ impl RpcAdapterEngine {
             let mut work = 0;
 
             // check input queue
-            let start = chrono::Utc::now().timestamp_nanos();
+            let start = std::time::Instant::now();
+
             if let Progress(n) = self.check_input_queue()? {
                 work += n;
-                let end = chrono::Utc::now().timestamp_nanos();
+                let dur = start.elapsed().as_nanos();
                 if n > 0 {
-                    self.total_exec_time += end - start;
+                    self.total_exec_time += dur as i64;
                     self.num_execs += 1;
                 }
             }
@@ -120,7 +121,6 @@ impl RpcAdapterEngine {
             // check service
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
-
             }
 
 
@@ -135,6 +135,7 @@ impl RpcAdapterEngine {
             // need to make it asynchronous and low cost to check.
             // TODO(cjr): move this to another engine and runtime
             self.check_incoming_connection().await?;
+            
 
             self.indicator.as_ref().unwrap().set_nwork(work);
 
@@ -147,7 +148,7 @@ impl RpcAdapterEngine {
 
     fn log_exec_time(&mut self) {
         if self.num_execs % 1000 == 0 && self.num_execs > 1 {
-            log::warn!("RpcAdapterEngine check_input_queue avg. exec time {}, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
+            log::warn!("RpcAdapterEngine mainloop avg. exec time {} ns, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
             self.total_exec_time = 0;
             self.num_execs = 0;
         }

@@ -52,7 +52,7 @@ fn init_env_log() {
     use std::io::Write;
 
     env_logger::Builder::default()
-            .filter_level(log::LevelFilter::Info)
+            .filter_level(log::LevelFilter::Warn)
             .format(|buf, record| {
             let level_style = buf.default_level_style(record.level());
             writeln!(

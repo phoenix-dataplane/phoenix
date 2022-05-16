@@ -66,18 +66,11 @@ impl MrpcEngine {
 
             let mut nwork = 0;
 
-            let start = chrono::Utc::now().timestamp_nanos();
+            let start = std::time::Instant::now();
 
             if let Progress(n) = self.check_customer()? {
                 nwork += n;
-                let end = chrono::Utc::now().timestamp_nanos();
-                if n > 0 {
-                    self.total_exec_time += end - start;
-                    self.num_execs += 1;
-                }
             }
-
-
 
             if let Progress(n) = self.check_input_queue()? {
                 nwork += n;
@@ -95,6 +88,13 @@ impl MrpcEngine {
 
             self.indicator.as_ref().unwrap().set_nwork(nwork);
 
+
+            let dur = start.elapsed().as_nanos();
+            if nwork > 0 {
+                self.total_exec_time += dur as i64;
+                self.num_execs += 1;
+            }
+
             self.log_exec_time();
 
 
@@ -104,7 +104,7 @@ impl MrpcEngine {
 
     fn log_exec_time(&mut self) {
         if self.num_execs % 1000 == 0 && self.num_execs > 1 {
-            log::warn!("MrpcEngine check_customer avg. exec time {}, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
+            log::warn!("MrpcEngine main loop exec time {} ns, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
             self.total_exec_time = 0;
             self.num_execs = 0;
         }
