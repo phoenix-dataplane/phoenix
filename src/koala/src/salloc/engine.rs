@@ -86,7 +86,7 @@ impl SallocEngine {
         match req {
             Command::AllocShm(size, align) => {
                 // TODO(wyj): implement backend heap allocator to properly handle align
-                log::trace!("AllocShm, size: {}", size);
+                trace!("AllocShm, size: {}", size);
                 let layout = Layout::from_size_align(size, align)?;
                 let region = SharedRegion::new(layout)?;
                 // mr's addr on backend side
@@ -108,7 +108,7 @@ impl SallocEngine {
                 // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table.
                 // DeregMr will be performed during drop.
                 // unimplemented!()
-                log::warn!("unimplemented, skipping");
+                warn!("unimplemented, skipping");
                 Ok(cmd::CompletionKind::DeallocShm)
             }
             Command::NewMappedAddrs(app_vaddrs) => {

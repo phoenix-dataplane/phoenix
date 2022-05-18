@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use std::path::PathBuf;
 
-#[macro_use]
-extern crate log;
 use anyhow::Result;
 use structopt::StructOpt;
+
+#[macro_use]
+extern crate tracing;
 
 use koala::config::Config;
 use koala::control::Control;
@@ -24,7 +25,7 @@ fn main() -> Result<()> {
     let config = Config::from_path(opts.config)?;
 
     // by default, KOALA_LOG="debug"
-    init_env_log(&config.log_env, &config.default_log_level);
+    let _gurad = init_tokio_tracing(&config.log_env, &config.default_log_level, &config.log_dir);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
@@ -34,25 +35,36 @@ fn main() -> Result<()> {
     control.mainloop()
 }
 
-fn init_env_log(filter_env: &str, default_level: &str) {
-    use chrono::Utc;
-    use std::io::Write;
+fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Option<String>) -> tracing_appender::non_blocking::WorkerGuard {
+    use std::str::FromStr;
+    
 
-    let env = env_logger::Env::new().filter_or(filter_env, default_level);
-    env_logger::Builder::from_env(env)
-        .format(|buf, record| {
-            let level_style = buf.default_level_style(record.level());
-            writeln!(
-                buf,
-                "[{} {} {}:{}] {}",
-                Utc::now().format("%Y-%m-%d %H:%M:%S%.6f"),
-                level_style.value(record.level()),
-                record.file().unwrap_or("<unnamed>"),
-                record.line().unwrap_or(0),
-                &record.args()
-            )
-        })
-        .init();
+    let format = tracing_subscriber::fmt::format()
+        .with_level(true)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .compact();
 
-    info!("env_logger initialized");
+    
+    let env_filter = tracing_subscriber::EnvFilter::from_env(filter_env)
+        .add_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid log level").into());
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .event_format(format);
+    
+    let guard = if let Some(log_dir) = log_directory {
+        let file_appender = tracing_appender::rolling::minutely(log_dir, "koala.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        subscriber.with_writer(non_blocking).init();
+        guard
+    } else {
+        let (non_blocking, guard) = tracing_appender::non_blocking(std::io::stdout());
+        subscriber.with_writer(non_blocking).init();
+        guard
+    };
+
+    info!("tokio_tracing initialized");
+    guard
 }

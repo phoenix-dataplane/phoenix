@@ -109,7 +109,7 @@ impl<T> MessageTemplate<T> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
         let this = ShmPtr::new(erased.shm_addr as *mut MessageTemplate<T>, erased.shm_addr_remote).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
-        log::debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
+        debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this
         // Self {
         //     meta: erased.meta,
@@ -134,18 +134,18 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
 impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
     type Error = ();
     unsafe fn unmarshal(mut sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error> {
-        log::debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
+        debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
         if sg_list.0.len() <= 1 {
             return Err(());
         }
         let mut header_sgl = sg_list.0.remove(0);
         header_sgl.len -= mem::size_of::<ShmPtr<T>>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]), salloc_state)?;
-        log::debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
+        debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
         let mut this = meta.cast::<Self>();
-        log::debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
+        debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
         let val = T::unmarshal(sg_list, salloc_state).or(Err(()))?;
-        log::debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
+        debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
         this.as_mut().val = val;
         Ok(this)
     }

@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use log::{debug, warn};
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;

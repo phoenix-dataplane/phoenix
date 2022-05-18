@@ -70,6 +70,7 @@ pub struct RdmaTransportConfig {
 pub struct Config {
     pub log_env: String,
     pub default_log_level: String,
+    pub log_dir: Option<String>,
     pub modules: Vec<String>,
     pub control: Control,
     #[serde(alias = "transport-rdma")]

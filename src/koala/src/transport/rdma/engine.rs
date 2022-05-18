@@ -169,7 +169,7 @@ impl TransportEngine {
                     Err(e) => {
                         // better to log the error here, in case sometimes the customer does
                         // not receive the error
-                        log::error!("process_cmd error: {}", e);
+                        error!("process_cmd error: {}", e);
                         self.customer.send_comp(cmd::Completion(Err(e.into())))?
                     }
                 }

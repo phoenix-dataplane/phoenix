@@ -63,8 +63,6 @@ impl MrpcEngineBuilder {
         Ok(MrpcEngine {
             _state: state,
             flag: false,
-            total_exec_time: 0,
-            num_execs: 0,
             customer: self.customer,
             node: self.node,
             cmd_tx: self.cmd_tx,

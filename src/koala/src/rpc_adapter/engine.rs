@@ -44,9 +44,6 @@ pub struct RpcAdapterEngine {
     pub(crate) tls: Box<TlStorage>,
     pub(crate) flag: bool,
 
-    pub(crate) total_exec_time: i64,
-    pub(crate) num_execs: i64,
-
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
@@ -102,28 +99,16 @@ impl Engine for RpcAdapterEngine {
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-
             let mut work = 0;
-
             // check input queue
-            let start = std::time::Instant::now();
-
             if let Progress(n) = self.check_input_queue()? {
                 work += n;
-                let dur = start.elapsed().as_nanos();
-                if n > 0 {
-                    self.total_exec_time += dur as i64;
-                    self.num_execs += 1;
-                }
             }
-
 
             // check service
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
             }
-
-
 
             // check input command queue
             if let Progress(n) = self.check_input_cmd_queue().await? {
@@ -139,20 +124,10 @@ impl RpcAdapterEngine {
 
             self.indicator.as_ref().unwrap().set_nwork(work);
 
-
-            self.log_exec_time();
-
             future::yield_now().await;
         }
     }
 
-    fn log_exec_time(&mut self) {
-        if self.num_execs % 1000 == 0 && self.num_execs > 1 {
-            log::warn!("RpcAdapterEngine mainloop avg. exec time {} ns, #execs={}", self.total_exec_time / self.num_execs, self.num_execs);
-            self.total_exec_time = 0;
-            self.num_execs = 0;
-        }
-    }
 }
 
 impl RpcAdapterEngine {
@@ -200,7 +175,7 @@ impl RpcAdapterEngine {
             // Sender marshals the data (gets an SgList)
             let sglist = msg_ref.marshal();
             // Sender posts send requests from the SgList
-            log::debug!("check_input_queue, sglist: {:0x?}", sglist);
+            debug!("check_input_queue, sglist: {:0x?}", sglist);
             if msg_ref.is_request() {
                 conn_ctx.credit.fetch_sub(sglist.0.len(), Ordering::AcqRel);
                 conn_ctx.outstanding_req.lock().push_back(ReqContext {
@@ -224,7 +199,7 @@ impl RpcAdapterEngine {
                     }
                 } else {
                     // post send with imm
-                    log::info!("post_send_imm, len={}", sge.len);
+                    info!("post_send_imm, len={}", sge.len);
                     unsafe {
                         cmid.post_send_with_imm(
                             odp_mr,
@@ -257,7 +232,7 @@ impl RpcAdapterEngine {
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
-        log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
+        debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
         let mut erased =
             unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
         let meta = &mut unsafe { erased.as_mut() }.meta;
@@ -327,6 +302,8 @@ impl RpcAdapterEngine {
         let mut comps = Vec::with_capacity(32);
         let cq = self.get_or_init_cq();
         cq.poll(&mut comps)?;
+
+        let mut progress = 0;
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
@@ -334,7 +311,7 @@ impl RpcAdapterEngine {
                         WcOpcode::Send => {
                             // send completed, do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                log::info!("post_send_imm completed!");
+                                info!("post_send_imm completed!");
                             }
                         }
                         WcOpcode::Recv => {
@@ -351,20 +328,20 @@ impl RpcAdapterEngine {
                             conn_ctx.receiving_sgl.lock().0.push(sge);
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
-                                log::info!("post_recv received complete message");
+                                info!("post_recv received complete message");
                                 use std::ops::DerefMut;
-                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
+                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());                                
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
                             }
                             // XXX(cjr): only when the upper layer app finish using the data
-                            // we can repost the receives
+                            // we can repost the receives                          
                             let cmid = &conn_ctx.cmid;
 
                             let recv_mr = self
                                 .salloc
                                 .resource()
                                 .recv_mr_table
-                                .get(&Handle(wc.wr_id as u32))?;
+                                .get(&Handle(wc.wr_id as u32))?;      
                             let mut odp_mr = self.get_or_init_odp_mr();
                             let off = recv_mr.as_ptr().expose_addr();
                             let len = recv_mr.len();
@@ -374,6 +351,8 @@ impl RpcAdapterEngine {
                                 // post_recv when the user completes the usage.
                                 cmid.post_recv(&mut odp_mr, off..off + len, wc.wr_id)?;
                             }
+
+                            progress += 1;
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
                         _ => panic!("Unhandled wc opcode: {:?}", wc),
@@ -386,7 +365,7 @@ impl RpcAdapterEngine {
         }
         // COMMENT(cjr): Progress(0) here is okay for now because we haven't use the progress as
         // any indicator.
-        Ok(Status::Progress(0))
+        Ok(Status::Progress(progress))
     }
 
     async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
@@ -501,7 +480,7 @@ impl RpcAdapterEngine {
                 unreachable!();
             }
             // mrpc::cmd::Command::AllocShm(nbytes) => {
-            //     log::trace!("AllocShm, nbytes: {}", *nbytes);
+            //     trace!("AllocShm, nbytes: {}", *nbytes);
             //     let pd = &self.tls.state.resource().default_pds()[0];
             //     let access = ulib::uverbs::AccessFlags::REMOTE_READ
             //         | ulib::uverbs::AccessFlags::REMOTE_WRITE
@@ -517,8 +496,8 @@ impl RpcAdapterEngine {
             //     };
             //     // store the allocated MRs for later memory address translation
             //     let memfd = mr.memfd().as_raw_fd();
-            //     // log::debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
-            //     // log::debug!(
+            //     // debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
+            //     // debug!(
             //     //     "mr_table: {:0x?}",
             //     //     self.tls
             //     //         .state
@@ -536,7 +515,7 @@ impl RpcAdapterEngine {
             //     ))
             // }
             mrpc::cmd::Command::Connect(addr) => {
-                log::trace!("Connect, addr: {:?}", addr);
+                trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
                 let cq = self.get_or_init_cq();
                 let builder = ulib::ucm::CmIdBuilder::new()
@@ -562,7 +541,7 @@ impl RpcAdapterEngine {
                 ))
             }
             mrpc::cmd::Command::Bind(addr) => {
-                log::trace!("Bind, addr: {:?}", addr);
+                trace!("Bind, addr: {:?}", addr);
                 // create CmIdBuilder
                 let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();
