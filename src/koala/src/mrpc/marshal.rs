@@ -175,6 +175,8 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
     fn marshal(&self) -> SgList {
         // <Self as dyn Marshal>::marshal(self).unwrap()
         // <Self as Marshal<Error = <T as Marshal>::Error>>::marshal(self).unwrap()
+        let span = trace_span!("marshal message template");
+        let _enter = span.enter();
         (self as &dyn Marshal<Error = <T as Marshal>::Error>).marshal().unwrap()
     }
 }

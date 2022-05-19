@@ -162,13 +162,17 @@ impl RpcAdapterEngine {
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
-            let span = trace_span!("check_input_queue: send_msg");
+            let span = trace_span!("RpcAdapter check_input_queue: send_msg");
             let _enter = span.enter();
             
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
 
-            let conn_ctx = self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+            let conn_ctx = { 
+                let span = trace_span!("get conn context");
+                let _enter = span.enter();
+                self.tls.state.resource().cmid_table.get(&cmid_handle)?
+            };
 
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
                 // some random number for now TODO(cjr): update this
@@ -203,34 +207,37 @@ impl RpcAdapterEngine {
 
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
-            for (i, &sge) in sglist.0.iter().enumerate() {
-                // query mr from each sge
-                // let mr = self.salloc.resource().query_mr(sge)?;
-                // let off = sge.ptr - mr.as_ptr() as usize;
-                let off = sge.ptr;
-                if i + 1 < sglist.0.len() {
-                    // post send
-                    unsafe {
-                        let span = trace_span!("post_send");
-                        let _enter = span.enter();
-                        cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
-                    }
-                } else {
-                    // post send with imm
-                    info!("post_send_imm, len={}", sge.len);
-                    unsafe {
-                        let span = trace_span!("post_send_with_imm");
-                        let _enter = span.enter();
-                        cmid.post_send_with_imm(
-                            odp_mr,
-                            off..off + sge.len,
-                            0,
-                            SendFlags::SIGNALED,
-                            0,
-                        )?;
+            {
+                let span = trace_span!("post_send: enumerate sglist");
+                let _enter = span.enter();
+                for (i, &sge) in sglist.0.iter().enumerate() {
+                    // query mr from each sge
+                    // let mr = self.salloc.resource().query_mr(sge)?;
+                    // let off = sge.ptr - mr.as_ptr() as usize;
+                    let off = sge.ptr;
+                    if i + 1 < sglist.0.len() {
+                        // post send
+                        unsafe {
+                            let span = trace_span!("post_send");
+                            let _enter = span.enter();
+                            cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                        }
+                    } else {
+                        // post send with imm
+                        info!("post_send_imm, len={}", sge.len);
+                        unsafe {
+                            let span = trace_span!("post_send_with_imm");
+                            let _enter = span.enter();
+                            cmid.post_send_with_imm(
+                                odp_mr,
+                                off..off + sge.len,
+                                0,
+                                SendFlags::SIGNALED,
+                                0,
+                            )?;
+                        }
                     }
                 }
-                
             }
             // Sender posts an extra SendWithImm
             return Ok(Progress(1));
@@ -269,7 +276,8 @@ impl RpcAdapterEngine {
 
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
-            
+            let span = trace_span!("replenish the credits");
+            let _enter = span.enter();
             let call_id = meta.call_id;
             let mut outstanding_req = conn_ctx.outstanding_req.lock();
             let req_ctx = outstanding_req.pop_front().unwrap();
@@ -328,16 +336,17 @@ impl RpcAdapterEngine {
                 }
             }
         };
-        self.rx_outputs()[0].send(dyn_msg).unwrap();
+        {
+            let span = trace_span!("unmarshal_and_deliver_up: rx_outputs send");
+            let _enter = span.enter();
+            self.rx_outputs()[0].send(dyn_msg).unwrap();
+        }
         Ok(Progress(1))
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
-
-
-
         let mut comps = Vec::with_capacity(32);
         let cq = self.get_or_init_cq();
         cq.poll(&mut comps)?;
@@ -346,7 +355,7 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    let span = trace_span!("check_transport_service: wc polled");
+                    let span = trace_span!("RpcAdapter check_transport_service: wc polled");
                     let _enter = span.enter();
 
                     match wc.opcode {
@@ -357,17 +366,23 @@ impl RpcAdapterEngine {
                             }
                         }
                         WcOpcode::Recv => {
-                            let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
-                            let cmid_handle = wr_ctx.conn_id;
-                            let conn_ctx =
-                                self.tls.state.resource().cmid_table.get(&cmid_handle)?;
-                            // received a segment of RPC message
-                            let sge = ShmBuf {
-                                ptr: wr_ctx.mr_addr,
-                                len: wc.byte_len as _, // note this byte_len is only valid for
-                                                       // recv request
+                            let conn_ctx = {
+                                let span = trace_span!("push receiving_sgl");
+                                let _enter = span.enter();
+                                let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
+                                let cmid_handle = wr_ctx.conn_id;
+                                let conn_ctx =
+                                    self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+                                // received a segment of RPC message
+                                let sge = ShmBuf {
+                                    ptr: wr_ctx.mr_addr,
+                                    len: wc.byte_len as _, // note this byte_len is only valid for
+                                                        // recv request
+                                };
+                                conn_ctx.receiving_sgl.lock().0.push(sge);
+                                conn_ctx
                             };
-                            conn_ctx.receiving_sgl.lock().0.push(sge);
+
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
                                 info!("post_recv received complete message");

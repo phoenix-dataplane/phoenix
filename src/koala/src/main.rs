@@ -68,12 +68,12 @@ fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Opt
     let (chrome_layer, flush_guard) = if let Some(log_dir) = log_directory {
         tracing_chrome::ChromeLayerBuilder::new()
             .file(std::path::Path::new(log_dir).join("tracing.json"))
-            .trace_style(tracing_chrome::TraceStyle::Async)
+            .trace_style(tracing_chrome::TraceStyle::Threaded)
             .build()
     }
     else {
         tracing_chrome::ChromeLayerBuilder::new()
-            .trace_style(tracing_chrome::TraceStyle::Async)
+            .trace_style(tracing_chrome::TraceStyle::Threaded)
             .build()
     };
 
