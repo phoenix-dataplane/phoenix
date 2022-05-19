@@ -332,7 +332,7 @@ impl Ops {
     }
 
     pub(crate) async fn get_request(&self, listener_handle: Handle) -> Result<returned::CmId> {
-        trace!("GetRequest, listener_handle: {:?}", listener_handle);
+        // trace!("GetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -347,7 +347,7 @@ impl Ops {
         &self,
         listener_handle: Handle,
     ) -> Result<Option<returned::CmId>> {
-        trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
+        // trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;

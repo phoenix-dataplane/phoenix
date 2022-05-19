@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let config = Config::from_path(opts.config)?;
 
     // by default, KOALA_LOG="debug"
-    let _gurad = init_tokio_tracing(&config.log_env, &config.default_log_level, &config.log_dir);
+    let _gurads = init_tokio_tracing(&config.log_env, &config.default_log_level, &config.log_dir);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
@@ -35,9 +35,10 @@ fn main() -> Result<()> {
     control.mainloop()
 }
 
-fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Option<String>) -> tracing_appender::non_blocking::WorkerGuard {
+fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Option<String>) -> (tracing_appender::non_blocking::WorkerGuard, tracing_chrome::FlushGuard) {
     use std::str::FromStr;
-    
+    use tracing_subscriber::prelude::*;
+
 
     let format = tracing_subscriber::fmt::format()
         .with_level(true)
@@ -47,24 +48,42 @@ fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Opt
         .compact();
 
     
-    let env_filter = tracing_subscriber::EnvFilter::from_env(filter_env)
-        .add_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid log level").into());
+    let env_filter = tracing_subscriber::filter::EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid log level").into())
+        .with_env_var(filter_env)
+        .from_env_lossy();
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .event_format(format);
-    
-    let guard = if let Some(log_dir) = log_directory {
+
+    let (non_blocking, appender_guard) = if let Some(log_dir) = log_directory {
         let file_appender = tracing_appender::rolling::minutely(log_dir, "koala.log");
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        subscriber.with_writer(non_blocking).init();
-        guard
+        tracing_appender::non_blocking(file_appender)
     } else {
-        let (non_blocking, guard) = tracing_appender::non_blocking(std::io::stdout());
-        subscriber.with_writer(non_blocking).init();
-        guard
+        tracing_appender::non_blocking(std::io::stdout())
     };
 
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .event_format(format)
+        .with_writer(non_blocking);
+
+    let (chrome_layer, flush_guard) = if let Some(log_dir) = log_directory {
+        tracing_chrome::ChromeLayerBuilder::new()
+            .file(std::path::Path::new(log_dir).join("tracing.json"))
+            .trace_style(tracing_chrome::TraceStyle::Async)
+            .build()
+    }
+    else {
+        tracing_chrome::ChromeLayerBuilder::new()
+            .trace_style(tracing_chrome::TraceStyle::Async)
+            .build()
+    };
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .with(chrome_layer)
+        .init();
+
     info!("tokio_tracing initialized");
-    guard
+
+    (appender_guard, flush_guard)
 }

@@ -28,12 +28,12 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             );
             reqs.push(msg);
         }
-        for i in 0..8192 {
+        for i in 0..2048 {
             let resp = client.say_hello(&mut reqs[0]).await.unwrap();
             eprintln!("resp {} received", i);
         }
         let start = Instant::now();
-        for i in 0..8192 {
+        for i in 0..2048 {
             let resp = client.say_hello(&mut reqs[0]).await.unwrap();
             // log::info!("client main got reply from mRPC engine");
 
@@ -41,7 +41,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             // eprintln!("resp {} received, len: {}", i, resp.name.len());
         }
         let dura = start.elapsed();
-        eprintln!("dura: {:?}, speed: {:?}", dura, 8e-9 * 8192.0 * 1e6 / dura.as_secs_f64());
+        eprintln!("dura: {:?}, speed: {:?}", dura, 8e-9 * 2048.0 * 1e6 / dura.as_secs_f64());
     });
     Ok(())
 }
