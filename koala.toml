@@ -1,5 +1,5 @@
-event_env = "KOALA_EVENT"
-span_env = "KOALA_SPAN"
+event_env = "KOALA_LOG"
+span_env = "KOALA_PROFILE"
 default_tracing_level = "error"
 log_dir = "/tmp/koala-log"
 
