@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::ToSocketAddrs;
+use std::ops::{Deref, DerefMut};
 
 use ipc::shmalloc::ShmPtr;
-
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
 
@@ -21,13 +21,47 @@ use crate::salloc::SA_CTX;
 use ipc::shmalloc::SwitchAddressSpace;
 
 #[derive(Debug)]
+pub struct RpcMessage<T> {
+    pub(crate) inner: Box<MessageTemplate<T>>
+}
+
+impl<T> RpcMessage<T> {
+    pub fn new_request(msg: T) -> Self {
+        let msg = Box::new(msg);
+        let inner = MessageTemplate::new_request(msg, Handle(0), 0, 0);
+        RpcMessage { inner }
+    }
+
+    pub fn new_reply(msg: T) -> Self {
+        let msg = Box::new(msg);
+        let inner =  MessageTemplate::new_reply(msg, Handle(0), 0, 0);
+        RpcMessage { inner }
+    }
+}
+
+impl<T> Deref for RpcMessage<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+       unsafe{ self.inner.as_ref().val.as_ref() }
+    }
+}
+
+impl<T> DerefMut for RpcMessage<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe{ self.inner.as_mut().val.as_mut() }
+    }
+}
+
+
+#[derive(Debug)]
 pub struct MessageTemplate<T> {
     pub(crate) meta: MessageMeta,
     pub(crate) val: ShmPtr<T>,
 }
 
 impl<T> MessageTemplate<T> {
-    pub fn new(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
+    pub fn new_request(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
         // TODO(cjr): fill in these values
         let meta = MessageMeta {
             conn_id,
@@ -72,6 +106,8 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
     msg: &mut Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
     let meta = msg.meta;
+    tracing::trace!("client post request to mRPC engine, call_id={}", meta.call_id);
+
     msg.switch_address_space();
     let ptr = msg.as_shmptr();
     let erased = MessageTemplateErased {
@@ -80,6 +116,7 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
         shm_addr_remote: ptr.as_ptr() as *const () as usize
     };
     let req = dp::WorkRequest::Call(erased);
+    
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
         while !sent {
@@ -94,6 +131,8 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
 }
 
 pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
+    tracing::trace!("client post reply to mRPC engine, call_id={}", erased.meta.call_id);
+
     let req = dp::WorkRequest::Reply(erased);
     MRPC_CTX.with(|ctx| {
         let mut sent = false;

@@ -19,9 +19,11 @@ thiserror = "1.0.29"
 unique = "0.9.1"
 smol = "1.2.5"
 chrono = "0.4.19"
-log = "0.4.14"
 env_logger = "0.9.0"
 futures = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [[bin]]
 name = "sender"

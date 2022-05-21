@@ -109,7 +109,7 @@ impl<T> MessageTemplate<T> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
         let this = ShmPtr::new(erased.shm_addr as *mut MessageTemplate<T>, erased.shm_addr_remote).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
-        debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
+        // debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this
         // Self {
         //     meta: erased.meta,
@@ -175,8 +175,8 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
     fn marshal(&self) -> SgList {
         // <Self as dyn Marshal>::marshal(self).unwrap()
         // <Self as Marshal<Error = <T as Marshal>::Error>>::marshal(self).unwrap()
-        let span = trace_span!("marshal message template");
-        let _enter = span.enter();
+        // let span = info_span!("marshal message template");
+        // let _enter = span.enter();
         (self as &dyn Marshal<Error = <T as Marshal>::Error>).marshal().unwrap()
     }
 }

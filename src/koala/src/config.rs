@@ -68,8 +68,9 @@ pub struct RdmaTransportConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub log_env: String,
-    pub default_log_level: String,
+    pub event_env: String,
+    pub span_env: String,
+    pub default_tracing_level: String,
     pub log_dir: Option<String>,
     pub modules: Vec<String>,
     pub control: Control,

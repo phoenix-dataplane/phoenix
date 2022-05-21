@@ -51,7 +51,7 @@ impl SharedRegion {
         file_off: i64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
-        log::debug!("SharedRegion::new, remote_addr: {:#0x?}", remote_addr);
+        tracing::debug!("SharedRegion::new, remote_addr: {:#0x?}", remote_addr);
 
         // Map to the same address as remote_addr, panic if it does not work
         let mmap = MmapFixed::new(remote_addr, nbytes, file_off as i64, memfd.as_file())?;

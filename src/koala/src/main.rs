@@ -25,7 +25,12 @@ fn main() -> Result<()> {
     let config = Config::from_path(opts.config)?;
 
     // by default, KOALA_LOG="debug"
-    let _gurads = init_tokio_tracing(&config.log_env, &config.default_log_level, &config.log_dir);
+    let _gurads = init_tokio_tracing(
+        &config.event_env,
+        &config.span_env,
+        &config.default_tracing_level,
+        &config.log_dir
+    );
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(1));
@@ -35,7 +40,7 @@ fn main() -> Result<()> {
     control.mainloop()
 }
 
-fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Option<String>) -> (tracing_appender::non_blocking::WorkerGuard, tracing_chrome::FlushGuard) {
+fn init_tokio_tracing(event_filter_env: &str, span_filter_env: &str, default_level: &str, log_directory: &Option<String>) -> (tracing_appender::non_blocking::WorkerGuard, tracing_chrome::FlushGuard) {
     use std::str::FromStr;
     use tracing_subscriber::prelude::*;
 
@@ -48,10 +53,16 @@ fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Opt
         .compact();
 
     
-    let env_filter = tracing_subscriber::filter::EnvFilter::builder()
-        .with_default_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid log level").into())
-        .with_env_var(filter_env)
+    let fmt_env_filter = tracing_subscriber::filter::EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid default tracing level").into())
+        .with_env_var(event_filter_env)
         .from_env_lossy();
+
+    
+    let span_env_filter = tracing_subscriber::filter::EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::from_str(default_level).expect("invalid default tracing level").into())
+        .with_env_var(span_filter_env)
+        .from_env_lossy();        
 
 
     let (non_blocking, appender_guard) = if let Some(log_dir) = log_directory {
@@ -63,7 +74,8 @@ fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Opt
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .event_format(format)
-        .with_writer(non_blocking);
+        .with_writer(non_blocking)
+        .with_filter(fmt_env_filter);
 
     let (chrome_layer, flush_guard) = if let Some(log_dir) = log_directory {
         tracing_chrome::ChromeLayerBuilder::new()
@@ -78,9 +90,8 @@ fn init_tokio_tracing(filter_env: &str, default_level: &str, log_directory: &Opt
     };
 
     tracing_subscriber::registry()
-        .with(env_filter)
         .with(fmt_layer)
-        .with(chrome_layer)
+        .with(chrome_layer.with_filter(span_env_filter))
         .init();
 
     info!("tokio_tracing initialized");

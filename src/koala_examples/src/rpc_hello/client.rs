@@ -1,71 +1,152 @@
 #![feature(allocator_api)]
+use std::path::PathBuf;
 use std::time::Instant;
+
+use structopt::StructOpt;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 
 use libkoala::mrpc::alloc::Vec;
 use libkoala::mrpc::codegen::{GreeterClient, HelloRequest};
-use libkoala::mrpc::stub::{MessageTemplate, NamedService};
+use libkoala::mrpc::stub::RpcMessage;
 
 use smol;
 
-// TODO(wyj): make server addr CLI argument
-const SERVER_ADDR: &str = "192.168.211.66";
-const SERVER_PORT: u16 = 5000;
+#[derive(StructOpt, Debug)]
+#[structopt(about = "Koala RPC hello client")]
+pub struct Args {
+    /// The address to connect, can be an IP address or domain name.
+    #[structopt(short = "c", long = "connect", default_value = "192.168.211.66")]
+    pub ip: String,
+
+    /// The port number to use.
+    #[structopt(short, long, default_value = "5000")]
+    pub port: u16,
+
+    /// Blocking or not?
+    #[structopt(short = "b", long)]
+    pub blocking: bool,
+    
+    #[structopt(short = "l", long, default_value = "error")]
+    pub log_level: String,
+    
+    #[structopt(long)]
+    pub log_dir: Option<PathBuf>
+}
+
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-    init_env_log();
-    let mut client = GreeterClient::connect((SERVER_ADDR, SERVER_PORT))?;
+    let args = Args::from_args();
+    let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
+
+    let mut client = GreeterClient::connect((args.ip, args.port))?;
     eprintln!("connection setup");
-    smol::block_on(async {
-        let mut reqs = vec![];
-        for _ in 0..128 {
+
+    if args.blocking {
+        smol::block_on(async {
             let mut name = Vec::with_capacity(1000000);
             name.resize(1000000, 42);
-            let msg = MessageTemplate::new(
-                libkoala::mrpc::alloc::Box::new(HelloRequest { name }),
-                interface::Handle(0),
-                GreeterClient::FUNC_ID,
-                0
-            );
-            reqs.push(msg);
-        }
-        for i in 0..1024 {
-            let resp = client.say_hello(&mut reqs[0]).await.unwrap();
-            eprintln!("resp {} received", i);
-        }
-        let start = Instant::now();
-        for i in 0..1024 {
-            let resp = client.say_hello(&mut reqs[0]).await.unwrap();
-            // log::info!("client main got reply from mRPC engine");
+            let mut req = RpcMessage::new_request(HelloRequest { name });
+    
+            for _i in 0..16384 {
+                let resp = client.say_hello(&mut req).await.unwrap();
+                eprintln!("resp {} received", resp);
+            }
+            
+            let start = Instant::now();
+            for _i in 0..16384 {
+                let _resp = client.say_hello(&mut req).await.unwrap();
+            }
 
-            // eprintln!("resp {}: {:?}", i, resp);
-            // eprintln!("resp {} received, len: {}", i, resp.name.len());
-        }
-        let dura = start.elapsed();
-        eprintln!("dura: {:?}, speed: {:?}", dura, 8e-9 * 1024.0 * 1e6 / dura.as_secs_f64());
-    });
+            let dura = start.elapsed();
+            eprintln!("dura: {:?}, speed: {:?}", dura, 8e-9 * 16384.0 * 1e6 / dura.as_secs_f64());
+        });
+    }
+    else {
+        smol::block_on(async {
+            let mut reqs = Vec::new();
+            for _ in 0..128 {
+                let mut name = Vec::with_capacity(1000000);
+                name.resize(1000000, 42);
+                let req = RpcMessage::new_request(HelloRequest { name });
+                reqs.push(req);
+            }
+    
+            // let mut name = Vec::with_capacity(1000000);
+            // name.resize(1000000, 42);
+            // let mut req = RpcMessage::new_request(HelloRequest { name });
+    
+            let mut reply_futures = FuturesUnordered::new();
+    
+            // warmup
+            for _ in 0..128 {
+                for i in 0..128 {
+                    // let resp = client.say_hello(&mut req).await.unwrap();
+                    let resp = client.say_hello(&mut reqs[i]);
+                    if reply_futures.len() >= 32 {
+                        let response: Result<_, _> = reply_futures.next().await.unwrap();
+                        eprintln!("resp {} received", response.unwrap());
+                    }
+                    reply_futures.push(resp);
+                }
+                
+                while !reply_futures.is_empty() {
+                    let response: Result<_, _> = reply_futures.next().await.unwrap();
+                    eprintln!("resp {} received", response.unwrap());
+                }    
+            }
+    
+            let start = Instant::now();
+            for _ in 0..128 {
+                for i in 0..128 {
+                    // let resp = client.say_hello(&mut req).await.unwrap();
+                    let resp = client.say_hello(&mut reqs[i]);
+                    if reply_futures.len() >= 32 {
+                        let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                    }
+                    reply_futures.push(resp);
+                }
+                
+                while !reply_futures.is_empty() {
+                    let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                }    
+            }
+            let dura = start.elapsed();
+            eprintln!("dura: {:?}, speed: {:?}", dura, 8e-9 * 128.0 * 128.0 * 1e6 / dura.as_secs_f64());
+        });
+    }
     Ok(())
 }
 
 
-fn init_env_log() {
-    use chrono::Utc;
-    use std::io::Write;
+fn init_tokio_tracing(level: &str, log_directory: &Option<PathBuf>) -> tracing_appender::non_blocking::WorkerGuard {
+    let format = tracing_subscriber::fmt::format()
+        .with_level(true)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .compact();
 
-    env_logger::Builder::default()
-            .filter_level(log::LevelFilter::Warn)
-            .format(|buf, record| {
-            let level_style = buf.default_level_style(record.level());
-            writeln!(
-                buf,
-                "[{} {} {}:{}] {}",
-                Utc::now().format("%Y-%m-%d %H:%M:%S%.6f"),
-                level_style.value(record.level()),
-                record.file().unwrap_or("<unnamed>"),
-                record.line().unwrap_or(0),
-                &record.args()
-            )
-        })
+
+    let env_filter = tracing_subscriber::filter::EnvFilter::builder()
+        .parse(level)
+        .expect("invalid tracing level");
+
+
+    let (non_blocking, appender_guard) = if let Some(log_dir) = log_directory {
+        let file_appender = tracing_appender::rolling::minutely(log_dir, "rpc-client.log");
+        tracing_appender::non_blocking(file_appender)
+    } else {
+        tracing_appender::non_blocking(std::io::stdout())
+    };
+
+    tracing_subscriber::fmt::fmt()
+        .event_format(format)
+        .with_writer(non_blocking)
+        .with_env_filter(env_filter)
         .init();
 
-    log::info!("env_logger initialized");
+    tracing::info!("tokio_tracing initialized");
+
+    appender_guard
 }

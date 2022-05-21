@@ -1,5 +1,6 @@
-log_env = "KOALA_LOG"
-default_log_level = "debug"
+event_env = "KOALA_EVENT"
+span_env = "KOALA_SPAN"
+default_tracing_level = "error"
 log_dir = "/tmp/koala-log"
 
 # modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]

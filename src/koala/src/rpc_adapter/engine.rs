@@ -162,15 +162,15 @@ impl RpcAdapterEngine {
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
-            let span = trace_span!("RpcAdapter check_input_queue: send_msg");
+            let span = info_span!("RpcAdapter check_input_queue: send_msg");
             let _enter = span.enter();
             
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
 
             let conn_ctx = { 
-                let span = trace_span!("get conn context");
-                let _enter = span.enter();
+                // let span = info_span!("get conn context");
+                // let _enter = span.enter();
                 self.tls.state.resource().cmid_table.get(&cmid_handle)?
             };
 
@@ -183,8 +183,8 @@ impl RpcAdapterEngine {
             let cmid = &conn_ctx.cmid;
 
             let sglist = {
-                let span = trace_span!("marshal");
-                let _enter = span.enter();
+                // let span = info_span!("marshal");
+                // let _enter = span.enter();
                 let sglist = msg_ref.marshal();
                 sglist
             };
@@ -193,8 +193,8 @@ impl RpcAdapterEngine {
             // Sender posts send requests from the SgList
             debug!("check_input_queue, sglist: {:0x?}", sglist);
             {
-                let span = trace_span!("push_back outstanding_req");
-                let _enter = span.enter();
+                // let span = info_span!("push_back outstanding_req");
+                // let _enter = span.enter();
                 if msg_ref.is_request() {
                     conn_ctx.credit.fetch_sub(sglist.0.len(), Ordering::AcqRel);
                     conn_ctx.outstanding_req.lock().push_back(ReqContext {
@@ -208,8 +208,8 @@ impl RpcAdapterEngine {
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
             {
-                let span = trace_span!("post_send: enumerate sglist");
-                let _enter = span.enter();
+                // let span = info_span!("post_send: enumerate sglist");
+                // let _enter = span.enter();
                 for (i, &sge) in sglist.0.iter().enumerate() {
                     // query mr from each sge
                     // let mr = self.salloc.resource().query_mr(sge)?;
@@ -218,16 +218,16 @@ impl RpcAdapterEngine {
                     if i + 1 < sglist.0.len() {
                         // post send
                         unsafe {
-                            let span = trace_span!("post_send");
-                            let _enter = span.enter();
+                            // let span = info_span!("post_send");
+                            // let _enter = span.enter();
                             cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
                         }
                     } else {
                         // post send with imm
-                        info!("post_send_imm, len={}", sge.len);
+                        trace!("post_send_imm, len={}", sge.len);
                         unsafe {
-                            let span = trace_span!("post_send_with_imm");
-                            let _enter = span.enter();
+                            // let span = info_span!("post_send_with_imm");
+                            // let _enter = span.enter();
                             cmid.post_send_with_imm(
                                 odp_mr,
                                 off..off + sge.len,
@@ -261,12 +261,12 @@ impl RpcAdapterEngine {
         use crate::mrpc::codegen;
         debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
-        let span = trace_span!("unmarshal_and_deliver_up");
+        let span = info_span!("unmarshal_and_deliver_up");
         let _enter = span.enter();
 
         let mut erased = {
-            let span = trace_span!("unmarshal MessageTemplateErased");
-            let _enter = span.enter();
+            // let span = info_span!("unmarshal MessageTemplateErased");
+            // let _enter = span.enter();
             let erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
             erased
         };
@@ -276,8 +276,8 @@ impl RpcAdapterEngine {
 
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
-            let span = trace_span!("replenish the credits");
-            let _enter = span.enter();
+            // let span = info_span!("replenish the credits");
+            // let _enter = span.enter();
             let call_id = meta.call_id;
             let mut outstanding_req = conn_ctx.outstanding_req.lock();
             let req_ctx = outstanding_req.pop_front().unwrap();
@@ -293,8 +293,8 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            let span = trace_span!("unmarshal request message template");
-                            let _enter = span.enter();
+                            // let span = info_span!("unmarshal request message template");
+                            // let _enter = span.enter();
                             MessageTemplate::<codegen::HelloRequest>::unmarshal(
                                 sgl,
                                 &self.salloc.shared,
@@ -316,8 +316,8 @@ impl RpcAdapterEngine {
                 match meta.func_id {
                     0 => {
                         let mut msg = unsafe {
-                            let span = trace_span!("unmarshal response message template");
-                            let _enter = span.enter();
+                            // let span = info_span!("unmarshal response message template");
+                            // let _enter = span.enter();
                             MessageTemplate::<codegen::HelloReply>::unmarshal(
                                 sgl,
                                 &self.salloc.shared,
@@ -337,8 +337,8 @@ impl RpcAdapterEngine {
             }
         };
         {
-            let span = trace_span!("unmarshal_and_deliver_up: rx_outputs send");
-            let _enter = span.enter();
+            // let span = info_span!("unmarshal_and_deliver_up: rx_outputs send");
+            // let _enter = span.enter();
             self.rx_outputs()[0].send(dyn_msg).unwrap();
         }
         Ok(Progress(1))
@@ -355,20 +355,20 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    let span = trace_span!("RpcAdapter check_transport_service: wc polled");
+                    let span = info_span!("RpcAdapter check_transport_service: wc polled");
                     let _enter = span.enter();
 
                     match wc.opcode {
                         WcOpcode::Send => {
                             // send completed, do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                info!("post_send_imm completed!");
+                                trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                             }
                         }
                         WcOpcode::Recv => {
                             let conn_ctx = {
-                                let span = trace_span!("push receiving_sgl");
-                                let _enter = span.enter();
+                                // let span = info_span!("push receiving_sgl");
+                                // let _enter = span.enter();
                                 let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
                                 let cmid_handle = wr_ctx.conn_id;
                                 let conn_ctx =
@@ -385,7 +385,7 @@ impl RpcAdapterEngine {
 
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
-                                info!("post_recv received complete message");
+                                trace!("post_recv received complete message, wr_id={}", wc.wr_id);
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());                                
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
@@ -406,8 +406,8 @@ impl RpcAdapterEngine {
                             unsafe {
                                 // TODO(wyj, cjr): This is incorrect. The backend should only
                                 // post_recv when the user completes the usage.
-                                let span = trace_span!("post_recv");
-                                let _enter = span.enter();
+                                // let span = info_span!("post_recv");
+                                // let _enter = span.enter();
                                 cmid.post_recv(&mut odp_mr, off..off + len, wc.wr_id)?;
                             }
 

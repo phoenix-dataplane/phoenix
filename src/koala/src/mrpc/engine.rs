@@ -224,9 +224,8 @@ impl MrpcEngine {
         use crate::mrpc::codegen;
         use crate::mrpc::marshal::MessageTemplate;
         use dp::WorkRequest;
-        info!("mRPC engine got request/reply from App");
 
-        let span = trace_span!("MrpcEngine process_dp");
+        let span = info_span!("MrpcEngine process_dp");
         let _enter = span.enter();
 
         match req {
@@ -235,10 +234,10 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
+                        trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
+
                         let mut msg =
-                            unsafe { 
-                                let span = trace_span!("cast_shmptr to MessageTemplate<T>");
-                                let _enter = span.enter();                                
+                            unsafe {                   
                                 MessageTemplate::<codegen::HelloRequest>::new(*erased) 
                             };
                         // Safety: this is fine here because msg is already a unique
@@ -248,15 +247,13 @@ impl MrpcEngine {
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         debug!("end marshal");
                         let dyn_msg = 
-                            unsafe { 
-                                let span = trace_span!("cast_shmptr to dyn RpcMessage");
-                                let _enter = span.enter();                                
+                            unsafe {                            
                                 ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
                             };
                         
                         {
-                            let span = trace_span!("tx_outputs.send");
-                            let _enter = span.enter();
+                            // let span = info_span!("tx_outputs.send");
+                            // let _enter = span.enter();
                             self.tx_outputs()[0].send(dyn_msg)?;
                         }
                     }
@@ -267,6 +264,8 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
+                        trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
+
                         let mut msg =
                             unsafe { 
                                 MessageTemplate::<codegen::HelloReply>::new(*erased) 
@@ -278,8 +277,8 @@ impl MrpcEngine {
                                 ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
                             };
                         {
-                            let span = trace_span!("tx_outputs.send");
-                            let _enter = span.enter();
+                            // let span = info_span!("tx_outputs.send");
+                            // let _enter = span.enter();
                             self.tx_outputs()[0].send(dyn_msg)?;
                         }
                     }
@@ -294,13 +293,13 @@ impl MrpcEngine {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(mut msg) => {
-                let span = trace_span!("MrpcEngine check_input_queue: recv_msg");
+                let span = info_span!("MrpcEngine check_input_queue: recv_msg");
                 let _enter = span.enter();
 
                 // deliver the msg to application
                 let meta = {
-                    let span = trace_span!("constructing MessageMeta");
-                    let _enter = span.enter();
+                    // let span = info_span!("constructing MessageMeta");
+                    // let _enter = span.enter();
                     let msg_ref = unsafe { msg.as_ref() };
                     let meta = MessageMeta {
                         conn_id: msg_ref.conn_id(),
@@ -321,8 +320,8 @@ impl MrpcEngine {
                 
                 let msg_mut = unsafe { msg.as_mut() };
                 {
-                    let span = trace_span!("switch_addr_space");
-                    let _enter = span.enter();
+                    // let span = info_span!("switch_addr_space");
+                    // let _enter = span.enter();
                     msg_mut.switch_address_space();
                 }
                 // NOTE(wyj): this is the address of the pointer to `msg_mut`
@@ -339,10 +338,10 @@ impl MrpcEngine {
                     shm_addr_remote: msg.as_ptr() as *const () as usize,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
-                info!("mRPC engine send message to App");
+                trace!("mRPC engine send message to App, call_id={}", meta.call_id);
                 {
-                    let span = trace_span!("customer.enqueue_wc");
-                    let _enter = span.enter();
+                    // let span = info_span!("customer.enqueue_wc");
+                    // let _enter = span.enter();
                     let mut sent = false;
                     while !sent {
                         self.customer.enqueue_wc_with(|ptr, _count| unsafe {
