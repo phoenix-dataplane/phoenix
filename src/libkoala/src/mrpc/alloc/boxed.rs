@@ -63,7 +63,7 @@ impl<T> Box<T> {
     }
 
     pub fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-where {
+    {
         let layout = Layout::new::<std::mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
         unsafe { Ok(Box::from_raw_query_remote(ptr.as_ptr())) }
@@ -358,6 +358,10 @@ impl<T: ?Sized> Box<T> {
         // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
         // behaves correctly.
         Unique::from(Box::leak(b))
+    }
+
+    pub fn as_shmptr(&self) -> ShmPtr<T> {
+        self.0
     }
 
     #[inline]

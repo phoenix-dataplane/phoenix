@@ -69,6 +69,7 @@ impl RpcAdapterEngineBuilder {
                 ops: self.ops,
                 state,
             }),
+            flag: false,
             salloc: salloc_state,
             odp_mr: None,
             cq: None,

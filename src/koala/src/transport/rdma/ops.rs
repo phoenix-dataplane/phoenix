@@ -13,8 +13,6 @@ use std::net::SocketAddr;
 use std::slice;
 use std::sync::Arc;
 
-use log::trace;
-
 use interface::{returned, AsHandle, Handle};
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
@@ -195,7 +193,7 @@ impl Ops {
     ) -> std::result::Result<(), DatapathError> {
         let cq = self.resource().cq_table.get_dp(&cq_handle.0)?;
         if wc.capacity() == 0 {
-            log::warn!("wc capacity is zero");
+            warn!("wc capacity is zero");
             return Ok(());
         }
         // Safety: this is fine here because we will resize the wc to the number of elements it really gets
@@ -334,7 +332,7 @@ impl Ops {
     }
 
     pub(crate) async fn get_request(&self, listener_handle: Handle) -> Result<returned::CmId> {
-        trace!("GetRequest, listener_handle: {:?}", listener_handle);
+        // trace!("GetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -349,7 +347,7 @@ impl Ops {
         &self,
         listener_handle: Handle,
     ) -> Result<Option<returned::CmId>> {
-        trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
+        // trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -439,9 +437,9 @@ impl Ops {
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ADDR_RESOLVED;
         let ec_handle = cmid.event_channel().as_handle();
-        log::debug!("before wait_cm_event");
+        debug!("before wait_cm_event");
         let _event = self.wait_cm_event(&ec_handle, event_type).await?;
-        log::debug!("after wait_cm_event");
+        debug!("after wait_cm_event");
 
         Ok(())
     }
@@ -759,17 +757,17 @@ impl Ops {
         event_channel_handle: &Handle,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<Result<rdmacm::CmEvent>> {
-        log::debug!(
-            "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
-            event_channel_handle,
-            event_type
-        );
+        // debug!(
+        //     "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
+        //     event_channel_handle,
+        //     event_type
+        // );
         if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
-            log::trace!(
-                "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
-                event_channel_handle,
-                cm_event
-            );
+            // trace!(
+            //     "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
+            //     event_channel_handle,
+            //     cm_event
+            // );
             use std::cmp;
             match cm_event.status().cmp(&0) {
                 cmp::Ordering::Equal => {}
@@ -783,11 +781,11 @@ impl Ops {
             return Some(Ok(cm_event));
         }
         if let Some(err) = self.pop_first_cm_error() {
-            log::warn!(
-                "try_get_cm_event, got error: ec_handle: {:?}, err: {:?}",
-                event_channel_handle,
-                err
-            );
+            // warn!(
+            //     "try_get_cm_event, got error: ec_handle: {:?}, err: {:?}",
+            //     event_channel_handle,
+            //     err
+            // );
             return Some(Err(err));
         }
         None

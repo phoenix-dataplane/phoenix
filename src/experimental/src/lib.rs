@@ -31,6 +31,10 @@ pub struct QueueOpt {
     /// Queue bound
     #[structopt(short, long, default_value = "1024")]
     pub bound: usize,
+
+    /// Whether to set affinity to a hyperthread core pair
+    #[structopt(short = "a", long = "affinity")]
+    pub set_affinity: bool,
 }
 
 pub fn set_affinity_for_current(cpu_idx: usize) -> io::Result<usize> {
