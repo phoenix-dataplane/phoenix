@@ -278,7 +278,6 @@ impl CompletionQueue {
     #[inline]
     pub fn poll_cq(&self, wc: &mut Vec<WorkCompletion>) -> Result<(), Error> {
         if wc.capacity() == 0 {
-            log::warn!("wc capacity is zero");
             return Ok(());
         }
         // poll local buffer first

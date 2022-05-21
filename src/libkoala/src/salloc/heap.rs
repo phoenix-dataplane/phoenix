@@ -243,7 +243,7 @@ unsafe impl Allocator for SharedHeapAllocator {
                 })
             }
             _ => {
-                log::error!(
+                tracing::error!(
                     "Requested: {} bytes. Please handle object size larger than {}",
                     layout.size(),
                     ZoneAllocator::MAX_ALLOC_SIZE

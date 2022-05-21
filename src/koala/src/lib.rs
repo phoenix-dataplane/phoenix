@@ -7,7 +7,8 @@
 #![feature(int_roundings)]
 
 #[macro_use]
-extern crate log;
+extern crate tracing;
+
 
 pub mod engine;
 pub mod resource;

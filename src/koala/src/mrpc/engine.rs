@@ -16,6 +16,8 @@ use crate::node::Node;
 pub struct MrpcEngine {
     pub(crate) _state: State,
 
+    pub(crate) flag: bool,
+
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
@@ -58,12 +60,17 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+
             let mut nwork = 0;
+
             if let Progress(n) = self.check_customer()? {
                 nwork += n;
             }
 
-            self.check_input_queue()?;
+            if let Progress(n) = self.check_input_queue()? {
+                nwork += n;
+
+            }
 
             if self.customer.has_control_command() {
                 self.flush_dp()?;
@@ -73,7 +80,6 @@ impl MrpcEngine {
             }
 
             self.check_new_incoming_connection()?;
-
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }
@@ -164,7 +170,7 @@ impl MrpcEngine {
             //                     ptr: tup.1,
             //                     len: tup.2,
             //                 };
-            //                 log::debug!(
+            //                 debug!(
             //                     "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
             //                     local_addr,
             //                     buf.ptr,
@@ -211,30 +217,45 @@ impl MrpcEngine {
             self.process_dp(wr)?;
         }
 
-        Ok(Progress(0))
+        Ok(Progress(count))
     }
 
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use crate::mrpc::codegen;
         use crate::mrpc::marshal::MessageTemplate;
         use dp::WorkRequest;
+
+        let span = info_span!("MrpcEngine process_dp");
+        let _enter = span.enter();
+
         match req {
             WorkRequest::Call(erased) => {
                 // TODO(wyj): sanity check on the addr contained in erased
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
+                        trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
+
                         let mut msg =
-                            unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
+                            unsafe {                   
+                                MessageTemplate::<codegen::HelloRequest>::new(*erased) 
+                            };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        log::debug!("start to marshal");
+                        debug!("start to marshal");
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
-                        log::debug!("end marshal");
+                        debug!("end marshal");
                         let dyn_msg = 
-                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
-                        self.tx_outputs()[0].send(dyn_msg)?;
+                            unsafe {                            
+                                ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
+                            };
+                        
+                        {
+                            // let span = info_span!("tx_outputs.send");
+                            // let _enter = span.enter();
+                            self.tx_outputs()[0].send(dyn_msg)?;
+                        }
                     }
                     _ => unimplemented!(),
                 }
@@ -243,13 +264,23 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
+                        trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
+
                         let mut msg =
-                            unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
+                            unsafe { 
+                                MessageTemplate::<codegen::HelloReply>::new(*erased) 
+                        };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         let dyn_msg = 
-                            unsafe { ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() };
-                        self.tx_outputs()[0].send(dyn_msg)?;
+                            unsafe { 
+                                ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
+                            };
+                        {
+                            // let span = info_span!("tx_outputs.send");
+                            // let _enter = span.enter();
+                            self.tx_outputs()[0].send(dyn_msg)?;
+                        }
                     }
                     _ => unimplemented!(),
                 }
@@ -262,23 +293,37 @@ impl MrpcEngine {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(mut msg) => {
+                let span = info_span!("MrpcEngine check_input_queue: recv_msg");
+                let _enter = span.enter();
+
                 // deliver the msg to application
-                let msg_ref = unsafe { msg.as_ref() };
-                let meta = MessageMeta {
-                    conn_id: msg_ref.conn_id(),
-                    func_id: msg_ref.func_id(),
-                    call_id: msg_ref.call_id(),
-                    len: msg_ref.len(),
-                    msg_type: if msg_ref.is_request() {
-                        RpcMsgType::Request
-                    } else {
-                        RpcMsgType::Response
-                    },
+                let meta = {
+                    // let span = info_span!("constructing MessageMeta");
+                    // let _enter = span.enter();
+                    let msg_ref = unsafe { msg.as_ref() };
+                    let meta = MessageMeta {
+                        conn_id: msg_ref.conn_id(),
+                        func_id: msg_ref.func_id(),
+                        call_id: msg_ref.call_id(),
+                        len: msg_ref.len(),
+                        msg_type: if msg_ref.is_request() {
+                            RpcMsgType::Request
+                        } else {
+                            RpcMsgType::Response
+                        },
+                    };
+                    meta
                 };
+
                 // TODO(cjr): switch_address_space
                 // msg.switch_address_space();
+                
                 let msg_mut = unsafe { msg.as_mut() };
-                msg_mut.switch_address_space();
+                {
+                    // let span = info_span!("switch_addr_space");
+                    // let _enter = span.enter();
+                    msg_mut.switch_address_space();
+                }
                 // NOTE(wyj): this is the address of the pointer to `msg_mut`
                 // while switch_address_space swithces the address of the actual payload
                 // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
@@ -293,16 +338,21 @@ impl MrpcEngine {
                     shm_addr_remote: msg.as_ptr() as *const () as usize,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
-                let mut sent = false;
-                while !sent {
-                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                        sent = true;
-                        ptr.cast::<dp::Completion>()
-                            .write(dp::Completion { erased });
-                        1
-                    })?;
+                trace!("mRPC engine send message to App, call_id={}", meta.call_id);
+                {
+                    // let span = info_span!("customer.enqueue_wc");
+                    // let _enter = span.enter();
+                    let mut sent = false;
+                    while !sent {
+                        self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            sent = true;
+                            ptr.cast::<dp::Completion>()
+                                .write(dp::Completion { erased });
+                            1
+                        })?;
+                    }
                 }
-                Ok(Progress(0))
+                Ok(Progress(1))
             }
             Err(TryRecvError::Empty) => Ok(Progress(0)),
             Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
@@ -310,6 +360,7 @@ impl MrpcEngine {
     }
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
+        if self.flag {return Ok(Progress(0)) }
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
@@ -320,6 +371,7 @@ impl MrpcEngine {
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                        self.flag = true;
                         Ok(Status::Progress(1))
                     }
                     other => panic!("unexpected: {:?}", other),
