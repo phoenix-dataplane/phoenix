@@ -2,6 +2,7 @@ use std::net::ToSocketAddrs;
 use std::pin::Pin;
 
 use std::future::Future;
+use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use fnv::FnvHashMap as HashMap;
@@ -10,7 +11,7 @@ use unique::Unique;
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
 use crate::mrpc::stub::{
-    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service,
+    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service, RpcMessage
 };
 use crate::mrpc::MRPC_CTX;
 
@@ -66,24 +67,25 @@ unsafe impl SwitchAddressSpace for HelloReply {
     }
 }
 
-pub struct ReqFuture<'a> {
+pub struct ReqFuture {
     call_id: u64,
-    reply_cache: &'a ReplyCache,
+    reply_cache: Rc<ReplyCache>,
 }
 
-impl<'a> Future for ReqFuture<'a> {
-    type Output = Result<HelloReply, mrpc::Status>;
+impl<'a> Future for ReqFuture {
+    type Output = Result<u64, mrpc::Status>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        check_completion(&this.reply_cache).unwrap();
+        check_completion(&*this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
+            tracing::trace!("ReqFuture receive reply from mRPC engine, call_id={}", erased.meta.call_id);
             // TODO(wyj): do we need to constrct a box that includes remote ptr
             // unmarshal
             let msg: Unique<MessageTemplate<HelloReply>> =
                 Unique::new(erased.shm_addr as *mut _).unwrap();
             // TODO(cjr): when to drop the reply
-            let msg = unsafe { msg.as_ref().val.as_ref().clone() };
-            Poll::Ready(Ok(msg))
+            // let msg = unsafe { msg.as_ref().val.as_ref().clone() };
+            Poll::Ready(Ok((unsafe { msg.as_ref().meta.call_id })))
         } else {
             cx.waker().wake_by_ref();
             Poll::Pending
@@ -140,10 +142,10 @@ impl ReplyCache {
 
 #[derive(Debug)]
 pub struct GreeterClient {
-    stub: ClientStub,
+    pub stub: ClientStub,
     // call_id -> ShmBox<Reply>
-    reply_cache: ReplyCache,
-    call_counter: u64,
+    reply_cache: Rc<ReplyCache>,
+    pub call_counter: u64,
 }
 
 impl GreeterClient {
@@ -156,27 +158,26 @@ impl GreeterClient {
         let stub = ClientStub::connect(dst).unwrap();
         Ok(Self {
             stub,
-            reply_cache: ReplyCache::new(),
+            reply_cache: Rc::new(ReplyCache::new()),
             call_counter: 0,
         })
     }
 
     pub fn say_hello(
         &mut self,
-        request: mrpc::alloc::Box<HelloRequest>,
-    ) -> impl Future<Output = Result<HelloReply, mrpc::Status>> + '_ {
-        let msg = MessageTemplate::new(
-            request,
-            self.stub.get_handle(),
-            Self::FUNC_ID,
-            self.call_counter,
-        );
+        msg: &mut RpcMessage<HelloRequest>,
+    ) -> impl Future<Output = Result<u64, mrpc::Status>> {
+        let call_id = self.call_counter;
+        msg.inner.meta.conn_id = self.stub.get_handle();
+        msg.inner.meta.call_id = call_id;
+        msg.inner.meta.func_id = Self::FUNC_ID;
+
         self.call_counter += 1;
-        let call_id = msg.meta.call_id;
-        stub::post_request(msg).unwrap();
+
+        stub::post_request(&mut msg.inner).unwrap();
         ReqFuture {
             call_id,
-            reply_cache: &self.reply_cache,
+            reply_cache: self.reply_cache.clone(),
         }
     }
 }
@@ -188,9 +189,9 @@ impl NamedService for GreeterClient {
 // #[async_trait]
 pub trait Greeter: Send + Sync + 'static {
     fn say_hello(
-        &self,
-        request: mrpc::alloc::Box<HelloRequest>,
-    ) -> Result<mrpc::alloc::Box<HelloReply>, mrpc::Status>;
+        &mut self,
+        request: &HelloRequest,
+    ) -> Result<&mut RpcMessage<HelloReply>, mrpc::Status>;
 }
 
 /// Translate erased message to concrete type, and call the inner callback function.
@@ -231,16 +232,18 @@ impl<T: Greeter> Service for GreeterServer<T> {
         // indicate that we will no longer use the region of this object, so that the backend can
         // do post_recv.
         std::mem::forget(msg);
-        match self.inner.say_hello(req) {
+        match self.inner.say_hello(req.as_ref()) {
             Ok(reply) => {
-                let mut msg = MessageTemplate::new_reply(reply, conn_id, Self::FUNC_ID, call_id);
-                let meta = msg.meta;
-                msg.switch_address_space();
-                let (local_ptr, addr_remote) = mrpc::alloc::Box::into_raw(msg);
+                reply.inner.meta.conn_id = conn_id;
+                reply.inner.meta.call_id = call_id;
+                reply.inner.meta.func_id = Self::FUNC_ID;
+                let meta = reply.inner.meta;
+                reply.switch_address_space();
+                let ptr = reply.inner.as_shmptr();
                 let erased = MessageTemplateErased {
                     meta,
-                    shm_addr: addr_remote,
-                    shm_addr_remote: local_ptr as *const () as usize
+                    shm_addr: ptr.get_remote_addr(),
+                    shm_addr_remote: ptr.as_ptr() as *const () as usize
                 };
                 erased
             }

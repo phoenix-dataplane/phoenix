@@ -34,11 +34,11 @@ impl Unmarshal for HelloRequest {
     type Error = ();
     unsafe fn unmarshal(sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error> {
         // TODO(cjr): double-check if the code below is correct.
-        log::debug!("HelloReques, unmarshal, sg_list: {:0x?}", sg_list);
+        debug!("HelloReques, unmarshal, sg_list: {:0x?}", sg_list);
         if sg_list.0.len() != 2 {
             return Err(());
         }
-        log::debug!("HelloReques, unmarshal, size_of::<Self>: {:0x?}", mem::size_of::<Self>());
+        debug!("HelloReques, unmarshal, size_of::<Self>: {:0x?}", mem::size_of::<Self>());
         if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }

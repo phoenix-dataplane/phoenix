@@ -1,4 +1,4 @@
-use crossbeam::channel;
+use tokio::sync::mpsc;
 use crossbeam::thread;
 use crossbeam::utils::Backoff;
 use std::time::Instant;
@@ -11,7 +11,8 @@ fn main() {
 
     thread::scope(|s| {
         let opts = &opts;
-        let (tx, rx) = channel::bounded(opts.bound);
+        let (tx, mut rx) = mpsc::channel(opts.bound);
+
         let (sender_core, receiver_core) = get_hyperthread_core_pair();
 
         let sender = s.spawn(move |_| {
