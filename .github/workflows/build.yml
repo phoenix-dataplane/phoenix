@@ -1,0 +1,30 @@
+# cargo build & test
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install RDMA library
+      run: sudo apt install -y rdma-core libibverbs-dev librdmacm-dev
+    - name: Build
+      run: cargo build
+      env:
+        RUST_BACKTRACE: 1
+    - name: Run tests
+      run: cargo test
+      env:
+        RUST_BACKTRACE: 1
+    # - name: Check formatting
+    #   run: cargo fmt -- --check
