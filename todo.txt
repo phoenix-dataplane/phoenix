@@ -19,6 +19,10 @@ Engine Framework
   adjusted, separating data/control queues are no more useful
 - SchedulingMode::Bundled
 
+Benchmark Suite
+- worker starting order
+- auto kill on clean up
+
 Misc
 - Garbage collect CmEngine
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
