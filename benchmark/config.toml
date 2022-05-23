@@ -1,0 +1,5 @@
+workdir = "~/nfs/Developing/koala"
+
+[env]
+KOALA_LOG = "error"
+RUST_BACKTRACE = "1"
