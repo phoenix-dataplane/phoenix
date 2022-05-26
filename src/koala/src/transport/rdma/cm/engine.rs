@@ -24,7 +24,6 @@ impl CmEngine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Progress(usize),
-    Disconnected,
 }
 
 use Status::Progress;
@@ -52,8 +51,11 @@ impl CmEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             let mut nwork = 0;
-            if let Progress(n) = self.check_cm_event()? {
-                nwork += n;
+            let Progress(n) = self.check_cm_event()?;
+            nwork += n;
+            if self.state.alive_engines() == 1 {
+                // cm_engine is the last active engine
+                return Ok(());
             }
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;

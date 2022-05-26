@@ -66,6 +66,11 @@ impl State {
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
     }
+
+    #[inline]
+    pub(crate) fn alive_engines(&self) -> usize {
+        self.shared.alive_engines.load(Ordering::Relaxed)
+    }
 }
 
 pub(crate) struct Shared {

@@ -231,6 +231,7 @@ fn run_benchmark(opt: Opt, path: path::PathBuf) -> anyhow::Result<()> {
     for w in &spec.worker {
         let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs));
         handles.push(h);
+        thread::sleep(Duration::from_millis(1000));
     }
 
     // join
