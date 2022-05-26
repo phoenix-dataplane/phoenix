@@ -12,13 +12,20 @@
 #![feature(ptr_metadata)]
 #![feature(core_intrinsics)]
 #![feature(ptr_const_cast)]
+#![feature(try_reserve_kind)]
+#![feature(trusted_len)]
+#![feature(extend_one)]
+#![feature(rustc_attrs)]
+#![feature(slice_ptr_get)]
+#![feature(slice_ptr_len)]
 
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;
 
 pub mod mrpc;
-pub(crate) mod salloc;
+// TODO(wyj): change to pub(crate)
+pub mod salloc;
 pub mod transport;
 
 // Re-exports
