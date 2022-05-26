@@ -15,6 +15,7 @@ pub use ipc::mrpc::control_plane::TransportType;
 use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
+use crate::salloc::owner::{AllocOwner, AppOwned};
 use crate::salloc::region::SharedRegion;
 use crate::salloc::SA_CTX;
 
@@ -34,7 +35,7 @@ impl<T> RpcMessage<T> {
 
     pub fn new_reply(msg: T) -> Self {
         let msg = Box::new(msg);
-        let inner =  MessageTemplate::new_reply(msg, Handle(0), 0, 0);
+        let inner = MessageTemplate::new_reply(msg, Handle(0), 0, 0);
         RpcMessage { inner }
     }
 }
@@ -43,13 +44,13 @@ impl<T> Deref for RpcMessage<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-       unsafe{ self.inner.as_ref().val.as_ref() }
+       unsafe { self.inner.as_ref().val.as_ref() }
     }
 }
 
 impl<T> DerefMut for RpcMessage<T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe{ self.inner.as_mut().val.as_mut() }
+        unsafe { self.inner.as_mut().val.as_mut() }
     }
 }
 
@@ -61,7 +62,7 @@ pub struct MessageTemplate<T> {
 }
 
 impl<T> MessageTemplate<T> {
-    pub fn new_request(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
+    pub(crate) fn new_request(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
         // TODO(cjr): fill in these values
         let meta = MessageMeta {
             conn_id,
@@ -78,7 +79,7 @@ impl<T> MessageTemplate<T> {
         )
     }
 
-    pub fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
+    pub(crate) fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
             func_id,
@@ -109,11 +110,11 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
     tracing::trace!("client post request to mRPC engine, call_id={}", meta.call_id);
 
     msg.switch_address_space();
-    let ptr = msg.as_shmptr();
+    let (ptr, addr_remote) = Box::as_ptr(&msg);
     let erased = MessageTemplateErased {
         meta,
-        shm_addr: ptr.get_remote_addr(),
-        shm_addr_remote: ptr.as_ptr() as *const () as usize
+        shm_addr: addr_remote,
+        shm_addr_remote: ptr as *const () as usize
     };
     let req = dp::WorkRequest::Call(erased);
     
