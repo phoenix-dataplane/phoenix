@@ -14,54 +14,36 @@ use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service, RpcMessage
 };
 use crate::mrpc::MRPC_CTX;
+use crate::salloc::owner::{AllocOwner, BackendOwned, AppOwned};
 
-use ipc::shmalloc::SwitchAddressSpace;
+use ipc::shmalloc::{SwitchAddressSpace, ShmPtr};
 
 // mimic the generated code of tonic-helloworld
 
-// /// # Safety
-// ///
-// /// The zero-copy inter-process communication thing is beyond what the compiler
-// /// can check. The programmer must ensure that everything is fine.
-// pub unsafe trait SwitchAddressSpace {
-//     // An unsafe trait is unsafe to implement but safe to use.
-//     // The user of this trait does not need to satisfy any special condition.
-//     fn switch_address_space(&mut self);
-// }
-
-// #[derive(Debug)]
-// struct HelloRequestInner {
-//     name: mrpc::alloc::Vec<u8>,
-// }
+// # Safety
+//
+// The zero-copy inter-process communication thing is beyond what the compiler
+// can check. The programmer must ensure that everything is fine.
 
 // Manually write all generated code
-#[derive(Debug, Clone)]
-pub struct HelloRequest {
-    pub name: mrpc::alloc::Vec<u8>,
-    // inner: Pin<Unique<HelloRequestInner>>,
-    // ptr: ShmPtr<HelloRequestInner, SharedHeapAllocator>,
-    // ptr: Box<HelloRequestInner, SharedHeapAllocator>,
+
+#[derive(Debug)]
+pub struct HelloRequest<O: AllocOwner = AppOwned> {
+    pub name: mrpc::alloc::Vec<u8, O>,
 }
 
-// impl HelloRequest {
-//     #[inline]
-//     pub fn name(&self) -> &mrpc::alloc::Vec<u8> {
-//         &self.ptr.name
-//     }
-// }
-
-unsafe impl SwitchAddressSpace for HelloRequest {
+unsafe impl<O: AllocOwner> SwitchAddressSpace for HelloRequest<O> {
     fn switch_address_space(&mut self) {
         self.name.switch_address_space();
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct HelloReply {
-    pub name: mrpc::alloc::Vec<u8>, // change to mrpc::alloc::Vec<u8>, -> String
+#[derive(Debug)]
+pub struct HelloReply<O: AllocOwner = AppOwned> {
+    pub name: mrpc::alloc::Vec<u8, O>, // change to mrpc::alloc::Vec<u8>, -> String
 }
 
-unsafe impl SwitchAddressSpace for HelloReply {
+unsafe impl<O: AllocOwner> SwitchAddressSpace for HelloReply<O> {
     fn switch_address_space(&mut self) {
         self.name.switch_address_space();
     }
@@ -72,20 +54,18 @@ pub struct ReqFuture {
     reply_cache: Rc<ReplyCache>,
 }
 
-impl<'a> Future for ReqFuture {
+impl Future for ReqFuture {
     type Output = Result<u64, mrpc::Status>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         check_completion(&*this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
             tracing::trace!("ReqFuture receive reply from mRPC engine, call_id={}", erased.meta.call_id);
-            // TODO(wyj): do we need to constrct a box that includes remote ptr
-            // unmarshal
-            let msg: Unique<MessageTemplate<HelloReply>> =
-                Unique::new(erased.shm_addr as *mut _).unwrap();
-            // TODO(cjr): when to drop the reply
-            // let msg = unsafe { msg.as_ref().val.as_ref().clone() };
-            Poll::Ready(Ok((unsafe { msg.as_ref().meta.call_id })))
+            let raw = erased.shm_addr as *mut MessageTemplate<HelloReply<BackendOwned>>;
+            let msg = unsafe { mrpc::alloc::Box::from_backend_raw(raw, erased.shm_addr_remote) };
+            let _reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
+            // TODO(wyj): send out reply to client and properly drop
+            Poll::Ready(Ok(unsafe { msg.meta.call_id }))
         } else {
             cx.waker().wake_by_ref();
             Poll::Pending
@@ -190,7 +170,7 @@ impl NamedService for GreeterClient {
 pub trait Greeter: Send + Sync + 'static {
     fn say_hello(
         &mut self,
-        request: &HelloRequest,
+        request: &HelloRequest<BackendOwned>,
     ) -> Result<&mut RpcMessage<HelloReply>, mrpc::Status>;
 }
 
@@ -219,13 +199,13 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let raw = req.shm_addr as *mut MessageTemplate<HelloRequest>;
+        let raw = req.shm_addr as *mut MessageTemplate<HelloRequest<BackendOwned>>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
         let addr_remote = req.shm_addr_remote;
-        let msg = unsafe { mrpc::alloc::Box::from_raw(raw, addr_remote) };
-        let req = unsafe { mrpc::alloc::Box::from_shmptr(msg.val) };
+        let msg = unsafe { mrpc::alloc::Box::from_backend_raw(raw, addr_remote) };
+        let req = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
         // TODO(wyj): should not be forget. 
         // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
         // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to
@@ -239,11 +219,11 @@ impl<T: Greeter> Service for GreeterServer<T> {
                 reply.inner.meta.func_id = Self::FUNC_ID;
                 let meta = reply.inner.meta;
                 reply.switch_address_space();
-                let ptr = reply.inner.as_shmptr();
+                let (ptr, addr_remote) = mrpc::alloc::Box::as_ptr(&reply.inner);
                 let erased = MessageTemplateErased {
                     meta,
-                    shm_addr: ptr.get_remote_addr(),
-                    shm_addr_remote: ptr.as_ptr() as *const () as usize
+                    shm_addr: addr_remote,
+                    shm_addr_remote: ptr as *const () as usize
                 };
                 erased
             }
