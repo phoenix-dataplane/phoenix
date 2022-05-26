@@ -27,6 +27,8 @@ impl Context {
 
 pub(crate) mod heap;
 pub(crate) mod region;
+// TODO(wyj): wrap the O generic and change to pub(crate)
+pub mod owner;
 
 #[derive(Error, Debug)]
 pub enum Error {

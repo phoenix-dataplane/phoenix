@@ -331,11 +331,12 @@ impl MrpcEngine {
                 // MessageTemplateErased is a just a message header
                 // it does not holder actual payload
                 // but a pointer to the payload on shared memory
+                let (ptr, addr_remote) = msg.as_ptr();
                 let erased = MessageTemplateErased {
                     meta,
                     // casting to thin pointer first, drop the Pointee::Metadata
-                    shm_addr: msg.get_remote_addr(),
-                    shm_addr_remote: msg.as_ptr() as *const () as usize,
+                    shm_addr: addr_remote,
+                    shm_addr_remote: ptr as *const () as usize,
                     // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
                 };
                 trace!("mRPC engine send message to App, call_id={}", meta.call_id);

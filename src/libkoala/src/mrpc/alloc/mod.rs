@@ -1,5 +1,6 @@
 mod vec;
 mod boxed;
+mod raw_vec;
 
 pub use vec::Vec;
-pub use boxed::Box;
+pub(crate) use boxed::Box;

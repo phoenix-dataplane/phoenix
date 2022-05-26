@@ -8,6 +8,18 @@ pub struct ShmPtr<T: ?Sized> {
     addr_remote: *const ()
 }
 
+impl<T: Sized> ShmPtr<T> {
+    #[inline]
+    pub const fn dangling() -> Self {
+        let ptr = Unique::dangling();
+        let addr_remote = std::mem::align_of::<T>();
+        ShmPtr { 
+            ptr,
+            addr_remote: addr_remote as *const ()
+        }
+    }
+}
+
 impl<T: ?Sized> ShmPtr<T> {
     #[inline]
     pub fn new(ptr: *mut T, addr_remote: usize) -> Option<Self> {
@@ -35,9 +47,12 @@ impl<T: ?Sized> ShmPtr<T> {
         }
     }
 
-    /// Acquires the underlying `*mut` pointer.
-    pub fn as_ptr(self) -> *mut T {
-        self.ptr.as_ptr()
+    pub fn as_ptr(self) -> (*mut T, usize) {
+        (self.ptr.as_ptr(), self.addr_remote as usize)
+    }
+
+    pub fn as_non_null_ptr(self) -> (NonNull<T>, usize) {
+        (self.ptr.into(), self.addr_remote as usize)
     }
 
     /// Dereferences the content.
@@ -75,12 +90,12 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 }
 
-impl<T: ?Sized> From<ShmPtr<T>> for core::ptr::NonNull<T> {
+impl<T: ?Sized> From<ShmPtr<T>> for NonNull<T> {
     #[inline]
     fn from(shmptr: ShmPtr<T>) -> Self {
         // SAFETY: A ShmPtr pointer cannot be null, so the conditions for
         // new_unchecked() are respected.
-        unsafe { NonNull::new_unchecked(shmptr.as_ptr()) }
+        unsafe { NonNull::new_unchecked(shmptr.as_ptr().0) }
     }
 }
 
@@ -99,13 +114,13 @@ unsafe impl<T: Sync + ?Sized> Sync for ShmPtr<T> {}
 
 impl<T: ?Sized> std::fmt::Debug for ShmPtr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Pointer::fmt(&self.as_ptr(), f)
+        std::fmt::Pointer::fmt(&self.as_ptr().0, f)
     }
 }
 
 impl<T: ?Sized> std::fmt::Pointer for ShmPtr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Pointer::fmt(&self.as_ptr(), f)
+        std::fmt::Pointer::fmt(&self.as_ptr().0, f)
     }
 }
 
@@ -119,4 +134,3 @@ unsafe impl<T: ?Sized> SwitchAddressSpace for ShmPtr<T> {
         self.addr_remote = addr as *const ();
     }
 }
-

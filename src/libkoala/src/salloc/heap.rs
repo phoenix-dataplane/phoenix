@@ -1,4 +1,4 @@
-use std::alloc::{AllocError, Allocator, Layout};
+use std::alloc::{AllocError, Layout};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io;
@@ -166,15 +166,19 @@ impl SharedHeapAllocator {
     }
 }
 
-unsafe impl Allocator for SharedHeapAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+impl SharedHeapAllocator {
+    pub(crate) fn allocate(&self, layout: Layout) -> Result<(NonNull<[u8]>, usize), AllocError> {
         use slabmalloc::{AllocationError, Allocator};
         match layout.size() {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let mut shared_heap = shared_heap.borrow_mut();
                     match shared_heap.zone_allocator.allocate(layout) {
-                        Ok(nptr) => Ok(NonNull::slice_from_raw_parts(nptr, layout.size())),
+                        Ok(nptr) => {
+                            let ptr = NonNull::slice_from_raw_parts(nptr, layout.size());
+                            let addr_remote = Self::query_backend_addr(nptr.as_ptr() as usize);
+                            Ok((ptr, addr_remote))
+                        },
                         Err(AllocationError::OutOfMemory) => {
                             // refill the zone allocator
                             if layout.size() <= ZoneAllocator::MAX_BASE_ALLOC_SIZE {
@@ -233,7 +237,9 @@ unsafe impl Allocator for SharedHeapAllocator {
                                 .zone_allocator
                                 .allocate(layout)
                                 .expect("Should success after refill");
-                            Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
+                            let addr_remote = Self::query_backend_addr(nptr.as_ptr() as usize);
+                            let ptr = NonNull::slice_from_raw_parts(nptr, layout.size());
+                            Ok((ptr, addr_remote))
                         }
                         Err(AllocationError::InvalidLayout) => {
                             eprintln!("Invalid layout: {:?}", layout);
@@ -256,7 +262,9 @@ unsafe impl Allocator for SharedHeapAllocator {
                             let addr = sr.as_ptr().addr();
                             let nptr = NonNull::new(sr.as_mut_ptr()).unwrap();
                             REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
-                            Ok(NonNull::slice_from_raw_parts(nptr, layout.size()))
+                            let ptr = NonNull::slice_from_raw_parts(nptr, layout.size());
+                            let addr_remote = Self::query_backend_addr(nptr.as_ptr() as usize);
+                            Ok((ptr, addr_remote))
                         }
                         Err(e) => {
                             eprintln!("allocate_shm: {}", e);
@@ -268,7 +276,7 @@ unsafe impl Allocator for SharedHeapAllocator {
         }
     }
 
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+    pub(crate) unsafe fn deallocate(&self, ptr: NonNull<u8>, addr_remote: usize, layout: Layout) {
         return;
         use slabmalloc::Allocator;
         match layout.size() {
@@ -286,5 +294,93 @@ unsafe impl Allocator for SharedHeapAllocator {
             }
             _ => todo!("Handle object size larger than 1GB"),
         }
+    }
+
+    pub(crate) fn allocate_zeroed(&self, layout: Layout) -> Result<(NonNull<[u8]>, usize), AllocError> {
+        let (ptr, addr_remote) = self.allocate(layout)?;
+        // SAFETY: `alloc` returns a valid memory block
+        unsafe { ptr.as_non_null_ptr().as_ptr().write_bytes(0, ptr.len()) }
+        Ok((ptr, addr_remote))
+    }
+
+    pub(crate) unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        addr_remote: usize,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<(NonNull<[u8]>, usize), AllocError> {
+        debug_assert!(
+            new_layout.size() >= old_layout.size(),
+            "`new_layout.size()` must be greater than or equal to `old_layout.size()`"
+        );
+
+        let (new_ptr, new_addr_remote) = self.allocate(new_layout)?;
+
+        // SAFETY: because `new_layout.size()` must be greater than or equal to
+        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
+        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
+        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
+        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
+            self.deallocate(ptr, addr_remote, old_layout);
+        }
+
+        Ok((new_ptr, new_addr_remote))
+    }
+
+    pub(crate) unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        addr_remote: usize,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<(NonNull<[u8]>, usize), AllocError> {
+        debug_assert!(
+            new_layout.size() >= old_layout.size(),
+            "`new_layout.size()` must be greater than or equal to `old_layout.size()`"
+        );
+
+        let (new_ptr, new_addr_remote) = self.allocate_zeroed(new_layout)?;
+
+        // SAFETY: because `new_layout.size()` must be greater than or equal to
+        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
+        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
+        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
+        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
+            self.deallocate(ptr, addr_remote, old_layout);
+        }
+
+        Ok((new_ptr, new_addr_remote))
+    }
+
+    pub(crate) unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        addr_remote: usize,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<(NonNull<[u8]>, usize), AllocError> {
+        debug_assert!(
+            new_layout.size() <= old_layout.size(),
+            "`new_layout.size()` must be smaller than or equal to `old_layout.size()`"
+        );
+
+        let (new_ptr, new_remote_addr) = self.allocate(new_layout)?;
+
+        // SAFETY: because `new_layout.size()` must be lower than or equal to
+        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
+        // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
+        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
+        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_layout.size());
+            self.deallocate(ptr, addr_remote, old_layout);
+        }
+
+        Ok((new_ptr, new_remote_addr))
     }
 }
