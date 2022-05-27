@@ -1,20 +1,21 @@
-use core::cmp::{self, Ordering};
-use core::fmt;
-use core::hash::{Hash, Hasher};
-use core::intrinsics::{arith_offset, assume};
-use core::iter::{FromIterator, FusedIterator, TrustedLen};
-use core::marker::PhantomData;
-use core::mem::{self, ManuallyDrop};
-use core::ops::Bound::{Excluded, Included, Unbounded};
-use core::ops::{self, Index, IndexMut, RangeBounds};
-use core::ptr::{self, NonNull};
-use core::slice::{self, SliceIndex};
+use std::cmp::{self, Ordering};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::intrinsics::{arith_offset, assume};
+use std::iter::{FromIterator, FusedIterator, TrustedLen};
+use std::marker::PhantomData;
+use std::mem::{self, ManuallyDrop};
+use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::ops::{self, Index, IndexMut, RangeBounds};
+use std::ptr::{self, NonNull};
+use std::slice::{self, SliceIndex};
 use std::borrow::{Cow, ToOwned};
 use std::collections::TryReserveError;
 
 use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
+use super::shmview::CloneFromBackendOwned;
 use super::raw_vec::RawVec;
 use super::boxed::Box;
 
@@ -1680,5 +1681,13 @@ where
         if !backshift.drain.panic_flag {
             backshift.drain.for_each(drop);
         }
+    }
+}
+
+impl<T> CloneFromBackendOwned for Vec<T, AppOwned> {
+    type BackendOwned = Vec<T, BackendOwned>;
+
+    fn clone_from_backend_owned(backend_owned: &Self::BackendOwned) -> Self {
+        todo!()
     }
 }
