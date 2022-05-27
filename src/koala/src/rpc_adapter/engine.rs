@@ -287,7 +287,7 @@ impl RpcAdapterEngine {
             RpcMsgType::Request => {
                 match meta.func_id {
                     0 => {
-                        let mut msg = unsafe {
+                        let msg = unsafe {
                             // let span = info_span!("unmarshal request message template");
                             // let _enter = span.enter();
                             MessageTemplate::<codegen::HelloRequest>::unmarshal(
@@ -304,7 +304,7 @@ impl RpcAdapterEngine {
             RpcMsgType::Response => {
                 match meta.func_id {
                     0 => {
-                        let mut msg = unsafe {
+                        let msg = unsafe {
                             // let span = info_span!("unmarshal response message template");
                             // let _enter = span.enter();
                             MessageTemplate::<codegen::HelloReply>::unmarshal(
@@ -524,41 +524,6 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::SetTransport(_) => {
                 unreachable!();
             }
-            // mrpc::cmd::Command::AllocShm(nbytes) => {
-            //     trace!("AllocShm, nbytes: {}", *nbytes);
-            //     let pd = &self.tls.state.resource().default_pds()[0];
-            //     let access = ulib::uverbs::AccessFlags::REMOTE_READ
-            //         | ulib::uverbs::AccessFlags::REMOTE_WRITE
-            //         | ulib::uverbs::AccessFlags::LOCAL_WRITE;
-            //     let mr: ulib::uverbs::MemoryRegion<u8> = pd.allocate(*nbytes, access)?;
-            //     let returned_mr = interface::returned::MemoryRegion {
-            //         handle: mr.inner,
-            //         rkey: mr.rkey(),
-            //         vaddr: mr.as_ptr() as u64,
-            //         map_len: mr.len() as u64,
-            //         file_off: mr.file_off,
-            //         pd: mr.pd().inner,
-            //     };
-            //     // store the allocated MRs for later memory address translation
-            //     let memfd = mr.memfd().as_raw_fd();
-            //     // debug!("mr.addr: {:0x}", mr.as_ptr() as usize);
-            //     // debug!(
-            //     //     "mr_table: {:0x?}",
-            //     //     self.tls
-            //     //         .state
-            //     //         .resource()
-            //     //         .mr_table
-            //     //         .lock()
-            //     //         .keys()
-            //     //         .copied()
-            //     //         .collect::<Vec<usize>>()
-            //     // );
-            //     self.tls.state.resource().insert_mr(mr)?;
-            //     Ok(mrpc::cmd::CompletionKind::AllocShmInternal(
-            //         returned_mr,
-            //         memfd,
-            //     ))
-            // }
             mrpc::cmd::Command::Connect(addr) => {
                 trace!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder

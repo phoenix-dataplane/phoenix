@@ -53,7 +53,7 @@ impl RpcAdapterEngineBuilder {
 
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
-        let mut state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 

@@ -10,9 +10,9 @@ pub struct ShmNonNull<T: ?Sized> {
     ptr: NonNull<T>,
     // 1. non-deferenceable unless using unsafe
     // 2. non-zero
-    // <s>3. value must be multiple of alignment of T</s>
-    // Rust do not have data types that can guarantee this property.
-    // User who deference the pointer needs to carefully check this condition.
+    // <s>3. the value must be multiple of alignment of T</s>
+    // Rust does not have data types that can guarantee this property.
+    // Users who deference the pointer must carefully check this condition.
     ptr_remote: NonNull<T>,
 }
 
@@ -114,7 +114,7 @@ impl<T> ShmNonNull<[T]> {
             )
         }
     }
-    
+
     #[must_use]
     #[inline]
     pub const fn len(self) -> usize {

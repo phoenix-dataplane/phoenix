@@ -93,9 +93,9 @@ impl<T> Vec<T> {
         self
     }
 
-    /// ptr, addr_remote, len, capacity
+    /// ptr, ptr_remote, len, capacity
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
-        let mut me = ManuallyDrop::new(self);
+        let me = ManuallyDrop::new(self);
         let (ptr, ptr_remote) = me.buf.shmptr().to_raw_parts();
         (ptr.as_ptr(), ptr_remote.as_ptr(), me.len(), me.capacity())
     }
@@ -106,11 +106,9 @@ impl<T> Vec<T> {
         length: usize,
         capacity: usize,
     ) -> Vec<T> {
-        unsafe {
-            Vec {
-                buf: RawVec::from_raw_parts(ptr, ptr_remote, capacity),
-                len: length,
-            }
+        Vec {
+            buf: RawVec::from_raw_parts(ptr, ptr_remote, capacity),
+            len: length,
         }
     }
 
@@ -387,10 +385,10 @@ impl<T> Vec<T> {
 
     #[inline]
     unsafe fn append_elements(&mut self, other: *const [T]) {
-        let count = unsafe { (*other).len() };
+        let count = (*other).len();
         self.reserve(count);
         let len = self.len();
-        unsafe { ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count) };
+        ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count);
         self.len += count;
     }
 
@@ -935,7 +933,7 @@ impl<T> IntoIterator for Vec<T> {
     #[inline]
     fn into_iter(self) -> IntoIter<T> {
         unsafe {
-            let mut me = ManuallyDrop::new(self);
+            let me = ManuallyDrop::new(self);
             let begin = me.buf.ptr();
             let end = if mem::size_of::<T>() == 0 {
                 arith_offset(begin as *const i8, me.len() as isize) as *const T
@@ -1607,16 +1605,15 @@ impl<T> Drain<'_, T> {
     /// Fill that range as much as possible with new elements from the `replace_with` iterator.
     /// Returns `true` if we filled the entire range. (`replace_with.next()` didn’t return `None`.)
     unsafe fn fill<I: Iterator<Item = T>>(&mut self, replace_with: &mut I) -> bool {
-        let vec = unsafe { self.vec.as_mut() };
+        let vec = self.vec.as_mut();
         let range_start = vec.len;
         let range_end = self.tail_start;
-        let range_slice = unsafe {
-            slice::from_raw_parts_mut(vec.as_mut_ptr().add(range_start), range_end - range_start)
-        };
+        let range_slice =
+            slice::from_raw_parts_mut(vec.as_mut_ptr().add(range_start), range_end - range_start);
 
         for place in range_slice {
             if let Some(new_item) = replace_with.next() {
-                unsafe { ptr::write(place, new_item) };
+                ptr::write(place, new_item);
                 vec.len += 1;
             } else {
                 return false;
@@ -1627,16 +1624,14 @@ impl<T> Drain<'_, T> {
 
     /// Makes room for inserting more elements before the tail.
     unsafe fn move_tail(&mut self, additional: usize) {
-        let vec = unsafe { self.vec.as_mut() };
+        let vec = self.vec.as_mut();
         let len = self.tail_start + self.tail_len;
         vec.buf.reserve(len, additional);
 
         let new_tail_start = self.tail_start + additional;
-        unsafe {
-            let src = vec.as_ptr().add(self.tail_start);
-            let dst = vec.as_mut_ptr().add(new_tail_start);
-            ptr::copy(src, dst, self.tail_len);
-        }
+        let src = vec.as_ptr().add(self.tail_start);
+        let dst = vec.as_mut_ptr().add(new_tail_start);
+        ptr::copy(src, dst, self.tail_len);
         self.tail_start = new_tail_start;
     }
 }

@@ -112,7 +112,7 @@ pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct MessageTemplate<T> {
+pub(crate) struct MessageTemplate<T> {
     meta: MessageMeta,
     val: ShmPtr<T>,
 }
@@ -126,15 +126,11 @@ impl<T> MessageTemplate<T> {
         assert_eq!(this.as_ref().meta, erased.meta);
         // debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this
-        // Self {
-        //     meta: erased.meta,
-        //     val: Unique::new(erased.shmptr as *mut T).unwrap(),
-        // }
     }
 }
 
 impl<'a, T: Send + Marshal + Unmarshal + SwitchAddressSpace + 'a> MessageTemplate<T> {
-    pub fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage + 'a> {
+    pub(crate) fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage + 'a> {
         let (local, remote) = msg.to_raw_parts();
         // SAFETY: `msg` is already a valid Shmptr
         unsafe {

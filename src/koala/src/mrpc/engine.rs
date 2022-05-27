@@ -4,7 +4,6 @@ use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
-use ipc::shmalloc::ShmPtr;
 
 use super::module::CustomerType;
 use super::state::State;
@@ -125,16 +124,6 @@ impl MrpcEngine {
                     Ok(CompletionKind::SetTransport)
                 }
             }
-            // Command::AllocShm(nbytes) => {
-            //     self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
-            //     match self.cmd_rx.recv().unwrap().0 {
-            //         Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
-            //             self.customer.send_fd(&[memfd]).unwrap();
-            //             Ok(CompletionKind::AllocShm(returned_mr))
-            //         }
-            //         other => panic!("unexpected: {:?}", other),
-            //     }
-            // }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().await.unwrap().0 {
@@ -154,33 +143,7 @@ impl MrpcEngine {
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
-            } // Command::NewMappedAddrs(app_vaddrs) => {
-              //     // just forward it
-              //     self.cmd_tx
-              //         .send(Command::NewMappedAddrs(app_vaddrs.clone()))
-              //         .unwrap();
-              //     match self.cmd_rx.recv().unwrap().0 {
-              //         Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
-              //             for tup in addr_map {
-              //                 let local_addr = tup.0;
-              //                 let buf = ShmBuf {
-              //                     ptr: tup.1,
-              //                     len: tup.2,
-              //                 };
-              //                 debug!(
-              //                     "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
-              //                     local_addr,
-              //                     buf.ptr,
-              //                     buf.len
-              //                 );
-              //                 self.state.resource().insert_addr_map(local_addr, buf)?;
-              //             }
-              //             Ok(CompletionKind::NewMappedAddrs)
-              //         }
-              //         other => panic!("unexpected: {:?}", other),
-              //     }
-              //     // Err(Error::NoReponse)
-              // }
+            }
         }
     }
 
@@ -236,8 +199,7 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let mut msg =
-                            unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
+                        let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         debug!("start to marshal");
@@ -265,8 +227,7 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let mut msg =
-                            unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
+                        let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
                         {
                             // let span = info_span!("tx_outputs.send");

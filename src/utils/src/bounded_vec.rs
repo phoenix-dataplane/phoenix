@@ -1,5 +1,5 @@
-use std::ops::{Deref, DerefMut};
 use std::collections::VecDeque;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundedVecDeque<T> {

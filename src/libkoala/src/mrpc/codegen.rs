@@ -11,12 +11,12 @@ use unique::Unique;
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
 use crate::mrpc::stub::{
-    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service, RpcMessage
+    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
 };
 use crate::mrpc::MRPC_CTX;
-use crate::salloc::owner::{AllocOwner, BackendOwned, AppOwned};
+use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
-use ipc::shmalloc::{SwitchAddressSpace, ShmPtr};
+use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 // mimic the generated code of tonic-helloworld
 
@@ -60,13 +60,16 @@ impl Future for ReqFuture {
         let this = self.get_mut();
         check_completion(&*this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
-            tracing::trace!("ReqFuture receive reply from mRPC engine, call_id={}", erased.meta.call_id);
+            tracing::trace!(
+                "ReqFuture receive reply from mRPC engine, call_id={}",
+                erased.meta.call_id
+            );
             let ptr_local = erased.shm_addr as *mut MessageTemplate<HelloReply<BackendOwned>>;
             let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
             let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
             let _reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
             // TODO(wyj): send out reply to client and properly drop
-            Poll::Ready(Ok(unsafe { msg.meta.call_id }))
+            Poll::Ready(Ok(msg.meta.call_id))
         } else {
             cx.waker().wake_by_ref();
             Poll::Pending
@@ -207,7 +210,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
         let ptr_remote = ptr_local.with_addr(req.shm_addr_remote);
         let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
         let req = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
-        // TODO(wyj): should not be forget. 
+        // TODO(wyj): should not be forget.
         // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
         // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to
         // indicate that we will no longer use the region of this object, so that the backend can

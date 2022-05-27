@@ -62,10 +62,6 @@ impl<T: ?Sized> ShmPtr<T> {
         self.pointer.as_ptr()
     }
 
-    // pub fn as_non_null_ptr(self) -> (NonNull<T>, usize) {
-    //     (self.ptr.into(), self.addr_remote as usize)
-    // }
-
     #[must_use]
     #[inline]
     pub fn to_raw_parts(self) -> (NonNull<T>, NonNull<T>) {
@@ -99,14 +95,11 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Casts to a pointer of another type
-    pub fn cast<U>(self) -> ShmPtr<U> {
+    #[must_use]
+    #[inline]
+    pub const fn cast<U>(self) -> ShmPtr<U> {
         ShmPtr::from(self.pointer.cast())
     }
-
-    // #[inline]
-    // pub fn get_remote_addr(&self) -> usize {
-    //     self.addr_remote as usize
-    // }
 }
 
 impl<T: ?Sized> From<ShmPtr<T>> for NonNull<T> {
