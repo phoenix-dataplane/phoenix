@@ -565,6 +565,39 @@ impl<T, O: AllocOwner> Drop for Vec<T, O> {
     }
 }
 
+// unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
+//     fn switch_address_space(&mut self) {
+//         for v in self.inner.iter_mut() {
+//             v.switch_address_space();
+//         }
+//         // TODO(cjr): how to change the inner pointer of the Vec?
+//         unsafe {
+//             // XXX(cjr): the following operation has no safety guarantee.
+//             // It's a very very dirty hack to overwrite the first 8 bytes of self.
+//             let ptr = (&mut self.inner) as *mut _ as *mut isize;
+//             let addr = ptr.read();
+//             ptr.write(addr + SharedHeapAllocator::query_shm_offset(addr as usize));
+//         }
+//         panic!("make sure switch_address_space is not calling this for HelloRequest or HelloReply");
+//     }
+// }
+
+// unsafe impl<T> SwitchAddressSpace for Vec<T> {
+//     default fn switch_address_space(&mut self) {
+//         // TODO(cjr): how to change the inner pointer of the Vec?
+//         eprintln!("make sure switch_address_space is calling this for HelloRequest");
+//         unsafe {
+//             // XXX(cjr): the following operation has no safety guarantee.
+//             // It's a very very dirty hack to overwrite the first 8 bytes of self.
+//             let ptr = (&mut self.inner) as *mut _ as *mut isize;
+//             let addr = ptr.read();
+//             let remote_addr = addr + SharedHeapAllocator::query_shm_offset(addr as usize);
+//             eprintln!("addr: {:0x}, remote_addr: {:0x}", addr, remote_addr);
+//             ptr.write(remote_addr);
+//         }
+//     }
+// }
+
 unsafe impl<T: SwitchAddressSpace, O: AllocOwner> SwitchAddressSpace for Vec<T, O> {
     fn switch_address_space(&mut self) {
         // TODO(wyj)

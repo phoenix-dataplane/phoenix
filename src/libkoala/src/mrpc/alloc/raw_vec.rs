@@ -28,7 +28,7 @@ enum AllocInit {
 pub(crate) struct RawVec<T, O: AllocOwner = AppOwned> {
     ptr: ShmPtr<T>,
     cap: usize,
-    owner: O,
+    _owner: O,
 }
 
 impl<T> RawVec<T> {
@@ -41,7 +41,7 @@ impl<T> RawVec<T> {
     };
 
     pub const fn new() -> Self {
-        Self { ptr: ShmPtr::dangling(), cap: 0, owner: AppOwned}
+        Self { ptr: ShmPtr::dangling(), cap: 0, _owner: AppOwned}
     }
 
     #[inline]
@@ -96,14 +96,14 @@ impl<T> RawVec<T> {
             Self {
                 ptr,
                 cap: capacity,
-                owner: AppOwned
+                _owner: AppOwned
             }
         }
     }
 
     #[inline]
     pub unsafe fn from_raw_parts(ptr: *mut T, addr_remote: usize, capacity: usize) -> Self {
-        Self { ptr: unsafe { ShmPtr::new_unchecked(ptr, addr_remote) }, cap: capacity, owner: AppOwned }
+        Self { ptr: ShmPtr::new_unchecked(ptr, addr_remote), cap: capacity, _owner: AppOwned }
     }
 }
 
