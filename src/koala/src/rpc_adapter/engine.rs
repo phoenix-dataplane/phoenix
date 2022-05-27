@@ -120,14 +120,12 @@ impl RpcAdapterEngine {
             // need to make it asynchronous and low cost to check.
             // TODO(cjr): move this to another engine and runtime
             self.check_incoming_connection().await?;
-            
 
             self.indicator.as_ref().unwrap().set_nwork(work);
 
             future::yield_now().await;
         }
     }
-
 }
 
 impl RpcAdapterEngine {
@@ -158,17 +156,15 @@ impl RpcAdapterEngine {
         use tokio::sync::mpsc::error::TryRecvError;
         use ulib::uverbs::SendFlags;
 
-
-
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
             let span = info_span!("RpcAdapter check_input_queue: send_msg");
             let _enter = span.enter();
-            
+
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
 
-            let conn_ctx = { 
+            let conn_ctx = {
                 // let span = info_span!("get conn context");
                 // let _enter = span.enter();
                 self.tls.state.resource().cmid_table.get(&cmid_handle)?
@@ -203,7 +199,6 @@ impl RpcAdapterEngine {
                     });
                 }
             }
-
 
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
@@ -267,7 +262,9 @@ impl RpcAdapterEngine {
         let mut erased = {
             // let span = info_span!("unmarshal MessageTemplateErased");
             // let _enter = span.enter();
-            let erased = unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }.unwrap();
+            let erased =
+                unsafe { MessageTemplateErased::unmarshal(sgl.clone(), &self.salloc.shared) }
+                    .unwrap();
             erased
         };
 
@@ -286,8 +283,6 @@ impl RpcAdapterEngine {
             drop(outstanding_req);
         }
 
-        
-
         let dyn_msg = match meta.msg_type {
             RpcMsgType::Request => {
                 match meta.func_id {
@@ -301,13 +296,7 @@ impl RpcAdapterEngine {
                             )
                             .unwrap()
                         };
-                        // Safety: this is fine here because msg is already a unique
-                        // pointer
-                        let dyn_msg = unsafe {
-                            ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr())
-                                .unwrap()
-                        };
-                        dyn_msg
+                        MessageTemplate::into_rpc_message(msg)
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
                 }
@@ -324,13 +313,7 @@ impl RpcAdapterEngine {
                             )
                             .unwrap()
                         };
-                        // Safety: this is fine here because msg is already a unique
-                        // pointer
-                        let dyn_msg = unsafe {
-                            ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr())
-                                .unwrap()
-                        };
-                        dyn_msg
+                        MessageTemplate::into_rpc_message(msg)
                     }
                     _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
                 }
@@ -369,7 +352,8 @@ impl RpcAdapterEngine {
                             let conn_ctx = {
                                 // let span = info_span!("push receiving_sgl");
                                 // let _enter = span.enter();
-                                let wr_ctx = self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
+                                let wr_ctx =
+                                    self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
                                 let cmid_handle = wr_ctx.conn_id;
                                 let conn_ctx =
                                     self.tls.state.resource().cmid_table.get(&cmid_handle)?;
@@ -377,7 +361,7 @@ impl RpcAdapterEngine {
                                 let sge = ShmBuf {
                                     ptr: wr_ctx.mr_addr,
                                     len: wc.byte_len as _, // note this byte_len is only valid for
-                                                        // recv request
+                                                           // recv request
                                 };
                                 conn_ctx.receiving_sgl.lock().0.push(sge);
                                 conn_ctx
@@ -387,18 +371,18 @@ impl RpcAdapterEngine {
                                 // received an entire RPC message
                                 trace!("post_recv received complete message, wr_id={}", wc.wr_id);
                                 use std::ops::DerefMut;
-                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());                                
+                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
                             }
                             // XXX(cjr): only when the upper layer app finish using the data
-                            // we can repost the receives                          
+                            // we can repost the receives
                             let cmid = &conn_ctx.cmid;
 
                             let recv_mr = self
                                 .salloc
                                 .resource()
                                 .recv_mr_table
-                                .get(&Handle(wc.wr_id as u32))?;      
+                                .get(&Handle(wc.wr_id as u32))?;
                             let mut odp_mr = self.get_or_init_odp_mr();
                             let off = recv_mr.as_ptr().expose_addr();
                             let len = recv_mr.len();
@@ -429,7 +413,9 @@ impl RpcAdapterEngine {
 
     async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
         // TODO(cjr): should check for each connection.......... shit!
-        if self.flag { return Ok(Status::Progress(0)) }
+        if self.flag {
+            return Ok(Status::Progress(0));
+        }
 
         if let Some(recent) = self.recent_listener_handle.as_ref() {
             let listener = self.tls.state.resource().listener_table.get(recent)?;

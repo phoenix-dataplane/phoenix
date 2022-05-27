@@ -110,11 +110,11 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
     tracing::trace!("client post request to mRPC engine, call_id={}", meta.call_id);
 
     msg.switch_address_space();
-    let (ptr, addr_remote) = Box::as_ptr(&msg);
+    let (ptr, addr_remote) = Box::to_raw_parts(&msg);
     let erased = MessageTemplateErased {
         meta,
-        shm_addr: addr_remote,
-        shm_addr_remote: ptr as *const () as usize
+        shm_addr: addr_remote.addr().get(),
+        shm_addr_remote: ptr.addr().get(),
     };
     let req = dp::WorkRequest::Call(erased);
     

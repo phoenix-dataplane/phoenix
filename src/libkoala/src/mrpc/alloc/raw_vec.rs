@@ -3,7 +3,6 @@ use std::cmp;
 use std::intrinsics;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ops::Drop;
-use std::ptr::{self, NonNull, Unique};
 use std::slice;
 
 use std::alloc::handle_alloc_error;
@@ -11,10 +10,10 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use ipc::shmalloc::ShmPtr;
+use ipc::shmalloc::{ShmNonNull, ShmPtr};
 
 use crate::salloc::heap::SharedHeapAllocator;
-use crate::salloc::owner::{AppOwned, BackendOwned, AllocOwner};
+use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
 use super::boxed::Box;
 
@@ -41,7 +40,11 @@ impl<T> RawVec<T> {
     };
 
     pub const fn new() -> Self {
-        Self { ptr: ShmPtr::dangling(), cap: 0, owner: AppOwned}
+        Self {
+            ptr: ShmPtr::dangling(),
+            cap: 0,
+            owner: AppOwned,
+        }
     }
 
     #[inline]
@@ -62,9 +65,11 @@ impl<T> RawVec<T> {
 
         let me = ManuallyDrop::new(self);
         unsafe {
-            let (ptr, addr_remote) = me.ptr();
-            let slice = slice::from_raw_parts_mut(ptr as *mut MaybeUninit<T>, len);
-            Box::from_raw(slice, addr_remote)
+            let (ptr, ptr_remote) = me.shmptr().to_raw_parts();
+            let slice = slice::from_raw_parts_mut(ptr.as_ptr() as *mut MaybeUninit<T>, len);
+            let slice_remote =
+                slice::from_raw_parts_mut(ptr_remote.as_ptr() as *mut MaybeUninit<T>, len);
+            Box::from_raw(slice, slice_remote)
         }
     }
 
@@ -72,7 +77,6 @@ impl<T> RawVec<T> {
         if mem::size_of::<T>() == 0 {
             Self::new()
         } else {
-
             let layout = match Layout::array::<T>(capacity) {
                 Ok(layout) => layout,
                 Err(_) => capacity_overflow(),
@@ -85,31 +89,34 @@ impl<T> RawVec<T> {
                 AllocInit::Uninitialized => SharedHeapAllocator.allocate(layout),
                 AllocInit::Zeroed => SharedHeapAllocator.allocate_zeroed(layout),
             };
-            let (ptr, addr_remote) = match result {
-                Ok((ptr, addr_remote)) => {
-                    (ptr, addr_remote)
-                },
+            let (local, remote) = match result {
+                Ok(p) => p.to_raw_parts(),
                 Err(_) => handle_alloc_error(layout),
             };
-
-            let ptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
+            let ptr = unsafe {
+                ShmPtr::new_unchecked(local.as_mut_ptr().cast(), remote.as_mut_ptr().cast())
+            };
             Self {
                 ptr,
                 cap: capacity,
-                owner: AppOwned
+                owner: AppOwned,
             }
         }
     }
 
     #[inline]
-    pub unsafe fn from_raw_parts(ptr: *mut T, addr_remote: usize, capacity: usize) -> Self {
-        Self { ptr: unsafe { ShmPtr::new_unchecked(ptr, addr_remote) }, cap: capacity, owner: AppOwned }
+    pub unsafe fn from_raw_parts(ptr: *mut T, ptr_remote: *mut T, capacity: usize) -> Self {
+        Self {
+            ptr: unsafe { ShmPtr::new_unchecked(ptr, ptr_remote) },
+            cap: capacity,
+            owner: AppOwned,
+        }
     }
 }
 
 impl<T, O: AllocOwner> RawVec<T, O> {
     #[inline]
-    pub fn ptr(&self) -> (*mut T, usize) {
+    pub fn ptr(&self) -> *mut T {
         self.ptr.as_ptr()
     }
 
@@ -120,10 +127,14 @@ impl<T, O: AllocOwner> RawVec<T, O> {
 
     #[inline(always)]
     pub fn capacity(&self) -> usize {
-        if mem::size_of::<T>() == 0 { usize::MAX } else { self.cap }
+        if mem::size_of::<T>() == 0 {
+            usize::MAX
+        } else {
+            self.cap
+        }
     }
 
-    fn current_memory(&self) -> Option<(NonNull<u8>, usize, Layout)> {
+    fn current_memory(&self) -> Option<(ShmNonNull<u8>, Layout)> {
         if mem::size_of::<T>() == 0 || self.cap == 0 {
             None
         } else {
@@ -131,8 +142,8 @@ impl<T, O: AllocOwner> RawVec<T, O> {
                 let align = mem::align_of::<T>();
                 let size = mem::size_of::<T>() * self.cap;
                 let layout = Layout::from_size_align_unchecked(size, align);
-                let (ptr, addr_remote) = self.ptr.cast().as_non_null_ptr();
-                Some((ptr, addr_remote, layout))
+                let ptr = self.ptr.cast().into();
+                Some((ptr, layout))
             }
         }
     }
@@ -142,11 +153,7 @@ impl<T> RawVec<T> {
     #[inline]
     pub fn reserve(&mut self, len: usize, additional: usize) {
         #[cold]
-        fn do_reserve_and_handle<T>(
-            slf: &mut RawVec<T, AppOwned>,
-            len: usize,
-            additional: usize,
-        ) {
+        fn do_reserve_and_handle<T>(slf: &mut RawVec<T, AppOwned>, len: usize, additional: usize) {
             handle_reserve(slf.grow_amortized(len, additional));
         }
 
@@ -177,7 +184,11 @@ impl<T> RawVec<T> {
         len: usize,
         additional: usize,
     ) -> Result<(), TryReserveError> {
-        if self.needs_to_grow(len, additional) { self.grow_exact(len, additional) } else { Ok(()) }
+        if self.needs_to_grow(len, additional) {
+            self.grow_exact(len, additional)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn shrink_to_fit(&mut self, cap: usize) {
@@ -190,8 +201,10 @@ impl<T> RawVec<T> {
         additional > self.capacity().wrapping_sub(len)
     }
 
-    fn set_ptr_and_cap(&mut self, ptr: NonNull<[u8]>, addr_remote: usize, cap: usize) {
-        self.ptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
+    fn set_ptr_and_cap(&mut self, ptr: ShmNonNull<[u8]>, cap: usize) {
+        let (local, remote) = ptr.to_raw_parts();
+        self.ptr =
+            unsafe { ShmPtr::new_unchecked(local.as_mut_ptr().cast(), remote.as_mut_ptr().cast()) };
         self.cap = cap;
     }
 
@@ -209,8 +222,8 @@ impl<T> RawVec<T> {
 
         let new_layout = Layout::array::<T>(cap);
 
-        let (ptr, addr_remote) = finish_grow(new_layout, self.current_memory())?;
-        self.set_ptr_and_cap(ptr, addr_remote, cap);
+        let ptr = finish_grow(new_layout, self.current_memory())?;
+        self.set_ptr_and_cap(ptr, cap);
         Ok(())
     }
 
@@ -225,24 +238,34 @@ impl<T> RawVec<T> {
         let new_layout = Layout::array::<T>(cap);
 
         // `finish_grow` is non-generic over `T`.
-        let (ptr, addr_remote) = finish_grow(new_layout, self.current_memory())?;
-        self.set_ptr_and_cap(ptr, addr_remote, cap);
+        let ptr = finish_grow(new_layout, self.current_memory())?;
+        self.set_ptr_and_cap(ptr, cap);
         Ok(())
     }
 
     fn shrink(&mut self, cap: usize) -> Result<(), TryReserveError> {
-        assert!(cap <= self.capacity(), "Tried to shrink to a larger capacity");
+        assert!(
+            cap <= self.capacity(),
+            "Tried to shrink to a larger capacity"
+        );
 
-        let (ptr, addr_remote, layout) = if let Some(mem) = self.current_memory() { mem } else { return Ok(()) };
+        let (ptr, layout) = if let Some(mem) = self.current_memory() {
+            mem
+        } else {
+            return Ok(());
+        };
         let new_size = cap * mem::size_of::<T>();
 
-        let (ptr, addr_remote) = unsafe {
+        let ptr = unsafe {
             let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
             SharedHeapAllocator
-                .shrink(ptr, addr_remote, layout, new_layout)
-                .map_err(|_| AllocError { layout: new_layout, non_exhaustive: () })?
+                .shrink(ptr, layout, new_layout)
+                .map_err(|_| AllocError {
+                    layout: new_layout,
+                    non_exhaustive: (),
+                })?
         };
-        self.set_ptr_and_cap(ptr, addr_remote, cap);
+        self.set_ptr_and_cap(ptr, cap);
         Ok(())
     }
 }
@@ -250,38 +273,41 @@ impl<T> RawVec<T> {
 #[inline(never)]
 fn finish_grow(
     new_layout: Result<Layout, LayoutError>,
-    current_memory: Option<(NonNull<u8>, usize, Layout)>,
-) -> Result<(NonNull<[u8]>, usize), TryReserveError>
-{
+    current_memory: Option<(ShmNonNull<u8>, Layout)>,
+) -> Result<ShmNonNull<[u8]>, TryReserveError> {
     let new_layout = new_layout.map_err(|_| CapacityOverflow)?;
 
     alloc_guard(new_layout.size())?;
 
-    let memory = if let Some((ptr, old_addr_remote, old_layout)) = current_memory {
+    let memory = if let Some((ptr, old_layout)) = current_memory {
         debug_assert_eq!(old_layout.align(), new_layout.align());
         unsafe {
             // The allocator checks for alignment equality
             intrinsics::assume(old_layout.align() == new_layout.align());
-            SharedHeapAllocator.grow(ptr, old_addr_remote, old_layout, new_layout)
+            SharedHeapAllocator.grow(ptr, old_layout, new_layout)
         }
     } else {
         SharedHeapAllocator.allocate(new_layout)
     };
 
-
-    memory.map_err(|_| AllocError { layout: new_layout, non_exhaustive: () }.into())
+    memory.map_err(|_| {
+        AllocError {
+            layout: new_layout,
+            non_exhaustive: (),
+        }
+        .into()
+    })
 }
 
-
-trait SpecializedDrop { 
-    fn drop( &mut self ); 
+trait SpecializedDrop {
+    fn drop(&mut self);
 }
 
 impl<T> SpecializedDrop for RawVec<T, AppOwned> {
     fn drop(&mut self) {
-        if let Some((ptr, addr_remote, layout)) = self.current_memory() {
+        if let Some((ptr, layout)) = self.current_memory() {
             // Contents (T) are dropped by RawVec's users
-            unsafe { SharedHeapAllocator.deallocate(ptr, addr_remote, layout) }
+            unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
         }
     }
 }
@@ -298,7 +324,6 @@ impl<T, O: AllocOwner> SpecializedDrop for RawVec<T, O> {
         unreachable!("SpecializedDrop should be specialized for AppOwned and BackendOwned");
     }
 }
-
 
 impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     fn drop(&mut self) {
