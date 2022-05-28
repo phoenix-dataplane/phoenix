@@ -66,13 +66,13 @@ impl RpcAdapterEngineBuilder {
 
         Ok(RpcAdapterEngine {
             tls: Box::new(TlStorage {
-                ops: self.ops,
+                odp_mr: None,
+                cq: None,
                 state,
+                ops: self.ops,
             }),
             flag: false,
             salloc: salloc_state,
-            odp_mr: None,
-            cq: None,
             recent_listener_handle: None,
             local_buffer: VecDeque::new(),
             node: self.node,

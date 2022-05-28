@@ -52,8 +52,9 @@ impl SallocEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             let mut nwork = 0;
-            if let Progress(n) = self.check_cmd()? {
-                nwork += n;
+            match self.check_cmd()? {
+                Progress(n) => nwork += n,
+                Status::Disconnected => return Ok(()),
             }
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;

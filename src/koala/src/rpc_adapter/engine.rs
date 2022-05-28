@@ -24,8 +24,11 @@ use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
 
 pub struct TlStorage {
-    pub(crate) ops: Ops,
+    // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transpport second.
     pub(crate) state: State,
+    pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
+    pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
+    pub(crate) ops: Ops,
 }
 
 /// WARNING(cjr): This this not true! I unafely mark Sync for TlStorage to cheat the compiler. I
@@ -47,8 +50,6 @@ pub struct RpcAdapterEngine {
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
-    pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
-    pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) recent_listener_handle: Option<interface::Handle>,
     pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
 
@@ -101,8 +102,9 @@ impl RpcAdapterEngine {
         loop {
             let mut work = 0;
             // check input queue
-            if let Progress(n) = self.check_input_queue()? {
-                work += n;
+            match self.check_input_queue()? {
+                Progress(n) => work += n,
+                Status::Disconnected => return Ok(()),
             }
 
             // check service
@@ -111,8 +113,9 @@ impl RpcAdapterEngine {
             }
 
             // check input command queue
-            if let Progress(n) = self.check_input_cmd_queue().await? {
-                work += n;
+            match self.check_input_cmd_queue().await? {
+                Progress(n) => work += n,
+                Status::Disconnected => return Ok(()),
             }
 
             // TODO(cjr): check incoming connect request
@@ -131,25 +134,25 @@ impl RpcAdapterEngine {
 impl RpcAdapterEngine {
     fn get_or_init_odp_mr(&mut self) -> &mut ulib::uverbs::MemoryRegion<u8> {
         // this function is not supposed to be called concurrently.
-        if self.odp_mr.is_none() {
+        if self.tls.odp_mr.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
             let pd_list = ulib::uverbs::get_default_pds().unwrap();
             let pd = &pd_list[0];
             let odp_mr = self.tls.ops.create_mr_on_demand_paging(&pd.inner).unwrap();
-            self.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
+            self.tls.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
         }
-        self.odp_mr.as_mut().unwrap()
+        self.tls.odp_mr.as_mut().unwrap()
     }
 
     fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
         // this function is not supposed to be called concurrently.
-        if self.cq.is_none() {
+        if self.tls.cq.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
             let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
             let ctx = &ctx_list[0];
-            self.cq = Some(ctx.create_cq(1024, 0).unwrap());
+            self.tls.cq = Some(ctx.create_cq(1024, 0).unwrap());
         }
-        self.cq.as_ref().unwrap()
+        self.tls.cq.as_ref().unwrap()
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
@@ -158,8 +161,8 @@ impl RpcAdapterEngine {
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
-            let span = info_span!("RpcAdapter check_input_queue: send_msg");
-            let _enter = span.enter();
+            // let span = info_span!("RpcAdapter check_input_queue: send_msg");
+            // let _enter = span.enter();
 
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
@@ -187,7 +190,7 @@ impl RpcAdapterEngine {
 
             // Sender marshals the data (gets an SgList)
             // Sender posts send requests from the SgList
-            debug!("check_input_queue, sglist: {:0x?}", sglist);
+            // debug!("check_input_queue, sglist: {:0x?}", sglist);
             {
                 // let span = info_span!("push_back outstanding_req");
                 // let _enter = span.enter();
@@ -219,7 +222,7 @@ impl RpcAdapterEngine {
                         }
                     } else {
                         // post send with imm
-                        trace!("post_send_imm, len={}", sge.len);
+                        // trace!("post_send_imm, len={}", sge.len);
                         unsafe {
                             // let span = info_span!("post_send_with_imm");
                             // let _enter = span.enter();
@@ -254,10 +257,10 @@ impl RpcAdapterEngine {
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
-        debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
+        // debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
-        let span = info_span!("unmarshal_and_deliver_up");
-        let _enter = span.enter();
+        // let span = info_span!("unmarshal_and_deliver_up");
+        // let _enter = span.enter();
 
         let mut erased = {
             // let span = info_span!("unmarshal MessageTemplateErased");
@@ -338,14 +341,14 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    let span = info_span!("RpcAdapter check_transport_service: wc polled");
-                    let _enter = span.enter();
+                    // let span = info_span!("RpcAdapter check_transport_service: wc polled");
+                    // let _enter = span.enter();
 
                     match wc.opcode {
                         WcOpcode::Send => {
                             // send completed, do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                // trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                             }
                         }
                         WcOpcode::Recv => {
@@ -369,7 +372,7 @@ impl RpcAdapterEngine {
 
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
-                                trace!("post_recv received complete message, wr_id={}", wc.wr_id);
+                                // trace!("post_recv received complete message, wr_id={}", wc.wr_id);
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;

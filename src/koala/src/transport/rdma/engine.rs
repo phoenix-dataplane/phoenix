@@ -69,11 +69,8 @@ impl TransportEngine {
                 nwork += n;
             }
 
-            if self.customer.has_control_command() {
-                self.flush_dp()?;
-                if let Status::Disconnected = self.check_cmd().await? {
-                    return Ok(());
-                }
+            if let Status::Disconnected = self.check_cmd().await? {
+                return Ok(());
             }
 
             self.indicator.as_ref().unwrap().set_nwork(nwork);
@@ -163,6 +160,8 @@ impl TransportEngine {
         match ret {
             // handle request
             Ok(req) => {
+                // Flush datapath!
+                self.flush_dp()?;
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,

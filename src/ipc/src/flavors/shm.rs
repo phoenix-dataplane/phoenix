@@ -10,6 +10,7 @@ use std::os::unix::net::UCred;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::time::{Instant, Duration};
 
 use uuid::Uuid;
 
@@ -76,6 +77,7 @@ pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     cmd_rx: IpcReceiver<Command>,
     dp_wq: ShmReceiver<WorkRequest>,
     dp_cq: ShmSender<WorkCompletion>,
+    timer: Instant,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -171,11 +173,17 @@ where
             cmd_rx,
             dp_wq,
             dp_cq,
+            timer: Instant::now(),
         })
     }
 
     #[inline]
-    pub(crate) fn has_control_command(&self) -> bool {
+    pub(crate) fn has_control_command(&mut self) -> bool {
+        static TIMEOUT: Duration = Duration::from_millis(100);
+        if self.timer.elapsed() > TIMEOUT {
+            self.timer = Instant::now();
+            return true;
+        }
         self.cmd_rx_entries.load(Ordering::Relaxed) > 0
     }
 
@@ -188,7 +196,10 @@ where
     }
 
     #[inline]
-    pub(crate) fn try_recv_cmd(&self) -> Result<Command, TryRecvError> {
+    pub(crate) fn try_recv_cmd(&mut self) -> Result<Command, TryRecvError> {
+        if !self.has_control_command() {
+            return Err(TryRecvError::Empty);
+        }
         let req = self.cmd_rx.try_recv()?;
         self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
         Ok(req)

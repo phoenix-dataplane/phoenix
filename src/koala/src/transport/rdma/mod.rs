@@ -51,6 +51,8 @@ pub(crate) enum Error {
     // IpcSend(#[from] ipc::Error),
     #[error("Customer error: {0}")]
     Customer(#[from] ipc::Error),
+    #[error("Flushing datapath error: {0}")]
+    FlushDp(#[from] DatapathError),
 }
 
 impl From<Error> for interface::Error {
