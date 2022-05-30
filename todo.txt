@@ -6,10 +6,18 @@ RPC
 -[x] RPC Trait
 -[x] Heap allocator
 
+Benchmark Suite
+- worker starting order
+- auto kill on clean up
+
 Engine Framework
-- *Change Engine trait to a huge Generator*, all block waitings become
+- new challenge: *fault isolation*
+- futures::executor::block_on seems to start an extra engine
+- suspend the runtime to save CPUs based indicator
+- RpcAdapter/CmEngine can only be shut down when the other side has gone.
+-[x] *Change Engine trait to a huge Generator*, all block waitings become
   yields
-- *Call an engine's method from another engine*, some engines go to an
+-[x] *Call an engine's method from another engine*, some engines go to an
   separate runtime, some engines become the member of other engines;
   the original big match arm becomes a series of methods
 -[x] Blocking network APIs in transport engine may block the entire
@@ -19,11 +27,9 @@ Engine Framework
   adjusted, separating data/control queues are no more useful
 - SchedulingMode::Bundled
 
-Benchmark Suite
-- worker starting order
-- auto kill on clean up
-
 Misc
+- use env_logger and minitrace to replace tokio-tracing
+- KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
 - Garbage collect CmEngine
 - *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - Build a CI pipeline with all kinds of tests and benchmarks
@@ -80,15 +86,15 @@ Shared memory heap
 - prost codegen service interface
 
 RPC init version
-- ODP
+- fix bug in runtime.is_spinning()
+- releasing reply
 - needs to spend a lot of time checking new incoming connections
 - get sglist right after jumping into koala space
-- fix bug in runtime.is_spinning()
--[o] memory returned by allocate_shm is not page aligned, needs
-  improvement
-- releasing reply
 - send/recv is too naive
 - API, req/resp must be moved into RPC (better to allow pass a reference)
+-[x] ODP
+-[o] memory returned by allocate_shm is not page aligned, needs
+  improvement
 -[x] check incoming connect requests and make Listener::get_request()
   non-blocking
 -[x] rpc client side async/.await, basically functionality done
