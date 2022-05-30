@@ -44,14 +44,11 @@ impl Unmarshal for HelloRequest {
         salloc_state: &Arc<SallocShared>,
     ) -> Result<ShmPtr<Self>, Self::Error> {
         // TODO(cjr): double-check if the code below is correct.
-        debug!("HelloReques, unmarshal, sg_list: {:0x?}", sg_list);
+        // log::debug!("HelloReques, unmarshal, sg_list: {:0x?}", sg_list);
         if sg_list.0.len() != 2 {
             return Err(());
         }
-        debug!(
-            "HelloReques, unmarshal, size_of::<Self>: {:0x?}",
-            mem::size_of::<Self>()
-        );
+        // log::debug!("HelloReques, unmarshal, size_of::<Self>: {:0x?}", mem::size_of::<Self>());
         if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }

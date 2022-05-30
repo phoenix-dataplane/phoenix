@@ -130,14 +130,14 @@ fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
                 });
             }
             Err(e) => {
-                warn!("Skip device due to: {}", e);
+                log::warn!("Skip device due to: {}", e);
                 continue;
             }
         }
     }
 
     if default_ctxs.is_empty() {
-        warn!("No active RDMA device found.");
+        log::warn!("No active RDMA device found.");
     }
     Ok(default_ctxs)
 }

@@ -190,7 +190,7 @@ impl RpcAdapterEngine {
 
             // Sender marshals the data (gets an SgList)
             // Sender posts send requests from the SgList
-            // debug!("check_input_queue, sglist: {:0x?}", sglist);
+            log::debug!("check_input_queue, sglist: {:0x?}", sglist);
             {
                 // let span = info_span!("push_back outstanding_req");
                 // let _enter = span.enter();
@@ -222,7 +222,7 @@ impl RpcAdapterEngine {
                         }
                     } else {
                         // post send with imm
-                        // trace!("post_send_imm, len={}", sge.len);
+                        tracing::trace!("post_send_imm, len={}", sge.len);
                         unsafe {
                             // let span = info_span!("post_send_with_imm");
                             // let _enter = span.enter();
@@ -257,7 +257,7 @@ impl RpcAdapterEngine {
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
-        // debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
+        log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
         // let span = info_span!("unmarshal_and_deliver_up");
         // let _enter = span.enter();
@@ -348,7 +348,7 @@ impl RpcAdapterEngine {
                         WcOpcode::Send => {
                             // send completed, do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                // trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                             }
                         }
                         WcOpcode::Recv => {
@@ -372,7 +372,7 @@ impl RpcAdapterEngine {
 
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
-                                // trace!("post_recv received complete message, wr_id={}", wc.wr_id);
+                                tracing::trace!("post_recv received complete message, wr_id={}", wc.wr_id);
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
@@ -528,7 +528,7 @@ impl RpcAdapterEngine {
                 unreachable!();
             }
             mrpc::cmd::Command::Connect(addr) => {
-                trace!("Connect, addr: {:?}", addr);
+                log::debug!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
                 let cq = self.get_or_init_cq();
                 let builder = ulib::ucm::CmIdBuilder::new()
@@ -554,7 +554,7 @@ impl RpcAdapterEngine {
                 ))
             }
             mrpc::cmd::Command::Bind(addr) => {
-                trace!("Bind, addr: {:?}", addr);
+                log::debug!("Bind, addr: {:?}", addr);
                 // create CmIdBuilder
                 let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();

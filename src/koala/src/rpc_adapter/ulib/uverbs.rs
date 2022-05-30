@@ -81,8 +81,8 @@ impl ProtectionDomain {
 
     pub(crate) fn allocate<T: Sized + Copy>(
         &self,
-        len: usize,
-        access: interface::AccessFlags,
+        _len: usize,
+        _access: interface::AccessFlags,
     ) -> Result<MemoryRegion<T>, Error> {
         todo!()
         // let nbytes = len * mem::size_of::<T>();

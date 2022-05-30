@@ -5,8 +5,13 @@ use thiserror::Error;
 
 use crate::transport::rdma::{ApiError, DatapathError};
 
+#[allow(dead_code)]
 pub mod fp;
+
+#[allow(dead_code)]
 pub mod ucm;
+
+#[allow(dead_code)]
 pub mod uverbs;
 
 #[derive(Error, Debug)]

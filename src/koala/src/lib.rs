@@ -6,10 +6,6 @@
 #![feature(strict_provenance)]
 #![feature(int_roundings)]
 
-#[macro_use]
-extern crate tracing;
-
-
 pub mod engine;
 pub mod resource;
 pub mod state_mgr;

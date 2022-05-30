@@ -186,7 +186,7 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        // trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
+                        tracing::trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
@@ -211,7 +211,7 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        // trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
+                        tracing::trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
@@ -274,7 +274,7 @@ impl MrpcEngine {
                     shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
                     shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
                 };
-                // trace!("mRPC engine send message to App, call_id={}", meta.call_id);
+                tracing::trace!("mRPC engine send message to App, call_id={}", meta.call_id);
                 {
                     // let span = info_span!("customer.enqueue_wc");
                     // let _enter = span.enter();

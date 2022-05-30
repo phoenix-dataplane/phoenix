@@ -79,20 +79,20 @@ impl Control {
         loop {
             match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
                 Ok((size, sender, cred)) => {
-                    debug!(
+                    log::debug!(
                         "received {} bytes from {:?} with credential: {:?}",
                         size, sender, cred
                     );
                     if let Some(cred) = cred {
                         if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
-                            warn!("Control dispatch: {}", e);
+                            log::warn!("Control dispatch: {}", e);
                         }
                     } else {
-                        warn!("received data without a credential, ignored");
+                        log::warn!("received data without a credential, ignored");
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => warn!("recv failed: {:?}", e),
+                Err(e) => log::warn!("recv failed: {:?}", e),
             }
         }
     }

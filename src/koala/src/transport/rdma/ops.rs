@@ -1,13 +1,5 @@
 //! Providing the API implemention for both TransportEngine and RpcAdapter.
 //! The API design requires a bit finesse.
-//!
-//! TODO(cjr): remove the following docs.
-//! Option 1: Using the native data types in rdma. This gives the best performance,
-//! but less portability and development velocity
-//!
-//! Option 2: Using the general API in interface. This scarifices the performance a bit,
-//! but prioritizes portability and agility. We will go this way, and see if the performance
-//! is good or not.
 use std::io;
 use std::net::SocketAddr;
 use std::slice;
@@ -193,7 +185,7 @@ impl Ops {
     ) -> std::result::Result<(), DatapathError> {
         let cq = self.resource().cq_table.get_dp(&cq_handle.0)?;
         if wc.capacity() == 0 {
-            warn!("wc capacity is zero");
+            log::warn!("wc capacity is zero");
             return Ok(());
         }
         // Safety: this is fine here because we will resize the wc to the number of elements it really gets
@@ -220,7 +212,7 @@ impl Ops {
         service: Option<&str>,
         hints: Option<&interface::addrinfo::AddrInfoHints>,
     ) -> Result<interface::addrinfo::AddrInfo> {
-        trace!(
+        log::debug!(
             "GetAddrInfo, node: {:?}, service: {:?}, hints: {:?}",
             node,
             service,
@@ -241,7 +233,7 @@ impl Ops {
         pd: Option<&interface::ProtectionDomain>,
         qp_init_attr: Option<&interface::QpInitAttr>,
     ) -> Result<returned::CmId> {
-        trace!(
+        log::debug!(
             "CreateEp, ai: {:?}, pd: {:?}, qp_init_attr: {:?}",
             ai,
             pd,
@@ -271,7 +263,7 @@ impl Ops {
         &self,
         port_space: interface::addrinfo::PortSpace,
     ) -> Result<returned::CmId> {
-        trace!("CreateId, port_space: {:?}", port_space);
+        log::debug!("CreateId, port_space: {:?}", port_space);
 
         // create a new event channel for each cmid
         let channel = rdmacm::EventChannel::create_event_channel().map_err(ApiError::RdmaCm)?;
@@ -304,7 +296,7 @@ impl Ops {
     }
 
     pub(crate) fn listen(&self, cmid_handle: Handle, backlog: i32) -> Result<()> {
-        trace!(
+        log::debug!(
             "Listen, cmid_handle: {:?}, backlog: {}",
             cmid_handle,
             backlog
@@ -332,7 +324,7 @@ impl Ops {
     }
 
     pub(crate) async fn get_request(&self, listener_handle: Handle) -> Result<returned::CmId> {
-        // trace!("GetRequest, listener_handle: {:?}", listener_handle);
+        log::debug!("GetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -347,7 +339,7 @@ impl Ops {
         &self,
         listener_handle: Handle,
     ) -> Result<Option<returned::CmId>> {
-        // trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
+        log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -356,6 +348,19 @@ impl Ops {
         if res.is_none() {
             return Ok(None);
         }
+
+        // debug on success, warn or error
+        log::log!(
+            if res.as_ref().unwrap().is_ok() {
+                log::Level::Debug
+            } else {
+                log::Level::Warn
+            },
+            "try_get_request, listener_handle: {:?}, ec_handle: {:?}, returns: {:?}",
+            listener_handle,
+            ec_handle,
+            res
+        );
 
         let event = res.unwrap()?;
 
@@ -368,7 +373,7 @@ impl Ops {
         cmid_handle: Handle,
         conn_param: Option<&interface::ConnParam>,
     ) -> Result<()> {
-        trace!(
+        log::debug!(
             "Accept, cmid_handle: {:?}, conn_param: {:?}",
             cmid_handle,
             conn_param
@@ -391,7 +396,7 @@ impl Ops {
         cmid_handle: Handle,
         conn_param: Option<&interface::ConnParam>,
     ) -> Result<()> {
-        trace!(
+        log::debug!(
             "Connect, cmid_handle: {:?}, conn_param: {:?}",
             cmid_handle,
             conn_param
@@ -410,7 +415,7 @@ impl Ops {
     }
 
     pub(crate) fn bind_addr(&self, cmid_handle: Handle, sockaddr: &SocketAddr) -> Result<()> {
-        trace!(
+        log::debug!(
             "BindAddr, cmid_handle: {:?}, sockaddr: {:?}",
             cmid_handle,
             sockaddr
@@ -426,7 +431,7 @@ impl Ops {
         cmid_handle: Handle,
         sockaddr: &SocketAddr,
     ) -> Result<()> {
-        trace!(
+        log::debug!(
             "ResolveAddr: cmid_handle: {:?}, sockaddr: {:?}",
             cmid_handle,
             sockaddr
@@ -437,15 +442,13 @@ impl Ops {
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ADDR_RESOLVED;
         let ec_handle = cmid.event_channel().as_handle();
-        debug!("before wait_cm_event");
         let _event = self.wait_cm_event(&ec_handle, event_type).await?;
-        debug!("after wait_cm_event");
 
         Ok(())
     }
 
     pub(crate) async fn resolve_route(&self, cmid_handle: Handle, timeout_ms: i32) -> Result<()> {
-        trace!(
+        log::debug!(
             "ResolveRoute: cmid_handle: {:?}, timeout_ms: {:?}",
             cmid_handle,
             timeout_ms
@@ -467,7 +470,7 @@ impl Ops {
         pd: Option<&interface::ProtectionDomain>,
         qp_init_attr: &interface::QpInitAttr,
     ) -> Result<returned::QueuePair> {
-        trace!(
+        log::debug!(
             "CmCreateQp, cmid_handle: {:?}, pd: {:?}, qp_init_attr: {:?}",
             cmid_handle,
             pd,
@@ -506,7 +509,8 @@ impl Ops {
     pub(crate) fn set_rnr_timeout(&self, cmid_handle: Handle, min_rnr_timer: u8) -> Result<()> {
         let cmid = self.resource().cmid_table.get(&cmid_handle)?;
         // assert!(cmid.qp().is_some(), "this must be called after QP is created");
-        cmid.set_rnr_timeout(min_rnr_timer).map_err(ApiError::RdmaCm)?;
+        cmid.set_rnr_timeout(min_rnr_timer)
+            .map_err(ApiError::RdmaCm)?;
         Ok(())
     }
 
@@ -517,7 +521,7 @@ impl Ops {
         nbytes: usize,
         access: interface::AccessFlags,
     ) -> Result<MemoryRegion> {
-        trace!(
+        log::trace!(
             "RegMr, pd: {:?}, nbytes: {}, access: {:?}",
             pd,
             nbytes,
@@ -539,7 +543,7 @@ impl Ops {
         min_cq_entries: i32,
         cq_context: u64,
     ) -> Result<returned::CompletionQueue> {
-        trace!(
+        log::debug!(
             "CreateCq, ctx: {:?}, min_cq_entries: {:?}, cq_context: {:?}",
             ctx,
             min_cq_entries,
@@ -567,25 +571,25 @@ impl Ops {
     }
 
     pub(crate) fn dealloc_pd(&self, pd: &interface::ProtectionDomain) -> Result<()> {
-        trace!("DeallocPd, pd: {:?}", pd);
+        log::trace!("DeallocPd, pd: {:?}", pd);
         self.resource().pd_table.close_resource(&pd.0)?;
         Ok(())
     }
 
     pub(crate) fn destroy_cq(&self, cq: &interface::CompletionQueue) -> Result<()> {
-        trace!("DestroyCq, cq: {:?}", cq);
+        log::debug!("DestroyCq, cq: {:?}", cq);
         self.resource().cq_table.close_resource(&cq.0)?;
         Ok(())
     }
 
     pub(crate) fn destroy_qp(&self, qp: &interface::QueuePair) -> Result<()> {
-        trace!("DestroyQp, qp: {:?}", qp);
+        log::debug!("DestroyQp, qp: {:?}", qp);
         self.resource().qp_table.close_resource(&qp.0)?;
         Ok(())
     }
 
     pub(crate) async fn disconnect(&self, cmid: &interface::CmId) -> Result<()> {
-        trace!("Disconnect, cmid: {:?}", cmid);
+        log::debug!("Disconnect, cmid: {:?}", cmid);
 
         let cmid_handle = cmid.0;
         let cmid = self.resource().cmid_table.get(&cmid_handle)?;
@@ -599,32 +603,32 @@ impl Ops {
     }
 
     pub(crate) fn destroy_id(&self, cmid: &interface::CmId) -> Result<()> {
-        trace!("DestroyId, cmid: {:?}", cmid);
+        log::debug!("DestroyId, cmid: {:?}", cmid);
         self.resource().cmid_table.close_resource(&cmid.0)?;
         Ok(())
     }
 
     pub(crate) fn open_pd(&self, pd: &interface::ProtectionDomain) -> Result<()> {
-        trace!("OpenPd, pd: {:?}", pd);
+        log::trace!("OpenPd, pd: {:?}", pd);
         self.resource().pd_table.open_resource(&pd.0)?;
         Ok(())
     }
 
     pub(crate) fn open_cq(&self, cq: &interface::CompletionQueue) -> Result<u32> {
-        trace!("OpenCq, cq: {:?}", cq);
+        log::trace!("OpenCq, cq: {:?}", cq);
         self.resource().cq_table.open_resource(&cq.0)?;
         let cq = self.resource().cq_table.get(&cq.0)?;
         Ok(cq.capacity())
     }
 
     pub(crate) fn open_qp(&self, qp: &interface::QueuePair) -> Result<()> {
-        trace!("OpenQp, qp: {:?}", qp);
+        log::trace!("OpenQp, qp: {:?}", qp);
         self.resource().qp_table.open_resource(&qp.0)?;
         Ok(())
     }
 
     pub(crate) fn get_default_pds(&self) -> Result<Vec<returned::ProtectionDomain>> {
-        trace!("GetDefaultPds");
+        log::debug!("GetDefaultPds");
         let pds = self
             .resource()
             .default_pds
@@ -636,7 +640,7 @@ impl Ops {
     }
 
     pub(crate) fn get_default_contexts(&self) -> Result<Vec<returned::VerbsContext>> {
-        trace!("GetDefaultContexts");
+        log::debug!("GetDefaultContexts");
         use super::state::DEFAULT_CTXS;
         let ctx_list = DEFAULT_CTXS
             .iter()
@@ -652,6 +656,7 @@ impl Ops {
         &self,
         pd_handle: &interface::ProtectionDomain,
     ) -> Result<rdmacm::MemoryRegion<'static>> {
+        log::debug!("CreateMrOnDemandPaging");
         let pd = self.resource().pd_table.get(&pd_handle.0)?;
         Ok(rdmacm::MemoryRegion::new_on_demand_paging(pd.pd()).map_err(ApiError::Ibv)?)
     }
@@ -757,17 +762,17 @@ impl Ops {
         event_channel_handle: &Handle,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<Result<rdmacm::CmEvent>> {
-        // debug!(
-        //     "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
-        //     event_channel_handle,
-        //     event_type
-        // );
+        log::trace!(
+            "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
+            event_channel_handle,
+            event_type
+        );
         if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
-            // trace!(
-            //     "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
-            //     event_channel_handle,
-            //     cm_event
-            // );
+            log::debug!(
+                "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
+                event_channel_handle,
+                cm_event
+            );
             use std::cmp;
             match cm_event.status().cmp(&0) {
                 cmp::Ordering::Equal => {}
@@ -781,11 +786,6 @@ impl Ops {
             return Some(Ok(cm_event));
         }
         if let Some(err) = self.pop_first_cm_error() {
-            // warn!(
-            //     "try_get_cm_event, got error: ec_handle: {:?}, err: {:?}",
-            //     event_channel_handle,
-            //     err
-            // );
             return Some(Err(err));
         }
         None
@@ -798,6 +798,18 @@ impl Ops {
     ) -> Result<rdmacm::CmEvent> {
         loop {
             if let Some(res) = self.try_get_cm_event(event_channel_handle, event_type) {
+                // debug on success, warn on error
+                log::log!(
+                    if res.is_ok() {
+                        log::Level::Debug
+                    } else {
+                        log::Level::Warn
+                    },
+                    "wait_cm_event, ec_handle: {:?}, ev_type: {:?}, returns: {:?}",
+                    event_channel_handle,
+                    event_type,
+                    res
+                );
                 return res;
             }
             future::yield_now().await;

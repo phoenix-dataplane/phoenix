@@ -7,6 +7,8 @@ RPC
 -[x] Heap allocator
 
 Benchmark Suite
+- *setup CI (which public CI service has RDMA NIC?) and benchmarks*
+- Build a CI pipeline with all kinds of tests and benchmarks
 - worker starting order
 - auto kill on clean up
 
@@ -28,14 +30,14 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
+- create koala-trace dir
 - use env_logger and minitrace to replace tokio-tracing
 - KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
 - Garbage collect CmEngine
-- *setup CI (which public CI service has RDMA NIC?) and benchmarks*
-- Build a CI pipeline with all kinds of tests and benchmarks
 - *UDP socket send/recv fd must be nonblocking*
-- *add static tracing* points at various points in code for performance
+-[x] *add static tracing* points at various points in code for performance
   analysis
+- CmIdBuilder::new() -> CmId::builder()
 -[x] get configuration from a file to run multiple backends for developing
 -[x] simplify ConnParam. Allow to set fields in QpBuilder.
 -[x] update the code and directory structure of koala_examples
@@ -61,6 +63,7 @@ Misc
   the number of engines to build.
 
 Shared memory heap
+- use MMAP_HUGETLB, also reg_mr with huge tlb
 - SharedHeapAllocator should not use MemoryRegion any more. The pd and
   rkey, inner_handle are unnecessary. And TCP does not have these
   fields, either.

@@ -36,7 +36,7 @@ impl Engine for SallocEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("SallocEngine")
+        "SallocEngine".to_owned()
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -87,7 +87,7 @@ impl SallocEngine {
         match req {
             Command::AllocShm(size, align) => {
                 // TODO(wyj): implement backend heap allocator to properly handle align
-                trace!("AllocShm, size: {}", size);
+                log::trace!("AllocShm, size: {}", size);
                 let layout = Layout::from_size_align(size, align)?;
                 let region = SharedRegion::new(layout)?;
                 // mr's addr on backend side
@@ -109,7 +109,7 @@ impl SallocEngine {
                 // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table.
                 // DeregMr will be performed during drop.
                 // unimplemented!()
-                warn!("unimplemented, skipping");
+                log::warn!("unimplemented, skipping");
                 Ok(cmd::CompletionKind::DeallocShm)
             }
             Command::NewMappedAddrs(app_vaddrs) => {

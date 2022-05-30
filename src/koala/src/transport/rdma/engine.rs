@@ -168,7 +168,7 @@ impl TransportEngine {
                     Err(e) => {
                         // better to log the error here, in case sometimes the customer does
                         // not receive the error
-                        error!("process_cmd error: {}", e);
+                        log::error!("process_cmd error: {}", e);
                         self.customer.send_comp(cmd::Completion(Err(e.into())))?
                     }
                 }
@@ -605,7 +605,7 @@ impl TransportEngine {
                 Ok(CompletionKind::RegMr(ret_mr))
             }
             Command::DeregMr(mr) => {
-                trace!("DeregMr, mr: {:?}", mr);
+                log::trace!("DeregMr, mr: {:?}", mr);
                 self.ops
                     .resource()
                     .mr_table
