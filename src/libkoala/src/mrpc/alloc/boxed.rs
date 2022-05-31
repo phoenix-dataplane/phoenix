@@ -12,17 +12,19 @@ use std::pin::Pin;
 use std::ptr::Unique;
 
 use std::alloc::handle_alloc_error;
-use std::alloc::{AllocError, Allocator, Layout};
+use std::alloc::{AllocError, Layout};
 
-use ipc::shmalloc::ShmPtr;
+use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AppOwned, BackendOwned, AllocOwner};
 
+use super::shmview::CloneFromBackendOwned;
+
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
 // on `box_free` for more details.
-pub(crate) struct Box<T: ?Sized, O: AllocOwner = AppOwned>(ShmPtr<T>, O);
+pub struct Box<T: ?Sized, O: AllocOwner = AppOwned>(ShmPtr<T>, O);
 
 impl<T> Box<T> {
     #[inline]
@@ -239,12 +241,18 @@ impl<T: ?Sized, O: AllocOwner> SpecializedDrop for Box<T, O> {
     }
 }
 
-impl<T:? Sized, O: AllocOwner> Drop for Box<T, O> {
+impl<T: ?Sized, O: AllocOwner> Drop for Box<T, O> {
     fn drop(&mut self) {
         (self as &mut dyn SpecializedDrop).drop();
     }
 }
 
+unsafe impl<T: ?Sized + SwitchAddressSpace> SwitchAddressSpace for Box<T> {
+    fn switch_address_space(&mut self) {
+        unsafe { self.0.as_mut().switch_address_space() };
+        self.0.switch_address_space();
+    }
+}
 
 impl<T: Default> Default for Box<T> {
     fn default() -> Self {
@@ -293,6 +301,18 @@ impl<T: Clone> Clone for Box<T> {
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         (**self).clone_from(&(**source));
+    }
+}
+
+impl<T: Clone> CloneFromBackendOwned for Box<T, AppOwned> {
+    type BackendOwned = Box<T, BackendOwned>;
+
+    fn clone_from_backend_owned(backend_owned: &Self::BackendOwned) -> Self {
+        let mut boxed = Self::new_uninit();
+        unsafe {
+            (**backend_owned).write_clone_into_raw(boxed.as_mut_ptr());
+            boxed.assume_init()
+        }        
     }
 }
 

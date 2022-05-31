@@ -15,11 +15,11 @@ pub trait CloneFromBackendOwned {
 
 pub struct ShmView<A: CloneFromBackendOwned>
 {
-    inner: ManuallyDrop<Box<<A as CloneFromBackendOwned>::BackendOwned>>,
+    inner: ManuallyDrop<Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>>,
 }
 
 impl<A: CloneFromBackendOwned> ShmView<A> {
-    pub(crate) fn new(backend_owned: Box<<A as CloneFromBackendOwned>::BackendOwned>) -> Self {
+    pub(crate) fn new_from_backend_owned(backend_owned: Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>) -> Self {
         ShmView { inner: ManuallyDrop::new(backend_owned) }
     }
 }

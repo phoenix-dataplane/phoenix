@@ -12,6 +12,7 @@ use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
 use ipc::shmalloc::ShmPtr;
+use ipc::shmalloc::SwitchAddressSpace;
 
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AppOwned, BackendOwned, AllocOwner};
@@ -306,7 +307,11 @@ impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     }
 }
 
-// TODO(wyj): SwitchAddressSpace for RawVec
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
+    fn switch_address_space(&mut self) {
+        self.ptr.switch_address_space();
+    }
+}
 
 #[inline]
 fn handle_reserve(result: Result<(), TryReserveError>) {

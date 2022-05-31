@@ -21,6 +21,7 @@ use crate::salloc::SA_CTX;
 
 use ipc::shmalloc::SwitchAddressSpace;
 
+// NOTE(wyj): T must be app-owned.
 #[derive(Debug)]
 pub struct RpcMessage<T> {
     pub(crate) inner: Box<MessageTemplate<T>>
@@ -51,6 +52,12 @@ impl<T> Deref for RpcMessage<T> {
 impl<T> DerefMut for RpcMessage<T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.inner.as_mut().val.as_mut() }
+    }
+}
+
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RpcMessage<T> {
+    fn switch_address_space(&mut self) {
+        self.inner.switch_address_space();    
     }
 }
 
