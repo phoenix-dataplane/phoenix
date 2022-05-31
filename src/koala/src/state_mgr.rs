@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::hash_map;
+use std::sync::Arc;
 
 use fnv::FnvHashMap as HashMap;
 
@@ -22,7 +22,10 @@ impl<S: StateTrait> StateManager<S> {
         }
     }
 
-    pub(crate) fn get_or_create_state(self: &Arc<Self>, pid: Pid) -> Result<S, <S as StateTrait>::Err> {
+    pub(crate) fn get_or_create_state(
+        self: &Arc<Self>,
+        pid: Pid,
+    ) -> Result<S, <S as StateTrait>::Err> {
         let mut states = self.states.lock();
         match states.entry(pid) {
             hash_map::Entry::Occupied(e) => {

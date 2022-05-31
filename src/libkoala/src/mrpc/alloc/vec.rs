@@ -14,10 +14,9 @@ use std::collections::TryReserveError;
 
 use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
-use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
-use super::raw_vec::RawVec;
 use super::boxed::Box;
-
+use super::raw_vec::RawVec;
+use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
 pub struct Vec<T, O: AllocOwner = AppOwned> {
     buf: RawVec<T, O>,
@@ -27,12 +26,18 @@ pub struct Vec<T, O: AllocOwner = AppOwned> {
 impl<T> Vec<T> {
     #[inline]
     pub const fn new() -> Vec<T> {
-        Vec { buf: RawVec::new(), len: 0 }
+        Vec {
+            buf: RawVec::new(),
+            len: 0,
+        }
     }
 
     #[inline]
     pub fn with_capacity(capacity: usize) -> Vec<T> {
-        Vec { buf: RawVec::with_capacity(capacity), len: 0 }
+        Vec {
+            buf: RawVec::with_capacity(capacity),
+            len: 0,
+        }
     }
 
     pub fn reserve(&mut self, additional: usize) {
@@ -88,22 +93,30 @@ impl<T> Vec<T> {
         self
     }
 
-    /// ptr, addr_remote, len, capacity
-    pub(crate) fn into_raw_parts(self) -> (*mut T, usize, usize, usize) {
-        let mut me = ManuallyDrop::new(self);
-        let (ptr, addr) = me.buf.ptr();
-        (ptr, addr, me.len(), me.capacity())
+    /// ptr, ptr_remote, len, capacity
+    pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
+        let me = ManuallyDrop::new(self);
+        let (ptr, ptr_remote) = me.buf.shmptr().to_raw_parts();
+        (ptr.as_ptr(), ptr_remote.as_ptr(), me.len(), me.capacity())
     }
 
-    pub(crate) unsafe fn from_raw_parts(ptr: *mut T, addr_remote: usize, length: usize, capacity: usize) -> Vec<T> {
-        unsafe { Vec { buf: RawVec::from_raw_parts(ptr, addr_remote, capacity), len: length } }
+    pub(crate) unsafe fn from_raw_parts(
+        ptr: *mut T,
+        ptr_remote: *mut T,
+        length: usize,
+        capacity: usize,
+    ) -> Vec<T> {
+        Vec {
+            buf: RawVec::from_raw_parts(ptr, ptr_remote, capacity),
+            len: length,
+        }
     }
 
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         // We shadow the slice method of the same name to avoid going through
         // `deref_mut`, which creates an intermediate reference.
-        let (ptr, _addr_remote) = self.buf.ptr();
+        let ptr = self.buf.ptr();
         unsafe {
             assume(!ptr.is_null());
         }
@@ -122,7 +135,10 @@ impl<T> Vec<T> {
         #[cold]
         #[inline(never)]
         fn assert_failed(index: usize, len: usize) -> ! {
-            panic!("swap_remove index (is {}) should be < len (is {})", index, len);
+            panic!(
+                "swap_remove index (is {}) should be < len (is {})",
+                index, len
+            );
         }
 
         let len = self.len();
@@ -144,7 +160,10 @@ impl<T> Vec<T> {
         #[cold]
         #[inline(never)]
         fn assert_failed(index: usize, len: usize) -> ! {
-            panic!("insertion index (is {}) should be <= len (is {})", index, len);
+            panic!(
+                "insertion index (is {}) should be <= len (is {})",
+                index, len
+            );
         }
 
         let len = self.len();
@@ -286,7 +305,11 @@ impl<T> Vec<T> {
             }
         }
 
-        let mut gap = FillGapOnDrop { read: 1, write: 1, vec: self };
+        let mut gap = FillGapOnDrop {
+            read: 1,
+            write: 1,
+            vec: self,
+        };
         let ptr = gap.vec.as_mut_ptr();
 
         /* Drop items while going through Vec, it should be more efficient than
@@ -362,10 +385,10 @@ impl<T> Vec<T> {
 
     #[inline]
     unsafe fn append_elements(&mut self, other: *const [T]) {
-        let count = unsafe { (*other).len() };
+        let count = (*other).len();
         self.reserve(count);
         let len = self.len();
-        unsafe { ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count) };
+        ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count);
         self.len += count;
     }
 
@@ -398,7 +421,10 @@ impl<T> Vec<T> {
         #[cold]
         #[inline(never)]
         fn start_assert_failed(start: usize, end: usize) -> ! {
-            panic!("start drain index (is {}) should be <= end drain index (is {})", start, end);
+            panic!(
+                "start drain index (is {}) should be <= end drain index (is {})",
+                start, end
+            );
         }
 
         #[cold]
@@ -459,7 +485,6 @@ impl<T> Vec<T> {
         other
     }
 
-
     pub fn resize_with<F>(&mut self, new_len: usize, f: F)
     where
         F: FnMut() -> T,
@@ -491,7 +516,7 @@ impl<T, O: AllocOwner> Vec<T, O> {
     pub fn as_ptr(&self) -> *const T {
         // We shadow the slice method of the same name to avoid going through
         // `deref`, which creates an intermediate reference.
-        let (ptr, _addr_remote) = self.buf.ptr();
+        let ptr = self.buf.ptr();
         unsafe {
             assume(!ptr.is_null());
         }
@@ -528,8 +553,8 @@ impl<T: Clone> Vec<T> {
     }
 }
 
-trait SpecializedDrop { 
-    fn drop( &mut self ); 
+trait SpecializedDrop {
+    fn drop(&mut self);
 }
 
 impl<T> SpecializedDrop for Vec<T, AppOwned> {
@@ -556,7 +581,6 @@ impl<T, O: AllocOwner> SpecializedDrop for Vec<T, O> {
         unreachable!("SpecializedDrop should be specialized for AppOwned and BackendOwned");
     }
 }
-
 
 impl<T, O: AllocOwner> Drop for Vec<T, O> {
     fn drop(&mut self) {
@@ -667,7 +691,10 @@ struct SetLenOnDrop<'a> {
 impl<'a> SetLenOnDrop<'a> {
     #[inline]
     fn new(len: &'a mut usize) -> Self {
-        SetLenOnDrop { local_len: *len, len }
+        SetLenOnDrop {
+            local_len: *len,
+            len,
+        }
     }
 
     #[inline]
@@ -715,7 +742,10 @@ impl SpecFromElem for i8 {
     #[inline]
     fn from_elem(elem: i8, n: usize) -> Vec<i8> {
         if elem == 0 {
-            return Vec { buf: RawVec::with_capacity_zeroed(n), len: n };
+            return Vec {
+                buf: RawVec::with_capacity_zeroed(n),
+                len: n,
+            };
         }
         unsafe {
             let mut v = Vec::with_capacity(n);
@@ -730,7 +760,10 @@ impl SpecFromElem for u8 {
     #[inline]
     fn from_elem(elem: u8, n: usize) -> Vec<u8> {
         if elem == 0 {
-            return Vec { buf: RawVec::with_capacity_zeroed(n), len: n };
+            return Vec {
+                buf: RawVec::with_capacity_zeroed(n),
+                len: n,
+            };
         }
         unsafe {
             let mut v = Vec::with_capacity(n);
@@ -745,7 +778,10 @@ impl<T: Clone + IsZero> SpecFromElem for T {
     #[inline]
     fn from_elem(elem: T, n: usize) -> Vec<T> {
         if elem.is_zero() {
-            return Vec { buf: RawVec::with_capacity_zeroed(n), len: n };
+            return Vec {
+                buf: RawVec::with_capacity_zeroed(n),
+                len: n,
+            };
         }
         let mut v = Vec::with_capacity(n);
         v.extend_with(n, ExtendElement(elem));
@@ -817,7 +853,6 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 }
 
 mod hack {
-    use super::Box;
     use super::Vec;
 
     // pub fn into_vec<T>(b: Box<[T]>) -> Vec<T> {
@@ -898,8 +933,8 @@ impl<T> IntoIterator for Vec<T> {
     #[inline]
     fn into_iter(self) -> IntoIter<T> {
         unsafe {
-            let mut me = ManuallyDrop::new(self);
-            let (begin, addr_remote) = me.buf.ptr();
+            let me = ManuallyDrop::new(self);
+            let begin = me.buf.ptr();
             let end = if mem::size_of::<T>() == 0 {
                 arith_offset(begin as *const i8, me.len() as isize) as *const T
             } else {
@@ -907,7 +942,7 @@ impl<T> IntoIterator for Vec<T> {
             };
             let cap = me.buf.capacity();
             IntoIter {
-                buf: ShmPtr::new_unchecked(begin, addr_remote),
+                buf: me.buf.shmptr(),
                 phantom: PhantomData,
                 cap,
                 ptr: begin,
@@ -1087,7 +1122,10 @@ impl<T> Vec<T> {
         R: RangeBounds<usize>,
         I: IntoIterator<Item = T>,
     {
-        Splice { drain: self.drain(range), replace_with: replace_with.into_iter() }
+        Splice {
+            drain: self.drain(range),
+            replace_with: replace_with.into_iter(),
+        }
     }
 
     pub fn drain_filter<F>(&mut self, filter: F) -> DrainFilter<'_, T, F>
@@ -1101,7 +1139,14 @@ impl<T> Vec<T> {
             self.set_len(0);
         }
 
-        DrainFilter { vec: self, idx: 0, del: 0, old_len, pred: filter, panic_flag: false }
+        DrainFilter {
+            vec: self,
+            idx: 0,
+            del: 0,
+            old_len,
+            pred: filter,
+            panic_flag: false,
+        }
     }
 }
 
@@ -1143,7 +1188,6 @@ __impl_slice_eq1! { [] &[A], Vec<B> }
 __impl_slice_eq1! { [] &mut [A], Vec<B> }
 __impl_slice_eq1! { [const N: usize] Vec<A>, [B; N] }
 __impl_slice_eq1! { [const N: usize] Vec<A>, &[B; N] }
-
 
 impl<T: PartialOrd> PartialOrd for Vec<T> {
     #[inline]
@@ -1347,8 +1391,10 @@ impl<T> Drop for IntoIter<T> {
         impl<T> Drop for DropGuard<'_, T> {
             fn drop(&mut self) {
                 // RawVec handles deallocation
-                let (ptr, addr_remote) = self.0.buf.as_ptr();
-                let _ = unsafe { RawVec::from_raw_parts(ptr, addr_remote, self.0.cap) };
+                let (ptr, ptr_remote) = self.0.buf.to_raw_parts();
+                let _ = unsafe {
+                    RawVec::from_raw_parts(ptr.as_ptr(), ptr_remote.as_ptr(), self.0.cap)
+                };
             }
         }
 
@@ -1404,7 +1450,9 @@ impl<T> Iterator for Drain<'_, T> {
 
     #[inline]
     fn next(&mut self) -> Option<T> {
-        self.iter.next().map(|elt| unsafe { ptr::read(elt as *const _) })
+        self.iter
+            .next()
+            .map(|elt| unsafe { ptr::read(elt as *const _) })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1415,7 +1463,9 @@ impl<T> Iterator for Drain<'_, T> {
 impl<T> DoubleEndedIterator for Drain<'_, T> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
-        self.iter.next_back().map(|elt| unsafe { ptr::read(elt as *const _) })
+        self.iter
+            .next_back()
+            .map(|elt| unsafe { ptr::read(elt as *const _) })
     }
 }
 
@@ -1531,7 +1581,11 @@ impl<I: Iterator> Drop for Splice<'_, I> {
 
             // Collect any remaining elements.
             // This is a zero-length vector which does not allocate if `lower_bound` was exact.
-            let mut collected = self.replace_with.by_ref().collect::<Vec<I::Item>>().into_iter();
+            let mut collected = self
+                .replace_with
+                .by_ref()
+                .collect::<Vec<I::Item>>()
+                .into_iter();
             // Now we have an exact count.
             if collected.len() > 0 {
                 self.drain.move_tail(collected.len());
@@ -1551,16 +1605,15 @@ impl<T> Drain<'_, T> {
     /// Fill that range as much as possible with new elements from the `replace_with` iterator.
     /// Returns `true` if we filled the entire range. (`replace_with.next()` didn’t return `None`.)
     unsafe fn fill<I: Iterator<Item = T>>(&mut self, replace_with: &mut I) -> bool {
-        let vec = unsafe { self.vec.as_mut() };
+        let vec = self.vec.as_mut();
         let range_start = vec.len;
         let range_end = self.tail_start;
-        let range_slice = unsafe {
-            slice::from_raw_parts_mut(vec.as_mut_ptr().add(range_start), range_end - range_start)
-        };
+        let range_slice =
+            slice::from_raw_parts_mut(vec.as_mut_ptr().add(range_start), range_end - range_start);
 
         for place in range_slice {
             if let Some(new_item) = replace_with.next() {
-                unsafe { ptr::write(place, new_item) };
+                ptr::write(place, new_item);
                 vec.len += 1;
             } else {
                 return false;
@@ -1571,16 +1624,14 @@ impl<T> Drain<'_, T> {
 
     /// Makes room for inserting more elements before the tail.
     unsafe fn move_tail(&mut self, additional: usize) {
-        let vec = unsafe { self.vec.as_mut() };
+        let vec = self.vec.as_mut();
         let len = self.tail_start + self.tail_len;
         vec.buf.reserve(len, additional);
 
         let new_tail_start = self.tail_start + additional;
-        unsafe {
-            let src = vec.as_ptr().add(self.tail_start);
-            let dst = vec.as_mut_ptr().add(new_tail_start);
-            ptr::copy(src, dst, self.tail_len);
-        }
+        let src = vec.as_ptr().add(self.tail_start);
+        let dst = vec.as_mut_ptr().add(new_tail_start);
+        ptr::copy(src, dst, self.tail_len);
         self.tail_start = new_tail_start;
     }
 }
