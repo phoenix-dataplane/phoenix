@@ -10,19 +10,6 @@ pub unsafe trait SwitchAddressSpace {
     fn switch_address_space(&mut self) {}
 }
 
-// TODO(wyj): remove std's Vec
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
-    fn switch_address_space(&mut self) {
-    }
-}
-
-// TODO(wyj): remove std's Vec
-unsafe impl<T> SwitchAddressSpace for Vec<T> {
-    default fn switch_address_space(&mut self) {
-        
-    }
-}
-
 unsafe impl SwitchAddressSpace for u8 {}
 unsafe impl SwitchAddressSpace for u16 {}
 unsafe impl SwitchAddressSpace for u32 {}

@@ -66,7 +66,7 @@ impl<T> Vec<T> {
     //     unsafe {
     //         self.shrink_to_fit();
     //         let me = ManuallyDrop::new(self);
-    //         let buf = ptr::read(&me.buf);
+    //         let buf = ptr::read(&me.buf); 
     //         let len = me.len();
     //         buf.into_box(len).assume_init()
     //     }

@@ -1,3 +1,4 @@
+mod vec;
 mod raw_vec;
 
-pub use raw_vec::RawVec;
+pub(crate) use vec::Vec;

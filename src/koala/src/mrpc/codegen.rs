@@ -5,6 +5,7 @@ use std::sync::Arc;
 use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 use crate::salloc::state::Shared as SallocShared;
+use crate::mrpc::dtypes::Vec;
 use crate::mrpc::marshal::{Marshal, Unmarshal, SgList, ShmBuf};
 
 #[derive(Debug)]
@@ -13,11 +14,17 @@ pub struct HelloRequest {
     pub name: Vec<u8>,
 }
 
+unsafe impl SwitchAddressSpace for HelloRequest {
+    fn switch_address_space(&mut self) {
+        self.name.switch_address_space();
+    }
+}
+
 impl Marshal for HelloRequest {
     type Error = ();
     fn marshal(&self) -> Result<SgList, Self::Error> {
         let selfaddr = self as *const _ as usize;
-        let vecptr = unsafe { (self as *const Self).cast::<usize>().read() };
+        let vecptr = self.name.get_buf_addr();
         let buf0 = ShmBuf {
             ptr: selfaddr,
             len: mem::size_of::<Self>() as usize,
@@ -44,10 +51,10 @@ impl Unmarshal for HelloRequest {
         }
         let this_remote_addr = salloc_state.resource.query_app_addr(sg_list.0[0].ptr).unwrap();
         let mut this = ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr).unwrap();
-        // TODO(wyj): replace this with mrpc's Vec, constructed from ShmPtr
-        let vecaddr = sg_list.0[1].ptr;
-        let vecptr = &mut this.as_mut().name as *mut _ as *mut usize;
-        vecptr.write(vecaddr);
+
+        let vec_buf_addr = sg_list.0[1].ptr;
+        let vec_buf_addr_remote = salloc_state.resource.query_app_addr(vec_buf_addr).unwrap();
+        this.as_mut().name.update_buf_shmptr(vec_buf_addr as *mut u8, vec_buf_addr_remote);
         Ok(this)
     }
 }
@@ -58,12 +65,19 @@ pub struct HelloReply {
     pub name: Vec<u8>,
 }
 
+unsafe impl SwitchAddressSpace for HelloReply {
+    fn switch_address_space(&mut self) {
+        self.name.switch_address_space();
+    }
+}
+
+
 impl Marshal for HelloReply {
     type Error = ();
     fn marshal(&self) -> Result<SgList, Self::Error> {
         // TODO(cjr): double-check if the code below is correct.
         let selfaddr = self as *const _ as usize;
-        let vecptr = unsafe { (self as *const Self).cast::<usize>().read() };
+        let vecptr = self.name.get_buf_addr();
         let buf0 = ShmBuf {
             ptr: selfaddr,
             len: mem::size_of::<Self>() as usize,
@@ -88,21 +102,11 @@ impl Unmarshal for HelloReply {
         }
         let this_remote_addr = salloc_state.resource.query_app_addr(sg_list.0[0].ptr).unwrap();
         let mut this = ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr).unwrap();
-        let vecaddr = sg_list.0[1].ptr;
-        let vecptr = &mut this.as_mut().name as *mut _ as *mut usize;
-        vecptr.write(vecaddr);
+        
+        let vec_buf_addr = sg_list.0[1].ptr;
+        let vec_buf_addr_remote = salloc_state.resource.query_app_addr(vec_buf_addr).unwrap();
+        this.as_mut().name.update_buf_shmptr(vec_buf_addr as *mut u8, vec_buf_addr_remote);
         Ok(this)
     }
 }
 
-unsafe impl SwitchAddressSpace for HelloRequest {
-    fn switch_address_space(&mut self) {
-        self.name.switch_address_space();
-    }
-}
-
-unsafe impl SwitchAddressSpace for HelloReply {
-    fn switch_address_space(&mut self) {
-        self.name.switch_address_space();
-    }
-}

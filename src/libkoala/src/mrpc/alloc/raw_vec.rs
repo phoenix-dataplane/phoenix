@@ -26,7 +26,7 @@ enum AllocInit {
     Zeroed,
 }
 
-pub(crate) struct RawVec<T, O: AllocOwner = AppOwned> {
+pub struct RawVec<T, O: AllocOwner = AppOwned> {
     ptr: ShmPtr<T>,
     cap: usize,
     _owner: O,
@@ -62,11 +62,9 @@ impl<T> RawVec<T> {
         );
 
         let me = ManuallyDrop::new(self);
-        unsafe {
-            let (ptr, addr_remote) = me.ptr();
-            let slice = slice::from_raw_parts_mut(ptr as *mut MaybeUninit<T>, len);
-            Box::from_raw(slice, addr_remote)
-        }
+        let (ptr, addr_remote) = me.ptr();
+        let slice = slice::from_raw_parts_mut(ptr as *mut MaybeUninit<T>, len);
+        Box::from_raw(slice, addr_remote)
     }
 
     fn allocate(capacity: usize, init: AllocInit) -> Self {
@@ -309,6 +307,7 @@ impl<T, O: AllocOwner> Drop for RawVec<T, O> {
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
     fn switch_address_space(&mut self) {
+        // RawVec does not handle T's switch_address_space; this is left for the users of RawVec
         self.ptr.switch_address_space();
     }
 }
