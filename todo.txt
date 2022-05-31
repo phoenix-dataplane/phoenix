@@ -30,9 +30,9 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
-- create koala-trace dir
-- use env_logger and minitrace to replace tokio-tracing
-- KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
+-[x] create koala-trace dir
+- <s>use env_logger and minitrace to replace tokio-tracing</s>
+-[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
 - Garbage collect CmEngine
 - *UDP socket send/recv fd must be nonblocking*
 -[x] *add static tracing* points at various points in code for performance

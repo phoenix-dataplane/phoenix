@@ -6,9 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.14"
-env_logger = "0.9.0"
 chrono = "0.4.19"
+ansi_term = "0.12.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "ansi", "smallvec"] }
 tracing-appender = "0.2"
@@ -40,3 +39,4 @@ memfd = "0.4.1"
 memmap2 = "0.5.0"
 futures = "0.3.21"
 tokio = { version = "1.18.2", features = ["sync"] }
+tracing-core = "0.1.26"

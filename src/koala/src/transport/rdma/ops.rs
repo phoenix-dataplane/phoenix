@@ -350,17 +350,21 @@ impl Ops {
         }
 
         // debug on success, warn or error
-        log::log!(
-            if res.as_ref().unwrap().is_ok() {
-                log::Level::Debug
-            } else {
-                log::Level::Warn
-            },
-            "try_get_request, listener_handle: {:?}, ec_handle: {:?}, returns: {:?}",
-            listener_handle,
-            ec_handle,
-            res
-        );
+        if res.as_ref().unwrap().is_ok() {
+            log::debug!(
+                "try_get_request, listener_handle: {:?}, ec_handle: {:?}, returns: {:?}",
+                listener_handle,
+                ec_handle,
+                res
+            );
+        } else {
+            log::warn!(
+                "try_get_request, listener_handle: {:?}, ec_handle: {:?}, returns: {:?}",
+                listener_handle,
+                ec_handle,
+                res
+            );
+        }
 
         let event = res.unwrap()?;
 
@@ -762,11 +766,11 @@ impl Ops {
         event_channel_handle: &Handle,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<Result<rdmacm::CmEvent>> {
-        log::trace!(
-            "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
-            event_channel_handle,
-            event_type
-        );
+        // log::trace!(
+        //     "try_get_cm_event, ec_handle: {:?}, event_type: {:?}",
+        //     event_channel_handle,
+        //     event_type
+        // );
         if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
             log::debug!(
                 "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
@@ -799,17 +803,21 @@ impl Ops {
         loop {
             if let Some(res) = self.try_get_cm_event(event_channel_handle, event_type) {
                 // debug on success, warn on error
-                log::log!(
-                    if res.is_ok() {
-                        log::Level::Debug
-                    } else {
-                        log::Level::Warn
-                    },
-                    "wait_cm_event, ec_handle: {:?}, ev_type: {:?}, returns: {:?}",
-                    event_channel_handle,
-                    event_type,
-                    res
-                );
+                if res.is_ok() {
+                    log::debug!(
+                        "wait_cm_event, ec_handle: {:?}, ev_type: {:?}, returns: {:?}",
+                        event_channel_handle,
+                        event_type,
+                        res
+                    );
+                } else {
+                    log::warn!(
+                        "wait_cm_event, ec_handle: {:?}, ev_type: {:?}, returns: {:?}",
+                        event_channel_handle,
+                        event_type,
+                        res
+                    );
+                }
                 return res;
             }
             future::yield_now().await;

@@ -69,7 +69,7 @@ pub struct RdmaTransportConfig {
 #[serde(deny_unknown_fields)]
 pub struct TracingConfig {
     pub enable: bool,
-    pub event_level: String,
+    pub min_event_level: String,
     pub span_level: String,
     pub output_dir: String,
 }
