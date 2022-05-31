@@ -14,11 +14,11 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
 
 impl<T> RawVec<T> {
     #[inline]
-    pub fn ptr(&self) -> (*mut T, usize) {
+    pub fn ptr(&self) -> *mut T {
         self.ptr.as_ptr()
     }
 
     pub(crate) unsafe fn update_buf_shmptr(&mut self, ptr: *mut T, addr_remote: usize) {
-        self.ptr = unsafe { ShmPtr::new_unchecked(ptr, addr_remote) };
+        self.ptr = ShmPtr::new(ptr, addr_remote as *mut T).unwrap();
     }
 }

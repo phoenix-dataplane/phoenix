@@ -30,7 +30,10 @@ pub(crate) trait Unmarshal: Sized {
     type Error: fmt::Debug;
     // An unsafe method is a method whose caller must satisfy certain assertions.
     // Returns a ShmPtr<Self> to allow zerocopy unmarshal, and allow address space switching between backend and app.
-    unsafe fn unmarshal(sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error>;
+    unsafe fn unmarshal(
+        sg_list: SgList,
+        salloc_state: &Arc<SallocShared>,
+    ) -> Result<ShmPtr<Self>, Self::Error>;
 }
 
 impl Marshal for MessageMeta {
@@ -44,15 +47,22 @@ impl Marshal for MessageMeta {
 
 impl Unmarshal for MessageMeta {
     type Error = ();
-    unsafe fn unmarshal(sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error> {
+    unsafe fn unmarshal(
+        sg_list: SgList,
+        salloc_state: &Arc<SallocShared>,
+    ) -> Result<ShmPtr<Self>, Self::Error> {
         if sg_list.0.len() != 1 {
             return Err(());
         }
         if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }
-        let this_remote_addr = salloc_state.resource.query_app_addr(sg_list.0[0].ptr).unwrap();
-        let this = ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr).unwrap();
+        let this_remote_addr = salloc_state
+            .resource
+            .query_app_addr(sg_list.0[0].ptr)
+            .unwrap();
+        let this =
+            ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr as *mut Self).unwrap();
         Ok(this)
     }
 }
@@ -70,7 +80,10 @@ impl Unmarshal for MessageMeta {
 
 impl Unmarshal for MessageTemplateErased {
     type Error = ();
-    unsafe fn unmarshal(mut sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error> {
+    unsafe fn unmarshal(
+        mut sg_list: SgList,
+        salloc_state: &Arc<SallocShared>,
+    ) -> Result<ShmPtr<Self>, Self::Error> {
         if sg_list.0.len() <= 1 {
             return Err(());
         }
@@ -82,7 +95,7 @@ impl Unmarshal for MessageTemplateErased {
         let mut this = meta.cast::<Self>();
         let local_addr = sg_list.0[0].ptr as usize;
         this.as_mut().shm_addr = local_addr;
-        let remote_msg_addr  = salloc_state.resource.query_app_addr(local_addr).unwrap();
+        let remote_msg_addr = salloc_state.resource.query_app_addr(local_addr).unwrap();
         this.as_mut().shm_addr_remote = remote_msg_addr;
         Ok(this)
     }
@@ -99,7 +112,7 @@ pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct MessageTemplate<T> {
+pub(crate) struct MessageTemplate<T> {
     meta: MessageMeta,
     val: ShmPtr<T>,
 }
@@ -107,14 +120,25 @@ pub struct MessageTemplate<T> {
 impl<T> MessageTemplate<T> {
     pub unsafe fn new(erased: MessageTemplateErased) -> ShmPtr<Self> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
-        let this = ShmPtr::new(erased.shm_addr as *mut MessageTemplate<T>, erased.shm_addr_remote).unwrap();
+        let ptr = erased.shm_addr as *mut MessageTemplate<T>;
+        let ptr_remote = ptr.with_addr(erased.shm_addr_remote);
+        let this = ShmPtr::new(ptr, ptr_remote).unwrap();
         assert_eq!(this.as_ref().meta, erased.meta);
         // debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
         this
-        // Self {
-        //     meta: erased.meta,
-        //     val: Unique::new(erased.shmptr as *mut T).unwrap(),
-        // }
+    }
+}
+
+impl<'a, T: Send + Marshal + Unmarshal + SwitchAddressSpace + 'a> MessageTemplate<T> {
+    pub(crate) fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage + 'a> {
+        let (local, remote) = msg.to_raw_parts();
+        // SAFETY: `msg` is already a valid Shmptr
+        unsafe {
+            ShmPtr::new_unchecked(
+                local.as_ptr() as *mut dyn RpcMessage,
+                remote.as_ptr() as *mut dyn RpcMessage,
+            )
+        }
     }
 }
 
@@ -133,7 +157,10 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
 
 impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
     type Error = ();
-    unsafe fn unmarshal(mut sg_list: SgList, salloc_state: &Arc<SallocShared>) -> Result<ShmPtr<Self>, Self::Error> {
+    unsafe fn unmarshal(
+        mut sg_list: SgList,
+        salloc_state: &Arc<SallocShared>,
+    ) -> Result<ShmPtr<Self>, Self::Error> {
         debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
         if sg_list.0.len() <= 1 {
             return Err(());
@@ -177,10 +204,11 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
         // <Self as Marshal<Error = <T as Marshal>::Error>>::marshal(self).unwrap()
         // let span = info_span!("marshal message template");
         // let _enter = span.enter();
-        (self as &dyn Marshal<Error = <T as Marshal>::Error>).marshal().unwrap()
+        (self as &dyn Marshal<Error = <T as Marshal>::Error>)
+            .marshal()
+            .unwrap()
     }
 }
-
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
     fn switch_address_space(&mut self) {
