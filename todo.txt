@@ -14,8 +14,9 @@ Benchmark Suite
 
 Engine Framework
 - new challenge: *fault isolation*
-- futures::executor::block_on seems to start an extra engine
-- suspend the runtime to save CPUs based indicator
+- futures::executor::block_on seems to start an extra engine, need an
+  lazy/sleepy runtime
+- suspend the runtime to save CPUs based on indicator
 - RpcAdapter/CmEngine can only be shut down when the other side has gone.
 -[x] *Change Engine trait to a huge Generator*, all block waitings become
   yields
@@ -63,28 +64,28 @@ Misc
   the number of engines to build.
 
 Shared memory heap
+- check if a read only shm file descriptor can be open with write
+  permission and really written
+- shared heap dealloc
 - use MMAP_HUGETLB, also reg_mr with huge tlb
-- SharedHeapAllocator should not use MemoryRegion any more. The pd and
+-[x] SharedHeapAllocator should not use MemoryRegion any more. The pd and
   rkey, inner_handle are unnecessary. And TCP does not have these
   fields, either.
 - remove file_off (it should be all zero now, given the existence of
   AddressMediator)
-- need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
+-[x] need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
   rpc_adapter.
 - use pointer strict provenance
-- check if a read only shm file descriptor can be open with write
-  permission and really written
-- *call rdma-transport directly from rpc_adapter/ulib*
 -[x] rdma mr.rs handle layout (size + alignment) rather than just size
 -[x] find a more efficient way to allocate aligned `shared memory`, maybe
   using map_fixed
-- shared heap dealloc
-- use MAP_FIXED_NOREPLACE
-- replace Unique with ShmPtr
+-[x] use MAP_FIXED_NOREPLACE
+-[x] replace Unique with ShmPtr
 - ShmBox, ShmPtr, Coa
 -[x] slabmalloc use 1GB huge page
 - dyn RpcMessage may some more fields, e.g., to access the content of
   message
+- dynamic dispatching is slow, embed meta with dyn RpcMessage
 - prost codegen marshal/unmarshal
 - prost codegen service interface
 
@@ -96,6 +97,7 @@ RPC init version
 - send/recv is too naive
 - API, req/resp must be moved into RPC (better to allow pass a reference)
 -[x] ODP
+-[x] *call rdma-transport directly from rpc_adapter/ulib*
 -[o] memory returned by allocate_shm is not page aligned, needs
   improvement
 -[x] check incoming connect requests and make Listener::get_request()

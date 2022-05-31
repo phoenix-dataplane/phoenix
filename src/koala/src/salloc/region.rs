@@ -50,11 +50,19 @@ impl AsHandle for SharedRegion {
 
 impl SharedRegion {
     pub(crate) fn new<'ctx>(layout: Layout) -> Result<Self, Error> {
-        let opts = MemfdOptions::default()
-            .allow_sealing(true)
-            .close_on_exec(false);
         let nbytes = layout.size();
         let align = layout.align().max(page_size());
+        // let hugetlb_size = if nbytes >= 2097152 {
+        //     Some(memfd::HugetlbSize::Huge2MB)
+        // } else {
+        //     None
+        // };
+        let hugetlb_size = None;
+
+        let opts = MemfdOptions::default()
+            .allow_sealing(true)
+            .close_on_exec(false)
+            .hugetlb(hugetlb_size);
 
         let name = format!("shared-mr-{}", nbytes);
         let memfd = opts.create(name)?;

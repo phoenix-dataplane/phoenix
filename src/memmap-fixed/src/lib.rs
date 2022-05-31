@@ -32,14 +32,19 @@ impl MmapFixed {
         let len = memfile.metadata()?.len() as usize;
         assert!(len >= map_len);
 
-        // TODO(cjr): change to libc::MAP_FIXED_NOREPLACE when the additional unnecesary mmap in
-        // rpc_adapter ulib is removed
+        // let hugetlb = if map_len & 0x1fffff == 0 && target_addr & 0x1fffff == 0 && len & 0x1fffff == 0 {
+        //     libc::MAP_HUGETLB | libc::MAP_HUGE_2MB
+        // } else {
+        //     0
+        // };
+        let hugetlb = 0;
+
         let ptr = unsafe {
             libc::mmap(
                 target_addr as *mut libc::c_void,
                 map_len,
                 libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED | libc::MAP_NORESERVE | libc::MAP_FIXED,
+                libc::MAP_SHARED | libc::MAP_NORESERVE | libc::MAP_POPULATE | libc::MAP_FIXED_NOREPLACE | hugetlb,
                 memfile.as_raw_fd(),
                 file_off,
             )

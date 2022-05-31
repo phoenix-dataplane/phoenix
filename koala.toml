@@ -6,7 +6,7 @@ modules = ["Mrpc", "RpcAdapter", "Overload"]
 
 [tracing]
 # overwrite with env KOALA_TRACING
-enable = true
+enable = false
 # this will log messages level lower than specified into file
 # e.g., min_event_level="debug" will log events of "trace" and "debug" to file
 # overwrite with env KOALA_TRACING_EVENT

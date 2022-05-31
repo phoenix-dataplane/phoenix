@@ -71,9 +71,17 @@ impl MemoryRegion {
         nbytes: usize,
         access: AccessFlags,
     ) -> Result<Self, Error> {
+        // let hugetlb_size = if nbytes >= 2097152 {
+        //     Some(memfd::HugetlbSize::Huge2MB)
+        // } else {
+        //     None
+        // };
+        let hugetlb_size = None;
+
         let opts = MemfdOptions::default()
             .allow_sealing(true)
-            .close_on_exec(false);
+            .close_on_exec(false)
+            .hugetlb(hugetlb_size);
         let name = format!("shared-mr-{}", nbytes);
         let memfd = opts.create(name)?;
         memfd.as_file().set_len(nbytes as u64)?;
