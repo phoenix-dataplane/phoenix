@@ -4,7 +4,6 @@ use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
-use ipc::shmalloc::ShmPtr;
 
 use super::module::CustomerType;
 use super::state::State;
@@ -60,7 +59,6 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-
             let mut nwork = 0;
 
             if let Progress(n) = self.check_customer()? {
@@ -69,7 +67,6 @@ impl MrpcEngine {
 
             if let Progress(n) = self.check_input_queue()? {
                 nwork += n;
-
             }
 
             if self.customer.has_control_command() {
@@ -127,16 +124,6 @@ impl MrpcEngine {
                     Ok(CompletionKind::SetTransport)
                 }
             }
-            // Command::AllocShm(nbytes) => {
-            //     self.cmd_tx.send(Command::AllocShm(*nbytes)).unwrap();
-            //     match self.cmd_rx.recv().unwrap().0 {
-            //         Ok(CompletionKind::AllocShmInternal(returned_mr, memfd)) => {
-            //             self.customer.send_fd(&[memfd]).unwrap();
-            //             Ok(CompletionKind::AllocShm(returned_mr))
-            //         }
-            //         other => panic!("unexpected: {:?}", other),
-            //     }
-            // }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().await.unwrap().0 {
@@ -157,33 +144,6 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
-            // Command::NewMappedAddrs(app_vaddrs) => {
-            //     // just forward it
-            //     self.cmd_tx
-            //         .send(Command::NewMappedAddrs(app_vaddrs.clone()))
-            //         .unwrap();
-            //     match self.cmd_rx.recv().unwrap().0 {
-            //         Ok(CompletionKind::NewMappedAddrsInternal(addr_map)) => {
-            //             for tup in addr_map {
-            //                 let local_addr = tup.0;
-            //                 let buf = ShmBuf {
-            //                     ptr: tup.1,
-            //                     len: tup.2,
-            //                 };
-            //                 debug!(
-            //                     "NewMappedAddrs, local: {:#0x}, app_addr: {:#0x}, len: {}",
-            //                     local_addr,
-            //                     buf.ptr,
-            //                     buf.len
-            //                 );
-            //                 self.state.resource().insert_addr_map(local_addr, buf)?;
-            //             }
-            //             Ok(CompletionKind::NewMappedAddrs)
-            //         }
-            //         other => panic!("unexpected: {:?}", other),
-            //     }
-            //     // Err(Error::NoReponse)
-            // }
         }
     }
 
@@ -234,23 +194,21 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
+                        trace!(
+                            "mRPC engine got request from App, call_id={}",
+                            erased.meta.call_id
+                        );
 
-                        let mut msg =
-                            unsafe {                   
-                                MessageTemplate::<codegen::HelloRequest>::new(*erased) 
-                            };
+                        let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         debug!("start to marshal");
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         debug!("end marshal");
-                        let dyn_msg = 
-                            unsafe {                            
-                                ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
-                            };
-                        
+
+                        let dyn_msg = MessageTemplate::into_rpc_message(msg);
+
                         {
                             // let span = info_span!("tx_outputs.send");
                             // let _enter = span.enter();
@@ -264,18 +222,13 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
+                        trace!(
+                            "mRPC engine got reply from App, call_id={}",
+                            erased.meta.call_id
+                        );
 
-                        let mut msg =
-                            unsafe { 
-                                MessageTemplate::<codegen::HelloReply>::new(*erased) 
-                        };
-                        // Safety: this is fine here because msg is already a unique
-                        // pointer
-                        let dyn_msg = 
-                            unsafe { 
-                                ShmPtr::new(msg.as_mut() as *mut dyn RpcMessage, msg.get_remote_addr()).unwrap() 
-                            };
+                        let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
+                        let dyn_msg = MessageTemplate::into_rpc_message(msg);
                         {
                             // let span = info_span!("tx_outputs.send");
                             // let _enter = span.enter();
@@ -315,9 +268,6 @@ impl MrpcEngine {
                     meta
                 };
 
-                // TODO(cjr): switch_address_space
-                // msg.switch_address_space();
-                
                 let msg_mut = unsafe { msg.as_mut() };
                 {
                     // let span = info_span!("switch_addr_space");
@@ -331,13 +281,12 @@ impl MrpcEngine {
                 // MessageTemplateErased is a just a message header
                 // it does not holder actual payload
                 // but a pointer to the payload on shared memory
-                let (ptr, addr_remote) = msg.as_ptr();
+                let (ptr, ptr_remote) = msg.to_raw_parts();
                 let erased = MessageTemplateErased {
                     meta,
                     // casting to thin pointer first, drop the Pointee::Metadata
-                    shm_addr: addr_remote,
-                    shm_addr_remote: ptr as *const () as usize,
-                    // shmptr: msg.as_ptr() as *mut MessageTemplateErased as u64,
+                    shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
+                    shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
                 };
                 trace!("mRPC engine send message to App, call_id={}", meta.call_id);
                 {
@@ -361,7 +310,9 @@ impl MrpcEngine {
     }
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
-        if self.flag {return Ok(Progress(0)) }
+        if self.flag {
+            return Ok(Progress(0));
+        }
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {

@@ -1,6 +1,8 @@
 pub mod shmptr;
+pub mod shm_non_null;
 
 pub use shmptr::ShmPtr;
+pub use shm_non_null::ShmNonNull;
 
 // TODO(wyj): implement SwitchAddressSpace for all types
 // currently none of them is implemented
