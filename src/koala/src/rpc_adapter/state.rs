@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
@@ -7,7 +7,7 @@ use nix::unistd::Pid;
 
 use interface::AsHandle;
 
-use crate::mrpc::marshal::{SgList, ShmBuf};
+use crate::mrpc::marshal::SgList;
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
