@@ -161,8 +161,8 @@ impl RpcAdapterEngine {
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // get cmid from conn_id
-            // let span = info_span!("RpcAdapter check_input_queue: send_msg");
-            // let _enter = span.enter();
+            let span = info_span!("RpcAdapter check_input_queue: send_msg");
+            let _enter = span.enter();
 
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
@@ -257,10 +257,10 @@ impl RpcAdapterEngine {
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<Status, DatapathError> {
         use crate::mrpc::codegen;
-        log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
+        // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
-        // let span = info_span!("unmarshal_and_deliver_up");
-        // let _enter = span.enter();
+        let span = info_span!("unmarshal_and_deliver_up");
+        let _enter = span.enter();
 
         let mut erased = {
             // let span = info_span!("unmarshal MessageTemplateErased");
@@ -341,8 +341,8 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    // let span = info_span!("RpcAdapter check_transport_service: wc polled");
-                    // let _enter = span.enter();
+                    let span = info_span!("RpcAdapter check_transport_service: wc polled");
+                    let _enter = span.enter();
 
                     match wc.opcode {
                         WcOpcode::Send => {

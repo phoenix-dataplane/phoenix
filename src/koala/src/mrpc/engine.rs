@@ -177,8 +177,8 @@ impl MrpcEngine {
         use crate::mrpc::marshal::MessageTemplate;
         use dp::WorkRequest;
 
-        // let span = info_span!("MrpcEngine process_dp");
-        // let _enter = span.enter();
+        let span = info_span!("MrpcEngine process_dp");
+        let _enter = span.enter();
 
         match req {
             WorkRequest::Call(erased) => {
@@ -232,8 +232,8 @@ impl MrpcEngine {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(mut msg) => {
-                // let span = info_span!("MrpcEngine check_input_queue: recv_msg");
-                // let _enter = span.enter();
+                let span = info_span!("MrpcEngine check_input_queue: recv_msg");
+                let _enter = span.enter();
 
                 // deliver the msg to application
                 let meta = {

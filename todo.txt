@@ -7,10 +7,13 @@ RPC
 -[x] Heap allocator
 
 Benchmark Suite
-- *setup CI (which public CI service has RDMA NIC?) and benchmarks*
-- Build a CI pipeline with all kinds of tests and benchmarks
+- build then run
 - worker starting order
 - auto kill on clean up
+-[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
+- <s>Build a CI pipeline with all kinds of tests and benchmarks</s>
+- simplify rpc_hello, add more complex rpc_hello
+- also test latency
 
 Engine Framework
 - new challenge: *fault isolation*
@@ -31,6 +34,7 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
+- add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>
 -[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
