@@ -48,9 +48,9 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             name.resize(1000000, 42);
             let mut req = RpcMessage::new_request(HelloRequest { name });
     
-            for _i in 0..16384 {
-                let resp = client.say_hello(&mut req).await.unwrap();
-                eprintln!("resp {} received", resp);
+            for i in 0..16384 {
+                let _resp = client.say_hello(&mut req).await.unwrap();
+                eprintln!("resp {} received", i);
             }
             
             let start = Instant::now();
@@ -78,21 +78,24 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     
             let mut reply_futures = FuturesUnordered::new();
     
+            let mut response_count = 0;
             // warmup
             for _ in 0..128 {
                 for i in 0..128 {
                     // let resp = client.say_hello(&mut req).await.unwrap();
                     let resp = client.say_hello(&mut reqs[i]);
                     if reply_futures.len() >= 32 {
-                        let response: Result<_, _> = reply_futures.next().await.unwrap();
-                        eprintln!("resp {} received", response.unwrap());
+                        let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                        eprintln!("resp {} received", response_count);
+                        response_count += 1;
                     }
                     reply_futures.push(resp);
                 }
                 
                 while !reply_futures.is_empty() {
-                    let response: Result<_, _> = reply_futures.next().await.unwrap();
-                    eprintln!("resp {} received", response.unwrap());
+                    let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                    eprintln!("resp {} received", response_count);
+                    response_count += 1;
                 }    
             }
     
