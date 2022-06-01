@@ -9,15 +9,16 @@ use std::marker::Unpin;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::ptr::Unique;
+use std::ptr;
+use std::ptr::NonNull;
 
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::{ShmNonNull, ShmPtr, SwitchAddressSpace};
 
 use crate::salloc::heap::SharedHeapAllocator;
-use crate::salloc::owner::{AppOwned, BackendOwned, AllocOwner};
+use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
 use super::shmview::CloneFromBackendOwned;
 
@@ -48,8 +49,8 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn new_uninit() -> Box<std::mem::MaybeUninit<T>> {
-        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
+    pub fn new_uninit() -> Box<mem::MaybeUninit<T>> {
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
         match Box::try_new_uninit() {
@@ -58,12 +59,12 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn try_new_uninit() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError>
-    where {
-        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
-        let (ptr, addr_remote) = SharedHeapAllocator.allocate(layout)?;
-        let shmptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
-        Ok(Box(shmptr, AppOwned))
+    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError>
+where {
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        let ptr = SharedHeapAllocator.allocate(layout)?.cast();
+        let (local, remote) = ptr.to_raw_parts();
+        unsafe { Ok(Box::from_raw(local.as_ptr(), remote.as_ptr())) }
     }
 
     pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
@@ -76,11 +77,13 @@ impl<T> Box<T> {
         }
     }
 
-    pub fn try_new_zeroed() -> Result<Box<std::mem::MaybeUninit<T>>, AllocError> {
-        let layout = Layout::new::<std::mem::MaybeUninit<T>>();
-        let (ptr, addr_remote) = SharedHeapAllocator.allocate_zeroed(layout)?;
-        let shmptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
-        Ok(Box(shmptr, AppOwned))
+    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
+        let (local, remote) = ptr.to_raw_parts();
+        // let shmptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
+        // Ok(Box(shmptr, AppOwned))
+        unsafe { Ok(Box::from_raw(local.as_ptr(), remote.as_ptr())) }
     }
 
     #[inline(always)]
@@ -89,8 +92,8 @@ impl<T> Box<T> {
     }
 
     pub fn into_boxed_slice(boxed: Self) -> Box<[T]> {
-        let (raw, addr_remote) = Box::into_raw(boxed);
-        unsafe { Box::from_raw(raw as *mut [T; 1], addr_remote) }
+        let (raw, ptr_remote) = Box::into_raw(boxed);
+        unsafe { Box::from_raw(raw as *mut [T; 1], ptr_remote as *mut [T; 1]) }
     }
 
     #[inline]
@@ -98,18 +101,19 @@ impl<T> Box<T> {
     where
         Self: Drop,
     {
-        let mut dst = std::mem::MaybeUninit::uninit();
-        let (src, addr_remote) = Self::into_raw(boxed);
+        let mut dst = mem::MaybeUninit::uninit();
+        let non_null: ShmNonNull<T> = boxed.0.into();
+        let src = non_null.as_ptr();
         unsafe {
             // copy the content from shared heap to stack
-            std::ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
+            ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
             // drop the content on the shared heap
             let size = core::intrinsics::size_of_val(src.as_const());
             let align = core::intrinsics::min_align_of_val(src.as_const());
-            std::ptr::drop_in_place(src);
-            let non_null: std::ptr::NonNull<T> = std::ptr::NonNull::new_unchecked(src);
+            ptr::drop_in_place(src);
+            // let non_null: ptr::NonNull<T> = ptr::NonNull::new_unchecked(src);
             let layout = Layout::from_size_align_unchecked(size, align);
-            SharedHeapAllocator.deallocate(non_null.cast(), addr_remote, layout);
+            SharedHeapAllocator.deallocate(non_null.cast(), layout);
             dst.assume_init()
         }
     }
@@ -120,12 +124,11 @@ impl<T> Box<T> {
     }
 }
 
-
-impl<T> Box<std::mem::MaybeUninit<T>> {
+impl<T> Box<mem::MaybeUninit<T>> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T> {
-        let (raw, addr_remote) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, addr_remote)
+        let (raw, ptr_remote) = Box::into_raw(self);
+        Box::from_raw(raw.cast(), ptr_remote.cast())
     }
 
     #[inline]
@@ -137,25 +140,30 @@ impl<T> Box<std::mem::MaybeUninit<T>> {
     }
 }
 
-impl<T> Box<[std::mem::MaybeUninit<T>]> {
+impl<T> Box<[mem::MaybeUninit<T>]> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T]> {
-        let (raw, addr_remote) = Box::into_raw(self);
-        Box::from_raw(raw as *mut [T], addr_remote)
+        let (raw, ptr_remote) = Box::into_raw(self);
+        Box::from_raw(raw as *mut [T], ptr_remote as *mut [T])
     }
 }
 
 impl<T: ?Sized, O: AllocOwner> Box<T, O> {
     #[inline]
-    pub(crate) fn as_ptr(b: &Self) -> (*mut T, usize) {
+    pub(crate) fn as_ptr(b: &Self) -> *mut T {
         b.0.as_ptr()
+    }
+
+    #[inline]
+    pub(crate) fn to_raw_parts(b: &Self) -> (NonNull<T>, NonNull<T>) {
+        b.0.to_raw_parts()
     }
 }
 
 impl<T: ?Sized> Box<T, BackendOwned> {
     #[inline]
-    pub(crate) unsafe fn from_backend_raw(raw: *mut T, addr_remote: usize) -> Self {
-        Box(ShmPtr::new_unchecked(raw, addr_remote), BackendOwned)
+    pub(crate) unsafe fn from_backend_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr, ptr_remote), BackendOwned)
     }
 
     pub(crate) unsafe fn from_backend_shmptr(raw: ShmPtr<T>) -> Self {
@@ -165,30 +173,31 @@ impl<T: ?Sized> Box<T, BackendOwned> {
 
 impl<T: ?Sized> Box<T, AppOwned> {
     #[inline]
-    pub(crate) unsafe fn from_raw(raw: *mut T, addr_remote: usize) -> Self {
-        Box(ShmPtr::new_unchecked(raw, addr_remote), AppOwned)
+    pub(crate) unsafe fn from_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr, ptr_remote), AppOwned)
     }
 
-    pub(crate) unsafe fn from_shmptr(raw: ShmPtr<T>) -> Self {
-        Box(raw, AppOwned)
-    }
-
-    #[inline]
-    pub(crate) fn into_raw(b: Self) -> (*mut T, usize) {
-        let (leaked, addr_remote) = Box::into_unique(b);
-        (leaked.as_ptr(), addr_remote)
+    pub(crate) unsafe fn from_shmptr(shmptr: ShmPtr<T>) -> Self {
+        Box(shmptr, AppOwned)
     }
 
     #[inline]
-    pub(crate) fn into_unique(b: Self) -> (Unique<T>, usize) {
-        // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
-        // raw pointer for the type system. Turning it directly into a raw pointer would not be
-        // recognized as "releasing" the unique pointer to permit aliased raw accesses,
-        // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
-        // behaves correctly.
-        let addr_remote = b.0.get_remote_addr();
-        (Unique::from(Box::leak(b)), addr_remote)
+    pub(crate) fn into_raw(b: Self) -> (*mut T, *mut T) {
+        let leaked = Box::into_shmptr(b);
+        let (local, remote) = leaked.to_raw_parts();
+        (local.as_ptr(), remote.as_ptr())
     }
+
+    // #[inline]
+    // pub(crate) fn into_unique(b: Self) -> (Unique<T>, usize) {
+    //     // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
+    //     // raw pointer for the type system. Turning it directly into a raw pointer would not be
+    //     // recognized as "releasing" the unique pointer to permit aliased raw accesses,
+    //     // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
+    //     // behaves correctly.
+    //     let addr_remote = b.0.get_remote_addr();
+    //     (Unique::from(Box::leak(b)), addr_remote)
+    // }
 
     #[inline]
     pub(crate) fn into_shmptr<'a>(b: Self) -> ShmPtr<T> {
@@ -197,7 +206,7 @@ impl<T: ?Sized> Box<T, AppOwned> {
 
     #[inline]
     pub(crate) fn leak<'a>(b: Self) -> &'a mut T {
-        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr().0 }
+        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 
     pub fn into_pin(boxed: Self) -> Pin<Self> {
@@ -208,22 +217,19 @@ impl<T: ?Sized> Box<T, AppOwned> {
     }
 }
 
-
-trait SpecializedDrop { 
-    fn drop( &mut self ); 
+trait SpecializedDrop {
+    fn drop(&mut self);
 }
-
 
 impl<T: ?Sized> SpecializedDrop for Box<T, AppOwned> {
     fn drop(&mut self) {
         unsafe {
             let size = core::intrinsics::size_of_val(self.0.as_ref());
             let align = core::intrinsics::min_align_of_val(self.0.as_ref());
-            let (ptr, addr_remote) = self.0.as_ptr();
-            std::ptr::drop_in_place(ptr);
-            let non_null: std::ptr::NonNull<T> = self.0.into();
+            let ptr: ShmNonNull<T> = self.0.into();
+            ptr::drop_in_place(ptr.as_ptr());
             let layout = Layout::from_size_align_unchecked(size, align);
-            SharedHeapAllocator.deallocate(non_null.cast(), addr_remote, layout);
+            SharedHeapAllocator.deallocate(ptr.cast(), layout);
         }
     }
 }
@@ -262,8 +268,8 @@ impl<T: Default> Default for Box<T> {
 
 #[inline]
 pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8], AppOwned>) -> Box<str, AppOwned> {
-    let (ptr, addr_remote) = Box::into_raw(v);
-    Box::from_raw(ptr as *mut str, addr_remote)
+    let (ptr, ptr_remote) = Box::into_raw(v);
+    Box::from_raw(ptr as *mut str, ptr_remote as *mut str)
 }
 
 pub(crate) trait WriteCloneIntoRaw: Sized {
@@ -436,8 +442,8 @@ impl Box<dyn Any> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, addr_remote): (*mut dyn Any, _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, addr_remote)
+        let (raw, ptr_remote): (*mut dyn Any, _) = Box::into_raw(self);
+        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -454,8 +460,8 @@ impl Box<dyn Any + Send> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, addr_remote): (*mut (dyn Any + Send), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, addr_remote)
+        let (raw, ptr_remote): (*mut (dyn Any + Send), _) = Box::into_raw(self);
+        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -472,8 +478,8 @@ impl Box<dyn Any + Send + Sync> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, addr_remote): (*mut (dyn Any + Send + Sync), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, addr_remote)
+        let (raw, ptr_remote): (*mut (dyn Any + Send + Sync), _) = Box::into_raw(self);
+        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -592,4 +598,4 @@ impl<T: ?Sized> AsMut<T> for Box<T> {
     }
 }
 
-impl<T: ?Sized> Unpin for Box<T> {}
+impl<T: ?Sized, O: AllocOwner> Unpin for Box<T, O> {}

@@ -3,9 +3,9 @@ use std::io;
 use std::net::ToSocketAddrs;
 use std::ops::{Deref, DerefMut};
 
-use ipc::shmalloc::ShmPtr;
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
+use ipc::shmalloc::ShmPtr;
 
 /// Re-exports
 pub use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
@@ -15,7 +15,6 @@ pub use ipc::mrpc::control_plane::TransportType;
 use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
-use crate::salloc::owner::{AllocOwner, AppOwned};
 use crate::salloc::region::SharedRegion;
 use crate::salloc::SA_CTX;
 
@@ -24,7 +23,7 @@ use ipc::shmalloc::SwitchAddressSpace;
 // NOTE(wyj): T must be app-owned.
 #[derive(Debug)]
 pub struct RpcMessage<T> {
-    pub(crate) inner: Box<MessageTemplate<T>>
+    pub(crate) inner: Box<MessageTemplate<T>>,
 }
 
 impl<T> RpcMessage<T> {
@@ -45,7 +44,7 @@ impl<T> Deref for RpcMessage<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-       unsafe { self.inner.as_ref().val.as_ref() }
+        unsafe { self.inner.as_ref().val.as_ref() }
     }
 }
 
@@ -69,7 +68,12 @@ pub struct MessageTemplate<T> {
 }
 
 impl<T> MessageTemplate<T> {
-    pub(crate) fn new_request(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
+    pub(crate) fn new_request(
+        val: Box<T>,
+        conn_id: Handle,
+        func_id: u32,
+        call_id: u64,
+    ) -> Box<Self> {
         // TODO(cjr): fill in these values
         let meta = MessageMeta {
             conn_id,
@@ -78,12 +82,10 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Request,
         };
-        Box::new(
-            Self {
-                meta,
-                val: Box::into_shmptr(val)
-            }
-        )
+        Box::new(Self {
+            meta,
+            val: Box::into_shmptr(val),
+        })
     }
 
     pub(crate) fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
@@ -94,12 +96,10 @@ impl<T> MessageTemplate<T> {
             len: 0,
             msg_type: RpcMsgType::Response,
         };
-        Box::new(
-            Self {
-                meta,
-                val: Box::into_shmptr(val)
-            },
-        )
+        Box::new(Self {
+            meta,
+            val: Box::into_shmptr(val),
+        })
     }
 }
 
@@ -114,17 +114,20 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
     msg: &mut Box<MessageTemplate<T>>,
 ) -> Result<(), Error> {
     let meta = msg.meta;
-    tracing::trace!("client post request to mRPC engine, call_id={}", meta.call_id);
+    tracing::trace!(
+        "client post request to mRPC engine, call_id={}",
+        meta.call_id
+    );
 
     msg.switch_address_space();
-    let (ptr, addr_remote) = Box::as_ptr(&msg);
+    let (ptr, addr_remote) = Box::to_raw_parts(&msg);
     let erased = MessageTemplateErased {
         meta,
-        shm_addr: addr_remote,
-        shm_addr_remote: ptr as *const () as usize
+        shm_addr: addr_remote.addr().get(),
+        shm_addr_remote: ptr.addr().get(),
     };
     let req = dp::WorkRequest::Call(erased);
-    
+
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
         while !sent {
@@ -139,7 +142,10 @@ pub(crate) fn post_request<T: SwitchAddressSpace>(
 }
 
 pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
-    tracing::trace!("client post reply to mRPC engine, call_id={}", erased.meta.call_id);
+    tracing::trace!(
+        "client post reply to mRPC engine, call_id={}",
+        erased.meta.call_id
+    );
 
     let req = dp::WorkRequest::Reply(erased);
     MRPC_CTX.with(|ctx| {
@@ -217,7 +223,10 @@ impl ClientStub {
                     let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
                     sa_ctx.service.send_cmd(req)?;
                     // COMMENT(cjr): must wait for the reply!
-                    rx_recv_impl!(sa_ctx.service, ipc::salloc::cmd::CompletionKind::NewMappedAddrs)?;
+                    rx_recv_impl!(
+                        sa_ctx.service,
+                        ipc::salloc::cmd::CompletionKind::NewMappedAddrs
+                    )?;
                     Result::<(), Error>::Ok(())
                 })?;
                 Ok(Self {
@@ -315,7 +324,10 @@ impl Server {
                         let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
                         sa_ctx.service.send_cmd(req)?;
                         // COMMENT(cjr): must wait for the reply!
-                        rx_recv_impl!(sa_ctx.service, ipc::salloc::cmd::CompletionKind::NewMappedAddrs)?;
+                        rx_recv_impl!(
+                            sa_ctx.service,
+                            ipc::salloc::cmd::CompletionKind::NewMappedAddrs
+                        )?;
                         Result::<(), Error>::Ok(())
                     })?;
                 }

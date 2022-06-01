@@ -12,7 +12,7 @@ use ipc::shmalloc::SwitchAddressSpace;
 use crate::mrpc;
 use crate::mrpc::alloc::ShmView;
 use crate::mrpc::stub::{
-    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, Service, RpcMessage
+    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
 };
 use crate::mrpc::MRPC_CTX;
 use crate::salloc::owner::{BackendOwned, AppOwned};
@@ -93,9 +93,13 @@ impl Future for ReqFuture {
         let this = self.get_mut();
         check_completion(&*this.reply_cache).unwrap();
         if let Some(erased) = this.reply_cache.remove(this.call_id) {
-            tracing::trace!("ReqFuture receive reply from mRPC engine, call_id={}", erased.meta.call_id);
-            let raw = erased.shm_addr as *mut MessageTemplate<inner::HelloReply<BackendOwned>>;
-            let msg = unsafe { mrpc::alloc::Box::from_backend_raw(raw, erased.shm_addr_remote) };
+            tracing::trace!(
+                "ReqFuture receive reply from mRPC engine, call_id={}",
+                erased.meta.call_id
+            );
+            let ptr_local = erased.shm_addr as *mut MessageTemplate<inner::HelloReply<BackendOwned>>;
+            let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
+            let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
             let reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
             let reply = ShmView::new_from_backend_owned(reply);
             Poll::Ready(Ok(reply))
@@ -232,12 +236,12 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let raw = req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>>;
+        let ptr_local = req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
-        let addr_remote = req.shm_addr_remote;
-        let msg = unsafe { mrpc::alloc::Box::from_backend_raw(raw, addr_remote) };
+        let ptr_remote = ptr_local.with_addr(req.shm_addr_remote);
+        let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
         let req = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
         let req = ShmView::new_from_backend_owned(req);
         // TODO(wyj): should not be forget. 
@@ -253,11 +257,11 @@ impl<T: Greeter> Service for GreeterServer<T> {
                 reply.inner.meta.func_id = Self::FUNC_ID;
                 let meta = reply.inner.meta;
                 reply.switch_address_space();
-                let (ptr, addr_remote) = mrpc::alloc::Box::as_ptr(&reply.inner);
+                let (ptr, ptr_remote) = mrpc::alloc::Box::to_raw_parts(&reply.inner);
                 let erased = MessageTemplateErased {
                     meta,
-                    shm_addr: addr_remote,
-                    shm_addr_remote: ptr as *const () as usize
+                    shm_addr: ptr.addr().get(),
+                    shm_addr_remote: ptr_remote.addr().get(),
                 };
                 erased
             }
