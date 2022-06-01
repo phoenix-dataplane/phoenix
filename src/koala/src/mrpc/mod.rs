@@ -7,6 +7,7 @@ pub mod state;
 pub mod module;
 pub mod marshal;
 pub mod codegen;
+mod dtypes;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {

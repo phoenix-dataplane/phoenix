@@ -10,7 +10,7 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use ipc::shmalloc::{ShmNonNull, ShmPtr};
+use ipc::shmalloc::{ShmNonNull, ShmPtr, SwitchAddressSpace};
 
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
@@ -24,10 +24,10 @@ enum AllocInit {
     Zeroed,
 }
 
-pub(crate) struct RawVec<T, O: AllocOwner = AppOwned> {
+pub struct RawVec<T, O: AllocOwner = AppOwned> {
     ptr: ShmPtr<T>,
     cap: usize,
-    owner: O,
+    _owner: O,
 }
 
 impl<T> RawVec<T> {
@@ -43,7 +43,7 @@ impl<T> RawVec<T> {
         Self {
             ptr: ShmPtr::dangling(),
             cap: 0,
-            owner: AppOwned,
+            _owner: AppOwned,
         }
     }
 
@@ -64,13 +64,11 @@ impl<T> RawVec<T> {
         );
 
         let me = ManuallyDrop::new(self);
-        unsafe {
-            let (ptr, ptr_remote) = me.shmptr().to_raw_parts();
-            let slice = slice::from_raw_parts_mut(ptr.as_ptr() as *mut MaybeUninit<T>, len);
-            let slice_remote =
-                slice::from_raw_parts_mut(ptr_remote.as_ptr() as *mut MaybeUninit<T>, len);
-            Box::from_raw(slice, slice_remote)
-        }
+        let (ptr, ptr_remote) = me.shmptr().to_raw_parts();
+        let slice = slice::from_raw_parts_mut(ptr.as_ptr() as *mut MaybeUninit<T>, len);
+        let slice_remote =
+            slice::from_raw_parts_mut(ptr_remote.as_ptr() as *mut MaybeUninit<T>, len);
+        Box::from_raw(slice, slice_remote)
     }
 
     fn allocate(capacity: usize, init: AllocInit) -> Self {
@@ -99,7 +97,7 @@ impl<T> RawVec<T> {
             Self {
                 ptr,
                 cap: capacity,
-                owner: AppOwned,
+                _owner: AppOwned
             }
         }
     }
@@ -109,7 +107,7 @@ impl<T> RawVec<T> {
         Self {
             ptr: unsafe { ShmPtr::new_unchecked(ptr, ptr_remote) },
             cap: capacity,
-            owner: AppOwned,
+            _owner: AppOwned,
         }
     }
 }
@@ -331,7 +329,12 @@ impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     }
 }
 
-// TODO(wyj): SwitchAddressSpace for RawVec
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
+    fn switch_address_space(&mut self) {
+        // RawVec does not handle T's switch_address_space; this is left for the users of RawVec
+        self.ptr.switch_address_space();
+    }
+}
 
 #[inline]
 fn handle_reserve(result: Result<(), TryReserveError>) {
