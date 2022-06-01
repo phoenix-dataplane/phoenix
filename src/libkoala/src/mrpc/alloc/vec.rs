@@ -1,22 +1,23 @@
-use core::cmp::{self, Ordering};
-use core::fmt;
-use core::hash::{Hash, Hasher};
-use core::intrinsics::{arith_offset, assume};
-use core::iter::{FromIterator, FusedIterator, TrustedLen};
-use core::marker::PhantomData;
-use core::mem::{self, ManuallyDrop};
-use core::ops::Bound::{Excluded, Included, Unbounded};
-use core::ops::{self, Index, IndexMut, RangeBounds};
-use core::ptr::{self, NonNull};
-use core::slice::{self, SliceIndex};
+use std::cmp::{self, Ordering};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::intrinsics::{arith_offset, assume};
+use std::iter::{FromIterator, FusedIterator, TrustedLen};
+use std::marker::PhantomData;
+use std::mem::{self, ManuallyDrop};
+use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::ops::{self, Index, IndexMut, RangeBounds};
+use std::ptr::{self, NonNull};
+use std::slice::{self, SliceIndex};
 use std::borrow::{Cow, ToOwned};
 use std::collections::TryReserveError;
 
 use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
-use super::boxed::Box;
-use super::raw_vec::RawVec;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
+use super::shmview::CloneFromBackendOwned;
+use super::raw_vec::RawVec;
+use super::boxed::Box;
 
 pub struct Vec<T, O: AllocOwner = AppOwned> {
     buf: RawVec<T, O>,
@@ -70,7 +71,7 @@ impl<T> Vec<T> {
     //     unsafe {
     //         self.shrink_to_fit();
     //         let me = ManuallyDrop::new(self);
-    //         let buf = ptr::read(&me.buf);
+    //         let buf = ptr::read(&me.buf); 
     //         let len = me.len();
     //         buf.into_box(len).assume_init()
     //     }
@@ -588,17 +589,15 @@ impl<T, O: AllocOwner> Drop for Vec<T, O> {
     }
 }
 
-unsafe impl<T: SwitchAddressSpace, O: AllocOwner> SwitchAddressSpace for Vec<T, O> {
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
     fn switch_address_space(&mut self) {
-        // TODO(wyj)
+        for v in self.iter_mut() {
+            v.switch_address_space()
+        }
+        self.buf.switch_address_space();
     }
 }
 
-unsafe impl<T, O: AllocOwner> SwitchAddressSpace for Vec<T, O> {
-    default fn switch_address_space(&mut self) {
-        // TODO(wyj)
-    }
-}
 impl<T: Default> Vec<T> {
     pub fn resize_default(&mut self, new_len: usize) {
         let len = self.len();
@@ -1731,5 +1730,13 @@ where
         if !backshift.drain.panic_flag {
             backshift.drain.for_each(drop);
         }
+    }
+}
+
+impl<T: Clone> CloneFromBackendOwned for Vec<T, AppOwned> {
+    type BackendOwned = Vec<T, BackendOwned>;
+
+    fn clone_from_backend_owned(backend_owned: &Self::BackendOwned) -> Self {
+        hack::to_vec(&**backend_owned)
     }
 }

@@ -1,10 +1,9 @@
 #![feature(allocator_api)]
 use std::path::PathBuf;
 
-use libkoala::salloc::owner::BackendOwned;
 use structopt::StructOpt;
 
-use libkoala::mrpc::alloc::Vec;
+use libkoala::mrpc::alloc::{Vec, ShmView};
 use libkoala::mrpc::codegen::{Greeter, GreeterServer, HelloReply, HelloRequest};
 use libkoala::mrpc::stub::RpcMessage;
 
@@ -38,7 +37,7 @@ struct MyGreeter {
 impl Greeter for MyGreeter {
     fn say_hello(
         &mut self,
-        _request: &HelloRequest<BackendOwned>,
+        _request: ShmView<HelloRequest>,
     ) -> Result<&mut RpcMessage<HelloReply>, libkoala::mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
@@ -58,7 +57,7 @@ struct MyGreeterBlocking {
 impl Greeter for MyGreeterBlocking {
     fn say_hello(
         &mut self,
-        _request: &HelloRequest<BackendOwned>,
+        _request: ShmView<HelloRequest>,
     ) -> Result<&mut RpcMessage<HelloReply>, libkoala::mrpc::Status> {
         Ok(&mut self.reply)
     }
