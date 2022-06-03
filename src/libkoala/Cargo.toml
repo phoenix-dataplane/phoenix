@@ -28,5 +28,6 @@ lazy_static = "1.4.0"
 unique = "0.9.1"
 slabmalloc = { path = "../slabmalloc" }
 tracing = "0.1"
+dashmap = "5.3.4"
 
 [features]
