@@ -96,7 +96,7 @@ impl<T> MessageTemplate<T, AppOwned> {
         val: Box<T>,
         conn_id: Handle,
         func_id: u32,
-        call_id: u64,
+        call_id: u32,
     ) -> Box<Self> {
         // TODO(cjr): fill in these values
         let meta = MessageMeta {
@@ -117,7 +117,7 @@ impl<T> MessageTemplate<T, AppOwned> {
         val: Box<T>, 
         conn_id: Handle,
         func_id: u32,
-        call_id: u64
+        call_id: u32
     ) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
