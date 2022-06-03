@@ -8,7 +8,7 @@ use ipc::mrpc::{cmd, control_plane, dp};
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
-use crate::engine::{future, Engine, EngineResult, Indicator, Vertex};
+use crate::engine::{future, Engine, EngineResult, Indicator, EngineRxMessage, Vertex};
 use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
@@ -134,6 +134,9 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
+            Command::RecycleRecvMr(_) => {
+                unimplemented!()
+            }
         }
     }
 
@@ -229,61 +232,78 @@ impl MrpcEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
-            Ok(mut msg) => {
-                let span = info_span!("MrpcEngine check_input_queue: recv_msg");
-                let _enter = span.enter();
-
-                // deliver the msg to application
-                let meta = {
-                    // let span = info_span!("constructing MessageMeta");
-                    // let _enter = span.enter();
-                    let msg_ref = unsafe { msg.as_ref() };
-                    let meta = MessageMeta {
-                        conn_id: msg_ref.conn_id(),
-                        func_id: msg_ref.func_id(),
-                        call_id: msg_ref.call_id(),
-                        len: msg_ref.len(),
-                        msg_type: if msg_ref.is_request() {
-                            RpcMsgType::Request
-                        } else {
-                            RpcMsgType::Response
-                        },
-                    };
-                    meta
-                };
-
-                let msg_mut = unsafe { msg.as_mut() };
-                {
-                    // let span = info_span!("switch_addr_space");
-                    // let _enter = span.enter();
-                    msg_mut.switch_address_space();
-                }
-                // NOTE(wyj): this is the address of the pointer to `msg_mut`
-                // while switch_address_space swithces the address of the actual payload
-                // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
-                // NOTE(wyj): This is message from backend to app
-                // MessageTemplateErased is a just a message header
-                // it does not holder actual payload
-                // but a pointer to the payload on shared memory
-                let (ptr, ptr_remote) = msg.to_raw_parts();
-                let erased = MessageTemplateErased {
-                    meta,
-                    // casting to thin pointer first, drop the Pointee::Metadata
-                    shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
-                    shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
-                };
-                tracing::trace!("mRPC engine send message to App, call_id={}", meta.call_id);
-                {
-                    // let span = info_span!("customer.enqueue_wc");
-                    // let _enter = span.enter();
-                    let mut sent = false;
-                    while !sent {
-                        self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                            sent = true;
-                            ptr.cast::<dp::Completion>()
-                                .write(dp::Completion { erased });
-                            1
-                        })?;
+            Ok(msg) => {
+                match msg {
+                    EngineRxMessage::RpcMessage(mut msg) => {
+                        let span = info_span!("MrpcEngine check_input_queue: recv_msg");
+                        let _enter = span.enter();
+        
+                        // deliver the msg to application
+                        let meta = {
+                            // let span = info_span!("constructing MessageMeta");
+                            // let _enter = span.enter();
+                            let msg_ref = unsafe { msg.as_ref() };
+                            let meta = MessageMeta {
+                                conn_id: msg_ref.conn_id(),
+                                func_id: msg_ref.func_id(),
+                                call_id: msg_ref.call_id(),
+                                len: msg_ref.len(),
+                                msg_type: if msg_ref.is_request() {
+                                    RpcMsgType::Request
+                                } else {
+                                    RpcMsgType::Response
+                                },
+                            };
+                            meta
+                        };
+        
+                        let msg_mut = unsafe { msg.as_mut() };
+                        {
+                            // let span = info_span!("switch_addr_space");
+                            // let _enter = span.enter();
+                            msg_mut.switch_address_space();
+                        }
+                        // NOTE(wyj): this is the address of the pointer to `msg_mut`
+                        // while switch_address_space swithces the address of the actual payload
+                        // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
+                        // NOTE(wyj): This is message from backend to app
+                        // MessageTemplateErased is a just a message header
+                        // it does not holder actual payload
+                        // but a pointer to the payload on shared memory
+                        let (ptr, ptr_remote) = msg.to_raw_parts();
+                        let erased = MessageTemplateErased {
+                            meta,
+                            // casting to thin pointer first, drop the Pointee::Metadata
+                            shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
+                            shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
+                        };
+                        tracing::trace!("mRPC engine send message to App, call_id={}", meta.call_id);
+                        {
+                            // let span = info_span!("customer.enqueue_wc");
+                            // let _enter = span.enter();
+                            let mut sent = false;
+                            while !sent {
+                                self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                    sent = true;
+                                    ptr.cast::<dp::Completion>()
+                                        .write(dp::Completion::Recv(erased));
+                                    1
+                                })?;
+                            }
+                        }
+                    }
+                    EngineRxMessage::SendCompletion(conn_id, call_id) => {
+                        {
+                            let mut sent = false;
+                            while !sent {
+                                self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                    sent = true;
+                                    ptr.cast::<dp::Completion>()
+                                        .write(dp::Completion::SendCompletion(conn_id, call_id));
+                                    1
+                                })?;
+                            }
+                        }
                     }
                 }
                 Ok(Progress(1))

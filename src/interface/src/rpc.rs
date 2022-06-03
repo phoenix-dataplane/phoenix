@@ -23,7 +23,7 @@ pub enum RpcMsgType {
 pub struct MessageMeta {
     pub conn_id: Handle,
     pub func_id: u32,
-    pub call_id: u64,
+    pub call_id: u32,
     pub len: u64,
     pub msg_type: RpcMsgType,
 }

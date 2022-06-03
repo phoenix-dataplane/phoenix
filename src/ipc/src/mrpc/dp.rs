@@ -1,7 +1,7 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::rpc::MessageTemplateErased;
+use interface::{rpc::MessageTemplateErased, Handle};
 
 pub type WorkRequestSlot = [u8; 64];
 
@@ -17,8 +17,9 @@ pub type CompletionSlot = [u8; 64];
 
 #[repr(C, align(64))]
 #[derive(Debug)]
-pub struct Completion {
-    pub erased: MessageTemplateErased,
+pub enum Completion {
+    Recv(MessageTemplateErased),
+    SendCompletion(Handle, u32)
 }
 
 mod sa {

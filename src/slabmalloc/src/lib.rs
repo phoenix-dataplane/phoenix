@@ -41,6 +41,8 @@ extern crate std;
 #[cfg(test)]
 extern crate test;
 
+extern crate alloc;
+
 #[cfg(test)]
 mod tests;
 
