@@ -167,7 +167,7 @@ pub struct GreeterClient {
     pub stub: ClientStub,
     // call_id -> ShmBox<Reply>
     reply_cache: Rc<ReplyCache>,
-    pub call_counter: u64,
+    pub call_counter: u32,
 }
 
 impl GreeterClient {

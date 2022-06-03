@@ -1,15 +1,15 @@
 use interface::engine::EngineType;
 
-use crate::engine::{IQueue, OQueue};
+use crate::engine::{TxIQueue, TxOQueue, RxIQueue, RxOQueue};
 
 #[derive(Debug)]
 pub struct Node {
     pub(crate) id: String,
     pub(crate) engine_type: EngineType,
-    pub(crate) tx_input: Vec<IQueue>,
-    pub(crate) tx_output: Vec<OQueue>,
-    pub(crate) rx_input: Vec<IQueue>,
-    pub(crate) rx_output: Vec<OQueue>,
+    pub(crate) tx_input: Vec<TxIQueue>,
+    pub(crate) tx_output: Vec<TxOQueue>,
+    pub(crate) rx_input: Vec<RxIQueue>,
+    pub(crate) rx_output: Vec<RxOQueue>,
 }
 
 impl Node {
@@ -49,16 +49,16 @@ macro_rules! impl_vertex_for_engine {
                 self.$node.engine_type
             }
             #[inline]
-            fn tx_inputs(&mut self) -> &mut Vec<crate::engine::IQueue> {
+            fn tx_inputs(&mut self) -> &mut Vec<crate::engine::TxIQueue> {
                 &mut self.$node.tx_input
             }
-            fn tx_outputs(&self) -> &Vec<crate::engine::OQueue> {
+            fn tx_outputs(&self) -> &Vec<crate::engine::TxOQueue> {
                 &self.$node.tx_output
             }
-            fn rx_inputs(&mut self) -> &mut Vec<crate::engine::IQueue> {
+            fn rx_inputs(&mut self) -> &mut Vec<crate::engine::RxIQueue> {
                 &mut self.$node.rx_input
             }
-            fn rx_outputs(&self) -> &Vec<crate::engine::OQueue> {
+            fn rx_outputs(&self) -> &Vec<crate::engine::RxOQueue> {
                 &self.$node.rx_output
             }
         }
