@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::mem::ManuallyDrop;
 use std::net::ToSocketAddrs;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
@@ -11,32 +12,56 @@ use ipc::shmalloc::ShmPtr;
 pub use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use interface::Handle;
 pub use ipc::mrpc::control_plane::TransportType;
+use ipc::shmalloc::SwitchAddressSpace;
 
 use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
+use crate::salloc::gc::MESSAGE_ID_COUNTER;
+use crate::salloc::owner::{AllocOwner, AppOwned};
 use crate::salloc::region::SharedRegion;
 use crate::salloc::SA_CTX;
 
-use ipc::shmalloc::SwitchAddressSpace;
 
-// NOTE(wyj): T must be app-owned.
-#[derive(Debug)]
-pub struct RpcMessage<T> {
-    pub(crate) inner: Box<MessageTemplate<T>>,
+pub(crate) mod ownership {
+    pub trait AppOwendRequest {}
+    pub trait AppOwendReply {}
 }
 
-impl<T> RpcMessage<T> {
+// NOTE(wyj): RpcMessage is used to send messages to backend. 
+// T must be app-owned.
+#[derive(Debug)]
+pub struct RpcMessage<T> {
+    pub(crate) inner: ManuallyDrop<Box<MessageTemplate<T, AppOwned>, AppOwned>>,
+    // ID of this RpcMessage
+    pub(crate) identifier: u64,
+    // How many times the message is sent
+    pub(crate) send_count: u64
+}
+
+impl<T: ownership::AppOwendRequest> RpcMessage<T> {
     pub fn new_request(msg: T) -> Self {
         let msg = Box::new(msg);
         let inner = MessageTemplate::new_request(msg, Handle(0), 0, 0);
-        RpcMessage { inner }
+        let message_id = MESSAGE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        RpcMessage { 
+            inner: ManuallyDrop::new(inner),
+            identifier: message_id,
+            send_count: 0 
+        }
     }
+}
 
+impl<T: ownership::AppOwendReply> RpcMessage<T> {
     pub fn new_reply(msg: T) -> Self {
         let msg = Box::new(msg);
         let inner = MessageTemplate::new_reply(msg, Handle(0), 0, 0);
-        RpcMessage { inner }
+        let message_id = MESSAGE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        RpcMessage { 
+            inner: ManuallyDrop::new(inner),
+            identifier: message_id,
+            send_count: 0
+        }
     }
 }
 
@@ -48,12 +73,6 @@ impl<T> Deref for RpcMessage<T> {
     }
 }
 
-impl<T> DerefMut for RpcMessage<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { self.inner.as_mut().val.as_mut() }
-    }
-}
-
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RpcMessage<T> {
     fn switch_address_space(&mut self) {
         self.inner.switch_address_space();    
@@ -62,12 +81,13 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RpcMessage<T> {
 
 
 #[derive(Debug)]
-pub struct MessageTemplate<T> {
+pub struct MessageTemplate<T, O: AllocOwner> {
     pub(crate) meta: MessageMeta,
     pub(crate) val: ShmPtr<T>,
+    _owner: O
 }
 
-impl<T> MessageTemplate<T> {
+impl<T> MessageTemplate<T, AppOwned> {
     pub(crate) fn new_request(
         val: Box<T>,
         conn_id: Handle,
@@ -85,10 +105,16 @@ impl<T> MessageTemplate<T> {
         Box::new(Self {
             meta,
             val: Box::into_shmptr(val),
+            _owner: AppOwned
         })
     }
 
-    pub(crate) fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u64) -> Box<Self> {
+    pub(crate) fn new_reply(
+        val: Box<T>, 
+        conn_id: Handle,
+        func_id: u32,
+        call_id: u64
+    ) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
             func_id,
@@ -99,11 +125,21 @@ impl<T> MessageTemplate<T> {
         Box::new(Self {
             meta,
             val: Box::into_shmptr(val),
+            _owner: AppOwned
         })
     }
 }
 
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
+impl<T, O: AllocOwner> Drop for MessageTemplate<T, O> {
+    fn drop(&mut self) {
+        if O::is_app_owend() {
+            let owned = unsafe { Box::from_shmptr(self.val) };
+            std::mem::drop(owned);
+        }
+    }
+}
+
+unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T, AppOwned> {
     // TODO
     fn switch_address_space(&mut self) {
         unsafe { self.val.as_mut() }.switch_address_space();
@@ -111,7 +147,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
 }
 
 pub(crate) fn post_request<T: SwitchAddressSpace>(
-    msg: &mut Box<MessageTemplate<T>>,
+    msg: &mut Box<MessageTemplate<T, AppOwned>>,
 ) -> Result<(), Error> {
     let meta = msg.meta;
     tracing::trace!(

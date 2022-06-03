@@ -17,6 +17,8 @@ use crate::mrpc::stub::{
 use crate::mrpc::MRPC_CTX;
 use crate::salloc::owner::{BackendOwned, AppOwned};
 
+use super::stub::ownership::{AppOwendRequest, AppOwendReply};
+
 
 // mimic the generated code of tonic-helloworld
 
@@ -29,6 +31,9 @@ use crate::salloc::owner::{BackendOwned, AppOwned};
 
 pub type HelloRequest = inner::HelloRequest;
 pub type HelloReply = inner::HelloReply;
+
+impl AppOwendRequest for HelloRequest {}
+impl AppOwendReply for HelloReply {}
 
 
 mod inner {
@@ -97,7 +102,7 @@ impl Future for ReqFuture {
                 "ReqFuture receive reply from mRPC engine, call_id={}",
                 erased.meta.call_id
             );
-            let ptr_local = erased.shm_addr as *mut MessageTemplate<inner::HelloReply<BackendOwned>>;
+            let ptr_local = erased.shm_addr as *mut MessageTemplate<inner::HelloReply<BackendOwned>, BackendOwned>;
             let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
             let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
             let reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
@@ -236,7 +241,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let ptr_local = req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>>;
+        let ptr_local = req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>, BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
