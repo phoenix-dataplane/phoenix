@@ -73,6 +73,10 @@ impl<T> Deref for RpcMessage<T> {
     }
 }
 
+impl<T> Drop for RpcMessage<T> {
+    
+}
+
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RpcMessage<T> {
     fn switch_address_space(&mut self) {
         self.inner.switch_address_space();    
