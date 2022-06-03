@@ -19,6 +19,11 @@
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
 
+// GC
+#![feature(drain_filter)]
+// stub
+#![feature(hash_drain_filter)]
+
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;

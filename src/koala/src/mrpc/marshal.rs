@@ -104,7 +104,7 @@ impl Unmarshal for MessageTemplateErased {
 pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
     fn conn_id(&self) -> Handle;
     fn func_id(&self) -> u32;
-    fn call_id(&self) -> u64; // unique id
+    fn call_id(&self) -> u32; // unique id
     fn len(&self) -> u64;
     fn is_request(&self) -> bool;
     fn marshal(&self) -> SgList;
@@ -188,7 +188,7 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
         self.meta.func_id
     }
     #[inline]
-    fn call_id(&self) -> u64 {
+    fn call_id(&self) -> u32 {
         self.meta.call_id
     }
     #[inline]

@@ -7,7 +7,7 @@ pub(crate) mod runtime;
 pub(crate) use runtime::Indicator;
 
 pub(crate) mod graph;
-pub(crate) use graph::{IQueue, OQueue, Vertex};
+pub(crate) use graph::{TxIQueue, TxOQueue, RxIQueue, RxOQueue, EngineRxMessage, Vertex};
 
 pub(crate) mod upgradable;
 pub(crate) use upgradable::{Upgradable, Version};

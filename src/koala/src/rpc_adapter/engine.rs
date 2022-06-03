@@ -16,7 +16,7 @@ use interface::{AsHandle, Handle};
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Vertex};
+use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, EngineRxMessage, Vertex};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
@@ -155,6 +155,7 @@ impl RpcAdapterEngine {
 
             let msg_ref = unsafe { msg.as_ref() };
             let cmid_handle = msg_ref.conn_id();
+            let call_id = msg_ref.call_id();
 
             let conn_ctx = {
                 // let span = info_span!("get conn context");
@@ -212,13 +213,14 @@ impl RpcAdapterEngine {
                     } else {
                         // post send with imm
                         tracing::trace!("post_send_imm, len={}", sge.len);
+                        let ctx = ((cmid_handle.0 as u64) << 32) | (call_id as u64);
                         unsafe {
                             // let span = info_span!("post_send_with_imm");
                             // let _enter = span.enter();
                             cmid.post_send_with_imm(
                                 odp_mr,
                                 off..off + sge.len,
-                                0,
+                                ctx,
                                 SendFlags::SIGNALED,
                                 0,
                             )?;
@@ -314,7 +316,7 @@ impl RpcAdapterEngine {
         {
             // let span = info_span!("unmarshal_and_deliver_up: rx_outputs send");
             // let _enter = span.enter();
-            self.rx_outputs()[0].send(dyn_msg).unwrap();
+            self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(dyn_msg)).unwrap();
         }
         Ok(Progress(1))
     }
@@ -335,9 +337,12 @@ impl RpcAdapterEngine {
 
                     match wc.opcode {
                         WcOpcode::Send => {
-                            // send completed, do nothing
+                            // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                let conn_id = Handle((wc.wr_id >> 32) as u32);
+                                let call_id = wc.wr_id as u32;
+                                trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                self.rx_outputs()[0].send(EngineRxMessage::SendCompletion(conn_id, call_id)).unwrap();
                             }
                         }
                         WcOpcode::Recv => {
@@ -542,6 +547,9 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
+            }
+            mrpc::cmd::Command::RecycleRecvMr(_) => {
+                unimplemented!();
             }
         }
     }

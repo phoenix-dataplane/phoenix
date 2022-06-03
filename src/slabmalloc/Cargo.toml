@@ -18,6 +18,7 @@ default = [ "unstable" ]
 
 [dependencies]
 log = "0.4"
+arrayvec = { version = "0.7", default-features = false }
 
 [target.'cfg(unix)'.dev-dependencies]
 rand = "0.8"
