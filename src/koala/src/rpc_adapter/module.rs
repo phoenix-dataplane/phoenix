@@ -82,14 +82,6 @@ impl RpcAdapterEngineBuilder {
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
-        // TODO(cjr): remove the following comments
-        // The cq can only be created lazily. Because the engine on other side is not run at this
-        // time.
-        //// let pd = state.resource().default_pds()[0];
-        // let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.service)?;
-        // let ctx = &ctx_list[0];
-        // let cq = ctx.create_cq(1024, 0)?;
-
         Ok(RpcAdapterEngine {
             state,
             odp_mr: None,
