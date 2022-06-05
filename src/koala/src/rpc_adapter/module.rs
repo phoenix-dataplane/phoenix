@@ -12,8 +12,10 @@ use ipc;
 use ipc::transport::rdma::control_plane;
 use ipc::unix::DomainSocket;
 
+use super::acceptor::engine::AcceptorEngine;
 use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::State;
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
@@ -21,6 +23,29 @@ use crate::transport::rdma::ops::Ops;
 
 lazy_static! {
     pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
+}
+
+fn create_acceptor_engine(
+    runtime_manager: &RuntimeManager,
+    client_pid: Pid,
+    ops: Ops,
+) -> Result<()> {
+    let state = STATE_MGR.get_or_create_state(client_pid)?;
+
+    // only create one cm_engine for a client process
+    if state.alive_engines() > 1 {
+        return Ok(());
+    }
+
+    let node = Node::new(EngineType::RpcAdapterAcceptor);
+    let acceptor_engine = AcceptorEngine::new(node, state, Box::new(TlStorage { ops }));
+
+    // always submit the engine to a dedicate runtime
+    runtime_manager.submit(
+        EngineContainer::new(acceptor_engine),
+        SchedulingMode::Dedicate,
+    );
+    Ok(())
 }
 
 pub(crate) struct RpcAdapterEngineBuilder {
@@ -57,6 +82,7 @@ impl RpcAdapterEngineBuilder {
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
+        // TODO(cjr): remove the following comments
         // The cq can only be created lazily. Because the engine on other side is not run at this
         // time.
         //// let pd = state.resource().default_pds()[0];
@@ -65,12 +91,9 @@ impl RpcAdapterEngineBuilder {
         // let cq = ctx.create_cq(1024, 0)?;
 
         Ok(RpcAdapterEngine {
-            tls: Box::new(TlStorage {
-                odp_mr: None,
-                cq: None,
-                state,
-                ops: self.ops,
-            }),
+            state,
+            odp_mr: None,
+            tls: Box::new(TlStorage { ops: self.ops }),
             flag: false,
             salloc: salloc_state,
             recent_listener_handle: None,
@@ -87,6 +110,7 @@ impl RpcAdapterEngineBuilder {
 pub struct RpcAdapterModule;
 
 impl RpcAdapterModule {
+    #[allow(dead_code)]
     pub fn handle_request(
         &mut self,
         // NOTE(cjr): Why I am using rdma's control_plane request
@@ -112,6 +136,8 @@ impl RpcAdapterModule {
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ) -> Result<RpcAdapterEngine> {
         let ops = crate::transport::rdma::module::create_ops(runtime_manager, client_pid)?;
+
+        create_acceptor_engine(runtime_manager, client_pid, ops.clone())?;
 
         let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops);
         let engine = builder.build()?;

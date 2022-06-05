@@ -165,6 +165,7 @@ impl Control {
             match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
                 EngineType::RdmaConnMgmt => panic!(),
+                EngineType::RpcAdapterAcceptor => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
                     self.mrpc.handle_new_client(
@@ -181,7 +182,7 @@ impl Control {
                     panic!("salloc engine should not appear in the graph, koala will handle it specially");
                 }
                 EngineType::RpcAdapter => {
-                    // for now, we create the adapter for tcp
+                    // for now, we only implement the adapter for rdma
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
                         &self.runtime_manager,

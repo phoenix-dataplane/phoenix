@@ -15,18 +15,15 @@ use super::{get_ops, Error, FromBorrow};
 pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
 pub use interface::{QpCapability, QpType, RemoteKey};
 
-pub(crate) fn get_default_verbs_contexts(
-    ops: &crate::transport::rdma::ops::Ops,
-) -> Result<Vec<VerbsContext>, Error> {
-    let ctx_list = ops.get_default_contexts()?;
+pub(crate) fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
+    let ctx_list = get_ops().get_default_contexts()?;
     ctx_list
         .into_iter()
         .map(|ctx| VerbsContext::new(ctx))
         .collect::<Result<Vec<_>, Error>>()
 }
 
-pub(crate) fn get_default_pds(
-) -> Result<Vec<ProtectionDomain>, Error> {
+pub(crate) fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // This should only be called when it is first initialized. At that time, hopefully KL_CTX has
     // already been initialized.
     let pds = get_ops().get_default_pds()?;
@@ -99,6 +96,12 @@ pub struct CompletionQueue {
     pub(crate) inner: interface::CompletionQueue,
 }
 
+impl AsHandle for CompletionQueue {
+    fn as_handle(&self) -> Handle {
+        self.inner.0
+    }
+}
+
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
         get_ops()
@@ -112,6 +115,13 @@ impl CompletionQueue {
         let inner = returned_cq.handle;
         get_ops().open_cq(&inner)?;
         Ok(CompletionQueue { inner })
+    }
+
+    /// Construct a CompletionQueue from raw handle.
+    pub(crate) unsafe fn from_handle(handle: Handle) -> Self {
+        CompletionQueue {
+            inner: interface::CompletionQueue(handle),
+        }
     }
 }
 

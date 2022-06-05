@@ -34,6 +34,7 @@ pub(crate) type Result<T> = std::result::Result<T, ApiError>;
 //     }
 // }
 
+#[derive(Clone)]
 pub(crate) struct Ops {
     pub(crate) state: State,
 }

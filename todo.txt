@@ -16,11 +16,12 @@ Benchmark Suite
 - also test latency
 
 Engine Framework
-- new challenge: *fault isolation*
+- <s>new challenge: *fault isolation*</s> Updated: doen through careful
+  engineering
 - futures::executor::block_on seems to start an extra engine, need an
   lazy/sleepy runtime
 - suspend the runtime to save CPUs based on indicator
-- RpcAdapter/CmEngine can only be shut down when the other side has gone.
+- *RpcAdapter/CmEngine can only be shut down when the other side has gone.*
 -[x] *Change Engine trait to a huge Generator*, all block waitings become
   yields
 -[x] *Call an engine's method from another engine*, some engines go to an
@@ -34,12 +35,13 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
-- add span_info back
+- for more flexible IO event notification, need a bus/mailbox/pub-sub.
+- *UDP socket send/recv fd must be nonblocking*
+-[x] add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>
 -[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
 - Garbage collect CmEngine
-- *UDP socket send/recv fd must be nonblocking*
 -[x] *add static tracing* points at various points in code for performance
   analysis
 - CmIdBuilder::new() -> CmId::builder()
@@ -68,8 +70,8 @@ Misc
   the number of engines to build.
 
 Shared memory heap
-- check if a read only shm file descriptor can be open with write
-  permission and really written
+- *check if a read only shm file descriptor can be open with write
+  permission and really written*
 - shared heap dealloc
 - use MMAP_HUGETLB, also reg_mr with huge tlb
 -[x] SharedHeapAllocator should not use MemoryRegion any more. The pd and

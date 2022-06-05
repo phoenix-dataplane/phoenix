@@ -21,10 +21,6 @@ pub(crate) struct ResourceTableGeneric<K, R> {
     table: spin::Mutex<HashMap<K, Entry<R>>>,
 }
 
-// #[derive(Debug)]
-// pub(crate) struct ResourceTable<R> {
-//     table: spin::Mutex<HashMap<Handle, Entry<R>>>,
-// }
 pub(crate) type ResourceTable<R> = ResourceTableGeneric<Handle, R>;
 
 impl<K, R> Default for ResourceTableGeneric<K, R> {
@@ -52,24 +48,28 @@ impl<R> Entry<R> {
     }
 
     #[inline]
-    fn data(&self) -> Arc<R> {
+    pub(crate) fn data(&self) -> Arc<R> {
         Arc::clone(&self.data)
     }
 
     /// `Open` means to increment the reference count.
     #[inline]
-    fn open(&self) {
+    pub(crate) fn open(&self) {
         self.refcnt.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Returns true if the resource has no more references to it.
     #[inline]
-    fn close(&self) -> bool {
+    pub(crate) fn close(&self) -> bool {
         self.refcnt.fetch_sub(1, Ordering::AcqRel) == 1
     }
 }
 
 impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
+    pub(crate) fn inner(&self) -> &spin::Mutex<HashMap<K, Entry<R>>> {
+        &self.table
+    }
+
     pub(crate) fn insert(&self, h: K, r: R) -> Result<(), Error> {
         match self.table.lock().insert(h, Entry::new(r, 1)) {
             Some(_) => Err(Error::Exists),

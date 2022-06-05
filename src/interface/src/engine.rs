@@ -15,6 +15,7 @@ pub enum EngineType {
     TcpTransport,
     Mrpc,
     RpcAdapter,
+    RpcAdapterAcceptor,
     Overload,
     Salloc,
 }

@@ -23,11 +23,7 @@ use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
 
-pub struct TlStorage {
-    // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transpport second.
-    pub(crate) state: State,
-    pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
-    pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
+pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
 }
 
@@ -43,7 +39,11 @@ unsafe impl EngineLocalStorage for TlStorage {
     }
 }
 
-pub struct RpcAdapterEngine {
+pub(crate) struct RpcAdapterEngine {
+    // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
+    pub(crate) state: State,
+    pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
+    // pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) tls: Box<TlStorage>,
     pub(crate) flag: bool,
 
@@ -76,10 +76,7 @@ impl Engine for RpcAdapterEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!(
-            "RcpAdapterEngine, user pid: {:?}",
-            self.tls.state.shared.pid
-        )
+        format!("RcpAdapterEngine, user pid: {:?}", self.state.shared.pid)
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -94,6 +91,12 @@ impl Engine for RpcAdapterEngine {
     unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         let tls = self.tls.as_ref() as *const TlStorage;
         Some(&*tls)
+    }
+}
+
+impl Drop for RpcAdapterEngine {
+    fn drop(&mut self) {
+        self.state.stop_acceptor(true);
     }
 }
 
@@ -134,25 +137,14 @@ impl RpcAdapterEngine {
 impl RpcAdapterEngine {
     fn get_or_init_odp_mr(&mut self) -> &mut ulib::uverbs::MemoryRegion<u8> {
         // this function is not supposed to be called concurrently.
-        if self.tls.odp_mr.is_none() {
+        if self.odp_mr.is_none() {
             // TODO(cjr): we currently by default use the first ibv_context.
             let pd_list = ulib::uverbs::get_default_pds().unwrap();
             let pd = &pd_list[0];
             let odp_mr = self.tls.ops.create_mr_on_demand_paging(&pd.inner).unwrap();
-            self.tls.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
+            self.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
         }
-        self.tls.odp_mr.as_mut().unwrap()
-    }
-
-    fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
-        // this function is not supposed to be called concurrently.
-        if self.tls.cq.is_none() {
-            // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list = ulib::uverbs::get_default_verbs_contexts(&self.tls.ops).unwrap();
-            let ctx = &ctx_list[0];
-            self.tls.cq = Some(ctx.create_cq(1024, 0).unwrap());
-        }
-        self.tls.cq.as_ref().unwrap()
+        self.odp_mr.as_mut().unwrap()
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
@@ -170,7 +162,7 @@ impl RpcAdapterEngine {
             let conn_ctx = {
                 // let span = info_span!("get conn context");
                 // let _enter = span.enter();
-                self.tls.state.resource().cmid_table.get(&cmid_handle)?
+                self.state.resource().cmid_table.get(&cmid_handle)?
             };
 
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
@@ -334,7 +326,7 @@ impl RpcAdapterEngine {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
         let mut comps = Vec::with_capacity(32);
-        let cq = self.get_or_init_cq();
+        let cq = self.state.get_or_init_cq();
         cq.poll(&mut comps)?;
 
         let mut progress = 0;
@@ -355,11 +347,10 @@ impl RpcAdapterEngine {
                             let conn_ctx = {
                                 // let span = info_span!("push receiving_sgl");
                                 // let _enter = span.enter();
-                                let wr_ctx =
-                                    self.tls.state.resource().wr_contexts.get(&wc.wr_id)?;
+                                let wr_ctx = self.state.resource().wr_contexts.get(&wc.wr_id)?;
                                 let cmid_handle = wr_ctx.conn_id;
                                 let conn_ctx =
-                                    self.tls.state.resource().cmid_table.get(&cmid_handle)?;
+                                    self.state.resource().cmid_table.get(&cmid_handle)?;
                                 // received a segment of RPC message
                                 let sge = ShmBuf {
                                     ptr: wr_ctx.mr_addr,
@@ -372,7 +363,10 @@ impl RpcAdapterEngine {
 
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 // received an entire RPC message
-                                tracing::trace!("post_recv received complete message, wr_id={}", wc.wr_id);
+                                tracing::trace!(
+                                    "post_recv received complete message, wr_id={}",
+                                    wc.wr_id
+                                );
                                 use std::ops::DerefMut;
                                 let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
                                 self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
@@ -415,39 +409,32 @@ impl RpcAdapterEngine {
     }
 
     async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
-        // TODO(cjr): should check for each connection.......... shit!
-        if self.flag {
-            return Ok(Status::Progress(0));
-        }
-
-        if let Some(recent) = self.recent_listener_handle.as_ref() {
-            let listener = self.tls.state.resource().listener_table.get(recent)?;
-            if let Some(mut builder) = listener.try_get_request()? {
-                // establish connection
-                let cq = self.get_or_init_cq();
-                let mut pre_id = builder
-                    .set_send_cq(cq)
-                    .set_recv_cq(cq)
-                    .set_max_send_wr(128)
-                    .set_max_recv_wr(128)
-                    .build()?;
+        let rpc_adapter_id = self.state.rpc_adapter_id;
+        let ret = self
+            .state
+            .resource()
+            .pre_cmid_table
+            .entry(rpc_adapter_id)
+            .or_insert_with(VecDeque::new)
+            .pop_front();
+        match ret {
+            None => Ok(Status::Progress(0)),
+            Some(mut pre_id) => {
                 // prepare and post receive buffers
                 let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id)?;
                 // accept
                 let id = pre_id.accept(None).await?;
                 let handle = id.as_handle();
                 // insert resources after connection establishment
-                self.tls.state.resource().insert_cmid(id, 128)?;
+                self.state.resource().insert_cmid(id, 128)?;
                 // pass these resources back to the user
                 let comp = mrpc::cmd::Completion(Ok(
                     mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
                 ));
                 self.cmd_tx.send(comp)?;
                 self.flag = true;
+                Ok(Status::Progress(1))
             }
-            Ok(Status::Progress(1))
-        } else {
-            Ok(Status::Progress(0))
         }
     }
 
@@ -482,11 +469,7 @@ impl RpcAdapterEngine {
             unsafe {
                 pre_id.post_recv(&mut odp_mr, off..off + len, wr_id)?;
             }
-            self.tls
-                .state
-                .resource()
-                .wr_contexts
-                .insert(wr_id, wr_ctx)?;
+            self.state.resource().wr_contexts.insert(wr_id, wr_ctx)?;
         }
         let mut returned_mrs = Vec::with_capacity(128);
         let mut fds = Vec::with_capacity(128);
@@ -530,7 +513,7 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::Connect(addr) => {
                 log::debug!("Connect, addr: {:?}", addr);
                 // create CmIdBuilder
-                let cq = self.get_or_init_cq();
+                let cq = self.state.get_or_init_cq();
                 let builder = ulib::ucm::CmIdBuilder::new()
                     .set_send_cq(cq)
                     .set_recv_cq(cq)
@@ -546,7 +529,7 @@ impl RpcAdapterEngine {
                 let handle = id.as_handle();
 
                 // insert resources after connection establishment
-                self.tls.state.resource().insert_cmid(id, 128)?;
+                self.state.resource().insert_cmid(id, 128)?;
                 Ok(mrpc::cmd::CompletionKind::ConnectInternal(
                     handle,
                     returned_mrs,
@@ -558,11 +541,10 @@ impl RpcAdapterEngine {
                 // create CmIdBuilder
                 let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();
-                self.tls
-                    .state
+                self.state
                     .resource()
                     .listener_table
-                    .insert(handle, listener)?;
+                    .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
             }

@@ -43,7 +43,7 @@ pub(crate) fn create_ops(runtime_manager: &RuntimeManager, client_pid: Pid) -> R
     Ok(Ops::new(state))
 }
 
-pub(crate) fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> {
+fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> {
     let state = STATE_MGR.get_or_create_state(client_pid)?;
 
     // only create one cm_engine for a client process

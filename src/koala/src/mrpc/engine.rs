@@ -15,8 +15,6 @@ use crate::node::Node;
 pub struct MrpcEngine {
     pub(crate) _state: State,
 
-    pub(crate) flag: bool,
-
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
@@ -296,9 +294,6 @@ impl MrpcEngine {
     }
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
-        if self.flag {
-            return Ok(Progress(0));
-        }
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
@@ -309,7 +304,6 @@ impl MrpcEngine {
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
-                        self.flag = true;
                         Ok(Status::Progress(1))
                     }
                     other => panic!("unexpected: {:?}", other),
