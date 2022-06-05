@@ -43,14 +43,11 @@ pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
     pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
-    // pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
     pub(crate) tls: Box<TlStorage>,
-    pub(crate) flag: bool,
 
     pub(crate) salloc: SallocState,
 
     // shared completion queue model
-    pub(crate) recent_listener_handle: Option<interface::Handle>,
     pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
 
     pub(crate) node: Node,
@@ -432,7 +429,6 @@ impl RpcAdapterEngine {
                     mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
                 ));
                 self.cmd_tx.send(comp)?;
-                self.flag = true;
                 Ok(Status::Progress(1))
             }
         }
@@ -545,7 +541,6 @@ impl RpcAdapterEngine {
                     .resource()
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
-                self.recent_listener_handle.replace(handle);
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
             }
         }
