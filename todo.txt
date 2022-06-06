@@ -10,17 +10,20 @@ Benchmark Suite
 - build then run
 - worker starting order
 - auto kill on clean up
+- collect and print result
 -[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - <s>Build a CI pipeline with all kinds of tests and benchmarks</s>
 - simplify rpc_hello, add more complex rpc_hello
 - also test latency
 
 Engine Framework
+- suspend the runtime to save CPUs based on indicator
+- Implemented Shared scheduling policy
+- move CmEngine and AcceptorEngine to Shared
 - <s>new challenge: *fault isolation*</s> Updated: doen through careful
   engineering
 - futures::executor::block_on seems to start an extra engine, need an
   lazy/sleepy runtime
-- suspend the runtime to save CPUs based on indicator
 - *RpcAdapter/CmEngine can only be shut down when the other side has gone.*
 -[x] *Change Engine trait to a huge Generator*, all block waitings become
   yields

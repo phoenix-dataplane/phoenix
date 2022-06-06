@@ -1,5 +1,6 @@
 workdir = "~/nfs/Developing/koala"
 
 [env]
-KOALA_LOG = "error"
 RUST_BACKTRACE = "1"
+RUST_LOG_STYLE = "never"
+CARGO_TERM_COLOR = "never"
