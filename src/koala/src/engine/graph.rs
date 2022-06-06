@@ -11,6 +11,7 @@ use crate::mrpc::marshal::RpcMessage;
 pub(crate) type TxIQueue = UnboundedReceiver<ShmPtr<dyn RpcMessage>>;
 pub(crate) type TxOQueue = UnboundedSender<ShmPtr<dyn RpcMessage>>;
 
+#[derive(Debug)]
 pub(crate) enum EngineRxMessage {
     RpcMessage(ShmPtr<dyn RpcMessage>),
     SendCompletion(Handle, u32)

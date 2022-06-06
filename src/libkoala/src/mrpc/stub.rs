@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::mem::ManuallyDrop;
@@ -17,19 +18,21 @@ use ipc::shmalloc::SwitchAddressSpace;
 use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
-use crate::salloc::gc::MESSAGE_ID_COUNTER;
+use crate::salloc::gc::{MESSAGE_ID_COUNTER, OUTSTANDING_WR, CS_OUTSTANDING_WR_CNT};
 use crate::salloc::owner::{AllocOwner, AppOwned};
 use crate::salloc::region::SharedRegion;
 use crate::salloc::SA_CTX;
 
+
+thread_local! {
+    static RECV_CACHE: RefCell<HashMap<(Handle, u32), MessageTemplateErased>> = RefCell::new(HashMap::new());
+}
 
 pub(crate) mod ownership {
     pub trait AppOwendRequest {}
     pub trait AppOwendReply {}
 }
 
-// NOTE(wyj): RpcMessage is used to send messages to backend. 
-// T must be app-owned.
 #[derive(Debug)]
 pub struct RpcMessage<T> {
     pub(crate) inner: ManuallyDrop<Box<MessageTemplate<T, AppOwned>, AppOwned>>,
@@ -74,7 +77,9 @@ impl<T> Deref for RpcMessage<T> {
 }
 
 impl<T> Drop for RpcMessage<T> {
-    
+    fn drop(&mut self) {
+        todo!()
+    }
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RpcMessage<T> {
@@ -114,7 +119,7 @@ impl<T> MessageTemplate<T, AppOwned> {
     }
 
     pub(crate) fn new_reply(
-        val: Box<T>, 
+        val: Box<T>,
         conn_id: Handle,
         func_id: u32,
         call_id: u32
@@ -150,37 +155,6 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T, App
     }
 }
 
-pub(crate) fn post_request<T: SwitchAddressSpace>(
-    msg: &mut Box<MessageTemplate<T, AppOwned>>,
-) -> Result<(), Error> {
-    let meta = msg.meta;
-    tracing::trace!(
-        "client post request to mRPC engine, call_id={}",
-        meta.call_id
-    );
-
-    msg.switch_address_space();
-    let (ptr, addr_remote) = Box::to_raw_parts(&msg);
-    let erased = MessageTemplateErased {
-        meta,
-        shm_addr: addr_remote.addr().get(),
-        shm_addr_remote: ptr.addr().get(),
-    };
-    let req = dp::WorkRequest::Call(erased);
-
-    MRPC_CTX.with(|ctx| {
-        let mut sent = false;
-        while !sent {
-            ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                ptr.cast::<dp::WorkRequest>().write(req);
-                sent = true;
-                1
-            })?;
-        }
-        Ok(())
-    })
-}
-
 pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
     tracing::trace!(
         "client post reply to mRPC engine, call_id={}",
@@ -201,8 +175,51 @@ pub(crate) fn post_reply(erased: MessageTemplateErased) -> Result<(), Error> {
     })
 }
 
+pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
+    use ipc::mrpc::dp::Completion;
+
+    const BUF_LEN: usize = 32;
+    let mut buffer = Vec::with_capacity(BUF_LEN);
+    MRPC_CTX.with(|ctx| {
+        ctx.service.dequeue_wc_with(|ptr, count| unsafe {
+            for i in 0..count {
+                let c = ptr.add(i).cast::<dp::Completion>().read();
+                buffer.push(c);
+            }
+            count
+        })?;
+        for c in buffer {
+            match c {
+                Completion::Recv(msg) => {
+                    let conn_id = msg.meta.conn_id;
+                    let call_id = msg.meta.call_id;
+                    RECV_CACHE.with(|cache| {
+                        cache.borrow_mut().insert((conn_id, call_id), msg);
+                    })
+                }
+                Completion::SendCompletion(conn_id, call_id) => {
+                    let (msg_id, cs_id) = OUTSTANDING_WR.with(|outstanding| {
+                        outstanding
+                            .borrow_mut()
+                            .remove(&(conn_id, call_id))
+                            .expect("received unrecognized WR completion ACK")
+                    });
+                    CS_OUTSTANDING_WR_CNT.with(|counting| {
+                        counting.borrow_mut().get_mut(&cs_id).expect(msg);
+                    })
+                }
+            }
+            let call_id = m.meta.call_id;
+            reply_cache.insert(call_id, m);
+        }
+        Ok(())
+    })
+}
+
 #[derive(Debug)]
 pub struct ClientStub {
+    // identifier for the stub
+    stub_id: u64,
     // mRPC connection handle
     handle: Handle,
     reply_mrs: Vec<SharedRegion>,
@@ -223,12 +240,52 @@ impl ClientStub {
         })
     }
 
+    pub(crate) fn post_request<T: SwitchAddressSpace + ownership::AppOwendRequest>(
+        &self,
+        // msg: &mut Box<MessageTemplate<T, AppOwned>>,
+        msg: &mut RpcMessage<T>
+    ) -> Result<(), Error> {
+        let meta = msg.inner.meta;
+        tracing::trace!(
+            "client post request to mRPC engine, call_id={}",
+            meta.inner.mcall_id
+        );
+
+        msg.send_count += 1;
+    
+        // TODO(wyj): get rid of SwitchAddrSpace
+        msg.switch_address_space();
+        let (ptr, addr_remote) = Box::to_raw_parts(&msg.inner);
+        let erased = MessageTemplateErased {
+            meta,
+            shm_addr: addr_remote.addr().get(),
+            shm_addr_remote: ptr.addr().get(),
+        };
+        let req = dp::WorkRequest::Call(erased);
+        
+        OUTSTANDING_WR.with(|outstanding| {
+            outstanding.borrow_mut().insert((msg.inner.meta.conn_id, msg.inner.meta.call_id), ())
+        });
+        MRPC_CTX.with(|ctx| {
+            let mut sent = false;
+            while !sent {
+                ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
+                    ptr.cast::<dp::WorkRequest>().write(req);
+                    sent = true;
+                    1
+                })?;
+            }
+            Ok(())
+        })
+    }
+
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let connect_addr = addr
             .to_socket_addrs()?
             .next()
             .ok_or(Error::NoAddrResolved)?;
         let req = Command::Connect(connect_addr);
+
         MRPC_CTX.with(|ctx| {
             ctx.service.send_cmd(req)?;
             let fds = ctx.service.recv_fd()?;
@@ -279,6 +336,7 @@ impl ClientStub {
 }
 
 pub struct Server {
+    stub_id: u64,
     listener_handle: Handle,
     handles: HashSet<Handle>,
     mrs: HashMap<Handle, SharedRegion>,

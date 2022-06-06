@@ -78,7 +78,7 @@ pub(crate) struct WrContext {
 
 #[derive(Debug)]
 pub(crate) struct ReqContext {
-    pub(crate) call_id: u64,
+    pub(crate) call_id: u32,
     pub(crate) sg_len: usize,
 }
 

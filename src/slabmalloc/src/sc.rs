@@ -1,4 +1,5 @@
 //! A SCAllocator that can allocate fixed size objects.
+use arrayvec::ArrayVec;
 
 use crate::*;
 
@@ -22,6 +23,8 @@ const fn cmin(a: usize, b: usize) -> usize {
 fn cmin(a: usize, b: usize) -> usize {
     core::cmp::min(a, b)
 }
+
+const RELEASE_BUFFER_SIZE: usize = 32;
 
 /// A slab allocator allocates elements of a fixed size.
 ///
@@ -57,6 +60,11 @@ pub struct SCAllocator<'a, P: AllocablePage> {
     pub(crate) slabs: PageList<'a, P>,
     /// List of full ObjectPages (everything allocated in these don't need to search them).
     pub(crate) full_slabs: PageList<'a, P>,
+
+    // a buffer of addrs of the pages (shared regions) to be released
+    pub(crate) release_buffer: ArrayVec<usize, RELEASE_BUFFER_SIZE>,
+    // a counter for releasing empty pages to the release buffer
+    pub(crate) release_count: usize
 }
 
 /// Creates an instance of a scallocator, we do this in a macro because we
@@ -70,12 +78,17 @@ macro_rules! new_sc_allocator {
             empty_slabs: PageList::new(),
             slabs: PageList::new(),
             full_slabs: PageList::new(),
+            release_buffer: ArrayVec::new_const(),
+            release_count: 0
         }
     };
 }
 
 impl<'a, P: AllocablePage> SCAllocator<'a, P> {
     const REBALANCE_COUNT: usize = 64;
+    // controls the frequency of releasing empty pages
+    // performs a page release after RELEASE_COUNT times rebalance
+    const RELEASE_COUNT: usize = 4;
 
     /// Create a new SCAllocator.
     #[cfg(feature = "unstable")]
@@ -126,6 +139,25 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
                 trace!("move {:p} partial -> empty", slab_page);
                 self.move_to_empty(slab_page);
             }
+        }
+    }
+
+    pub(crate) fn release_empty_pages(&mut self) {
+        let mut cap = self.release_buffer.remaining_capacity();
+        while cap > 0 && self.empty_slabs.head.is_some() {
+            let slab = self.empty_slabs.pop().unwrap();
+            let addr = slab as *mut P as usize;
+            // NOTE(wyj): use push unchecked.
+            self.release_buffer.push(addr);
+            cap -= 1;
+        }
+
+        while cap > 0 && self.empty_slabs.head.is_some() {
+            let slab = self.empty_slabs.pop().unwrap();
+            let addr = slab as *mut P as usize;
+            // NOTE(wyj): use push unchecked.
+            self.release_buffer.push(addr);
+            cap -= 1;
         }
     }
 
@@ -182,7 +214,7 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
     /// # Arguments
     ///  * `sc_layout`: This is not the original layout but adjusted for the
     ///     SCAllocator size (>= original).
-    fn try_allocate_from_pagelist(&mut self, sc_layout: Layout) -> *mut u8 {
+    fn try_allocate_from_pagelist(&mut self, sc_layout: Layout) -> (*mut u8, bool) {
         // TODO: Do we really need to check multiple slab pages (due to alignment)
         // If not we can get away with a singly-linked list and have 8 more bytes
         // for the bitfield in an ObjectPage.
@@ -195,19 +227,24 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
                     self.move_partial_to_full(slab_page);
                 }
                 self.allocation_count += 1;
-                return ptr;
+                return (ptr, false);
             } else {
                 continue;
             }
         }
 
         // Periodically rebalance page-lists (since dealloc can't do it for us)
-        if self.allocation_count > SCAllocator::<P>::REBALANCE_COUNT {
+        if self.allocation_count % SCAllocator::<P>::REBALANCE_COUNT == 0 {
             self.check_page_assignments();
             self.allocation_count = 0;
+            self.release_count += 1;
+            if self.release_count > SCAllocator::<P>::RELEASE_COUNT {
+                self.release_empty_pages();
+                self.release_count = 0;
+                return (ptr::null_mut(), true);
+            }
         }
-
-        ptr::null_mut()
+        (ptr::null_mut(), false)
     }
 
     /// Refill the SCAllocator
@@ -220,6 +257,22 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         *page.next() = Rawlink::none();
         trace!("adding page to SCAllocator {:p}", page);
         self.insert_empty(page);
+    }
+
+    pub(crate) unsafe fn relinquish_empty_pages(&mut self) -> alloc::vec::Vec<&'a mut P> {
+        let mut relinquished = alloc::vec::Vec::new();
+        while let Some(slab) = self.empty_slabs.pop() {
+            relinquished.push(slab);
+        }
+        relinquished
+    }
+
+    pub(crate) unsafe fn relinquish_used_pages(&mut self) -> alloc::vec::Vec<&'a mut P> {
+        let mut relinquished = alloc::vec::Vec::new();
+        while let Some(slab) = self.slabs.pop() {
+            relinquished.push(slab);
+        }
+        relinquished
     }
 
     /// Allocates a block of memory descriped by `layout`.
@@ -243,7 +296,7 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         let ptr = {
             // Try to allocate from partial slabs,
             // if we fail check if we have empty pages and allocate from there
-            let ptr = self.try_allocate_from_pagelist(new_layout);
+            let (ptr, _) = self.try_allocate_from_pagelist(new_layout);
             if ptr.is_null() && self.empty_slabs.head.is_some() {
                 // Re-try allocation in empty page
                 let empty_page = self.empty_slabs.pop().expect("We checked head.is_some()");
@@ -266,6 +319,64 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         };
 
         let res = NonNull::new(ptr).ok_or(AllocationError::OutOfMemory);
+
+        if !ptr.is_null() {
+            trace!(
+                "SCAllocator({}) allocated ptr=0x{:x}",
+                self.size,
+                ptr as usize
+            );
+        }
+
+        res
+    }
+
+    /// Allocate with the opportunity to recycle released empty slabs
+    pub fn allocate_with_release(&mut self, layout: Layout) -> Result<(NonNull<u8>, Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>), AllocationError> {
+        trace!(
+            "SCAllocator({}) is trying to allocate {:?}",
+            self.size,
+            layout
+        );
+        assert!(layout.size() <= self.size);
+        assert!(self.size <= (P::SIZE - CACHE_LINE_SIZE));
+        let new_layout = unsafe { Layout::from_size_align_unchecked(self.size, layout.align()) };
+        assert!(new_layout.size() >= layout.size());
+
+        let (ptr, release_flag) = {
+            // Try to allocate from partial slabs,
+            // if we fail check if we have empty pages and allocate from there
+            let (ptr, release_flag) = self.try_allocate_from_pagelist(new_layout);
+            if ptr.is_null() && self.empty_slabs.head.is_some() {
+                // Re-try allocation in empty page
+                let empty_page = self.empty_slabs.pop().expect("We checked head.is_some()");
+                debug_assert!(!self.empty_slabs.contains(empty_page));
+
+                let ptr = empty_page.allocate(layout);
+                debug_assert!(!ptr.is_null(), "Allocation must have succeeded here.");
+
+                trace!(
+                    "move {:p} empty -> partial empty count {}",
+                    empty_page,
+                    self.empty_slabs.elements
+                );
+                // Move empty page to partial pages
+                self.insert_partial_slab(empty_page);
+                (ptr, release_flag)
+            } else {
+                (ptr, release_flag)
+            }
+        };
+
+        let release_slabs = if release_flag {
+            Some(self.release_buffer.drain(..))
+        } else {
+            None
+        };
+
+        let res = NonNull::new(ptr)
+            .ok_or(AllocationError::OutOfMemory)
+            .map(|ptr| { (ptr, release_slabs) });
 
         if !ptr.is_null() {
             trace!(

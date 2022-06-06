@@ -232,9 +232,9 @@ impl MrpcEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use tokio::sync::mpsc::error::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
-            Ok(mut msg) => {
+            Ok(msg) => {
                 match msg {
-                    EngineRxMessage::RpcMessage(msg) => {
+                    EngineRxMessage::RpcMessage(mut msg) => {
                         let span = info_span!("MrpcEngine check_input_queue: recv_msg");
                         let _enter = span.enter();
         
@@ -294,7 +294,7 @@ impl MrpcEngine {
                     }
                     EngineRxMessage::SendCompletion(conn_id, call_id) => {
                         {
-                            let mut send = false;
+                            let mut sent = false;
                             while !sent {
                                 self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                     sent = true;

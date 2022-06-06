@@ -31,6 +31,12 @@ struct SharedHeap {
     zone_allocator: ZoneAllocator<'static>,
 }
 
+impl Drop for SharedHeap {
+    fn drop(&mut self) {
+        
+    }
+}
+
 impl SharedHeap {
     fn new() -> Self {
         SharedHeap {
