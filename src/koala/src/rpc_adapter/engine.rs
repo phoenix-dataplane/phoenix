@@ -337,12 +337,12 @@ impl RpcAdapterEngine {
 
                     match wc.opcode {
                         WcOpcode::Send => {
-                            // send completed, do nothing
+                            // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 let conn_id = Handle((wc.wr_id >> 32) as u32);
                                 let call_id = wc.wr_id as u32;
-                                tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                self.rx_outputs()[0].send(EngineRxMessage::SendCompletion(conn_id, call_id))
+                                trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                self.rx_outputs()[0].send(EngineRxMessage::SendCompletion(conn_id, call_id)).unwrap();
                             }
                         }
                         WcOpcode::Recv => {

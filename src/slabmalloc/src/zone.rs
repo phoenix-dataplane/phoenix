@@ -282,3 +282,84 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
         }
     }
 }
+
+
+use alloc::vec::Vec;
+
+pub struct RelinquishedPages<'a> {
+    // empty pages
+    pub empty_small: alloc::vec::Vec<&'a mut ObjectPage<'a>>,
+    pub empty_large: alloc::vec::Vec<&'a mut LargeObjectPage<'a>>,
+    pub empty_huge: alloc::vec::Vec<&'a mut HugeObjectPage<'a>>,
+
+    // partial or full pages
+    pub used_small: alloc::vec::Vec<&'a mut ObjectPage<'a>>,
+    pub used_large: alloc::vec::Vec<&'a mut LargeObjectPage<'a>>,
+    pub used_huge: alloc::vec::Vec<&'a mut HugeObjectPage<'a>>
+}
+
+impl<'a> ZoneAllocator<'a>  {
+    unsafe fn relinquish_empty_pages(&mut self) -> (
+        Vec<&'a mut ObjectPage<'a>>, 
+        Vec<&'a mut LargeObjectPage<'a>>, 
+        Vec<&'a mut HugeObjectPage<'a>>
+    ) {
+        let mut small_pages = alloc::vec::Vec::new();
+        for slab in self.small_slabs.iter_mut() {
+            slab.check_page_assignments();
+            small_pages.extend(slab.relinquish_empty_pages());
+        }
+        
+        let mut large_pages = alloc::vec::Vec::new();
+        for slab in self.big_slabs.iter_mut() {
+            slab.check_page_assignments();
+            large_pages.extend(slab.relinquish_empty_pages());
+        }
+
+        let mut huge_pages = alloc::vec::Vec::new();
+        for slab in self.huge_slabs.iter_mut() {
+            slab.check_page_assignments();
+            huge_pages.extend(slab.relinquish_empty_pages());
+        }
+
+        (small_pages, large_pages, huge_pages)
+    }
+
+    unsafe fn relinquish_used_pages(&mut self) -> (
+        Vec<&'a mut ObjectPage<'a>>, 
+        Vec<&'a mut LargeObjectPage<'a>>, 
+        Vec<&'a mut HugeObjectPage<'a>>
+    ) {
+        let mut small_pages = alloc::vec::Vec::new();
+        for slab in self.small_slabs.iter_mut() {
+            small_pages.extend(slab.relinquish_used_pages());
+        }
+        
+        let mut large_pages = alloc::vec::Vec::new();
+        for slab in self.big_slabs.iter_mut() {
+            slab.check_page_assignments();
+            large_pages.extend(slab.relinquish_used_pages());
+        }
+
+        let mut huge_pages = alloc::vec::Vec::new();
+        for slab in self.huge_slabs.iter_mut() {
+            slab.check_page_assignments();
+            huge_pages.extend(slab.relinquish_used_pages());
+        }
+
+        (small_pages, large_pages, huge_pages)
+    }
+
+    pub unsafe fn relinquish_pages(&mut self) -> RelinquishedPages {
+        let (empty_small_pages, empty_large_pages, empty_huge_pages) = self.relinquish_empty_pages();
+        let (used_small_pages, used_large_pages, used_huge_pages) = self.relinquish_used_pages();
+        RelinquishedPages { 
+            empty_small: (), 
+            empty_large: (), 
+            empty_huge: (), 
+            used_small: (), 
+            used_large: (), 
+            used_huge: () 
+        }
+    }
+}

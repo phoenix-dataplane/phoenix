@@ -88,7 +88,7 @@ mod inner {
 
 
 pub struct ReqFuture {
-    call_id: u64,
+    call_id: u32,
     reply_cache: Rc<ReplyCache>,
 }
 
@@ -115,24 +115,6 @@ impl Future for ReqFuture {
     }
 }
 
-fn check_completion(reply_cache: &ReplyCache) -> Result<(), super::Error> {
-    use ipc::mrpc::dp;
-    let mut msgs = Vec::with_capacity(32);
-    MRPC_CTX.with(|ctx| {
-        ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-            for i in 0..count {
-                let c = ptr.add(i).cast::<dp::Completion>().read();
-                msgs.push(c.erased);
-            }
-            count
-        })?;
-        for m in msgs {
-            let call_id = m.meta.call_id;
-            reply_cache.insert(call_id, m);
-        }
-        Ok(())
-    })
-}
 
 // Reply cache, call_id -> Reply, Sync, not durable
 #[derive(Debug)]
