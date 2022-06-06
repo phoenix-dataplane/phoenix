@@ -88,7 +88,12 @@ fn get_command_str(cmd: &Command) -> String {
     cmd_str
 }
 
-fn wait_command(mut cmd: Command, timeout: Duration, host: &str) -> io::Result<()> {
+fn wait_command(
+    mut cmd: Command,
+    mut kill_cmd: Option<Command>,
+    timeout: Duration,
+    host: &str,
+) -> io::Result<()> {
     let start = Instant::now();
     let cmd_str = get_command_str(&cmd);
 
@@ -143,7 +148,8 @@ fn wait_command(mut cmd: Command, timeout: Duration, host: &str) -> io::Result<(
 
         // check if kill is needed
         let outoftime = start.elapsed() > timeout;
-        if TERMINATE.load(SeqCst) || outoftime {
+        let terminate_ts = (*TERMINATE.lock().unwrap()).unwrap_or(start);
+        if terminate_ts > start || outoftime {
             if outoftime {
                 log::warn!("Job has been running for {:?}, force quitting", timeout);
             }
@@ -160,78 +166,15 @@ fn wait_command(mut cmd: Command, timeout: Duration, host: &str) -> io::Result<(
             log::warn!("child process terminated");
 
             thread::sleep(Duration::from_millis(1000));
+
+            if let Some(kill_cmd) = kill_cmd.take() {
+                wait_command(kill_cmd, None, Duration::from_secs(2), "")?;
+            }
         }
     }
 
     Ok(())
 }
-
-// macro_rules! wait_command {
-//     ($cmd:expr, $timeout:expr) => {
-//         let start = Instant::now();
-//         let cmd_str = get_command_str(&$cmd);
-//
-//         use std::os::unix::process::ExitStatusExt; // signal.status
-//         let mut child = $cmd.spawn().expect(&format!("Failed to spawn '{cmd_str}'"));
-//
-//         let mut stdout_reader = child.stdout.take().map(|out| line_reader::LineReader::new(out));
-//         // let stderr_reader = child.stderr.take().map(|out| line_reader::LineReader::new(out));
-//
-//         loop {
-//             if let Some(reader) = stdout_reader.as_mut() {
-//                 for line in reader.read_line()? {
-//                     println!("[]")
-//                 }
-//             }
-//
-//             match child.try_wait() {
-//                 Ok(Some(status)) => {
-//                     if !status.success() {
-//                         match status.code() {
-//                             Some(code) => {
-//                                 log::error!("Exited with code: {}, cmd: {}", code, cmd_str)
-//                             }
-//                             None => log::error!(
-//                                 "Process terminated by signal: {}, cmd: {}",
-//                                 status.signal().unwrap(),
-//                                 cmd_str,
-//                             ),
-//                         }
-//                     }
-//                     break;
-//                 }
-//                 Ok(None) => {
-//                     log::trace!("status not ready yet, sleep for 5 ms");
-//                     thread::sleep(Duration::from_millis(5));
-//                 }
-//                 Err(e) => {
-//                     panic!("Command wasn't running: {}", e);
-//                 }
-//             }
-//
-//             // check if kill is needed
-//             let outoftime = start.elapsed() > $timeout;
-//             if TERMINATE.load(SeqCst) || outoftime {
-//                 if outoftime {
-//                     log::warn!("Job has been running for {:?}, force quitting", $timeout);
-//                 }
-//
-//                 log::warn!("killing the child process: {}", cmd_str);
-//                 // instead of SIGKILL, we use SIGTERM here to gracefully shutdown ssh process tree.
-//                 // SIGKILL can cause terminal control characters to mess up, which must be
-//                 // fixed later with sth like "stty sane".
-//                 signal::kill(nix::unistd::Pid::from_raw(child.id() as _), signal::SIGTERM)
-//                     .unwrap_or_else(|e| panic!("Failed to kill: {}", e));
-//                 // child
-//                 //     .kill()
-//                 //     .unwrap_or_else(|e| panic!("Failed to kill: {}", e));
-//                 log::warn!("child process terminated");
-//
-//                 thread::sleep(Duration::from_millis(1000));
-//             }
-//         }
-//     };
-// }
 
 fn start_ssh(
     opt: &Opt,
@@ -269,12 +212,12 @@ fn start_ssh(
             let stderr = open_with_create_append(stderr_file);
             cmd.stdout(stdout).stderr(stderr);
         } else {
-            // TODO(cjr): capture the stdout and stderr, append a prefix
-            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            // collect the result to local stdout, similar to mpirun
+            // cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
 
         cmd.arg("-oStrictHostKeyChecking=no")
-            .arg("-tt") // force allocating a tty
+            // .arg("-tt") // force allocating a tty
             .arg("-oConnectTimeout=2")
             .arg("-oConnectionAttempts=3")
             .arg("-p")
@@ -306,9 +249,18 @@ fn start_ssh(
         let cmd_str = get_command_str(&cmd);
         log::debug!("command: {}", cmd_str);
 
+        let mut kill_cmd = Command::new("ssh");
+        kill_cmd
+            .arg("-oStrictHostKeyChecking=no")
+            .arg("-oConnectTimeout=2")
+            .arg("-oConnectionAttempts=3")
+            .arg("-p")
+            .arg(port)
+            .arg(ip);
+        kill_cmd.arg(format!("pkill -f {}", worker.bin));
+
         // poll command status until timeout or user Ctrl-C
-        // wait_command!(cmd, timeout);
-        wait_command(cmd, timeout, &host).unwrap();
+        wait_command(cmd, Some(kill_cmd), timeout, &host).unwrap();
     }
 }
 
@@ -342,7 +294,7 @@ fn build_all<'a, A: AsRef<str>, P: AsRef<path::Path>>(
     log::debug!("building command: {}", cmd_str);
 
     let timeout_60s = Duration::from_secs(60);
-    wait_command(cargo_build_cmd, timeout_60s, "")?;
+    wait_command(cargo_build_cmd, None, timeout_60s, "")?;
     Ok(())
 }
 
@@ -400,15 +352,16 @@ fn run_benchmark(opt: Opt, path: path::PathBuf) -> anyhow::Result<()> {
 }
 
 use nix::sys::signal;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::Mutex;
 
-static TERMINATE: AtomicBool = AtomicBool::new(false);
+lazy_static::lazy_static! {
+    static ref TERMINATE: Mutex<Option<Instant>> = Mutex::new(None);
+}
 
 extern "C" fn handle_sigint(sig: i32) {
     log::warn!("sigint catched");
     assert_eq!(sig, signal::SIGINT as i32);
-    TERMINATE.store(true, SeqCst);
+    *TERMINATE.lock().unwrap() = Some(Instant::now());
 }
 
 mod cleanup {
