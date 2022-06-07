@@ -249,7 +249,6 @@ impl ClientStub {
         let req = dp::WorkRequest::Call(erased);
         
         // codegen should increase send_count for RpcMessage
-        msg.send_count += 1;
         OUTSTANDING_WR.with(|outstanding| {
             outstanding.borrow_mut().insert((meta.conn_id, meta.call_id), (msg.identifier, self.stub_id));
         });
@@ -503,13 +502,12 @@ impl Server {
         check_completion_queue()?;
         RECV_CACHE.with(|cache| {
             let mut borrow = cache.borrow_mut();
-            let requests = borrow.drain_filter(|(conn_id, _), _| 
+            let requests = borrow.drain_filter(|(conn_id, _), _| {
                 self.handles.contains(conn_id)
-            );
+            } );
             
             for (_, req) in requests {
                 let func_id = req.meta.func_id;
-
                 match self.routes.get_mut(&func_id) {
                     Some(s) => {
                         let (reply_erased, msg_id) = s.call(req);

@@ -91,7 +91,7 @@ impl SallocEngine {
                 let layout = Layout::from_size_align(size, align)?;
                 let region = SharedRegion::new(layout)?;
                 // mr's addr on backend side
-                let remote_addr = region.as_ptr().expose_addr();
+                let local_addr = region.as_ptr().expose_addr();
                 let file_off = 0;
 
                 // send fd
@@ -101,15 +101,19 @@ impl SallocEngine {
                     .resource()
                     .mr_table
                     .lock()
-                    .insert(remote_addr, Arc::new(region))
+                    .insert(local_addr, region)
                     .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))?;
-                Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off))
+                Ok(cmd::CompletionKind::AllocShm(local_addr, file_off))
             }
-            Command::DeallocShm(_addr) => {
-                // TODO(wyj): drop/remove the memory region from RpcAdapter's mr_table.
-                // DeregMr will be performed during drop.
-                // unimplemented!()
-                log::warn!("unimplemented, skipping");
+            Command::DeallocShm(addr) => {
+                // TODO(wyj): will shm dealloc when app exits?
+                // app may not dealloc all the created shm regions due to lazy_static and potential misbehave
+                self.state
+                    .resource()
+                    .mr_table
+                    .lock()
+                    .remove(&addr)
+                    .map_or_else(|| Err(ResourceError::NotFound), |_| Ok(()) )?;
                 Ok(cmd::CompletionKind::DeallocShm)
             }
             Command::NewMappedAddrs(app_vaddrs) => {
