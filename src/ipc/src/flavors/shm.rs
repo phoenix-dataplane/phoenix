@@ -10,6 +10,7 @@ use std::os::unix::net::UCred;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::time::{Instant, Duration};
 
 use uuid::Uuid;
 
@@ -76,6 +77,8 @@ pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     cmd_rx: IpcReceiver<Command>,
     dp_wq: ShmReceiver<WorkRequest>,
     dp_cq: ShmSender<WorkCompletion>,
+    timer: Instant,
+    fd_notifier: ShmObject<AtomicUsize>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -147,6 +150,7 @@ where
         let dp_cq = ShmSender::new(cq_cap)?;
 
         let cmd_rx_entries = ShmObject::new(AtomicUsize::new(0))?;
+        let fd_notifier = ShmObject::new(AtomicUsize::new(0))?;
 
         // 8. send the file descriptors back to let the client attach to these shared memory queues
         engine_sock.send_fd(
@@ -159,6 +163,7 @@ where
                 dp_cq.empty_signal().as_raw_fd(),
                 dp_cq.full_signal().as_raw_fd(),
                 ShmObject::memfd(&cmd_rx_entries).as_raw_fd(),
+                ShmObject::memfd(&fd_notifier).as_raw_fd(),
             ],
         )?;
 
@@ -171,16 +176,24 @@ where
             cmd_rx,
             dp_wq,
             dp_cq,
+            timer: Instant::now(),
+            fd_notifier,
         })
     }
 
     #[inline]
-    pub(crate) fn has_control_command(&self) -> bool {
+    pub(crate) fn has_control_command(&mut self) -> bool {
+        static TIMEOUT: Duration = Duration::from_millis(100);
+        if self.timer.elapsed() > TIMEOUT {
+            self.timer = Instant::now();
+            return true;
+        }
         self.cmd_rx_entries.load(Ordering::Relaxed) > 0
     }
 
     #[inline]
     pub(crate) fn send_fd(&self, fds: &[RawFd]) -> Result<(), Error> {
+        self.fd_notifier.fetch_add(1, Ordering::AcqRel);
         Ok(self
             .sock
             .send_fd(&self.client_path, fds)
@@ -188,7 +201,10 @@ where
     }
 
     #[inline]
-    pub(crate) fn try_recv_cmd(&self) -> Result<Command, TryRecvError> {
+    pub(crate) fn try_recv_cmd(&mut self) -> Result<Command, TryRecvError> {
+        if !self.has_control_command() {
+            return Err(TryRecvError::Empty);
+        }
         let req = self.cmd_rx.try_recv()?;
         self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
         Ok(req)
@@ -276,6 +292,7 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     cmd_rx: IpcReceiver<Completion>,
     dp_wq: RefCell<ShmSender<WorkRequest>>,
     dp_cq: RefCell<ShmReceiver<WorkCompletion>>,
+    fd_notifier: ShmObject<AtomicUsize>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -362,7 +379,7 @@ where
                 // receive file descriptors to attach to the shared memory queues
                 let (fds, cred) = sock.recv_fd()?;
                 Self::check_credential(&sock, cred)?;
-                assert_eq!(fds.len(), 7);
+                assert_eq!(fds.len(), 8);
                 let (wq_memfd, wq_empty_signal, wq_full_signal) = unsafe {
                     (
                         File::from_raw_fd(fds[0]),
@@ -378,6 +395,8 @@ where
                     )
                 };
                 let cmd_notify_memfd = unsafe { File::from_raw_fd(fds[6]) };
+                let fd_notifier_memfd = unsafe { File::from_raw_fd(fds[7]) };
+
                 // attach to the shared memories
                 let dp_wq = ShmSender::<WorkRequest>::open(
                     wq_cap,
@@ -393,6 +412,7 @@ where
                 )?;
 
                 let entries = ShmObject::open(cmd_notify_memfd)?;
+                let fd_notifier = ShmObject::open(fd_notifier_memfd)?;
 
                 Ok(Self {
                     sock,
@@ -400,6 +420,7 @@ where
                     cmd_rx: cmd_rx2,
                     dp_wq: RefCell::new(dp_wq),
                     dp_cq: RefCell::new(dp_cq),
+                    fd_notifier,
                 })
             }
             _ => panic!("unexpected response: {:?}", res),
@@ -415,7 +436,9 @@ where
 
     #[inline]
     pub fn try_recv_fd(&self) -> Result<Vec<RawFd>, Error> {
-        if let Some((fds, cred)) = self.sock.try_recv_fd()? {
+        if self.fd_notifier.load(Ordering::Relaxed) > 0 {
+            self.fd_notifier.fetch_sub(1, Ordering::Relaxed);
+            let (fds, cred) = self.sock.recv_fd()?;
             Self::check_credential(&self.sock, cred)?;
             Ok(fds)
         } else {

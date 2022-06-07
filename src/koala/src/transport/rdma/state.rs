@@ -66,6 +66,11 @@ impl State {
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
     }
+
+    #[inline]
+    pub(crate) fn alive_engines(&self) -> usize {
+        self.shared.alive_engines.load(Ordering::Relaxed)
+    }
 }
 
 pub(crate) struct Shared {
@@ -125,14 +130,14 @@ fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
                 });
             }
             Err(e) => {
-                warn!("Skip device due to: {}", e);
+                log::warn!("Skip device due to: {}", e);
                 continue;
             }
         }
     }
 
     if default_ctxs.is_empty() {
-        warn!("No active RDMA device found.");
+        log::warn!("No active RDMA device found.");
     }
     Ok(default_ctxs)
 }

@@ -1,0 +1,13 @@
+name = "benchmark/write_lat-32b"
+description = "Run latency benchmark for RDMA write"
+group = "write_lat"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_lat"
+args = "write -n 10000 -s 32"
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_lat"
+args = "write -n 10000 -s 32 -c rdma0.danyang-06"

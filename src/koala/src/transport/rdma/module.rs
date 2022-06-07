@@ -43,28 +43,32 @@ pub(crate) fn create_ops(runtime_manager: &RuntimeManager, client_pid: Pid) -> R
     Ok(Ops::new(state))
 }
 
-pub(crate) fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> { let state = STATE_MGR.get_or_create_state(client_pid)?;
+fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> {
+    let state = STATE_MGR.get_or_create_state(client_pid)?;
+
+    // only create one cm_engine for a client process
+    if state.alive_engines() > 1 {
+        return Ok(());
+    }
+
     let node = Node::new(EngineType::RdmaConnMgmt);
     let cm_engine = CmEngine::new(node, state);
 
     // always submit the engine to a dedicate runtime
-    runtime_manager
-        .submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+    runtime_manager.submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
     Ok(())
 }
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
-    client_pid: Pid,
     mode: SchedulingMode,
     ops: Ops,
 }
 
 impl TransportEngineBuilder {
-    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode, ops: Ops) -> Self {
+    fn new(customer: CustomerType, mode: SchedulingMode, ops: Ops) -> Self {
         TransportEngineBuilder {
             customer,
-            client_pid,
             mode,
             ops,
         }
@@ -138,7 +142,7 @@ impl TransportModule {
         let ops = create_ops(&self.runtime_manager, client_pid)?;
 
         // 4. create the engine
-        let builder = TransportEngineBuilder::new(customer, client_pid, mode, ops);
+        let builder = TransportEngineBuilder::new(customer, mode, ops);
         let engine = builder.build()?;
 
         // submit the engine to a runtime
