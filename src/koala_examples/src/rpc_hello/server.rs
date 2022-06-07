@@ -85,7 +85,6 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let _server = libkoala::mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
         .add_service(GreeterServer::new(MyGreeter { replies, count: 0 }))
         .serve()?;
-    
     }
 
     Ok(())

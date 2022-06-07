@@ -1,5 +1,6 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::LinkedList;
+use std::collections::{HashMap, VecDeque};
 use std::any::Any;
 use std::ptr::Unique;
 use std::sync::atomic::AtomicU64;
@@ -9,7 +10,7 @@ use dashmap::mapref::entry::Entry;
 use lazy_static::lazy_static;
 
 use interface::Handle;
-use slabmalloc::LargeObjectPage;
+use slabmalloc::{LargeObjectPage, AllocablePage, ObjectPage, HugeObjectPage};
 
 use crate::mrpc::stub::MessageTemplate;
 
@@ -29,6 +30,7 @@ thread_local! {
 
 lazy_static! {
     pub(crate) static ref GARBAGE_COLLECTOR: GarbageCollector = GarbageCollector::new();
+    pub(crate) static ref GLOBAL_PAGE_POOL: GlobalShreadHeapPagePool = GlobalShreadHeapPagePool::new();
     pub(crate) static ref MESSAGE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
     pub(crate) static ref CS_STUB_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 }
@@ -72,25 +74,126 @@ impl GarbageCollector {
             },
         };
         
-        let send_cnt = match self.storage.get(&message_id) {
-            Some(entry) => entry.value().1,
-            None => panic!("message already dropped")
-        };
-
-        if send_cnt == comp_cnt {
-            self.storage.remove(&message_id);
-            self.wr_completion_count.remove(&message_id);
+        if let Some(entry) = self.storage.get(&message_id) {
+            let send_cnt = entry.value().1;
+            if send_cnt == comp_cnt {
+                self.storage.remove(&message_id);
+                self.wr_completion_count.remove(&message_id);
+            }
         }
     }
 }
 
-pub struct GlobalPagePool {
-    large_pages: Unique<LargeObjectPage<'static>>
+pub struct GlobalShreadHeapPagePool {
+    empty_small_pages: spin::Mutex<VecDeque<Unique<ObjectPage<'static>>>>,
+    empty_large_pages: spin::Mutex<VecDeque<Unique<LargeObjectPage<'static>>>>,
+    empty_huge_pages: spin::Mutex<VecDeque<Unique<HugeObjectPage<'static>>>>,
+
+    used_small_pages: spin::Mutex<LinkedList<(Unique<ObjectPage<'static>>, usize)>>,
+    used_large_pages: spin::Mutex<LinkedList<(Unique<LargeObjectPage<'static>>, usize)>>,
+    used_huge_pages: spin::Mutex<LinkedList<(Unique<HugeObjectPage<'static>>, usize)>>
 }
 
-impl GlobalPagePool {
-    pub(crate) fn acquire_large_page(&self) -> &'static mut LargeObjectPage<'static> {
-        let p = unsafe { &mut *self.large_pages.as_ptr() };
-        p
+impl GlobalShreadHeapPagePool {
+    fn new() -> Self {
+        GlobalShreadHeapPagePool { 
+            empty_small_pages: spin::Mutex::new(VecDeque::new()),
+            empty_large_pages: spin::Mutex::new(VecDeque::new()),
+            empty_huge_pages: spin::Mutex::new(VecDeque::new()),
+            used_small_pages: spin::Mutex::new(LinkedList::new()),
+            used_large_pages: spin::Mutex::new(LinkedList::new()),
+            used_huge_pages: spin::Mutex::new(LinkedList::new())
+        }
+    }
+
+    fn check_small_page_assignments(&self) {
+        let mut guard = self.used_small_pages.lock();
+        let freed_pages = guard.drain_filter(|(page, obj_per_page)| { 
+                unsafe { page.as_mut().is_empty(*obj_per_page) } 
+            });
+        
+        let mut empty_gurad = self.empty_small_pages.lock();
+        for (page, _) in freed_pages {
+            empty_gurad.push_back(page);
+        }
+    }
+
+    fn check_large_page_assignments(&self) {
+        let mut guard = self.used_large_pages.lock();
+        let freed_pages = guard.drain_filter(|(page, obj_per_page)| { 
+                unsafe { page.as_mut().is_empty(*obj_per_page) } 
+            });
+        
+        let mut empty_gurad = self.empty_large_pages.lock();
+        for (page, _) in freed_pages {
+            empty_gurad.push_back(page);
+        }
+    }
+
+    fn check_huge_page_assignments(&self) {
+        let mut guard = self.used_huge_pages.lock();
+        let freed_pages = guard.drain_filter(|(page, obj_per_page)| { 
+                unsafe { page.as_mut().is_empty(*obj_per_page) } 
+            });
+        
+        let mut empty_gurad = self.empty_huge_pages.lock();
+        for (page, _) in freed_pages {
+            empty_gurad.push_back(page);
+        }
+    }
+
+    pub(crate) fn acquire_small_page(&self) -> Option<&'static mut ObjectPage<'static>> {
+        // TODO(wyj): do we really need to check each time?
+        self.check_small_page_assignments();
+        let page = self.empty_small_pages
+            .lock()
+            .pop_front()
+            .map(|page| unsafe { &mut *page.as_ptr() } );
+        page
+    }
+
+    pub(crate) fn acquire_large_page(&self) -> Option<&'static mut LargeObjectPage<'static>> {
+        self.check_large_page_assignments();
+        let page = self.empty_large_pages
+            .lock()
+            .pop_front()
+            .map(|page| unsafe { &mut *page.as_ptr() } );
+        page
+    }
+
+    pub(crate) fn acquire_huge_page(&self) -> Option<&'static mut HugeObjectPage<'static>> {
+        self.check_huge_page_assignments();
+        let page = self.empty_huge_pages
+            .lock()
+            .pop_front()
+            .map(|page| unsafe { &mut *page.as_ptr() } );
+        page
+    }
+
+    pub(crate) fn recycle_small_page(&self, page: &'static mut ObjectPage<'static>, obj_per_page: usize) {
+        if page.is_empty(obj_per_page) {
+            self.empty_small_pages.lock().push_back(unsafe { Unique::new_unchecked(page as *mut _) }) 
+        }
+        else {
+            self.used_small_pages.lock().push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
+        }
+    }
+
+    pub(crate) fn recycle_large_page(&self, page: &'static mut LargeObjectPage<'static>, obj_per_page: usize) {
+        if page.is_empty(obj_per_page) {
+            self.empty_large_pages.lock().push_back(unsafe { Unique::new_unchecked(page as *mut _) }) 
+        }
+        else {
+            self.used_large_pages.lock().push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
+        }
+    }
+
+    pub(crate) fn recycle_huge_page(&self, page: &'static mut HugeObjectPage<'static>, obj_per_page: usize) {
+        if page.is_empty(obj_per_page) {
+            self.empty_huge_pages.lock().push_back(unsafe { Unique::new_unchecked(page as *mut _) }) 
+        }
+        else {
+            self.used_huge_pages.lock().push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
+        }
     }
 }
