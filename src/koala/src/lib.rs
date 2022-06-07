@@ -8,7 +8,8 @@
 
 #[macro_use]
 extern crate tracing;
-
+// alias
+extern crate tracing as log;
 
 pub mod engine;
 pub mod resource;

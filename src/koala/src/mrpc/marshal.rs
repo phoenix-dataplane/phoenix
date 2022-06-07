@@ -161,18 +161,18 @@ impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
         mut sg_list: SgList,
         salloc_state: &Arc<SallocShared>,
     ) -> Result<ShmPtr<Self>, Self::Error> {
-        debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
+        // debug!("MessageTemplate<T>, unmarshal, sglist: {:0x?}", sg_list);
         if sg_list.0.len() <= 1 {
             return Err(());
         }
         let mut header_sgl = sg_list.0.remove(0);
         header_sgl.len -= mem::size_of::<ShmPtr<T>>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]), salloc_state)?;
-        debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
+        // debug!("MessageTemplate<T>, unmarshal, meta: {:?}", meta);
         let mut this = meta.cast::<Self>();
-        debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
+        // debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
         let val = T::unmarshal(sg_list, salloc_state).or(Err(()))?;
-        debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
+        // debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
         this.as_mut().val = val;
         Ok(this)
     }

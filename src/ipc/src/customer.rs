@@ -66,8 +66,8 @@ where
     }
 
     #[inline]
-    pub fn has_control_command(&self) -> bool {
-        match &self.flavor {
+    pub fn has_control_command(&mut self) -> bool {
+        match &mut self.flavor {
             CustomerFlavor::SharedMemory(c) => c.has_control_command(),
             CustomerFlavor::Concurrent(c) => c.has_control_command(),
             CustomerFlavor::Sequential(c) => c.has_control_command(),
@@ -80,8 +80,8 @@ where
     }
 
     #[inline]
-    pub fn try_recv_cmd(&self) -> Result<Command, TryRecvError> {
-        choose_flavor!(&self.flavor, try_recv_cmd)
+    pub fn try_recv_cmd(&mut self) -> Result<Command, TryRecvError> {
+        choose_flavor!(&mut self.flavor, try_recv_cmd)
     }
 
     #[inline]

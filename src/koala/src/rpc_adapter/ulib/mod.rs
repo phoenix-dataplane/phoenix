@@ -5,9 +5,14 @@ use thiserror::Error;
 
 use crate::transport::rdma::{ApiError, DatapathError};
 
-pub mod fp;
-pub mod ucm;
-pub mod uverbs;
+#[allow(dead_code)]
+pub(crate) mod fp;
+
+#[allow(dead_code)]
+pub(crate) mod ucm;
+
+#[allow(dead_code)]
+pub(crate) mod uverbs;
 
 #[derive(Error, Debug)]
 pub(crate) enum Error {
