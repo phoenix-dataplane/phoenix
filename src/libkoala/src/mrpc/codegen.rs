@@ -17,7 +17,7 @@ use crate::mrpc::stub::{
 use crate::mrpc::MRPC_CTX;
 use crate::salloc::owner::{BackendOwned, AppOwned};
 
-use super::stub::RECV_CACHE;
+use super::stub::{RECV_CACHE, check_completion_queue};
 use super::stub::ownership::{AppOwendRequest, AppOwendReply};
 
 
@@ -97,6 +97,7 @@ impl Future for ReqFuture {
     type Output = Result<ShmView<HelloReply>, mrpc::Status>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+        check_completion_queue();
         if let Some(erased) = RECV_CACHE.with(
             |cache| cache.borrow_mut().remove(&(this.conn_id, this.call_id))
         ) {

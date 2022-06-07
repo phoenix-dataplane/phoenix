@@ -77,7 +77,8 @@ pub(crate) struct Resource {
     // TODO(wyj): redesign these states
     pub(crate) recv_mr_table: ResourceTable<SharedRegion>,
     // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
-    pub(crate) mr_table: spin::Mutex<BTreeMap<usize, Arc<SharedRegion>>>,
+    // NOTE(wyj): removed Arc wrapper for SharedRegion, and accessing sender heap region is not needed
+    pub(crate) mr_table: spin::Mutex<BTreeMap<usize, SharedRegion>>,
 }
 
 unsafe impl EngineLocalStorage for Resource {
