@@ -14,7 +14,8 @@ use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, Zon
 use ipc::salloc::cmd;
 use ipc::shmalloc::ShmNonNull;
 
-use super::region::SharedRegion;
+use super::gc::GLOBAL_PAGE_POOL;
+use super::region::SharedHeapRegion;
 use super::{Error, SA_CTX};
 
 thread_local! {
@@ -23,7 +24,7 @@ thread_local! {
 }
 
 lazy_static! {
-    static ref REGIONS: spin::Mutex<BTreeMap<usize, SharedRegion>> =
+    static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> =
         spin::Mutex::new(BTreeMap::new());
 }
 
@@ -33,7 +34,34 @@ struct SharedHeap {
 
 impl Drop for SharedHeap {
     fn drop(&mut self) {
-        
+        let relinquished_pages = unsafe { self.zone_allocator.relinquish_pages() };
+
+        // release empty pages
+        // NOTE(wyj): this is not really necessary.
+        for empty_page in relinquished_pages.empty_small {
+            let addr = empty_page as *mut ObjectPage as usize;
+            // tell backend to dealloc page
+            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+        }
+        for empty_page in relinquished_pages.empty_large {
+            let addr = empty_page as *mut LargeObjectPage as usize;
+            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+        }
+        for empty_page in relinquished_pages.empty_huge {
+            let addr = empty_page as *mut HugeObjectPage as usize;
+            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+        }
+
+        // recycle used pages to global pool
+        for (page, obj_per_page) in relinquished_pages.used_small {
+            GLOBAL_PAGE_POOL.recycle_small_page(page, obj_per_page)
+        }
+        for (page, obj_per_page) in relinquished_pages.used_large {
+            GLOBAL_PAGE_POOL.recycle_large_page(page, obj_per_page)
+        }
+        for (page, obj_per_page) in relinquished_pages.used_huge {
+            GLOBAL_PAGE_POOL.recycle_huge_page(page, obj_per_page)
+        }
     }
 }
 
@@ -44,7 +72,7 @@ impl SharedHeap {
         }
     }
 
-    fn allocate_shm(&self, len: usize) -> Result<SharedRegion, Error> {
+    fn allocate_shm(&self, len: usize) -> Result<SharedHeapRegion, Error> {
         assert!(len > 0);
         SA_CTX.with(|ctx| {
             // TODO(cjr): use a correct align
@@ -61,7 +89,7 @@ impl SharedHeap {
 
             match ctx.service.recv_comp().unwrap().0 {
                 Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => {
-                    Ok(SharedRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
+                    Ok(SharedHeapRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
                 }
                 Err(e) => Err(Error::Interface("AllocShm", e)),
                 otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
@@ -71,12 +99,17 @@ impl SharedHeap {
 
     #[inline]
     fn allocate_huge_page(&mut self) -> Option<&'static mut HugeObjectPage<'static>> {
+        // take from global pool first
+        if let Some(page) = GLOBAL_PAGE_POOL.acquire_huge_page() {
+            return Some(page);
+        }
+
         match self.allocate_shm(HugeObjectPage::SIZE) {
             Ok(sr) => {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (HugeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let huge_object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 huge_object_page
             }
             Err(e) => {
@@ -89,6 +122,10 @@ impl SharedHeap {
     // slabmalloc must be supplied by fixed-size memory, aka `slabmalloc::AllocablePage`.
     #[inline]
     fn allocate_large_page(&mut self) -> Option<&'static mut LargeObjectPage<'static>> {
+        if let Some(page) = GLOBAL_PAGE_POOL.acquire_large_page() {
+            return Some(page);
+        }
+
         // use mem::transmute to coerce an address to LargeObjectPage, make sure the size is
         // correct
         match self.allocate_shm(LargeObjectPage::SIZE) {
@@ -96,7 +133,7 @@ impl SharedHeap {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 large_object_page
             }
             Err(e) => {
@@ -108,12 +145,16 @@ impl SharedHeap {
 
     #[inline]
     fn allocate_page(&mut self) -> Option<&'static mut ObjectPage<'static>> {
+        if let Some(page) = GLOBAL_PAGE_POOL.acquire_small_page() {
+            return Some(page);
+        }
+
         match self.allocate_shm(ObjectPage::SIZE) {
             Ok(sr) => {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let object_page = unsafe { mem::transmute(addr) };
-                REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                 object_page
             }
             Err(e) => {
@@ -121,21 +162,6 @@ impl SharedHeap {
                 None
             }
         }
-    }
-
-    #[inline]
-    fn release_huge_page(&mut self, _p: &'static mut HugeObjectPage<'static>) {
-        todo!()
-    }
-
-    #[inline]
-    fn release_large_page(&mut self, _p: &'static mut LargeObjectPage<'static>) {
-        todo!()
-    }
-
-    #[inline]
-    fn release_page(&mut self, _p: &'static mut ObjectPage<'static>) {
-        todo!()
     }
 }
 
@@ -152,7 +178,8 @@ impl SharedHeapAllocator {
     #[inline]
     pub(crate) fn query_backend_addr(addr: usize, _align: usize) -> usize {
         // TODO(cjr, wyj): Change to HashMap
-        let guard = REGIONS.lock();
+        // align can be obtained by addr + layout through ZoneAllocator
+        let guard = SHARED_HEAP_REGIONS.lock();
         match guard.range(0..=addr).last() {
             Some(kv) => {
                 assert!(
@@ -182,14 +209,32 @@ impl SharedHeapAllocator {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let mut shared_heap = shared_heap.borrow_mut();
-                    match shared_heap.zone_allocator.allocate(layout) {
-                        Ok(nptr) => {
+
+                    let result = match shared_heap.zone_allocator.allocate_with_release(layout) {
+                        Ok((nptr, released_pages)) => {
                             let addr_remote =
                                 Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
                             let ptr_remote =
                                 nptr.with_addr(NonZeroUsize::new(addr_remote).unwrap());
                             let ptr =
                                 ShmNonNull::slice_from_raw_parts(nptr, ptr_remote, layout.size());
+
+                            // release empty pages
+                            if let Some(pages) = released_pages {
+                                let mut guard = SHARED_HEAP_REGIONS.lock();
+                                for addr in pages {
+                                    guard.remove(&addr).expect("page already released");
+                                }
+                            }
+                            Ok(ptr)
+                        }
+                        Err(err) => {
+                            Err(err)
+                        }
+                    };
+                    
+                    match result {
+                        Ok(ptr) => {
                             Ok(ptr)
                         }
                         Err(AllocationError::OutOfMemory) => {
@@ -246,9 +291,9 @@ impl SharedHeapAllocator {
                                     return Err(AllocError);
                                 }
                             }
-                            let nptr = shared_heap
+                            let (nptr, released_pages) = shared_heap
                                 .zone_allocator
-                                .allocate(layout)
+                                .allocate_with_release(layout)
                                 .expect("Should success after refill");
                             let addr_remote =
                                 Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
@@ -256,6 +301,14 @@ impl SharedHeapAllocator {
                                 nptr.with_addr(NonZeroUsize::new(addr_remote).unwrap());
                             let ptr =
                                 ShmNonNull::slice_from_raw_parts(nptr, ptr_remote, layout.size());
+
+                            // release empty pages
+                            if let Some(pages) = released_pages {
+                                let mut guard = SHARED_HEAP_REGIONS.lock();
+                                for addr in pages {
+                                    guard.remove(&addr).expect("page already released");
+                                }
+                            }    
                             Ok(ptr)
                         }
                         Err(AllocationError::InvalidLayout) => {
@@ -266,11 +319,12 @@ impl SharedHeapAllocator {
                 })
             }
             _ => {
+                // WARNING(wyj): dealloc will not be properly handled in this case
                 tracing::error!(
                     "Requested: {} bytes. Please handle object size larger than {}",
                     layout.size(),
                     ZoneAllocator::MAX_ALLOC_SIZE
-                );
+                );                
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let shared_heap = shared_heap.borrow_mut();
                     let aligned_size = layout.align_to(4096).unwrap().pad_to_align().size();
@@ -278,7 +332,7 @@ impl SharedHeapAllocator {
                         Ok(sr) => {
                             let addr = sr.as_ptr().addr();
                             let nptr = NonNull::new(sr.as_mut_ptr()).unwrap();
-                            REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                            SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
                             let addr_remote =
                                 Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
                             let ptr_remote =
@@ -295,28 +349,26 @@ impl SharedHeapAllocator {
                         }
                     }
                 })
+                
             }
         }
     }
 
-    pub(crate) unsafe fn deallocate(&self, _ptr: ShmNonNull<u8>, _layout: Layout) {
-        return;
-        // use slabmalloc::Allocator;
-        // match layout.size() {
-        //     0..=ZoneAllocator::MAX_ALLOC_SIZE => {
-        //         TL_SHARED_HEAP.with(|shared_heap| {
-        //             let mut shared_heap = shared_heap.borrow_mut();
-        //             shared_heap
-        //                 .zone_allocator
-        //                 .deallocate(ptr.to_raw_parts().0, layout)
-        //                 .expect("Cannot deallocate");
-        //         });
-
-        //         // An proper reclamation strategy could be implemented here
-        //         // to release empty pages back from the ZoneAllocator to the SharedHeap
-        //     }
-        //     _ => todo!("Handle object size larger than 1GB"),
-        // }
+    pub(crate) unsafe fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
+        // backend deallocation is handled by SharedRegion's drop together with global GarbageCollector
+        use slabmalloc::Allocator;
+        match layout.size() {
+            0..=ZoneAllocator::MAX_ALLOC_SIZE => {
+                TL_SHARED_HEAP.with(|shared_heap| {
+                    let mut shared_heap = shared_heap.borrow_mut();
+                    shared_heap
+                        .zone_allocator
+                        .deallocate(ptr.to_raw_parts().0, layout)
+                        .expect("Cannot deallocate");
+                });
+            }
+            _ => todo!("Handle object size larger than 1GB"),
+        }
     }
 
     pub(crate) fn allocate_zeroed(

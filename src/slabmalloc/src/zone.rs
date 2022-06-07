@@ -284,6 +284,17 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
 }
 
 
+impl<'a> ZoneAllocator<'a> {
+    pub fn allocate_with_release(&mut self, layout: Layout) -> Result<(NonNull<u8>, Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>), AllocationError> {
+        match ZoneAllocator::get_slab(layout.size()) {
+            Slab::Base(idx) => self.small_slabs[idx].allocate_with_release(layout),
+            Slab::Large(idx) => self.big_slabs[idx].allocate_with_release(layout),
+            Slab::Huge(idx) => self.huge_slabs[idx].allocate_with_release(layout),
+            Slab::Unsupported => Err(AllocationError::InvalidLayout),
+        }
+    }
+}
+
 use alloc::vec::Vec;
 
 pub struct RelinquishedPages<'a> {
@@ -293,9 +304,9 @@ pub struct RelinquishedPages<'a> {
     pub empty_huge: alloc::vec::Vec<&'a mut HugeObjectPage<'a>>,
 
     // partial or full pages
-    pub used_small: alloc::vec::Vec<&'a mut ObjectPage<'a>>,
-    pub used_large: alloc::vec::Vec<&'a mut LargeObjectPage<'a>>,
-    pub used_huge: alloc::vec::Vec<&'a mut HugeObjectPage<'a>>
+    pub used_small: alloc::vec::Vec<(&'a mut ObjectPage<'a>, usize)>,
+    pub used_large: alloc::vec::Vec<(&'a mut LargeObjectPage<'a>, usize)>,
+    pub used_huge: alloc::vec::Vec<(&'a mut HugeObjectPage<'a>, usize)>
 }
 
 impl<'a> ZoneAllocator<'a>  {
@@ -326,9 +337,9 @@ impl<'a> ZoneAllocator<'a>  {
     }
 
     unsafe fn relinquish_used_pages(&mut self) -> (
-        Vec<&'a mut ObjectPage<'a>>, 
-        Vec<&'a mut LargeObjectPage<'a>>, 
-        Vec<&'a mut HugeObjectPage<'a>>
+        Vec<(&'a mut ObjectPage<'a>, usize)>, 
+        Vec<(&'a mut LargeObjectPage<'a>, usize)>, 
+        Vec<(&'a mut HugeObjectPage<'a>, usize)>
     ) {
         let mut small_pages = alloc::vec::Vec::new();
         for slab in self.small_slabs.iter_mut() {
@@ -350,16 +361,16 @@ impl<'a> ZoneAllocator<'a>  {
         (small_pages, large_pages, huge_pages)
     }
 
-    pub unsafe fn relinquish_pages(&mut self) -> RelinquishedPages {
+    pub unsafe fn relinquish_pages(&mut self) -> RelinquishedPages<'a> {
         let (empty_small_pages, empty_large_pages, empty_huge_pages) = self.relinquish_empty_pages();
         let (used_small_pages, used_large_pages, used_huge_pages) = self.relinquish_used_pages();
         RelinquishedPages { 
-            empty_small: (), 
-            empty_large: (), 
-            empty_huge: (), 
-            used_small: (), 
-            used_large: (), 
-            used_huge: () 
+            empty_small: empty_small_pages, 
+            empty_large: empty_large_pages,
+            empty_huge: empty_huge_pages, 
+            used_small: used_small_pages,
+            used_large: used_large_pages, 
+            used_huge: used_huge_pages 
         }
     }
 }

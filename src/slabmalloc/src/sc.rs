@@ -24,7 +24,7 @@ fn cmin(a: usize, b: usize) -> usize {
     core::cmp::min(a, b)
 }
 
-const RELEASE_BUFFER_SIZE: usize = 32;
+pub(crate) const RELEASE_BUFFER_SIZE: usize = 32;
 
 /// A slab allocator allocates elements of a fixed size.
 ///
@@ -151,14 +151,6 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
             self.release_buffer.push(addr);
             cap -= 1;
         }
-
-        while cap > 0 && self.empty_slabs.head.is_some() {
-            let slab = self.empty_slabs.pop().unwrap();
-            let addr = slab as *mut P as usize;
-            // NOTE(wyj): use push unchecked.
-            self.release_buffer.push(addr);
-            cap -= 1;
-        }
     }
 
     /// Move a page from `slabs` to `empty_slabs`.
@@ -267,10 +259,14 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         relinquished
     }
 
-    pub(crate) unsafe fn relinquish_used_pages(&mut self) -> alloc::vec::Vec<&'a mut P> {
+    //  relinquish used pages, together with obj_per_page for empty check
+    pub(crate) unsafe fn relinquish_used_pages(&mut self) -> alloc::vec::Vec<(&'a mut P, usize)> {
         let mut relinquished = alloc::vec::Vec::new();
         while let Some(slab) = self.slabs.pop() {
-            relinquished.push(slab);
+            relinquished.push((slab, self.obj_per_page));
+        }
+        while let Some(slab) = self.full_slabs.pop() {
+            relinquished.push((slab, self.obj_per_page));
         }
         relinquished
     }
