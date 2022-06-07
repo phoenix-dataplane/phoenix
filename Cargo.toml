@@ -8,6 +8,7 @@ members = [
   "src/libkoala",
   "src/koala_examples",
   "src/memmap-fixed",
+  "benchmark",
 ]
 
 [profile.release]

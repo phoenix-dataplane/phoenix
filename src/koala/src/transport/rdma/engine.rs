@@ -69,11 +69,8 @@ impl TransportEngine {
                 nwork += n;
             }
 
-            if self.customer.has_control_command() {
-                self.flush_dp()?;
-                if let Status::Disconnected = self.check_cmd().await? {
-                    return Ok(());
-                }
+            if let Status::Disconnected = self.check_cmd().await? {
+                return Ok(());
             }
 
             self.indicator.as_ref().unwrap().set_nwork(nwork);
@@ -163,13 +160,15 @@ impl TransportEngine {
         match ret {
             // handle request
             Ok(req) => {
+                // Flush datapath!
+                self.flush_dp()?;
                 let result = self.process_cmd(&req).await;
                 match result {
                     Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
                     Err(e) => {
                         // better to log the error here, in case sometimes the customer does
                         // not receive the error
-                        error!("process_cmd error: {}", e);
+                        log::error!("process_cmd error: {}", e);
                         self.customer.send_comp(cmd::Completion(Err(e.into())))?
                     }
                 }
@@ -606,7 +605,7 @@ impl TransportEngine {
                 Ok(CompletionKind::RegMr(ret_mr))
             }
             Command::DeregMr(mr) => {
-                trace!("DeregMr, mr: {:?}", mr);
+                log::trace!("DeregMr, mr: {:?}", mr);
                 self.ops
                     .resource()
                     .mr_table

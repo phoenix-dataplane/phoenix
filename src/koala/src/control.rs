@@ -79,20 +79,20 @@ impl Control {
         loop {
             match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
                 Ok((size, sender, cred)) => {
-                    debug!(
+                    log::debug!(
                         "received {} bytes from {:?} with credential: {:?}",
                         size, sender, cred
                     );
                     if let Some(cred) = cred {
                         if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
-                            warn!("Control dispatch: {}", e);
+                            log::warn!("Control dispatch: {}", e);
                         }
                     } else {
-                        warn!("received data without a credential, ignored");
+                        log::warn!("received data without a credential, ignored");
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => warn!("recv failed: {:?}", e),
+                Err(e) => log::warn!("recv failed: {:?}", e),
             }
         }
     }
@@ -165,6 +165,7 @@ impl Control {
             match n.engine_type {
                 EngineType::RdmaTransport => panic!(),
                 EngineType::RdmaConnMgmt => panic!(),
+                EngineType::RpcAdapterAcceptor => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
                     self.mrpc.handle_new_client(
@@ -181,7 +182,7 @@ impl Control {
                     panic!("salloc engine should not appear in the graph, koala will handle it specially");
                 }
                 EngineType::RpcAdapter => {
-                    // for now, we create the adapter for tcp
+                    // for now, we only implement the adapter for rdma
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
                     let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
                         &self.runtime_manager,

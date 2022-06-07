@@ -278,9 +278,7 @@ impl Server {
     pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         loop {
             // check new incoming connections
-            if self.handles.is_empty() {
-                self.check_new_incoming_connection()?;
-            }
+            self.check_new_incoming_connection()?;
             // check new requests
             let msgs = self.poll_requests()?;
             self.post_replies(msgs)?;

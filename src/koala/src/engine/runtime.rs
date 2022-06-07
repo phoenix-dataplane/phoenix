@@ -105,7 +105,7 @@ impl Runtime {
 
     /// Returns true if there is no runnable engine.
     pub(crate) fn is_spinning(&self) -> bool {
-        self.running.borrow().is_empty()
+        self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
     pub(crate) fn add_engine(&self, engine: EngineContainer) {
@@ -146,14 +146,14 @@ impl Runtime {
                         // where do I get the work you have done?
                     }
                     Poll::Ready(EngineResult::Ok(())) => {
-                        info!(
+                        log::info!(
                             "Engine [{}] completed, shutting down...",
                             engine.borrow().description()
                         );
                         shutdown.push(index);
                     }
                     Poll::Ready(EngineResult::Err(e)) => {
-                        error!("Engine [{}] error: {}", engine.borrow().description(), e);
+                        log::error!("Engine [{}] error: {}", engine.borrow().description(), e);
                         shutdown.push(index);
                     }
                 }
@@ -164,7 +164,7 @@ impl Runtime {
                 let engine = self.running.borrow_mut().swap_remove(index);
                 let desc = engine.borrow().description().to_owned();
                 drop(engine);
-                info!("Engine [{}] shutdown successfully", desc);
+                log::info!("Engine [{}] shutdown successfully", desc);
             }
 
             // move newly added runtime to the scheduling queue

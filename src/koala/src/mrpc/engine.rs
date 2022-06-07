@@ -15,8 +15,6 @@ use crate::node::Node;
 pub struct MrpcEngine {
     pub(crate) _state: State,
 
-    pub(crate) flag: bool,
-
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
@@ -69,11 +67,8 @@ impl MrpcEngine {
                 nwork += n;
             }
 
-            if self.customer.has_control_command() {
-                self.flush_dp()?;
-                if let Status::Disconnected = self.check_cmd().await? {
-                    return Ok(());
-                }
+            if let Status::Disconnected = self.check_cmd().await? {
+                return Ok(());
             }
 
             self.check_new_incoming_connection()?;
@@ -84,11 +79,6 @@ impl MrpcEngine {
 }
 
 impl MrpcEngine {
-    fn flush_dp(&mut self) -> Result<Status, DatapathError> {
-        // unimplemented!();
-        Ok(Status::Progress(0))
-    }
-
     async fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.customer.try_recv_cmd() {
             // handle request
@@ -194,18 +184,15 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        trace!(
-                            "mRPC engine got request from App, call_id={}",
-                            erased.meta.call_id
-                        );
+                        tracing::trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        debug!("start to marshal");
+                        // debug!("start to marshal");
                         unsafe { msg.as_ref() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
-                        debug!("end marshal");
+                        // debug!("end marshal");
 
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
 
@@ -222,10 +209,7 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        trace!(
-                            "mRPC engine got reply from App, call_id={}",
-                            erased.meta.call_id
-                        );
+                        tracing::trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
@@ -288,7 +272,7 @@ impl MrpcEngine {
                     shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
                     shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
                 };
-                trace!("mRPC engine send message to App, call_id={}", meta.call_id);
+                tracing::trace!("mRPC engine send message to App, call_id={}", meta.call_id);
                 {
                     // let span = info_span!("customer.enqueue_wc");
                     // let _enter = span.enter();
@@ -310,9 +294,6 @@ impl MrpcEngine {
     }
 
     fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
-        if self.flag {
-            return Ok(Progress(0));
-        }
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
@@ -323,7 +304,6 @@ impl MrpcEngine {
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
-                        self.flag = true;
                         Ok(Status::Progress(1))
                     }
                     other => panic!("unexpected: {:?}", other),

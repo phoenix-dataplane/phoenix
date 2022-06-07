@@ -1,0 +1,13 @@
+name = "benchmark/rpc_hello"
+description = "Run rpc_hello benchmark"
+group = "rpc_hello"
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_hello_server"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_hello_client"
+args = "-c rdma0.danyang-06"
