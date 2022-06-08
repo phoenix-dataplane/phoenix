@@ -23,8 +23,7 @@ jobs:
     - name: Install nightly rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
-        override: true
+        override: false
         components: rustfmt, clippy
     - name: Check formatting
       uses: actions-rs/cargo@v1
