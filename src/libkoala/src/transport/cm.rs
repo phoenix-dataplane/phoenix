@@ -4,10 +4,10 @@ use std::net::ToSocketAddrs;
 
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
 
-use crate::transport::Error;
-use crate::{rx_recv_impl, FromBorrow};
-use crate::transport::KL_CTX;
 use crate::transport::verbs;
+use crate::transport::Error;
+use crate::transport::KL_CTX;
+use crate::{rx_recv_impl, FromBorrow};
 use verbs::AccessFlags;
 use verbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
@@ -247,11 +247,15 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         })
     }
 
-    pub fn try_get_request(&self) -> Result<Option<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>>, Error> {
+    pub fn try_get_request(
+        &self,
+    ) -> Result<Option<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>>, Error> {
         KL_CTX.with(|ctx| {
             let req = Command::TryGetRequest(self.handle.0);
             ctx.service.send_cmd(req)?;
-            let maybe_cmid = rx_recv_impl!(ctx.service, CompletionKind::TryGetRequest, cmid, { Ok(cmid) })?;
+            let maybe_cmid = rx_recv_impl!(ctx.service, CompletionKind::TryGetRequest, cmid, {
+                Ok(cmid)
+            })?;
             if let Some(cmid) = maybe_cmid.as_ref() {
                 assert!(cmid.qp.is_none());
                 let mut builder = self.builder.clone();

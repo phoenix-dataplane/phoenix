@@ -14,7 +14,7 @@ pub(crate) type TxOQueue = UnboundedSender<ShmPtr<dyn RpcMessage>>;
 #[derive(Debug)]
 pub(crate) enum EngineRxMessage {
     RpcMessage(ShmPtr<dyn RpcMessage>),
-    SendCompletion(Handle, u32)
+    SendCompletion(Handle, u32),
 }
 
 pub(crate) type RxIQueue = UnboundedReceiver<EngineRxMessage>;

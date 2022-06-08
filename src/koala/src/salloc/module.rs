@@ -4,25 +4,23 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
-use lazy_static::lazy_static;
 
-
-use interface::engine::{SchedulingMode, EngineType};
+use interface::engine::{EngineType, SchedulingMode};
 use ipc;
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use crate::config::SallocConfig;
-use crate::engine::manager::RuntimeManager;
-use crate::engine::container::EngineContainer;
 use super::engine::SallocEngine;
+use super::state::State;
+use crate::config::SallocConfig;
+use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
-use super::state::State;
-
 
 lazy_static! {
     pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
@@ -38,11 +36,7 @@ pub(crate) struct SallocEngineBuilder {
 }
 
 impl SallocEngineBuilder {
-    fn new(
-        customer: CustomerType,
-        client_pid: Pid,
-        mode: SchedulingMode,
-    ) -> Self {
+    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode) -> Self {
         SallocEngineBuilder {
             customer,
             client_pid,
@@ -71,7 +65,10 @@ pub struct SallocModule {
 
 impl SallocModule {
     pub fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        SallocModule { config, runtime_manager }
+        SallocModule {
+            config,
+            runtime_manager,
+        }
     }
 
     pub fn handle_request(
@@ -102,7 +99,8 @@ impl SallocModule {
         let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
-        let customer = Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer =
+            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines
@@ -112,7 +110,8 @@ impl SallocModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
-        self.runtime_manager.submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
+        self.runtime_manager
+            .submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
 
         Ok(())
     }

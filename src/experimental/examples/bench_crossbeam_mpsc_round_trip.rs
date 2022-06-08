@@ -1,4 +1,3 @@
-
 use crossbeam::channel;
 use crossbeam::thread;
 use std::time::Instant;
@@ -20,13 +19,13 @@ fn main() {
                 set_affinity_for_current(sender_core).unwrap();
             }
             for i in 0..opts.warm_iters + opts.total_iters {
-                while let Err(_) = tx1.try_send(i) { }
+                while let Err(_) = tx1.try_send(i) {}
                 loop {
                     match rx2.try_recv() {
                         Ok(_x) => {
                             break;
                         }
-                        Err(_) => { }
+                        Err(_) => {}
                     }
                 }
             }
@@ -43,10 +42,10 @@ fn main() {
                             assert_eq!(i, x);
                             break;
                         }
-                        Err(_) => { }
+                        Err(_) => {}
                     }
                 }
-                while let Err(_) = tx2.try_send(i) { }
+                while let Err(_) = tx2.try_send(i) {}
             }
 
             let start = Instant::now();
@@ -56,12 +55,11 @@ fn main() {
                         Ok(_x) => {
                             break;
                         }
-                        Err(_) => { }
+                        Err(_) => {}
                     }
                 }
-                while let Err(_) = tx2.try_send(i) { }
+                while let Err(_) = tx2.try_send(i) {}
             }
-
 
             println!(
                 "{}: {} Mop/s in {} iters",

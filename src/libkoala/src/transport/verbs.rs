@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use lazy_static::lazy_static;
 use memfd::Memfd;
+use memmap2::{MmapOptions, MmapRaw};
 use utils::bounded_vec::BoundedVecDeque;
-use memmap2::{MmapRaw, MmapOptions};
 
 use interface::returned;
 use ipc::transport::rdma::cmd::{Command, CompletionKind};
@@ -91,12 +91,7 @@ impl ProtectionDomain {
             assert!(file_len >= nbytes);
 
             rx_recv_impl!(ctx.service, CompletionKind::RegMr, mr, {
-                MemoryRegion::new(
-                    self.inner,
-                    mr.handle,
-                    mr.rkey,
-                    memfd,
-                )
+                MemoryRegion::new(self.inner, mr.handle, mr.rkey, memfd)
             })
         })
     }

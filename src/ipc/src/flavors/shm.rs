@@ -10,7 +10,7 @@ use std::os::unix::net::UCred;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use uuid::Uuid;
 

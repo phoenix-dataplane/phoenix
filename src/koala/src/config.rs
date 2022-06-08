@@ -74,7 +74,6 @@ pub struct TracingConfig {
     pub output_dir: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {

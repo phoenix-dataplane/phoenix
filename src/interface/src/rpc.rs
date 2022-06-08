@@ -1,5 +1,5 @@
 //! RPC data structures
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::Handle;
 
@@ -33,5 +33,5 @@ pub struct MessageMeta {
 pub struct MessageTemplateErased {
     pub meta: MessageMeta,
     pub shm_addr: usize,
-    pub shm_addr_remote: usize
+    pub shm_addr_remote: usize,
 }

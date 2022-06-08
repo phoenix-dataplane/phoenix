@@ -6,11 +6,11 @@ use serde::Serialize;
 
 use crate::shmobj::ShmObject;
 
+pub use ipc_channel::ipc::TryRecvError;
 pub(crate) use ipc_channel::ipc::{
     channel, IpcError as IpcRecvError, IpcOneShotServer as OneShotServer, IpcReceiver, IpcSender,
 };
 pub(crate) use ipc_channel::Error as IpcSendError;
-pub use ipc_channel::ipc::TryRecvError;
 
 pub struct IpcSenderNotify<T> {
     inner: IpcSender<T>,

@@ -16,7 +16,9 @@ use interface::{AsHandle, Handle};
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, EngineRxMessage, Vertex};
+use crate::engine::{
+    future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
+};
 use crate::mrpc::marshal::{MessageTemplate, RpcMessage, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
@@ -316,7 +318,9 @@ impl RpcAdapterEngine {
         {
             // let span = info_span!("unmarshal_and_deliver_up: rx_outputs send");
             // let _enter = span.enter();
-            self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(dyn_msg)).unwrap();
+            self.rx_outputs()[0]
+                .send(EngineRxMessage::RpcMessage(dyn_msg))
+                .unwrap();
         }
         Ok(Progress(1))
     }
@@ -342,7 +346,9 @@ impl RpcAdapterEngine {
                                 let conn_id = Handle((wc.wr_id >> 32) as u32);
                                 let call_id = wc.wr_id as u32;
                                 trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                self.rx_outputs()[0].send(EngineRxMessage::SendCompletion(conn_id, call_id)).unwrap();
+                                self.rx_outputs()[0]
+                                    .send(EngineRxMessage::SendCompletion(conn_id, call_id))
+                                    .unwrap();
                             }
                         }
                         WcOpcode::Recv => {

@@ -1,8 +1,8 @@
-use tokio::sync::mpsc;
 use crossbeam::thread;
 use crossbeam::utils::Backoff;
 use std::time::Instant;
 use structopt::StructOpt;
+use tokio::sync::mpsc;
 
 use experimental::*;
 

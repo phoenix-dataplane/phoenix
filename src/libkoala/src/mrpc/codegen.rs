@@ -15,11 +15,10 @@ use crate::mrpc::stub::{
     self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
 };
 use crate::mrpc::MRPC_CTX;
-use crate::salloc::owner::{BackendOwned, AppOwned};
+use crate::salloc::owner::{AppOwned, BackendOwned};
 
-use super::stub::{RECV_CACHE, check_completion_queue};
-use super::stub::ownership::{AppOwendRequest, AppOwendReply};
-
+use super::stub::ownership::{AppOwendReply, AppOwendRequest};
+use super::stub::{check_completion_queue, RECV_CACHE};
 
 // mimic the generated code of tonic-helloworld
 
@@ -36,7 +35,6 @@ pub type HelloReply = inner::HelloReply;
 impl AppOwendRequest for HelloRequest {}
 impl AppOwendReply for HelloReply {}
 
-
 mod inner {
     use ipc::shmalloc::SwitchAddressSpace;
 
@@ -48,19 +46,19 @@ mod inner {
     pub struct HelloRequest<O: AllocOwner = AppOwned> {
         pub name: mrpc::alloc::Vec<u8, O>,
     }
-    
+
     unsafe impl SwitchAddressSpace for HelloRequest<AppOwned> {
         fn switch_address_space(&mut self) {
             self.name.switch_address_space();
         }
     }
-    
+
     impl CloneFromBackendOwned for HelloRequest<AppOwned> {
         type BackendOwned = HelloRequest<BackendOwned>;
 
         fn clone_from_backend_owned(backend_owned: &Self::BackendOwned) -> Self {
-            HelloRequest { 
-                name: mrpc::alloc::Vec::clone_from_backend_owned(&backend_owned.name)
+            HelloRequest {
+                name: mrpc::alloc::Vec::clone_from_backend_owned(&backend_owned.name),
             }
         }
     }
@@ -69,7 +67,7 @@ mod inner {
     pub struct HelloReply<O: AllocOwner = AppOwned> {
         pub name: mrpc::alloc::Vec<u8, O>, // change to mrpc::alloc::Vec<u8>, -> String
     }
-    
+
     unsafe impl SwitchAddressSpace for HelloReply<AppOwned> {
         fn switch_address_space(&mut self) {
             self.name.switch_address_space();
@@ -80,13 +78,12 @@ mod inner {
         type BackendOwned = HelloReply<BackendOwned>;
 
         fn clone_from_backend_owned(backend_owned: &Self::BackendOwned) -> Self {
-            HelloReply { 
-                name: mrpc::alloc::Vec::clone_from_backend_owned(&backend_owned.name)
+            HelloReply {
+                name: mrpc::alloc::Vec::clone_from_backend_owned(&backend_owned.name),
             }
         }
     }
 }
-
 
 pub struct ReqFuture {
     conn_id: interface::Handle,
@@ -98,14 +95,15 @@ impl Future for ReqFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         check_completion_queue();
-        if let Some(erased) = RECV_CACHE.with(
-            |cache| cache.borrow_mut().remove(&(this.conn_id, this.call_id))
-        ) {
+        if let Some(erased) =
+            RECV_CACHE.with(|cache| cache.borrow_mut().remove(&(this.conn_id, this.call_id)))
+        {
             tracing::trace!(
                 "ReqFuture receive reply from mRPC engine, call_id={}",
                 erased.meta.call_id
             );
-            let ptr_local = erased.shm_addr as *mut MessageTemplate<inner::HelloReply<BackendOwned>, BackendOwned>;
+            let ptr_local = erased.shm_addr
+                as *mut MessageTemplate<inner::HelloReply<BackendOwned>, BackendOwned>;
             let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
             let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
             let reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
@@ -117,7 +115,6 @@ impl Future for ReqFuture {
         }
     }
 }
-
 
 // Reply cache, call_id -> Reply, Sync, not durable
 // #[derive(Debug)]
@@ -183,10 +180,7 @@ impl GreeterClient {
         self.call_counter += 1;
 
         self.stub.post_request(msg).unwrap();
-        ReqFuture {
-            conn_id,
-            call_id,
-        }
+        ReqFuture { conn_id, call_id }
     }
 }
 
@@ -227,7 +221,8 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let ptr_local = req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>, BackendOwned>;
+        let ptr_local =
+            req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>, BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
@@ -237,7 +232,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
         // TODO(wyj): lifetime bound for ShmView
         // ShmView should be !Send and !Sync
         let req = ShmView::new_from_backend_owned(req);
-        // TODO(wyj): should not be forget. 
+        // TODO(wyj): should not be forget.
         // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
         // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to
         // indicate that we will no longer use the region of this object, so that the backend can

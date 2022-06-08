@@ -4,7 +4,6 @@
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(specialization)]
 #![feature(strict_provenance)]
-
 // boxed.rs
 // TODO: clean up
 #![feature(exact_size_is_empty)]
@@ -18,7 +17,6 @@
 #![feature(rustc_attrs)]
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
-
 // GC
 #![feature(drain_filter)]
 // stub

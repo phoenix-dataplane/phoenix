@@ -14,7 +14,8 @@ thread_local! {
 }
 
 pub(crate) struct Context {
-    pub(crate) service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+    pub(crate) service:
+        ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
 impl Context {
@@ -25,9 +26,9 @@ impl Context {
     }
 }
 
+pub(crate) mod gc;
 pub(crate) mod heap;
 pub(crate) mod region;
-pub(crate) mod gc;
 // TODO(wyj): wrap the O generic and change to pub(crate)
 pub(crate) mod owner;
 

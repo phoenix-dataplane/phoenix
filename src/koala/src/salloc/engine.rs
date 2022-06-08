@@ -1,7 +1,7 @@
 use std::alloc::Layout;
 use std::future::Future;
-use std::sync::Arc;
 use std::os::unix::io::AsRawFd;
+use std::sync::Arc;
 
 use ipc::salloc::cmd;
 
@@ -113,7 +113,7 @@ impl SallocEngine {
                     .mr_table
                     .lock()
                     .remove(&addr)
-                    .map_or_else(|| Err(ResourceError::NotFound), |_| Ok(()) )?;
+                    .map_or_else(|| Err(ResourceError::NotFound), |_| Ok(()))?;
                 Ok(cmd::CompletionKind::DeallocShm)
             }
             Command::NewMappedAddrs(app_vaddrs) => {

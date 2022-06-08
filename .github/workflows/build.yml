@@ -28,5 +28,5 @@ jobs:
       run: cargo test
       env:
         RUST_BACKTRACE: 1
-    # - name: Check formatting
-    #   run: cargo fmt -- --check
+    - name: Check formatting
+      run: cargo fmt -- --check

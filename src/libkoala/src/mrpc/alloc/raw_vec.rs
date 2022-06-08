@@ -97,7 +97,7 @@ impl<T> RawVec<T> {
             Self {
                 ptr,
                 cap: capacity,
-                _owner: AppOwned
+                _owner: AppOwned,
             }
         }
     }
