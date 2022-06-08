@@ -2,19 +2,16 @@ use std::net::ToSocketAddrs;
 use std::pin::Pin;
 
 use std::future::Future;
-use std::rc::Rc;
 use std::task::{Context, Poll};
 
-use fnv::FnvHashMap as HashMap;
 use ipc::shmalloc::SwitchAddressSpace;
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
 use crate::mrpc::alloc::ShmView;
 use crate::mrpc::stub::{
-    self, ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
+    ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
 };
-use crate::mrpc::MRPC_CTX;
 use crate::salloc::owner::{AppOwned, BackendOwned};
 
 use super::stub::ownership::{AppOwendReply, AppOwendRequest};

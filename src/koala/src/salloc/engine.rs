@@ -1,7 +1,6 @@
 use std::alloc::Layout;
 use std::future::Future;
 use std::os::unix::io::AsRawFd;
-use std::sync::Arc;
 
 use ipc::salloc::cmd;
 

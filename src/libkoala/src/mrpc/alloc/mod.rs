@@ -1,6 +1,12 @@
+#[allow(unused)]
 mod boxed;
+
+#[allow(unused)]
 mod raw_vec;
+
 mod shmview;
+
+#[allow(unused)]
 mod vec;
 
 pub(crate) use boxed::Box;
