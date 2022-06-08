@@ -199,7 +199,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     // One-way latency
     let stats: Vec<_> = stats.into_iter().map(|x| x / 2).collect();
 
-    eprintln!(
+    println!(
         "duration: {:?}, #iters: {}, avg: {:?}, min: {:?}, median: {:?}, P95: {:?}, P99: {:?}, max: {:?}",
         dura,
         opts.total_iters,
