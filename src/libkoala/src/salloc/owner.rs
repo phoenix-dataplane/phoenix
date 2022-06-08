@@ -1,4 +1,4 @@
-pub trait AllocOwner { 
+pub trait AllocOwner {
     fn is_app_owend() -> bool;
 }
 

@@ -3,10 +3,9 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use libkoala::mrpc::alloc::{Vec, ShmView};
+use libkoala::mrpc::alloc::{ShmView, Vec};
 use libkoala::mrpc::codegen::{Greeter, GreeterServer, HelloReply, HelloRequest};
 use libkoala::mrpc::stub::RpcMessage;
-
 
 #[derive(StructOpt, Debug)]
 #[structopt(about = "Koala RPC hello client")]
@@ -21,11 +20,10 @@ pub struct Args {
 
     #[structopt(short = "l", long, default_value = "error")]
     pub log_level: String,
-    
-    #[structopt(long)]
-    pub log_dir: Option<PathBuf>
-}
 
+    #[structopt(long)]
+    pub log_dir: Option<PathBuf>,
+}
 
 // TODO(wyj): add back debug
 // #[derive(Debug)]
@@ -47,7 +45,6 @@ impl Greeter for MyGreeter {
     }
 }
 
-
 // TODO(wyj): add back debug
 // #[derive(Debug)]
 struct MyGreeterBlocking {
@@ -67,15 +64,13 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let args = Args::from_args();
     let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-
     if args.blocking {
         let name = Vec::new();
         let msg = RpcMessage::new_reply(HelloReply { name });
         let _server = libkoala::mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-        .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg } ))
-        .serve()?;
-    }
-    else {
+            .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
+            .serve()?;
+    } else {
         let mut replies = Vec::new();
         for _ in 0..128 {
             let name = Vec::new();
@@ -83,15 +78,17 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             replies.push(msg);
         }
         let _server = libkoala::mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-        .add_service(GreeterServer::new(MyGreeter { replies, count: 0 }))
-        .serve()?;
+            .add_service(GreeterServer::new(MyGreeter { replies, count: 0 }))
+            .serve()?;
     }
 
     Ok(())
 }
 
-
-fn init_tokio_tracing(level: &str, log_directory: &Option<PathBuf>) -> tracing_appender::non_blocking::WorkerGuard {
+fn init_tokio_tracing(
+    level: &str,
+    log_directory: &Option<PathBuf>,
+) -> tracing_appender::non_blocking::WorkerGuard {
     let format = tracing_subscriber::fmt::format()
         .with_level(true)
         .with_target(true)
@@ -99,11 +96,9 @@ fn init_tokio_tracing(level: &str, log_directory: &Option<PathBuf>) -> tracing_a
         .with_thread_names(false)
         .compact();
 
-    
     let env_filter = tracing_subscriber::filter::EnvFilter::builder()
         .parse(level)
         .expect("invalid tracing level");
-
 
     let (non_blocking, appender_guard) = if let Some(log_dir) = log_directory {
         let file_appender = tracing_appender::rolling::minutely(log_dir, "rpc-server.log");

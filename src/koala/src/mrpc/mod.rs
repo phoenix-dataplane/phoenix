@@ -2,12 +2,12 @@ use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
-pub mod engine;
-pub mod state;
-pub mod module;
-pub mod marshal;
 pub mod codegen;
 mod dtypes;
+pub mod engine;
+pub mod marshal;
+pub mod module;
+pub mod state;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {

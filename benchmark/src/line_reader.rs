@@ -53,7 +53,7 @@ impl<R: Read + AsRawFd> LineReader<R> {
             Ok(0) => {
                 // EOF
                 self.eof = true;
-                return Ok(None);
+                Ok(None)
             }
             Ok(nbytes) => {
                 let mut old_len = -(self.buffer.len() as isize);
@@ -75,7 +75,7 @@ impl<R: Read + AsRawFd> LineReader<R> {
                 Ok(self.lines.pop_front())
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
     }
 }

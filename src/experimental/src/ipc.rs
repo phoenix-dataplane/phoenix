@@ -1,11 +1,11 @@
 //! IPC on Unix using domain socket.
+use std::convert::TryFrom;
 use std::io;
 use std::mem;
 use std::num::TryFromIntError;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::{AncillaryData, SocketAncillary, UnixDatagram};
 use std::path::Path;
-use std::convert::TryFrom;
 
 use thiserror::Error;
 

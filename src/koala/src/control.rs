@@ -81,7 +81,9 @@ impl Control {
                 Ok((size, sender, cred)) => {
                     log::debug!(
                         "received {} bytes from {:?} with credential: {:?}",
-                        size, sender, cred
+                        size,
+                        sender,
+                        cred
                     );
                     if let Some(cred) = cred {
                         if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {

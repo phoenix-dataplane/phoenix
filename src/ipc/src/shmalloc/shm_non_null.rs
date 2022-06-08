@@ -27,6 +27,7 @@ impl<T: Sized> ShmNonNull<T> {
 }
 
 impl<T: ?Sized> ShmNonNull<T> {
+    /// # Safety: `ptr` and `ptr_remote` must be non-null and points to the same shared memory.
     #[must_use]
     #[inline]
     pub const unsafe fn new_unchecked(ptr: *mut T, ptr_remote: *mut T) -> Self {

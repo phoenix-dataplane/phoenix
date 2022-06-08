@@ -8,8 +8,8 @@ use spin::Mutex;
 
 use interface::engine::SchedulingMode;
 
-use super::runtime::{self, Runtime};
 use super::container::EngineContainer;
+use super::runtime::{self, Runtime};
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,

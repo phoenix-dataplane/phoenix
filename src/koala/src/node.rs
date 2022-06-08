@@ -1,6 +1,6 @@
 use interface::engine::EngineType;
 
-use crate::engine::{TxIQueue, TxOQueue, RxIQueue, RxOQueue};
+use crate::engine::{RxIQueue, RxOQueue, TxIQueue, TxOQueue};
 
 #[derive(Debug)]
 pub struct Node {

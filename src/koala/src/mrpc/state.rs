@@ -1,11 +1,10 @@
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use nix::unistd::Pid;
 
 use crate::state_mgr::{StateManager, StateTrait};
-
 
 pub(crate) struct State {
     sm: Arc<StateManager<Self>>,

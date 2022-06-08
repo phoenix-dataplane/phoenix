@@ -18,7 +18,10 @@ use ipc::shmalloc::SwitchAddressSpace;
 use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
-use crate::salloc::gc::{MESSAGE_ID_COUNTER, OUTSTANDING_WR, CS_OUTSTANDING_WR_CNT, GARBAGE_COLLECTOR, CS_STUB_ID_COUNTER};
+use crate::salloc::gc::{
+    CS_OUTSTANDING_WR_CNT, CS_STUB_ID_COUNTER, GARBAGE_COLLECTOR, MESSAGE_ID_COUNTER,
+    OUTSTANDING_WR,
+};
 use crate::salloc::owner::{AllocOwner, AppOwned};
 use crate::salloc::region::SharedRecvBuffer;
 
@@ -33,9 +36,8 @@ pub(crate) mod ownership {
     pub trait AppOwendReply {}
 }
 
-
-// TODO(wyj): pub(crate) visibility? 
-pub trait RpcData: Send + Sync + 'static { }
+// TODO(wyj): pub(crate) visibility?
+pub trait RpcData: Send + Sync + 'static {}
 impl<T: Send + Sync + 'static> RpcData for T {}
 
 #[derive(Debug)]
@@ -44,7 +46,7 @@ pub struct RpcMessage<T: RpcData> {
     // ID of this RpcMessage
     pub(crate) identifier: u64,
     // How many times the message is sent
-    pub(crate) send_count: u64
+    pub(crate) send_count: u64,
 }
 
 impl<T: ownership::AppOwendRequest + RpcData> RpcMessage<T> {
@@ -52,10 +54,10 @@ impl<T: ownership::AppOwendRequest + RpcData> RpcMessage<T> {
         let msg = Box::new(msg);
         let inner = MessageTemplate::new_request(msg, Handle(0), 0, 0);
         let message_id = MESSAGE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        RpcMessage { 
+        RpcMessage {
             inner: ManuallyDrop::new(inner),
             identifier: message_id,
-            send_count: 0 
+            send_count: 0,
         }
     }
 }
@@ -65,10 +67,10 @@ impl<T: ownership::AppOwendReply + RpcData> RpcMessage<T> {
         let msg = Box::new(msg);
         let inner = MessageTemplate::new_reply(msg, Handle(0), 0, 0);
         let message_id = MESSAGE_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        RpcMessage { 
+        RpcMessage {
             inner: ManuallyDrop::new(inner),
             identifier: message_id,
-            send_count: 0
+            send_count: 0,
         }
     }
 }
@@ -90,16 +92,15 @@ impl<T: RpcData> Drop for RpcMessage<T> {
 
 unsafe impl<T: SwitchAddressSpace + RpcData> SwitchAddressSpace for RpcMessage<T> {
     fn switch_address_space(&mut self) {
-        self.inner.switch_address_space();    
+        self.inner.switch_address_space();
     }
 }
-
 
 #[derive(Debug)]
 pub struct MessageTemplate<T, O: AllocOwner> {
     pub(crate) meta: MessageMeta,
     pub(crate) val: ShmPtr<T>,
-    _owner: O
+    _owner: O,
 }
 
 impl<T> MessageTemplate<T, AppOwned> {
@@ -120,16 +121,11 @@ impl<T> MessageTemplate<T, AppOwned> {
         Box::new(Self {
             meta,
             val: Box::into_shmptr(val),
-            _owner: AppOwned
+            _owner: AppOwned,
         })
     }
 
-    pub(crate) fn new_reply(
-        val: Box<T>,
-        conn_id: Handle,
-        func_id: u32,
-        call_id: u32
-    ) -> Box<Self> {
+    pub(crate) fn new_reply(val: Box<T>, conn_id: Handle, func_id: u32, call_id: u32) -> Box<Self> {
         let meta = MessageMeta {
             conn_id,
             func_id,
@@ -140,7 +136,7 @@ impl<T> MessageTemplate<T, AppOwned> {
         Box::new(Self {
             meta,
             val: Box::into_shmptr(val),
-            _owner: AppOwned
+            _owner: AppOwned,
         })
     }
 }
@@ -159,7 +155,6 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T, App
         unsafe { self.val.as_mut() }.switch_address_space();
     }
 }
-
 
 pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
     use ipc::mrpc::dp::Completion;
@@ -192,7 +187,9 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                     });
                     CS_OUTSTANDING_WR_CNT.with(|counting| {
                         let mut borrow = counting.borrow_mut();
-                        let cnt = borrow.get_mut(&cs_id).expect("client/server stub not found");
+                        let cnt = borrow
+                            .get_mut(&cs_id)
+                            .expect("client/server stub not found");
                         *cnt -= 1;
                     });
                     GARBAGE_COLLECTOR.register_wr_completion(msg_id);
@@ -230,13 +227,13 @@ impl ClientStub {
     pub(crate) fn post_request<T: SwitchAddressSpace + ownership::AppOwendRequest + RpcData>(
         &self,
         // msg: &mut Box<MessageTemplate<T, AppOwned>>,
-        msg: &mut RpcMessage<T>
+        msg: &mut RpcMessage<T>,
     ) -> Result<(), Error> {
         let meta = msg.inner.meta;
         tracing::trace!(
             "client post request to mRPC engine, call_id={}",
             meta.call_id
-        );    
+        );
         // TODO(wyj): get rid of SwitchAddrSpace
         msg.switch_address_space();
 
@@ -247,14 +244,18 @@ impl ClientStub {
             shm_addr_remote: ptr.addr().get(),
         };
         let req = dp::WorkRequest::Call(erased);
-        
+
         // codegen should increase send_count for RpcMessage
         OUTSTANDING_WR.with(|outstanding| {
-            outstanding.borrow_mut().insert((meta.conn_id, meta.call_id), (msg.identifier, self.stub_id));
+            outstanding
+                .borrow_mut()
+                .insert((meta.conn_id, meta.call_id), (msg.identifier, self.stub_id));
         });
         CS_OUTSTANDING_WR_CNT.with(|counting| {
             let mut borrow = counting.borrow_mut();
-            let cnt = borrow.get_mut(&self.stub_id).expect("client/server stub not found");
+            let cnt = borrow
+                .get_mut(&self.stub_id)
+                .expect("client/server stub not found");
             *cnt += 1;
         });
 
@@ -293,13 +294,7 @@ impl ClientStub {
                         let memfd = Memfd::try_from_fd(fd)
                             .map_err(|_| io::Error::last_os_error())
                             .unwrap();
-                        let m = SharedRecvBuffer::new(
-                            mr.1,
-                            mr.2,
-                            mr.3,
-                            memfd,
-                        )
-                        .unwrap();
+                        let m = SharedRecvBuffer::new(mr.1, mr.2, mr.3, memfd).unwrap();
                         vaddrs.push((mr.0, m.as_ptr().expose_addr()));
                         m
                     })
@@ -336,14 +331,19 @@ impl !Sync for ClientStub {}
 
 impl Drop for ClientStub {
     fn drop(&mut self) {
-        while CS_OUTSTANDING_WR_CNT.with(
-            |cnt| *cnt.borrow().get(&self.stub_id).expect("client/server stub not found") > 0
-        ) {
-            check_completion_queue(); 
+        while CS_OUTSTANDING_WR_CNT.with(|cnt| {
+            *cnt.borrow()
+                .get(&self.stub_id)
+                .expect("client/server stub not found")
+                > 0
+        }) {
+            check_completion_queue();
         }
 
         CS_OUTSTANDING_WR_CNT.with(|cnt| {
-            cnt.borrow_mut().remove(&self.stub_id).expect("client/server stub not found")
+            cnt.borrow_mut()
+                .remove(&self.stub_id)
+                .expect("client/server stub not found")
         });
     }
 }
@@ -402,7 +402,7 @@ impl Server {
             self.post_replies(msgs)?;
         }
     }
-    
+
     fn check_new_incoming_connection(
         &mut self,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
@@ -420,12 +420,7 @@ impl Server {
                             let memfd = Memfd::try_from_fd(fd)
                                 .map_err(|_| io::Error::last_os_error())
                                 .unwrap();
-                            let m = SharedRecvBuffer::new(
-                                mr.1,
-                                mr.2,
-                                mr.3,
-                                memfd,
-                            ).unwrap();
+                            let m = SharedRecvBuffer::new(mr.1, mr.2, mr.3, memfd).unwrap();
                             vaddrs.push((mr.0, m.as_ptr().expose_addr()));
                             recv_mrs.push(m);
                         }
@@ -452,22 +447,30 @@ impl Server {
         })
     }
 
-    pub(crate) fn post_reply(&self, erased: MessageTemplateErased, msg_id: u64) -> Result<(), Error> {
+    pub(crate) fn post_reply(
+        &self,
+        erased: MessageTemplateErased,
+        msg_id: u64,
+    ) -> Result<(), Error> {
         tracing::trace!(
             "client post reply to mRPC engine, call_id={}",
             erased.meta.call_id
         );
-    
+
         let req = dp::WorkRequest::Reply(erased);
 
         // codegen should increase send_count for RpcMessage
         let meta = erased.meta;
         OUTSTANDING_WR.with(|outstanding| {
-            outstanding.borrow_mut().insert((meta.conn_id, meta.call_id), (msg_id, self.stub_id));
+            outstanding
+                .borrow_mut()
+                .insert((meta.conn_id, meta.call_id), (msg_id, self.stub_id));
         });
         CS_OUTSTANDING_WR_CNT.with(|counting| {
             let mut borrow = counting.borrow_mut();
-            let cnt = borrow.get_mut(&self.stub_id).expect("client/server stub not found");
+            let cnt = borrow
+                .get_mut(&self.stub_id)
+                .expect("client/server stub not found");
             *cnt += 1;
         });
 
@@ -498,14 +501,12 @@ impl Server {
         &mut self,
     ) -> Result<Vec<(MessageTemplateErased, u64)>, std::boxed::Box<dyn std::error::Error>> {
         let mut msgs = Vec::with_capacity(32);
-        
+
         check_completion_queue()?;
         RECV_CACHE.with(|cache| {
             let mut borrow = cache.borrow_mut();
-            let requests = borrow.drain_filter(|(conn_id, _), _| {
-                self.handles.contains(conn_id)
-            } );
-            
+            let requests = borrow.drain_filter(|(conn_id, _), _| self.handles.contains(conn_id));
+
             for (_, req) in requests {
                 let func_id = req.meta.func_id;
                 match self.routes.get_mut(&func_id) {
@@ -529,14 +530,19 @@ impl !Sync for Server {}
 
 impl Drop for Server {
     fn drop(&mut self) {
-        while CS_OUTSTANDING_WR_CNT.with(
-            |cnt| *cnt.borrow().get(&self.stub_id).expect("client/server stub not found") > 0
-        ) {
-            check_completion_queue(); 
+        while CS_OUTSTANDING_WR_CNT.with(|cnt| {
+            *cnt.borrow()
+                .get(&self.stub_id)
+                .expect("client/server stub not found")
+                > 0
+        }) {
+            check_completion_queue();
         }
 
         CS_OUTSTANDING_WR_CNT.with(|cnt| {
-            cnt.borrow_mut().remove(&self.stub_id).expect("client/server stub not found")
+            cnt.borrow_mut()
+                .remove(&self.stub_id)
+                .expect("client/server stub not found")
         });
     }
 }

@@ -8,16 +8,16 @@ use anyhow::Result;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use interface::engine::{SchedulingMode, EngineType};
+use interface::engine::{EngineType, SchedulingMode};
 use ipc;
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::transport::tcp::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use crate::config::TcpTransportConfig;
-use crate::engine::manager::RuntimeManager;
-use crate::engine::container::EngineContainer;
 use super::engine::TransportEngine;
+use crate::config::TcpTransportConfig;
+use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 
 pub type CustomerType =
@@ -30,11 +30,7 @@ pub(crate) struct TransportEngineBuilder {
 }
 
 impl TransportEngineBuilder {
-    fn new(
-        customer: CustomerType,
-        _client_pid: Pid,
-        mode: SchedulingMode,
-    ) -> Self {
+    fn new(customer: CustomerType, _client_pid: Pid, mode: SchedulingMode) -> Self {
         TransportEngineBuilder {
             customer,
             _client_pid,
@@ -66,7 +62,10 @@ pub struct TransportModule {
 
 impl TransportModule {
     pub fn new(config: TcpTransportConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        TransportModule { config, runtime_manager }
+        TransportModule {
+            config,
+            runtime_manager,
+        }
     }
 
     pub fn handle_request(
@@ -97,7 +96,8 @@ impl TransportModule {
         let engine_path = self.config.prefix.join(instance_name);
 
         // 2. create customer stub
-        let customer = Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer =
+            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines
@@ -107,7 +107,8 @@ impl TransportModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
-        self.runtime_manager.submit(EngineContainer::new(engine), mode);
+        self.runtime_manager
+            .submit(EngineContainer::new(engine), mode);
 
         Ok(())
     }

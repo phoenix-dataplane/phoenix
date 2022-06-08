@@ -14,8 +14,8 @@ use structopt::StructOpt;
 
 use shmem_ipc::sharedring::{Receiver, Sender};
 
-use experimental::*;
 use experimental::ipc::{recv_fd, send_fd};
+use experimental::*;
 
 type Value = [u8; 64];
 

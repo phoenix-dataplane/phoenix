@@ -19,7 +19,7 @@ pub type CompletionSlot = [u8; 64];
 #[derive(Debug)]
 pub enum Completion {
     Recv(MessageTemplateErased),
-    SendCompletion(Handle, u32)
+    SendCompletion(Handle, u32),
 }
 
 mod sa {

@@ -41,15 +41,24 @@ impl Drop for SharedHeap {
         for empty_page in relinquished_pages.empty_small {
             let addr = empty_page as *mut ObjectPage as usize;
             // tell backend to dealloc page
-            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+            SHARED_HEAP_REGIONS
+                .lock()
+                .remove(&addr)
+                .expect("page already released");
         }
         for empty_page in relinquished_pages.empty_large {
             let addr = empty_page as *mut LargeObjectPage as usize;
-            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+            SHARED_HEAP_REGIONS
+                .lock()
+                .remove(&addr)
+                .expect("page already released");
         }
         for empty_page in relinquished_pages.empty_huge {
             let addr = empty_page as *mut HugeObjectPage as usize;
-            SHARED_HEAP_REGIONS.lock().remove(&addr).expect("page already released");
+            SHARED_HEAP_REGIONS
+                .lock()
+                .remove(&addr)
+                .expect("page already released");
         }
 
         // recycle used pages to global pool
@@ -109,7 +118,11 @@ impl SharedHeap {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (HugeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let huge_object_page = unsafe { mem::transmute(addr) };
-                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS
+                    .lock()
+                    .insert(addr, sr)
+                    .ok_or(())
+                    .unwrap_err();
                 huge_object_page
             }
             Err(e) => {
@@ -133,7 +146,11 @@ impl SharedHeap {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (LargeObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let large_object_page = unsafe { mem::transmute(addr) };
-                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS
+                    .lock()
+                    .insert(addr, sr)
+                    .ok_or(())
+                    .unwrap_err();
                 large_object_page
             }
             Err(e) => {
@@ -154,7 +171,11 @@ impl SharedHeap {
                 let addr = sr.as_ptr().addr();
                 assert!(addr & (ObjectPage::SIZE - 1) == 0, "addr: {:0x}", addr);
                 let object_page = unsafe { mem::transmute(addr) };
-                SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                SHARED_HEAP_REGIONS
+                    .lock()
+                    .insert(addr, sr)
+                    .ok_or(())
+                    .unwrap_err();
                 object_page
             }
             Err(e) => {
@@ -228,15 +249,11 @@ impl SharedHeapAllocator {
                             }
                             Ok(ptr)
                         }
-                        Err(err) => {
-                            Err(err)
-                        }
+                        Err(err) => Err(err),
                     };
-                    
+
                     match result {
-                        Ok(ptr) => {
-                            Ok(ptr)
-                        }
+                        Ok(ptr) => Ok(ptr),
                         Err(AllocationError::OutOfMemory) => {
                             // refill the zone allocator
                             if layout.size() <= ZoneAllocator::MAX_BASE_ALLOC_SIZE {
@@ -308,7 +325,7 @@ impl SharedHeapAllocator {
                                 for addr in pages {
                                     guard.remove(&addr).expect("page already released");
                                 }
-                            }    
+                            }
                             Ok(ptr)
                         }
                         Err(AllocationError::InvalidLayout) => {
@@ -324,7 +341,7 @@ impl SharedHeapAllocator {
                     "Requested: {} bytes. Please handle object size larger than {}",
                     layout.size(),
                     ZoneAllocator::MAX_ALLOC_SIZE
-                );                
+                );
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let shared_heap = shared_heap.borrow_mut();
                     let aligned_size = layout.align_to(4096).unwrap().pad_to_align().size();
@@ -332,7 +349,11 @@ impl SharedHeapAllocator {
                         Ok(sr) => {
                             let addr = sr.as_ptr().addr();
                             let nptr = NonNull::new(sr.as_mut_ptr()).unwrap();
-                            SHARED_HEAP_REGIONS.lock().insert(addr, sr).ok_or(()).unwrap_err();
+                            SHARED_HEAP_REGIONS
+                                .lock()
+                                .insert(addr, sr)
+                                .ok_or(())
+                                .unwrap_err();
                             let addr_remote =
                                 Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
                             let ptr_remote =
@@ -349,7 +370,6 @@ impl SharedHeapAllocator {
                         }
                     }
                 })
-                
             }
         }
     }
@@ -371,10 +391,7 @@ impl SharedHeapAllocator {
         }
     }
 
-    pub(crate) fn allocate_zeroed(
-        &self,
-        layout: Layout,
-    ) -> Result<ShmNonNull<[u8]>, AllocError> {
+    pub(crate) fn allocate_zeroed(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
         let ptr = self.allocate(layout)?;
         // SAFETY: `alloc` returns a valid memory block
         unsafe { ptr.as_mut_ptr().write_bytes(0, ptr.len()) }

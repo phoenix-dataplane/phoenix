@@ -1,5 +1,5 @@
-use ipc::shmalloc::SwitchAddressSpace;
 use super::raw_vec::RawVec;
+use ipc::shmalloc::SwitchAddressSpace;
 
 pub struct Vec<T> {
     buf: RawVec<T>,
@@ -20,7 +20,6 @@ impl<T> Vec<T> {
     pub(crate) unsafe fn update_buf_shmptr(&mut self, ptr: *mut T, addr_remote: usize) {
         self.buf.update_buf_shmptr(ptr, addr_remote);
     }
-
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
@@ -36,7 +35,7 @@ unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Vec<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ptr =  self.buf.ptr();
+        let ptr = self.buf.ptr();
         let slice = unsafe { std::slice::from_raw_parts(ptr, self.len) };
         std::fmt::Debug::fmt(slice, f)
     }
