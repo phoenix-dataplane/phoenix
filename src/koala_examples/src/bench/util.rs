@@ -158,8 +158,9 @@ pub fn print_lat(ctx: &Context, times: &[Instant]) {
         lat.push(t / factor);
     }
     println!(
-        "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+        "duration: {:?}, #iters: {}, avg: {:?}, min: {:?}, median: {:?}, P95: {:?}, P99: {:?}, max: {:?}",
         duration,
+        cnt,
         duration / cnt as u32,
         lat[0],
         lat[cnt / 2],
@@ -170,16 +171,11 @@ pub fn print_lat(ctx: &Context, times: &[Instant]) {
 }
 
 pub fn print_bw(ctx: &Context, tposted: &[Instant], tcompleted: &[Instant]) {
-    let tus = tcompleted[ctx.opt.num - 1]
-        .duration_since(tposted[0])
-        .as_micros() as f64;
-    let mbytes = (ctx.opt.size * ctx.opt.num) as f64 / tus; // MB=10^6B
-    let gbytes = mbytes / 1000.0; // 1GB=10^9B
-    let mpps = ctx.opt.num as f64 / tus;
+    let dura = tcompleted[ctx.opt.num - 1].duration_since(tposted[0]);
+    let bw_gbps = (ctx.opt.size * ctx.opt.num) as f64 * 8.0 / dura.as_secs_f64() / 1e9;
+    let msg_rate = ctx.opt.num as f64 / dura.as_secs_f64() / 1e6;
     println!(
-        "avg bw: {:.2}GB/s, {:.2}Gbps, {:.5}Mpps",
-        gbytes,
-        gbytes * 8.0,
-        mpps
+        "duration: {:?}, bandwidth: {:.2} Gb/s, rate: {:.5} Mpps",
+        dura, bw_gbps, msg_rate,
     );
 }
