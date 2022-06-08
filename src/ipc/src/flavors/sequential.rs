@@ -37,17 +37,17 @@ impl<A, B, C, D> Shared<A, B, C, D> {
 }
 
 /// # Safety
-/// 
+///
 /// A Customer can be safely sent only when its corresponding Service is also moved
 /// to the same thread at the same time. The engine runtime must guarantee that.
 unsafe impl<A: Send, B: Send, C: Send, D: Send> Send for Customer<A, B, C, D> {}
 unsafe impl<A: Send, B: Send, C: Send, D: Send> Send for Service<A, B, C, D> {}
 
 /// # Safety
-/// 
+///
 /// The runtime guarantees that the inner Shared<A, B, C, D> always has two onwers,
 /// and the two onwers are scheduled as a whole on the same runtime.
-/// 
+///
 /// `ref_thread_count == 1` is always true. So, it is safe to mark Sync.
 unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Customer<A, B, C, D> {}
 unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Service<A, B, C, D> {}

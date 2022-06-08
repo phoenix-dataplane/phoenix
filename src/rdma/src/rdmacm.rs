@@ -777,8 +777,8 @@ impl<'res> CmId<'res> {
             min_rnr_timer,
             ..Default::default()
         };
-        let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
-            | ffi::ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER;
+        let mask =
+            ffi::ibv_qp_attr_mask::IBV_QP_STATE | ffi::ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER;
         let rc = unsafe { ffi::ibv_modify_qp(qp, &mut attr, mask.0 as _) };
         if rc != 0 {
             return Err(io::Error::last_os_error());

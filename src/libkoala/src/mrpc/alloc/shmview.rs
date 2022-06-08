@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
-use std::ops::Deref;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem::ManuallyDrop;
+use std::ops::Deref;
 
 use super::boxed::Box;
-
 
 pub trait CloneFromBackendOwned {
     type BackendOwned;
@@ -13,14 +12,22 @@ pub trait CloneFromBackendOwned {
     fn clone_from_backend_owned(_: &Self::BackendOwned) -> Self;
 }
 
-pub struct ShmView<A: CloneFromBackendOwned>
-{
-    inner: ManuallyDrop<Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>>,
+pub struct ShmView<A: CloneFromBackendOwned> {
+    inner: ManuallyDrop<
+        Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>,
+    >,
 }
 
 impl<A: CloneFromBackendOwned> ShmView<A> {
-    pub(crate) fn new_from_backend_owned(backend_owned: Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>) -> Self {
-        ShmView { inner: ManuallyDrop::new(backend_owned) }
+    pub(crate) fn new_from_backend_owned(
+        backend_owned: Box<
+            <A as CloneFromBackendOwned>::BackendOwned,
+            crate::salloc::owner::BackendOwned,
+        >,
+    ) -> Self {
+        ShmView {
+            inner: ManuallyDrop::new(backend_owned),
+        }
     }
 }
 
@@ -30,8 +37,7 @@ impl<A: CloneFromBackendOwned> ShmView<A> {
     }
 }
 
-impl<A: CloneFromBackendOwned> Deref for ShmView<A>
-{
+impl<A: CloneFromBackendOwned> Deref for ShmView<A> {
     type Target = <A as CloneFromBackendOwned>::BackendOwned;
 
     fn deref(&self) -> &Self::Target {
@@ -39,18 +45,17 @@ impl<A: CloneFromBackendOwned> Deref for ShmView<A>
     }
 }
 
-impl<A> Eq for ShmView<A> 
-where 
+impl<A> Eq for ShmView<A>
+where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: Eq
+    <A as CloneFromBackendOwned>::BackendOwned: Eq,
 {
-
 }
 
 impl<A> Ord for ShmView<A>
-where 
+where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: Ord
+    <A as CloneFromBackendOwned>::BackendOwned: Ord,
 {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
@@ -61,7 +66,8 @@ where
 impl<A, B> PartialEq<ShmView<B>> for ShmView<A>
 where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: PartialEq<<B as CloneFromBackendOwned>::BackendOwned>,
+    <A as CloneFromBackendOwned>::BackendOwned:
+        PartialEq<<B as CloneFromBackendOwned>::BackendOwned>,
     B: CloneFromBackendOwned,
 {
     #[inline]
@@ -71,9 +77,9 @@ where
 }
 
 impl<A> PartialOrd for ShmView<A>
-where 
+where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: PartialOrd
+    <A as CloneFromBackendOwned>::BackendOwned: PartialOrd,
 {
     #[inline]
     fn partial_cmp(&self, other: &ShmView<A>) -> Option<Ordering> {
@@ -84,7 +90,7 @@ where
 impl<A> fmt::Debug for ShmView<A>
 where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: fmt::Debug
+    <A as CloneFromBackendOwned>::BackendOwned: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
@@ -94,7 +100,7 @@ where
 impl<A> fmt::Display for ShmView<A>
 where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: fmt::Display
+    <A as CloneFromBackendOwned>::BackendOwned: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
@@ -104,7 +110,7 @@ where
 impl<A> Hash for ShmView<A>
 where
     A: CloneFromBackendOwned,
-    <A as CloneFromBackendOwned>::BackendOwned: Hash
+    <A as CloneFromBackendOwned>::BackendOwned: Hash,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

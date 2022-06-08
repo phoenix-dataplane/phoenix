@@ -13,8 +13,7 @@ pub type CompletionSlot = [u8; 64];
 
 #[repr(C, align(64))]
 #[derive(Debug)]
-pub struct Completion {
-}
+pub struct Completion {}
 
 mod sa {
     use super::*;

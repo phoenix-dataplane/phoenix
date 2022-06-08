@@ -1,7 +1,7 @@
 //! Socket Control path commands.
 use std::net::SocketAddr;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use interface::Handle;
 

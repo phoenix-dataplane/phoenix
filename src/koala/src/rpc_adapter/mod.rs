@@ -1,14 +1,14 @@
 //! this engine translate RPC messages into transport-level work requests / completions
 use thiserror::Error;
 
-use crate::salloc::ControlPathError as SallocError;
 use crate::resource::Error as ResourceError;
+use crate::salloc::ControlPathError as SallocError;
 
+pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod module;
 pub(crate) mod state;
 pub(crate) mod ulib;
-pub(crate) mod acceptor;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]

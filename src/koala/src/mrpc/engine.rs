@@ -8,7 +8,7 @@ use ipc::mrpc::{cmd, control_plane, dp};
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
-use crate::engine::{future, Engine, EngineResult, Indicator, EngineRxMessage, Vertex};
+use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
 
@@ -187,7 +187,10 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        tracing::trace!("mRPC engine got request from App, call_id={}", erased.meta.call_id);
+                        tracing::trace!(
+                            "mRPC engine got request from App, call_id={}",
+                            erased.meta.call_id
+                        );
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
@@ -212,7 +215,10 @@ impl MrpcEngine {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
                     0 => {
-                        tracing::trace!("mRPC engine got reply from App, call_id={}", erased.meta.call_id);
+                        tracing::trace!(
+                            "mRPC engine got reply from App, call_id={}",
+                            erased.meta.call_id
+                        );
 
                         let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
@@ -237,7 +243,7 @@ impl MrpcEngine {
                     EngineRxMessage::RpcMessage(mut msg) => {
                         let span = info_span!("MrpcEngine check_input_queue: recv_msg");
                         let _enter = span.enter();
-        
+
                         // deliver the msg to application
                         let meta = {
                             // let span = info_span!("constructing MessageMeta");
@@ -256,7 +262,7 @@ impl MrpcEngine {
                             };
                             meta
                         };
-        
+
                         let msg_mut = unsafe { msg.as_mut() };
                         {
                             // let span = info_span!("switch_addr_space");
@@ -277,7 +283,10 @@ impl MrpcEngine {
                             shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
                             shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
                         };
-                        tracing::trace!("mRPC engine send message to App, call_id={}", meta.call_id);
+                        tracing::trace!(
+                            "mRPC engine send message to App, call_id={}",
+                            meta.call_id
+                        );
                         {
                             // let span = info_span!("customer.enqueue_wc");
                             // let _enter = span.enter();
@@ -293,16 +302,14 @@ impl MrpcEngine {
                         }
                     }
                     EngineRxMessage::SendCompletion(conn_id, call_id) => {
-                        {
-                            let mut sent = false;
-                            while !sent {
-                                self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                                    sent = true;
-                                    ptr.cast::<dp::Completion>()
-                                        .write(dp::Completion::SendCompletion(conn_id, call_id));
-                                    1
-                                })?;
-                            }
+                        let mut sent = false;
+                        while !sent {
+                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                sent = true;
+                                ptr.cast::<dp::Completion>()
+                                    .write(dp::Completion::SendCompletion(conn_id, call_id));
+                                1
+                            })?;
                         }
                     }
                 }

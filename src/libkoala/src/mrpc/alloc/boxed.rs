@@ -60,7 +60,7 @@ impl<T> Box<T> {
     }
 
     pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError>
-    where {
+where {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
         let (local, remote) = ptr.to_raw_parts();
@@ -318,7 +318,7 @@ impl<T: Clone> CloneFromBackendOwned for Box<T, AppOwned> {
         unsafe {
             (**backend_owned).write_clone_into_raw(boxed.as_mut_ptr());
             boxed.assume_init()
-        }        
+        }
     }
 }
 

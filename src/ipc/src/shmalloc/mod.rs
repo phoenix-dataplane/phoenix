@@ -1,8 +1,8 @@
-pub mod shmptr;
 pub mod shm_non_null;
+pub mod shmptr;
 
-pub use shmptr::ShmPtr;
 pub use shm_non_null::ShmNonNull;
+pub use shmptr::ShmPtr;
 
 // TODO(wyj): implement SwitchAddressSpace for all types
 // currently none of them is implemented
@@ -18,36 +18,36 @@ unsafe impl SwitchAddressSpace for u32 {}
 unsafe impl SwitchAddressSpace for u64 {}
 unsafe impl SwitchAddressSpace for u128 {}
 
-unsafe impl SwitchAddressSpace for i8 { }
-unsafe impl SwitchAddressSpace for i16 { }
-unsafe impl SwitchAddressSpace for i32 { }
-unsafe impl SwitchAddressSpace for i64 { }
-unsafe impl SwitchAddressSpace for i128 { }
-unsafe impl SwitchAddressSpace for isize { }
+unsafe impl SwitchAddressSpace for i8 {}
+unsafe impl SwitchAddressSpace for i16 {}
+unsafe impl SwitchAddressSpace for i32 {}
+unsafe impl SwitchAddressSpace for i64 {}
+unsafe impl SwitchAddressSpace for i128 {}
+unsafe impl SwitchAddressSpace for isize {}
 
-unsafe impl SwitchAddressSpace for std::num::NonZeroU8 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroU16 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroU32 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroU64 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroU128 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroUsize { }
+unsafe impl SwitchAddressSpace for std::num::NonZeroU8 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroU16 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroU32 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroU64 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroU128 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroUsize {}
 
-unsafe impl SwitchAddressSpace for std::num::NonZeroI8 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroI16 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroI32 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroI64 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroI128 { }
-unsafe impl SwitchAddressSpace for std::num::NonZeroIsize { }
+unsafe impl SwitchAddressSpace for std::num::NonZeroI8 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroI16 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroI32 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroI64 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroI128 {}
+unsafe impl SwitchAddressSpace for std::num::NonZeroIsize {}
 
-unsafe impl SwitchAddressSpace for f32 { }
-unsafe impl SwitchAddressSpace for f64 { }
+unsafe impl SwitchAddressSpace for f32 {}
+unsafe impl SwitchAddressSpace for f64 {}
 
-unsafe impl SwitchAddressSpace for bool { }
-unsafe impl SwitchAddressSpace for () { }
+unsafe impl SwitchAddressSpace for bool {}
+unsafe impl SwitchAddressSpace for () {}
 
-unsafe impl SwitchAddressSpace for char { }
+unsafe impl SwitchAddressSpace for char {}
 
-unsafe impl SwitchAddressSpace for std::time::Duration { }
+unsafe impl SwitchAddressSpace for std::time::Duration {}
 
 unsafe impl<T> SwitchAddressSpace for std::marker::PhantomData<T> {}
 

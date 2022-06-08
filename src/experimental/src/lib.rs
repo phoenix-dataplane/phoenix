@@ -9,13 +9,13 @@ use structopt::StructOpt;
 #[macro_use]
 extern crate log;
 
+mod aligned_alloc;
+pub mod ipc;
+mod mmap_aligned;
+mod regmr;
 pub mod ringbuffer;
 pub mod shm;
-pub mod ipc;
-mod aligned_alloc;
-mod regmr;
 mod shmalloc;
-mod mmap_aligned;
 
 #[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "benchmark lockless queue")]

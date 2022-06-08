@@ -97,7 +97,7 @@ impl<T> RawVec<T> {
             Self {
                 ptr,
                 cap: capacity,
-                _owner: AppOwned
+                _owner: AppOwned,
             }
         }
     }
@@ -105,7 +105,7 @@ impl<T> RawVec<T> {
     #[inline]
     pub unsafe fn from_raw_parts(ptr: *mut T, ptr_remote: *mut T, capacity: usize) -> Self {
         Self {
-            ptr: unsafe { ShmPtr::new_unchecked(ptr, ptr_remote) },
+            ptr: ShmPtr::new_unchecked(ptr, ptr_remote),
             cap: capacity,
             _owner: AppOwned,
         }
