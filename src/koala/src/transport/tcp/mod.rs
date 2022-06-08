@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
-pub mod module;
 pub mod engine;
+pub mod module;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -82,4 +82,3 @@ impl DatapathError {
         }
     }
 }
-

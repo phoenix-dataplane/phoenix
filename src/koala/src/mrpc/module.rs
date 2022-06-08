@@ -4,20 +4,20 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
-use lazy_static::lazy_static;
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use super::state::State;
 use super::engine::MrpcEngine;
+use super::state::State;
 use crate::config::MrpcConfig;
-use crate::engine::manager::RuntimeManager;
 use crate::engine::container::EngineContainer;
+use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
 
@@ -80,7 +80,10 @@ pub struct MrpcModule {
 
 impl MrpcModule {
     pub fn new(config: MrpcConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        MrpcModule { config, runtime_manager }
+        MrpcModule {
+            config,
+            runtime_manager,
+        }
     }
 
     pub fn handle_request(
@@ -126,7 +129,8 @@ impl MrpcModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
-        self.runtime_manager.submit(EngineContainer::new(engine), mode);
+        self.runtime_manager
+            .submit(EngineContainer::new(engine), mode);
 
         Ok(())
     }

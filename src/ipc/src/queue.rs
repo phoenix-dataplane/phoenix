@@ -99,12 +99,10 @@ impl<T> Queue<T> {
             unsafe { self.ptr_offset(self.head) },
             if avail == 0 {
                 0
+            } else if self.tail <= self.head {
+                self.cap() - self.head + 1
             } else {
-                if self.tail <= self.head {
-                    self.cap() - self.head + 1
-                } else {
-                    avail
-                }
+                avail
             },
         )
     }

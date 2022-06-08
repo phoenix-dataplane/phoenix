@@ -64,7 +64,6 @@ fn main() {
                 }
             }
 
-
             println!(
                 "{}: {} Mop/s in {} iters",
                 file!(),

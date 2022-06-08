@@ -87,10 +87,7 @@ impl Pager {
     /// Release a LargeObjectPage back to the System.
     #[allow(unused)]
     fn release_huge_page(&mut self, p: &'static mut HugeObjectPage<'static>) {
-        self.dealloc_page(
-            p as *const HugeObjectPage as *mut u8,
-            Pager::HUGE_PAGE_SIZE,
-        );
+        self.dealloc_page(p as *const HugeObjectPage as *mut u8, Pager::HUGE_PAGE_SIZE);
     }
 }
 

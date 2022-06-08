@@ -64,7 +64,6 @@
 #![warn(rust_2018_idioms)]
 // avoid warnings about RDMAmojo, iWARP, InfiniBand, etc. not being in backticks
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::doc_markdown))]
-
 // allow int_roundings for koala
 #![cfg_attr(feature = "koala", feature(int_roundings))]
 

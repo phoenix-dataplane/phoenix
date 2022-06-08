@@ -9,12 +9,10 @@ pub enum TransportType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Request {
-}
+pub enum Request {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ResponseKind {
-}
+pub enum ResponseKind {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response(pub IResult<ResponseKind>);

@@ -42,7 +42,7 @@ impl SharedRecvBuffer {
         // Map to the same address as remote_addr, panic if it does not work
         let mmap = MmapFixed::new(remote_addr, nbytes, file_off as i64, memfd.as_file())?;
 
-        // NOTE(wyj): align is not needed for shared recv buffer 
+        // NOTE(wyj): align is not needed for shared recv buffer
         // as we don't need to query backend addr for shared recv buffer
         Ok(SharedRecvBuffer {
             mmap,
@@ -51,8 +51,6 @@ impl SharedRecvBuffer {
         })
     }
 }
-
-
 
 // Shared region on sender heap
 #[derive(Debug)]

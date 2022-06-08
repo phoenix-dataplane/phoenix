@@ -11,16 +11,16 @@ extern crate tracing;
 // alias
 extern crate tracing as log;
 
+pub mod config;
+pub mod control;
 pub mod engine;
-pub mod resource;
-pub mod state_mgr;
-pub mod transport;
 pub mod mrpc;
+pub mod node;
+pub mod resource;
 pub mod rpc_adapter;
 pub mod salloc;
-pub mod control;
-pub mod config;
-pub mod node;
+pub mod state_mgr;
+pub mod transport;
 
 #[macro_export]
 macro_rules! unimplemented_ungradable {
@@ -47,5 +47,5 @@ macro_rules! unimplemented_ungradable {
                 unimplemented!();
             }
         }
-    }
+    };
 }

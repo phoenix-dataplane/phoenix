@@ -2,7 +2,7 @@ use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 pub struct RawVec<T> {
     ptr: ShmPtr<T>,
-    _cap: usize
+    _cap: usize,
 }
 
 unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {

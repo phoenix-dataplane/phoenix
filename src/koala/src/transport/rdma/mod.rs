@@ -3,13 +3,13 @@ use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
-pub mod ops;
 pub mod engine;
 pub mod module;
+pub mod ops;
 pub mod state;
 
 /// Module for connection management. It runs an IO reactor, listening for OS events and pass them
-/// back to the event subscriber. It must be run in a separate runtime to make sure not interfere 
+/// back to the event subscriber. It must be run in a separate runtime to make sure not interfere
 /// with other engines.
 pub mod cm;
 

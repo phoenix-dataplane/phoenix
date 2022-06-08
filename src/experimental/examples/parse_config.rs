@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use interface::engine::EngineType;
 
@@ -87,7 +87,9 @@ impl Config {
                     } else {
                         key.clone()
                     };
-                    if !modules.contains(&engine_type_str) { continue; }
+                    if !modules.contains(&engine_type_str) {
+                        continue;
+                    }
                     // let module: Module = &config[key].to_string().parse().unwrap();
                     println!("engine_type_str: {:?}", engine_type_str);
                     println!("to_str: {:?}", config[key].to_string());

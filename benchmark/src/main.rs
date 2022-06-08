@@ -81,11 +81,10 @@ fn open_with_create_append<P: AsRef<path::Path>>(path: P) -> fs::File {
 fn get_command_str(cmd: &Command) -> String {
     let prog = cmd.get_program().to_str().unwrap();
     let args: Vec<&str> = cmd.get_args().map(|x| x.to_str().unwrap()).collect();
-    let cmd_str = std::iter::once(prog)
+    std::iter::once(prog)
         .chain(args)
         .collect::<Vec<_>>()
-        .join(" ");
-    cmd_str
+        .join(" ")
 }
 
 fn wait_command(
@@ -98,25 +97,21 @@ fn wait_command(
     let cmd_str = get_command_str(&cmd);
 
     use std::os::unix::process::ExitStatusExt; // signal.status
-    let mut child = cmd.spawn().expect(&format!("Failed to spawn '{cmd_str}'"));
+    let mut child = cmd
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to spawn '{cmd_str}' because: {e}"));
 
-    let mut stdout_reader = child
-        .stdout
-        .take()
-        .map(|reader| line_reader::LineReader::new(reader));
-    let mut stderr_reader = child
-        .stderr
-        .take()
-        .map(|reader| line_reader::LineReader::new(reader));
+    let mut stdout_reader = child.stdout.take().map(line_reader::LineReader::new);
+    let mut stderr_reader = child.stderr.take().map(line_reader::LineReader::new);
 
     loop {
         if let Some(reader) = stdout_reader.as_mut() {
-            for line in reader.next_line()? {
+            while let Some(line) = reader.next_line()? {
                 println!("[{}] {}", host, std::str::from_utf8(&line).unwrap());
             }
         }
         if let Some(reader) = stderr_reader.as_mut() {
-            for line in reader.next_line()? {
+            while let Some(line) = reader.next_line()? {
                 println!("[{}] {}", host, std::str::from_utf8(&line).unwrap());
             }
         }
@@ -182,7 +177,7 @@ fn start_ssh(
     worker: WorkerSpec,
     config: &Config,
     envs: &[(String, String)],
-) -> impl FnOnce() -> () {
+) -> impl FnOnce() {
     let benchmark_name = benchmark.name.clone();
     let host = worker.host.clone();
     let output_dir = opt.output_dir.as_ref().map(|d| d.join(&benchmark_name));
@@ -265,7 +260,7 @@ fn start_ssh(
 }
 
 // We assume a NFS setup, so we do not need to ssh to each worker machine to build the binaries.
-fn build_all<'a, A: AsRef<str>, P: AsRef<path::Path>>(
+fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     binaries: impl IntoIterator<Item = A>,
     cargo_dir: P,
 ) -> anyhow::Result<()> {
@@ -274,8 +269,7 @@ fn build_all<'a, A: AsRef<str>, P: AsRef<path::Path>>(
             .join("Cargo.toml");
     let args_bins: Vec<_> = binaries
         .into_iter()
-        .map(|b| vec!["--bin".to_owned(), b.as_ref().to_owned()])
-        .flatten()
+        .flat_map(|b| vec!["--bin".to_owned(), b.as_ref().to_owned()])
         .collect();
     // format!("cd {cargo_dir}; cargo build --release {args_bins}");
     let mut cargo_build_cmd = Command::new("cargo");

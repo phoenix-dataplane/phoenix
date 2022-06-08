@@ -1,4 +1,6 @@
+use std::borrow::{Cow, ToOwned};
 use std::cmp::{self, Ordering};
+use std::collections::TryReserveError;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::intrinsics::{arith_offset, assume};
@@ -9,15 +11,13 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 use std::ops::{self, Index, IndexMut, RangeBounds};
 use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
-use std::borrow::{Cow, ToOwned};
-use std::collections::TryReserveError;
 
 use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
-use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
-use super::shmview::CloneFromBackendOwned;
-use super::raw_vec::RawVec;
 use super::boxed::Box;
+use super::raw_vec::RawVec;
+use super::shmview::CloneFromBackendOwned;
+use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
 pub struct Vec<T, O: AllocOwner = AppOwned> {
     buf: RawVec<T, O>,
@@ -71,7 +71,7 @@ impl<T> Vec<T> {
     //     unsafe {
     //         self.shrink_to_fit();
     //         let me = ManuallyDrop::new(self);
-    //         let buf = ptr::read(&me.buf); 
+    //         let buf = ptr::read(&me.buf);
     //         let len = me.len();
     //         buf.into_box(len).assume_init()
     //     }

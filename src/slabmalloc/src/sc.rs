@@ -64,7 +64,7 @@ pub struct SCAllocator<'a, P: AllocablePage> {
     // a buffer of addrs of the pages (shared regions) to be released
     pub(crate) release_buffer: ArrayVec<usize, RELEASE_BUFFER_SIZE>,
     // a counter for releasing empty pages to the release buffer
-    pub(crate) release_count: usize
+    pub(crate) release_count: usize,
 }
 
 /// Creates an instance of a scallocator, we do this in a macro because we
@@ -79,7 +79,7 @@ macro_rules! new_sc_allocator {
             slabs: PageList::new(),
             full_slabs: PageList::new(),
             release_buffer: ArrayVec::new_const(),
-            release_count: 0
+            release_count: 0,
         }
     };
 }
@@ -331,7 +331,16 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
     }
 
     /// Allocate with the opportunity to recycle released empty slabs
-    pub fn allocate_with_release(&mut self, layout: Layout) -> Result<(NonNull<u8>, Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>), AllocationError> {
+    pub fn allocate_with_release(
+        &mut self,
+        layout: Layout,
+    ) -> Result<
+        (
+            NonNull<u8>,
+            Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>,
+        ),
+        AllocationError,
+    > {
         trace!(
             "SCAllocator({}) is trying to allocate {:?}",
             self.size,
@@ -375,7 +384,7 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
 
         let res = NonNull::new(ptr)
             .ok_or(AllocationError::OutOfMemory)
-            .map(|ptr| { (ptr, release_slabs) });
+            .map(|ptr| (ptr, release_slabs));
 
         if !ptr.is_null() {
             trace!(

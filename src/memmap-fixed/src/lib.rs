@@ -44,7 +44,11 @@ impl MmapFixed {
                 target_addr as *mut libc::c_void,
                 map_len,
                 libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED | libc::MAP_NORESERVE | libc::MAP_POPULATE | libc::MAP_FIXED_NOREPLACE | hugetlb,
+                libc::MAP_SHARED
+                    | libc::MAP_NORESERVE
+                    | libc::MAP_POPULATE
+                    | libc::MAP_FIXED_NOREPLACE
+                    | hugetlb,
                 memfile.as_raw_fd(),
                 file_off,
             )
