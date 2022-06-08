@@ -141,7 +141,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let dura = ts.elapsed();
-    eprintln!(
+    println!(
         "duration: {:?}, bandwidth: {} Gb/s",
         dura,
         8e-9 * opts.total_iters as f64 * opts.msg_size as f64 / dura.as_secs_f64()
