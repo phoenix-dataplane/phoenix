@@ -88,7 +88,10 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
     const REBALANCE_COUNT: usize = 64;
     // controls the frequency of releasing empty pages
     // performs a page release after RELEASE_COUNT times rebalance
+    #[cfg(not(test))]
     const RELEASE_COUNT: usize = 4;
+    #[cfg(test)]
+    const RELEASE_COUNT: usize = usize::MAX;
 
     /// Create a new SCAllocator.
     #[cfg(feature = "unstable")]
