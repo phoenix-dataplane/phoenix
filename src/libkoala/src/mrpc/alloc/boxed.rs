@@ -20,7 +20,7 @@ use ipc::shmalloc::{ShmNonNull, ShmPtr, SwitchAddressSpace};
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
-use super::shmview::CloneFromBackendOwned;
+use super::shmview::from_backend::CloneFromBackendOwned;
 
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment

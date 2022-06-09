@@ -16,7 +16,7 @@ use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
-use super::shmview::CloneFromBackendOwned;
+use super::shmview::from_backend::CloneFromBackendOwned;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
 pub struct Vec<T, O: AllocOwner = AppOwned> {

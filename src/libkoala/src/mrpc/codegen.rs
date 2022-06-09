@@ -8,7 +8,7 @@ use ipc::shmalloc::SwitchAddressSpace;
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::alloc::ShmView;
+use crate::mrpc::alloc::{ShmView, ShmRecvContext};
 use crate::mrpc::stub::{
     ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
 };
@@ -82,13 +82,14 @@ mod inner {
     }
 }
 
-pub struct ReqFuture {
+pub struct ReqFuture<'a> {
     conn_id: interface::Handle,
     call_id: u32,
+    ctx: ShmRecvContext<'a>,
 }
 
-impl Future for ReqFuture {
-    type Output = Result<ShmView<HelloReply>, mrpc::Status>;
+impl<'a> Future for ReqFuture<'a> {
+    type Output = Result<ShmView<'a, HelloReply>, mrpc::Status>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         check_completion_queue();
@@ -104,7 +105,7 @@ impl Future for ReqFuture {
             let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
             let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
             let reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
-            let reply = ShmView::new_from_backend_owned(reply);
+            let reply = ShmView::new_from_backend_owned(reply, this.ctx);
             Poll::Ready(Ok(reply))
         } else {
             cx.waker().wake_by_ref();
@@ -113,38 +114,11 @@ impl Future for ReqFuture {
     }
 }
 
-// Reply cache, call_id -> Reply, Sync, not durable
-// #[derive(Debug)]
-// pub struct ReplyCache {
-//     cache: spin::Mutex<HashMap<u64, MessageTemplateErased>>,
-// }
-
-// impl ReplyCache {
-//     fn new() -> Self {
-//         Self {
-//             cache: spin::Mutex::new(HashMap::default()),
-//         }
-//     }
-
-//     #[inline]
-//     fn insert(&self, call_id: u64, erased: MessageTemplateErased) {
-//         self.cache
-//             .lock()
-//             .insert(call_id, erased)
-//             .ok_or(())
-//             .unwrap_err();
-//     }
-
-//     #[inline]
-//     fn remove(&self, call_id: u64) -> Option<MessageTemplateErased> {
-//         self.cache.lock().remove(&call_id)
-//     }
-// }
 
 #[derive(Debug)]
 pub struct GreeterClient {
     stub: ClientStub,
-    pub call_counter: u32,
+    call_counter: std::cell::RefCell<u32>,
 }
 
 impl GreeterClient {
@@ -157,16 +131,17 @@ impl GreeterClient {
         let stub = ClientStub::connect(dst).unwrap();
         Ok(Self {
             stub,
-            call_counter: 0,
+            call_counter: std::cell::RefCell::new(0),
         })
     }
 
     pub fn say_hello(
-        &mut self,
+        &self,
         msg: &mut RpcMessage<inner::HelloRequest<AppOwned>>,
-    ) -> impl Future<Output = Result<ShmView<HelloReply>, mrpc::Status>> {
+    ) -> impl Future<Output = Result<ShmView<HelloReply>, mrpc::Status>> + '_ {
         let conn_id = self.stub.get_handle();
-        let call_id = self.call_counter;
+        let mut call_counter = self.call_counter.borrow_mut();
+        let call_id = *call_counter;
         msg.inner.meta.conn_id = conn_id;
         msg.inner.meta.call_id = call_id;
         msg.inner.meta.func_id = Self::FUNC_ID;
@@ -174,10 +149,13 @@ impl GreeterClient {
         // increase send count for RpcMessage
         msg.send_count += 1;
 
-        self.call_counter += 1;
+        *call_counter += 1;
 
         self.stub.post_request(msg).unwrap();
-        ReqFuture { conn_id, call_id }
+        
+        let ctx = ShmRecvContext::new(self);
+
+        ReqFuture { conn_id, call_id, ctx }
     }
 }
 
@@ -228,7 +206,8 @@ impl<T: Greeter> Service for GreeterServer<T> {
         let req = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
         // TODO(wyj): lifetime bound for ShmView
         // ShmView should be !Send and !Sync
-        let req = ShmView::new_from_backend_owned(req);
+        let ctx = ();
+        let req = ShmView::new_from_backend_owned(req, ShmRecvContext::new(&ctx));
         // TODO(wyj): should not be forget.
         // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
         // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to

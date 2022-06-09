@@ -297,35 +297,15 @@ fn finish_grow(
     })
 }
 
-trait SpecializedDrop {
-    fn drop(&mut self);
-}
-
-impl<T> SpecializedDrop for RawVec<T, AppOwned> {
-    fn drop(&mut self) {
-        if let Some((ptr, layout)) = self.current_memory() {
-            // Contents (T) are dropped by RawVec's users
-            unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
-        }
-    }
-}
-
-impl<T> SpecializedDrop for RawVec<T, BackendOwned> {
-    fn drop(&mut self) {
-        // TODO(wyj)
-        return;
-    }
-}
-
-impl<T, O: AllocOwner> SpecializedDrop for RawVec<T, O> {
-    default fn drop(&mut self) {
-        unreachable!("SpecializedDrop should be specialized for AppOwned and BackendOwned");
-    }
-}
 
 impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     fn drop(&mut self) {
-        (self as &mut dyn SpecializedDrop).drop();
+        if O::is_app_owend() {
+            if let Some((ptr, layout)) = self.current_memory() {
+                // Contents (T) are dropped by RawVec's users
+                unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
+            }
+        }
     }
 }
 

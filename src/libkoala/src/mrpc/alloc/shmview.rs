@@ -1,43 +1,60 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
 
 use super::boxed::Box;
 
-pub trait CloneFromBackendOwned {
-    type BackendOwned;
-
-    fn clone_from_backend_owned(_: &Self::BackendOwned) -> Self;
+pub(crate) mod from_backend {
+    pub trait CloneFromBackendOwned {
+        type BackendOwned;
+    
+        fn clone_from_backend_owned(_: &Self::BackendOwned) -> Self;
+    }    
 }
 
-pub struct ShmView<A: CloneFromBackendOwned> {
+use from_backend::CloneFromBackendOwned;
+
+#[derive(Clone, Copy)]
+pub(crate) struct ShmRecvContext<'a>(PhantomData<&'a ()>);
+
+impl<'a> ShmRecvContext<'a> {
+    pub(crate) fn new<T>(_ctx: &'a T) -> Self {
+        ShmRecvContext(PhantomData)
+    }
+}
+
+pub struct ShmView<'a, A: CloneFromBackendOwned> {
     inner: ManuallyDrop<
         Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>,
     >,
+    _ctx: ShmRecvContext<'a>,
 }
 
-impl<A: CloneFromBackendOwned> ShmView<A> {
+impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
     pub(crate) fn new_from_backend_owned(
         backend_owned: Box<
             <A as CloneFromBackendOwned>::BackendOwned,
             crate::salloc::owner::BackendOwned,
         >,
+        ctx: ShmRecvContext<'a>
     ) -> Self {
         ShmView {
             inner: ManuallyDrop::new(backend_owned),
+            _ctx: ctx
         }
     }
 }
 
-impl<A: CloneFromBackendOwned> ShmView<A> {
+impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
     pub fn into_owned(self) -> A {
         <A as CloneFromBackendOwned>::clone_from_backend_owned(&self.inner)
     }
 }
 
-impl<A: CloneFromBackendOwned> Deref for ShmView<A> {
+impl<'a, A: CloneFromBackendOwned> Deref for ShmView<'a, A> {
     type Target = <A as CloneFromBackendOwned>::BackendOwned;
 
     fn deref(&self) -> &Self::Target {
@@ -45,14 +62,14 @@ impl<A: CloneFromBackendOwned> Deref for ShmView<A> {
     }
 }
 
-impl<A> Eq for ShmView<A>
+impl<'a, A> Eq for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: Eq,
 {
 }
 
-impl<A> Ord for ShmView<A>
+impl<'a, A> Ord for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: Ord,
@@ -63,7 +80,7 @@ where
     }
 }
 
-impl<A, B> PartialEq<ShmView<B>> for ShmView<A>
+impl<'a, 'b, A, B> PartialEq<ShmView<'b, B>> for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned:
@@ -71,12 +88,12 @@ where
     B: CloneFromBackendOwned,
 {
     #[inline]
-    fn eq(&self, other: &ShmView<B>) -> bool {
+    fn eq(&self, other: &ShmView<'b, B>) -> bool {
         PartialEq::eq(&**self, &**other)
     }
 }
 
-impl<A> PartialOrd for ShmView<A>
+impl<'a, A> PartialOrd for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: PartialOrd,
@@ -87,7 +104,7 @@ where
     }
 }
 
-impl<A> fmt::Debug for ShmView<A>
+impl<'a, A> fmt::Debug for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: fmt::Debug,
@@ -97,7 +114,7 @@ where
     }
 }
 
-impl<A> fmt::Display for ShmView<A>
+impl<'a, A> fmt::Display for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: fmt::Display,
@@ -107,7 +124,7 @@ where
     }
 }
 
-impl<A> Hash for ShmView<A>
+impl<'a, A> Hash for ShmView<'a, A>
 where
     A: CloneFromBackendOwned,
     <A as CloneFromBackendOwned>::BackendOwned: Hash,
@@ -118,7 +135,7 @@ where
     }
 }
 
-impl<A: CloneFromBackendOwned> AsRef<<A as CloneFromBackendOwned>::BackendOwned> for ShmView<A> {
+impl<'a, A: CloneFromBackendOwned> AsRef<<A as CloneFromBackendOwned>::BackendOwned> for ShmView<'a, A> {
     fn as_ref(&self) -> &<A as CloneFromBackendOwned>::BackendOwned {
         &**self
     }
