@@ -1,0 +1,20 @@
+[package]
+name = "bench"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libkoala = { path = "../../libkoala" }
+
+structopt = "0.3.23"
+ 
+
+[[bin]]
+name = "bench_lat"
+path = "src/bench_lat.rs"
+
+[[bin]]
+name = "bench_bw"
+path = "src/bench_bw.rs"

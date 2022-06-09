@@ -6,9 +6,19 @@ members = [
   "src/rdma",
   "src/utils",
   "src/libkoala",
-  "src/koala_examples",
+  "src/mrpc",
+  "src/mrpc/mrpc-build",
+  "src/koala_examples/hello",
+  "src/koala_examples/send_bw",
+  "src/koala_examples/send_lat",
+  "src/koala_examples/bench",
+  "src/koala_examples/alltoall",
+  "src/koala_examples/rpc_hello",
   "src/memmap-fixed",
   "benchmark",
+]
+exclude = [
+  "src/3rdparty/prost",
 ]
 
 [profile.release]

@@ -209,7 +209,7 @@ impl MrpcEngine {
                 // TODO(wyj): sanity check on the addr contained in erased
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
-                    0 => {
+                    3687134534u32 => {
                         tracing::trace!(
                             "mRPC engine got request from App, call_id={}",
                             erased.meta.call_id
@@ -239,7 +239,7 @@ impl MrpcEngine {
             WorkRequest::Reply(erased) => {
                 // recover the original data type based on the func_id
                 match erased.meta.func_id {
-                    0 => {
+                    3687134534u32 => {
                         tracing::trace!(
                             "mRPC engine got reply from App, call_id={}",
                             erased.meta.call_id

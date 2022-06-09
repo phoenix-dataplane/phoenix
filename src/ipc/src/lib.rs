@@ -3,7 +3,6 @@
 #![feature(slice_index_methods)]
 // added by boxed.rs
 // TODO(cjr): remove unused feature.
-#![feature(specialization)]
 #![feature(strict_provenance)]
 #![feature(ptr_internals)]
 #![feature(ptr_metadata)]

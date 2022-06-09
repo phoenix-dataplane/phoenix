@@ -133,8 +133,10 @@ fn wait_command(
                 break;
             }
             Ok(None) => {
-                log::trace!("status not ready yet, sleep for 5 ms");
-                thread::sleep(Duration::from_millis(5));
+                if stdout_reader.is_none() && stdout_reader.is_none() {
+                    log::trace!("status not ready yet, sleep for 5 ms");
+                    thread::sleep(Duration::from_millis(5));
+                }
             }
             Err(e) => {
                 panic!("Command wasn't running: {}", e);
@@ -208,7 +210,7 @@ fn start_ssh(
             cmd.stdout(stdout).stderr(stderr);
         } else {
             // collect the result to local stdout, similar to mpirun
-            // cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
 
         cmd.arg("-oStrictHostKeyChecking=no")
@@ -223,7 +225,7 @@ fn start_ssh(
         let env_path = env::var("PATH").expect("failed to get PATH");
         if !debug_mode {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} cargo run --release --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -232,7 +234,7 @@ fn start_ssh(
             ));
         } else {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} cargo run --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --bin {} -- {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,

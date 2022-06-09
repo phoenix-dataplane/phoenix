@@ -25,10 +25,12 @@
 #![crate_type = "lib"]
 
 mod pages;
+mod pool;
 mod sc;
 mod zone;
 
 pub use pages::*;
+pub use pool::*;
 pub use sc::*;
 pub use zone::*;
 

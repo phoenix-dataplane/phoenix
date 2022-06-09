@@ -2,6 +2,12 @@
 
 [![Build Status](https://github.com/koalanet-project/koala/workflows/build/badge.svg)](https://github.com/koalanet-project/koala/actions)
 
+
+Start koala backends on all servers.
+
+```
+```
+
 On server `rdma0.danyang-06`, start koala backend,
 ```
 KOALA_LOG=trace cargo rr --bin koala

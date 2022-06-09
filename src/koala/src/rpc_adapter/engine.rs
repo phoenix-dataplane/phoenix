@@ -187,7 +187,7 @@ impl RpcAdapterEngine {
             let sglist = match meta_ref.msg_type {
                 RpcMsgType::Request => {
                     match meta_ref.func_id {
-                        0 => {
+                        3687134534u32 => {
                             // TODO: double-check whether it is valid to just conjure up an object on shm
                             let ptr_backend = msg.addr_backend as *mut codegen::HelloRequest;
                             let msg_ref = unsafe { &*ptr_backend };
@@ -197,7 +197,7 @@ impl RpcAdapterEngine {
                     }
                 }
                 RpcMsgType::Response => match meta_ref.func_id {
-                    0 => {
+                    3687134534u32 => {
                         let ptr_backend = msg.addr_backend as *mut codegen::HelloReply;
                         let msg_ref = unsafe { &*ptr_backend };
                         msg_ref.marshal().unwrap()
@@ -318,7 +318,7 @@ impl RpcAdapterEngine {
 
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
-                0 => {
+                3687134534u32 => {
                     let msg = unsafe {
                         codegen::HelloRequest::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
                     };
@@ -328,7 +328,7 @@ impl RpcAdapterEngine {
                 _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
             },
             RpcMsgType::Response => match meta.func_id {
-                0 => {
+                3687134534u32 => {
                     let msg = unsafe {
                         codegen::HelloReply::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
                     };
@@ -368,7 +368,7 @@ impl RpcAdapterEngine {
                         WcOpcode::Send => {
                             // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
-                                trace!("post_send_imm completed, wr_id={}", wc.wr_id);
+                                tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                                 let conn_id = Handle((wc.wr_id >> 32) as u32);
                                 let call_id = wc.wr_id as u32;
                                 let wr_identifier = WrIdentifier(conn_id, call_id);
