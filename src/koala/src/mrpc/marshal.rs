@@ -84,10 +84,10 @@ impl Unmarshal for MessageTemplateErased {
         header_sgl.len = mem::size_of::<MessageMeta>();
         let meta = MessageMeta::unmarshal(SgList(vec![header_sgl]), salloc_state)?;
         let mut this = meta.cast::<Self>();
-        let local_addr = sg_list.0[0].ptr as usize;
-        this.as_mut().shm_addr = local_addr;
-        let remote_msg_addr = salloc_state.resource.query_app_addr(local_addr).unwrap();
-        this.as_mut().shm_addr_remote = remote_msg_addr;
+        let backend_addr = sg_list.0[0].ptr as usize;
+        this.as_mut_backend().shm_addr_app = backend_addr;
+        let app_addr = salloc_state.resource.query_app_addr(backend_addr).unwrap();
+        this.as_mut_backend().shm_addr_backend = app_addr;
         Ok(this)
     }
 }
@@ -122,7 +122,7 @@ impl<T> MessageTemplate<T> {
     }
 }
 
-impl<T: Send + Marshal + Unmarshal + 'a> MessageTemplate<T> {
+impl<T: Send + Marshal + Unmarshal + 'static> MessageTemplate<T> {
     pub(crate) fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage> {
         let (ptr_app, ptr_backend) = msg.to_raw_parts();
         // SAFETY: `msg` is already a valid Shmptr
