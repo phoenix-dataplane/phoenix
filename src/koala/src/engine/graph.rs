@@ -1,19 +1,20 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use interface::{engine::EngineType, Handle};
-use ipc::shmalloc::ShmPtr;
+use interface::engine::EngineType;
+use interface::Handle;
+use interface::rpc::MessageErased;
 
 use crate::mrpc::marshal::RpcMessage;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
-pub(crate) type TxIQueue = UnboundedReceiver<ShmPtr<dyn RpcMessage>>;
-pub(crate) type TxOQueue = UnboundedSender<ShmPtr<dyn RpcMessage>>;
+pub(crate) type TxIQueue = UnboundedReceiver<MessageErased>;
+pub(crate) type TxOQueue = UnboundedSender<MessageErased>;
 
 #[derive(Debug)]
 pub(crate) enum EngineRxMessage {
-    RpcMessage(ShmPtr<dyn RpcMessage>),
+    RpcMessage(MessageErased),
     SendCompletion(Handle, u32),
 }
 

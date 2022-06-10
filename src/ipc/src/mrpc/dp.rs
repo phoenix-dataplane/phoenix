@@ -1,7 +1,7 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::{rpc::MessageTemplateErased, Handle};
+use interface::{rpc::MessageErased, Handle};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -12,9 +12,9 @@ pub type WorkRequestSlot = [u8; 64];
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
-    Call(MessageTemplateErased),
+    Call(MessageErased),
     // this will also deallocate
-    Reply(MessageTemplateErased),
+    Reply(MessageErased),
 }
 
 pub type CompletionSlot = [u8; 64];
@@ -22,7 +22,7 @@ pub type CompletionSlot = [u8; 64];
 #[repr(C, align(64))]
 #[derive(Debug)]
 pub enum Completion {
-    Recv(MessageTemplateErased),
+    Recv(MessageErased),
     SendCompletion(Handle, u32),
 }
 

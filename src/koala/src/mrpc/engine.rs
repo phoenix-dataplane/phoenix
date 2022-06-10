@@ -191,22 +191,14 @@ impl MrpcEngine {
                             "mRPC engine got request from App, call_id={}",
                             erased.meta.call_id
                         );
-
+                        
                         let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
                         // Safety: this is fine here because msg is already a unique
                         // pointer
-                        // debug!("start to marshal");
-                        // unsafe { msg.as_ref_backend() }.marshal();
-                        // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
-                        // debug!("end marshal");
 
                         let dyn_msg = MessageTemplate::into_rpc_message(msg);
 
-                        {
-                            // let span = info_span!("tx_outputs.send");
-                            // let _enter = span.enter();
-                            self.tx_outputs()[0].send(dyn_msg)?;
-                        }
+                        self.tx_outputs()[0].send(dyn_msg)?;
                     }
                     _ => unimplemented!(),
                 }

@@ -22,7 +22,7 @@ pub struct MessageMeta {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct MessageTemplateErased {
+pub struct MessageErased {
     pub meta: MessageMeta,
     pub shm_addr_app: usize,
     pub shm_addr_backend: usize,
