@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
 use interface::Handle;
 
-use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::ShmPtr;
 
 use crate::salloc::state::Shared as SallocShared;
 
@@ -57,26 +57,17 @@ impl Unmarshal for MessageMeta {
         if sg_list.0[0].len != mem::size_of::<Self>() {
             return Err(());
         }
-        let this_remote_addr = salloc_state
+        let app_addr = salloc_state
             .resource
             .query_app_addr(sg_list.0[0].ptr)
             .unwrap();
+        let ptr_backend = sg_list.0[0].ptr as *mut Self;
+        let ptr_app = ptr_backend.with_addr(app_addr);
         let this =
-            ShmPtr::new(sg_list.0[0].ptr as *mut Self, this_remote_addr as *mut Self).unwrap();
+            ShmPtr::new(ptr_app, ptr_backend).unwrap();
         Ok(this)
     }
 }
-
-// NOTE(wyj): Marshal should not be implemented for MessageTemplateErased
-// impl Marshal for MessageTemplateErased {
-//     type Error = ();
-//     fn marshal(&self) -> Result<SgList, Self::Error> {
-//         let selfptr = self as *const _ as usize;
-//         let len = mem::size_of::<Self>();
-//         let sgl = SgList(vec![ShmBuf { ptr: selfptr, len }]);
-//         Ok(sgl)
-//     }
-// }
 
 impl Unmarshal for MessageTemplateErased {
     type Error = ();
@@ -101,7 +92,7 @@ impl Unmarshal for MessageTemplateErased {
     }
 }
 
-pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
+pub(crate) trait RpcMessage: Send {
     fn conn_id(&self) -> Handle;
     fn func_id(&self) -> u32;
     fn call_id(&self) -> u32; // unique id
@@ -110,6 +101,8 @@ pub(crate) trait RpcMessage: Send + SwitchAddressSpace {
     fn marshal(&self) -> SgList;
 }
 
+// NOTE(wyj): We require T to be Sized, so that ShmPtr<T> is thin pointer
+// The representation (size and align) of MessageTemplate<T> therefore matches MessageTemplateErased
 #[repr(C)]
 #[derive(Debug)]
 pub(crate) struct MessageTemplate<T> {
@@ -120,23 +113,23 @@ pub(crate) struct MessageTemplate<T> {
 impl<T> MessageTemplate<T> {
     pub unsafe fn new(erased: MessageTemplateErased) -> ShmPtr<Self> {
         // TODO(cjr): double-check if it is valid at all to just conjure up an object on shm
-        let ptr = erased.shm_addr as *mut MessageTemplate<T>;
-        let ptr_remote = ptr.with_addr(erased.shm_addr_remote);
-        let this = ShmPtr::new(ptr, ptr_remote).unwrap();
-        assert_eq!(this.as_ref().meta, erased.meta);
-        // debug!("this.as_ref.meta: {:?}", this.as_ref().meta);
+        let ptr_app = erased.shm_addr_app as *mut MessageTemplate<T>;
+        let ptr_backend = ptr_app.with_addr(erased.shm_addr_backend);
+        let this = ShmPtr::new(ptr_app, ptr_backend).unwrap();
+        // NOTE(wyj): change to debug_assert_eq
+        debug_assert_eq!(this.as_ref_backend().meta, erased.meta);
         this
     }
 }
 
-impl<'a, T: Send + Marshal + Unmarshal + SwitchAddressSpace + 'a> MessageTemplate<T> {
-    pub(crate) fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage + 'a> {
-        let (local, remote) = msg.to_raw_parts();
+impl<T: Send + Marshal + Unmarshal + 'a> MessageTemplate<T> {
+    pub(crate) fn into_rpc_message(msg: ShmPtr<Self>) -> ShmPtr<dyn RpcMessage> {
+        let (ptr_app, ptr_backend) = msg.to_raw_parts();
         // SAFETY: `msg` is already a valid Shmptr
         unsafe {
             ShmPtr::new_unchecked(
-                local.as_ptr() as *mut dyn RpcMessage,
-                remote.as_ptr() as *mut dyn RpcMessage,
+                ptr_app.as_ptr() as *mut dyn RpcMessage,
+                ptr_backend.as_ptr() as *mut dyn RpcMessage,
             )
         }
     }
@@ -148,7 +141,7 @@ impl<T: Marshal> Marshal for MessageTemplate<T> {
         let selfptr = self as *const _ as usize;
         let len = mem::size_of::<Self>();
         let sge1 = ShmBuf { ptr: selfptr, len };
-        let mut sgl = unsafe { self.val.as_ref() }.marshal()?;
+        let mut sgl = unsafe { self.val.as_ref_backend() }.marshal()?;
         sgl.0.insert(0, sge1);
         // eprintln!("MessageTemplate<T>, marshal, sgl: {:0x?}", sgl);
         Ok(sgl)
@@ -173,12 +166,12 @@ impl<T: Unmarshal> Unmarshal for MessageTemplate<T> {
         // debug!("MessageTemplate<T>, unmarshal, this: {:?}", this);
         let val = T::unmarshal(sg_list, salloc_state).or(Err(()))?;
         // debug!("MessageTemplate<T>, unmarshal, val: {:?}", val);
-        this.as_mut().val = val;
+        this.as_mut_backend().val = val;
         Ok(this)
     }
 }
 
-impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageTemplate<T> {
+impl<T: Send + Marshal + Unmarshal> RpcMessage for MessageTemplate<T> {
     #[inline]
     fn conn_id(&self) -> Handle {
         self.meta.conn_id
@@ -207,11 +200,5 @@ impl<T: Send + Marshal + Unmarshal + SwitchAddressSpace> RpcMessage for MessageT
         (self as &dyn Marshal<Error = <T as Marshal>::Error>)
             .marshal()
             .unwrap()
-    }
-}
-
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for MessageTemplate<T> {
-    fn switch_address_space(&mut self) {
-        unsafe { self.val.as_mut() }.switch_address_space();
     }
 }

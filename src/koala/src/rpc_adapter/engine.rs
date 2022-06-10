@@ -8,6 +8,7 @@ use std::sync::Arc;
 use ipc::shmalloc::ShmPtr;
 
 use ipc::mrpc;
+use ipc::mrpc::dp::WRIdentifier;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageTemplateErased, RpcMsgType};
@@ -51,6 +52,9 @@ pub(crate) struct RpcAdapterEngine {
 
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<ShmPtr<dyn RpcMessage>>,
+
+    // records the recv mr usage (a list of addr) of each received message (identified by connection handle and call id)
+    pub(crate) recv_mr_usage: HashMap<WRIdentifier, Vec<usize>>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,

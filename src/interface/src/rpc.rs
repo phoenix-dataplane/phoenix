@@ -10,14 +10,6 @@ pub enum RpcMsgType {
     Response,
 }
 
-// #[repr(C)]
-// #[derive(Debug, Clone)]
-// pub struct RpcMessage {
-//    pub rpc_id: usize,
-//    pub msg_type: RpcMsgType,
-//    pub sgl: Vec<ShmBuf>,
-// }
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageMeta {
@@ -32,6 +24,6 @@ pub struct MessageMeta {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MessageTemplateErased {
     pub meta: MessageMeta,
-    pub shm_addr: usize,
-    pub shm_addr_remote: usize,
+    pub shm_addr_app: usize,
+    pub shm_addr_backend: usize,
 }

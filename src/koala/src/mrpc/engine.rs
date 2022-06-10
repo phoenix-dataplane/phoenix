@@ -196,7 +196,7 @@ impl MrpcEngine {
                         // Safety: this is fine here because msg is already a unique
                         // pointer
                         // debug!("start to marshal");
-                        unsafe { msg.as_ref() }.marshal();
+                        // unsafe { msg.as_ref_backend() }.marshal();
                         // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
                         // debug!("end marshal");
 
@@ -245,10 +245,9 @@ impl MrpcEngine {
                         let _enter = span.enter();
 
                         // deliver the msg to application
+                        // TODO(wyj): detach MessageMeta from dyn trait
                         let meta = {
-                            // let span = info_span!("constructing MessageMeta");
-                            // let _enter = span.enter();
-                            let msg_ref = unsafe { msg.as_ref() };
+                            let msg_ref = unsafe { msg.as_ref_backend() };
                             let meta = MessageMeta {
                                 conn_id: msg_ref.conn_id(),
                                 func_id: msg_ref.func_id(),
@@ -263,25 +262,12 @@ impl MrpcEngine {
                             meta
                         };
 
-                        let msg_mut = unsafe { msg.as_mut() };
-                        {
-                            // let span = info_span!("switch_addr_space");
-                            // let _enter = span.enter();
-                            msg_mut.switch_address_space();
-                        }
-                        // NOTE(wyj): this is the address of the pointer to `msg_mut`
-                        // while switch_address_space swithces the address of the actual payload
-                        // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
-                        // NOTE(wyj): This is message from backend to app
-                        // MessageTemplateErased is a just a message header
-                        // it does not holder actual payload
-                        // but a pointer to the payload on shared memory
-                        let (ptr, ptr_remote) = msg.to_raw_parts();
+                        let (ptr_app, ptr_backend) = msg.to_raw_parts();
                         let erased = MessageTemplateErased {
                             meta,
                             // casting to thin pointer first, drop the Pointee::Metadata
-                            shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
-                            shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
+                            shm_addr_app: ptr_app.to_raw_parts().0.addr().get(),
+                            shm_addr_backend: ptr_backend.to_raw_parts().0.addr().get(),
                         };
                         tracing::trace!(
                             "mRPC engine send message to App, call_id={}",

@@ -28,5 +28,7 @@ lazy_static = "1.4.0"
 slabmalloc = { path = "../slabmalloc" }
 tracing = "0.1"
 dashmap = "5.3.4"
+smol = "1.2.5"
+async-executor = "1.4.1"
 
 [features]

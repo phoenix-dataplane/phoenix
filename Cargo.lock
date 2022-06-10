@@ -990,6 +990,7 @@ dependencies = [
  "rdma",
  "scheduler",
  "serde",
+ "smallvec",
  "spin",
  "structopt",
  "thiserror",
@@ -1052,6 +1053,7 @@ name = "libkoala"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-executor",
  "bincode",
  "dashmap",
  "dns-lookup",
@@ -1068,6 +1070,7 @@ dependencies = [
  "nix 0.23.0",
  "serde",
  "slabmalloc 0.10.0",
+ "smol",
  "spin",
  "thiserror",
  "tracing",

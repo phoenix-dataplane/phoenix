@@ -162,8 +162,8 @@ impl<T: ?Sized, O: AllocOwner> Box<T, O> {
 
 impl<T: ?Sized> Box<T, BackendOwned> {
     #[inline]
-    pub(crate) unsafe fn from_backend_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
-        Box(ShmPtr::new_unchecked(ptr, ptr_remote), BackendOwned)
+    pub(crate) unsafe fn from_backend_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr_app, ptr_backend), BackendOwned)
     }
 
     pub(crate) unsafe fn from_backend_shmptr(raw: ShmPtr<T>) -> Self {
@@ -173,8 +173,8 @@ impl<T: ?Sized> Box<T, BackendOwned> {
 
 impl<T: ?Sized> Box<T, AppOwned> {
     #[inline]
-    pub(crate) unsafe fn from_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
-        Box(ShmPtr::new_unchecked(ptr, ptr_remote), AppOwned)
+    pub(crate) unsafe fn from_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr_app, ptr_backend), AppOwned)
     }
 
     pub(crate) unsafe fn from_shmptr(shmptr: ShmPtr<T>) -> Self {

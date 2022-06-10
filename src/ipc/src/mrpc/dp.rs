@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use interface::{rpc::MessageTemplateErased, Handle};
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct WRIdentifier(Handle, u64);
+
 pub type WorkRequestSlot = [u8; 64];
 
 #[repr(C, align(64))]

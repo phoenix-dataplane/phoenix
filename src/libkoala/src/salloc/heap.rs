@@ -24,8 +24,10 @@ thread_local! {
 }
 
 lazy_static! {
-    static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> =
-        spin::Mutex::new(BTreeMap::new());
+    pub(crate) static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> = {
+        lazy_static::initialize(&super::GC_CTX);
+        spin::Mutex::new(BTreeMap::new())
+    };
 }
 
 struct SharedHeap {

@@ -283,21 +283,39 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
     }
 }
 
+pub enum ReleasedEmptyPages<'a, 'b> {
+    Small(arrayvec::Drain<'b, &'a mut ObjectPage<'a>, RELEASE_BUFFER_SIZE>),
+    Large(arrayvec::Drain<'b, &'a mut LargeObjectPage<'a>, RELEASE_BUFFER_SIZE>),
+    Huge(arrayvec::Drain<'b, &'a mut HugeObjectPage<'a>, RELEASE_BUFFER_SIZE>),
+}
+
 impl<'a> ZoneAllocator<'a> {
-    pub fn allocate_with_release(
-        &mut self,
+    pub fn allocate_with_release<'b>(
+        &'b mut self,
         layout: Layout,
     ) -> Result<
         (
             NonNull<u8>,
-            Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>,
+            Option<ReleasedEmptyPages<'a, 'b>>,
         ),
         AllocationError,
     > {
         match ZoneAllocator::get_slab(layout.size()) {
-            Slab::Base(idx) => self.small_slabs[idx].allocate_with_release(layout),
-            Slab::Large(idx) => self.big_slabs[idx].allocate_with_release(layout),
-            Slab::Huge(idx) => self.huge_slabs[idx].allocate_with_release(layout),
+            Slab::Base(idx) => { 
+                let (ptr, released_pages) = self.small_slabs[idx].allocate_with_release(layout)?;
+                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Small(pages));
+                Ok((ptr, released_pages))
+            },
+            Slab::Large(idx) => {
+                let (ptr, released_pages) = self.big_slabs[idx].allocate_with_release(layout)?;
+                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Large(pages));
+                Ok((ptr, released_pages))
+            },
+            Slab::Huge(idx) => {
+                let (ptr, released_pages) = self.huge_slabs[idx].allocate_with_release(layout)?;
+                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Huge(pages));
+                Ok((ptr, released_pages))
+            },
             Slab::Unsupported => Err(AllocationError::InvalidLayout),
         }
     }

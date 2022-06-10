@@ -185,14 +185,7 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                             .remove(&(conn_id, call_id))
                             .expect("received unrecognized WR completion ACK")
                     });
-                    CS_OUTSTANDING_WR_CNT.with(|counting| {
-                        let mut borrow = counting.borrow_mut();
-                        let cnt = borrow
-                            .get_mut(&cs_id)
-                            .expect("client/server stub not found");
-                        *cnt -= 1;
-                    });
-                    GARBAGE_COLLECTOR.register_wr_completion(msg_id);
+                    GARBAGE_COLLECTOR.register_wr_completion(msg_id, 1);
                 }
             }
         }
@@ -251,14 +244,6 @@ impl ClientStub {
                 .borrow_mut()
                 .insert((meta.conn_id, meta.call_id), (msg.identifier, self.stub_id));
         });
-        CS_OUTSTANDING_WR_CNT.with(|counting| {
-            let mut borrow = counting.borrow_mut();
-            let cnt = borrow
-                .get_mut(&self.stub_id)
-                .expect("client/server stub not found");
-            *cnt += 1;
-        });
-
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
@@ -370,9 +355,6 @@ impl Server {
             ctx.service.send_cmd(req)?;
             rx_recv_impl!(ctx.service, CompletionKind::Bind, listener_handle, {
                 let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                CS_OUTSTANDING_WR_CNT.with(|counting| {
-                    counting.borrow_mut().insert(stub_id, 0);
-                });
                 Ok(Self {
                     stub_id,
                     listener_handle,
@@ -466,13 +448,6 @@ impl Server {
                 .borrow_mut()
                 .insert((meta.conn_id, meta.call_id), (msg_id, self.stub_id));
         });
-        CS_OUTSTANDING_WR_CNT.with(|counting| {
-            let mut borrow = counting.borrow_mut();
-            let cnt = borrow
-                .get_mut(&self.stub_id)
-                .expect("client/server stub not found");
-            *cnt += 1;
-        });
 
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
@@ -530,20 +505,22 @@ impl !Sync for Server {}
 
 impl Drop for Server {
     fn drop(&mut self) {
-        while CS_OUTSTANDING_WR_CNT.with(|cnt| {
-            *cnt.borrow()
-                .get(&self.stub_id)
-                .expect("client/server stub not found")
-                > 0
-        }) {
-            check_completion_queue();
-        }
+        // remove all outstanding WR releated to this client/server stub
+        OUTSTANDING_WR.with(|outstanding| {
+            let borrow = outstanding.borrow_mut();
+            let wrs = borrow.drain_filter(|_, (_msg_id, cs_id)| {
+                *cs_id == self.stub_id
+            });
 
-        CS_OUTSTANDING_WR_CNT.with(|cnt| {
-            cnt.borrow_mut()
-                .remove(&self.stub_id)
-                .expect("client/server stub not found")
-        });
+            let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, (msg_id, _))| {
+                *acc.entry(msg_id).or_insert(0u64) += 1;
+                acc
+            });
+
+            for (msg_id, cnt) in msg_cnt {
+
+            }
+        })
     }
 }
 
