@@ -87,7 +87,6 @@ impl GarbageCollector {
     }
 }
 
-
 // Empty page pool should be maintained by our SharedHeapAllocator/GC
 // instead of slabmalloc,
 // as it is SharedHeapAllocator who refills ZoneAllocator with empty pages
@@ -193,13 +192,12 @@ impl GlobalShreadHeapPagePool {
         }
     }
 
-    
     // Caller must ensure provided pages are empty
     // pub(crate) unsafe fn recycle_empty_small_pages<I: IntoIterator<Item = &'static mut ObjectPage<'static>>>(
     //     &self,
     //     pages: I,
     // ) {
-    //     let pages = pages.into_iter().map(|page| 
+    //     let pages = pages.into_iter().map(|page|
     //         unsafe { Unique::new_unchecked(page as *mut _) }
     //     );
     //     self.empty_small_pages.lock().extend(pages)
@@ -276,7 +274,7 @@ impl GlobalShreadHeapPagePool {
                     }
                 }
             }
-    
+
             {
                 self.check_huge_page_assignments();
                 // release all huge pages immediately
@@ -290,7 +288,7 @@ impl GlobalShreadHeapPagePool {
                         .expect("page already released");
                 }
             }
-    
+
             smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL)).await;
         }
     }

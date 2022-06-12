@@ -1,8 +1,8 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use interface::engine::EngineType;
-use interface::Handle;
 use interface::rpc::MessageErased;
+use interface::Handle;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;

@@ -10,9 +10,9 @@ use super::boxed::Box;
 pub(crate) mod from_backend {
     pub trait CloneFromBackendOwned {
         type BackendOwned;
-    
+
         fn clone_from_backend_owned(_: &Self::BackendOwned) -> Self;
-    }    
+    }
 }
 
 use from_backend::CloneFromBackendOwned;
@@ -39,11 +39,11 @@ impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
             <A as CloneFromBackendOwned>::BackendOwned,
             crate::salloc::owner::BackendOwned,
         >,
-        ctx: ShmRecvContext<'a>
+        ctx: ShmRecvContext<'a>,
     ) -> Self {
         ShmView {
             inner: ManuallyDrop::new(backend_owned),
-            _ctx: ctx
+            _ctx: ctx,
         }
     }
 }
@@ -135,7 +135,9 @@ where
     }
 }
 
-impl<'a, A: CloneFromBackendOwned> AsRef<<A as CloneFromBackendOwned>::BackendOwned> for ShmView<'a, A> {
+impl<'a, A: CloneFromBackendOwned> AsRef<<A as CloneFromBackendOwned>::BackendOwned>
+    for ShmView<'a, A>
+{
     fn as_ref(&self) -> &<A as CloneFromBackendOwned>::BackendOwned {
         &**self
     }

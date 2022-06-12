@@ -2,15 +2,15 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::ptr::Unique;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::ptr::Unique;
 
 use ipc::mrpc;
 use ipc::mrpc::dp::WRIdentifier;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{RpcMsgType, MessageErased, MessageMeta};
+use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 use interface::{AsHandle, Handle};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -19,7 +19,7 @@ use super::{ControlPathError, DatapathError};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
-use crate::mrpc::marshal::{SgList, ShmBuf, Unmarshal, Marshal, MetaUnpacking};
+use crate::mrpc::marshal::{Marshal, MetaUnpacking, SgList, ShmBuf, Unmarshal};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -54,7 +54,6 @@ pub(crate) struct RpcAdapterEngine {
 
     // records the recv mr usage (a list of addr) of each received message (identified by connection handle and call id)
     // pub(crate) recv_mr_usage: HashMap<WRIdentifier, Vec<usize>>,
-
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
@@ -154,9 +153,9 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        use crate::mrpc::codegen;
         use tokio::sync::mpsc::error::TryRecvError;
         use ulib::uverbs::SendFlags;
-        use crate::mrpc::codegen;
 
         while let Some(erased) = self.local_buffer.pop_front() {
             // get cmid from conn_id
@@ -183,7 +182,7 @@ impl RpcAdapterEngine {
 
             let sglist = match meta.msg_type {
                 RpcMsgType::Request => {
-                    match meta.func_id { 
+                    match meta.func_id {
                         0 => {
                             // we don't need to construct a ShmPtr here
                             // as we only require backend addr to conjure up the message
@@ -192,19 +191,17 @@ impl RpcAdapterEngine {
                             let msg_ref = unsafe { &*ptr_backend };
                             msg_ref.marshal().unwrap()
                         }
-                        _ => unimplemented!()
+                        _ => unimplemented!(),
                     }
                 }
-                RpcMsgType::Response => {
-                    match meta.func_id { 
-                        0 => {
-                            let ptr_backend = erased.shm_addr_backend as *mut codegen::HelloReply;
-                            let msg_ref = unsafe { &*ptr_backend };
-                            msg_ref.marshal().unwrap()
-                        }
-                        _ => unimplemented!()
+                RpcMsgType::Response => match meta.func_id {
+                    0 => {
+                        let ptr_backend = erased.shm_addr_backend as *mut codegen::HelloReply;
+                        let msg_ref = unsafe { &*ptr_backend };
+                        msg_ref.marshal().unwrap()
                     }
-                }
+                    _ => unimplemented!(),
+                },
             };
 
             // Sender marshals the data (gets an SgList)
@@ -219,11 +216,14 @@ impl RpcAdapterEngine {
             }
 
             let ctx = ((cmid_handle.0 as u64) << 32) | (call_id as u64);
-            let meta_buf = self.meta_freelist.pop().expect("MessageMeta buffer depleted");
+            let meta_buf = self
+                .meta_freelist
+                .pop()
+                .expect("MessageMeta buffer depleted");
             unsafe { std::ptr::write(meta_buf.as_ptr(), meta) }
             let meta_sge = ShmBuf {
                 ptr: meta_buf.as_ptr().addr(),
-                len: mem::size_of::<MessageMeta>()
+                len: mem::size_of::<MessageMeta>(),
             };
             self.meta_usedlist.insert(ctx, meta_buf);
 
@@ -232,9 +232,14 @@ impl RpcAdapterEngine {
             {
                 // post send message meta
                 unsafe {
-                    cmid.post_send(odp_mr, meta_sge.ptr..meta_sge.ptr + meta_sge.len, 0, SendFlags::SIGNALED)?;
+                    cmid.post_send(
+                        odp_mr,
+                        meta_sge.ptr..meta_sge.ptr + meta_sge.len,
+                        0,
+                        SendFlags::SIGNALED,
+                    )?;
                 }
-                
+
                 for (i, &sge) in sglist.0.iter().enumerate() {
                     let off = sge.ptr;
                     if i + 1 < sglist.0.len() {
@@ -302,48 +307,36 @@ impl RpcAdapterEngine {
         }
 
         let erased = match meta.msg_type {
-            RpcMsgType::Request => {
-                match meta.func_id {
-                    0 => {
-                        let msg = unsafe {
-                            codegen::HelloRequest::unmarshal(
-                                &sgl.0[1..],
-                                &self.salloc.shared,
-                            )
-                            .unwrap()
-                        };
-                        let (ptr_app, ptr_backend) = msg.to_raw_parts();
+            RpcMsgType::Request => match meta.func_id {
+                0 => {
+                    let msg = unsafe {
+                        codegen::HelloRequest::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
+                    };
+                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
 
-                        MessageErased {
-                            meta,
-                            shm_addr_app: ptr_app.addr().get(),
-                            shm_addr_backend: ptr_backend.addr().get(),
-                        }
+                    MessageErased {
+                        meta,
+                        shm_addr_app: ptr_app.addr().get(),
+                        shm_addr_backend: ptr_backend.addr().get(),
                     }
-                    _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
                 }
-            }
-            RpcMsgType::Response => {
-                match meta.func_id {
-                    0 => {
-                        let msg = unsafe {
-                            codegen::HelloReply::unmarshal(
-                                &sgl.0[1..],
-                                &self.salloc.shared,
-                            )
-                            .unwrap()
-                        };
-                        let (ptr_app, ptr_backend) = msg.to_raw_parts();
+                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+            },
+            RpcMsgType::Response => match meta.func_id {
+                0 => {
+                    let msg = unsafe {
+                        codegen::HelloReply::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
+                    };
+                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
 
-                        MessageErased {
-                            meta,
-                            shm_addr_app: ptr_app.addr().get(),
-                            shm_addr_backend: ptr_backend.addr().get()
-                        }
+                    MessageErased {
+                        meta,
+                        shm_addr_app: ptr_app.addr().get(),
+                        shm_addr_backend: ptr_backend.addr().get(),
                     }
-                    _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
                 }
-            }
+                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+            },
         };
         {
             // let span = info_span!("unmarshal_and_deliver_up: rx_outputs send");

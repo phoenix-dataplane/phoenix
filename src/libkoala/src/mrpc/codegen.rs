@@ -8,10 +8,8 @@ use interface::rpc::{MessageMeta, RpcMsgType};
 
 // use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::alloc::{ShmView, ShmRecvContext};
-use crate::mrpc::stub::{
-    ClientStub, MessageErased, NamedService, RpcMessage, Service,
-};
+use crate::mrpc::alloc::{ShmRecvContext, ShmView};
+use crate::mrpc::stub::{ClientStub, MessageErased, NamedService, RpcMessage, Service};
 use crate::salloc::owner::{AppOwned, BackendOwned};
 
 use super::stub::{check_completion_queue, RECV_REPLY_CACHE};
@@ -77,15 +75,16 @@ impl<'a> Future for ReqFuture<'a> {
 
         let this = self.get_mut();
         check_completion_queue();
-        if let Some(erased) =
-            RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&WRIdentifier(this.conn_id, this.call_id)))
-        {
+        if let Some(erased) = RECV_REPLY_CACHE.with(|cache| {
+            cache
+                .borrow_mut()
+                .remove(&WRIdentifier(this.conn_id, this.call_id))
+        }) {
             tracing::trace!(
                 "ReqFuture receive reply from mRPC engine, call_id={}",
                 erased.meta.call_id
             );
-            let ptr_app = erased.shm_addr_app
-                as *mut inner::HelloReply<BackendOwned>;
+            let ptr_app = erased.shm_addr_app as *mut inner::HelloReply<BackendOwned>;
             let ptr_backend = ptr_app.with_addr(erased.shm_addr_backend);
             let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_app, ptr_backend) };
             let reply = ShmView::new_from_backend_owned(msg, this.ctx);
@@ -96,7 +95,6 @@ impl<'a> Future for ReqFuture<'a> {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct GreeterClient {
@@ -138,10 +136,14 @@ impl GreeterClient {
         // increase send count for RpcMessage
         msg.send_count += 1;
         self.stub.post_request(msg, meta).unwrap();
-        
+
         let ctx = ShmRecvContext::new(self);
 
-        ReqFuture { conn_id, call_id, ctx }
+        ReqFuture {
+            conn_id,
+            call_id,
+            ctx,
+        }
     }
 }
 
@@ -175,16 +177,12 @@ impl<T: Greeter> NamedService for GreeterServer<T> {
 }
 
 impl<T: Greeter> Service for GreeterServer<T> {
-    fn call(
-        &mut self,
-        req: interface::rpc::MessageErased,
-    ) -> (interface::rpc::MessageErased, u64) {
+    fn call(&mut self, req: interface::rpc::MessageErased) -> (interface::rpc::MessageErased, u64) {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
 
-        let ptr_app =
-            req.shm_addr_app as *mut inner::HelloRequest<BackendOwned>;
+        let ptr_app = req.shm_addr_app as *mut inner::HelloRequest<BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
@@ -196,7 +194,6 @@ impl<T: Greeter> Service for GreeterServer<T> {
         let ctx = ();
         let req = ShmView::new_from_backend_owned(msg, ShmRecvContext::new(&ctx));
 
-
         match self.inner.say_hello(req) {
             Ok(reply) => {
                 // construct meta
@@ -205,7 +202,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
                     func_id: Self::FUNC_ID,
                     call_id,
                     len: 0,
-                    msg_type: RpcMsgType::Response
+                    msg_type: RpcMsgType::Response,
                 };
 
                 // increase send count of RpcMessage

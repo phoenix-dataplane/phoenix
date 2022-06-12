@@ -98,7 +98,12 @@ impl<T> Vec<T> {
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
         let me = ManuallyDrop::new(self);
         let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
-        (ptr_app.as_ptr(), ptr_backend.as_ptr(), me.len(), me.capacity())
+        (
+            ptr_app.as_ptr(),
+            ptr_backend.as_ptr(),
+            me.len(),
+            me.capacity(),
+        )
     }
 
     pub(crate) unsafe fn from_raw_parts(
@@ -843,8 +848,8 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 }
 
 mod hack {
-    use super::Vec;
     use super::Box;
+    use super::Vec;
 
     pub fn into_vec<T>(b: Box<[T]>) -> Vec<T> {
         unsafe {

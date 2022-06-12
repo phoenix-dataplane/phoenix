@@ -297,7 +297,6 @@ fn finish_grow(
     })
 }
 
-
 impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     fn drop(&mut self) {
         if O::is_app_owend() {

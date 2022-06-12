@@ -9,7 +9,6 @@ use ipc::service::ShmService;
 
 use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
-
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
@@ -27,9 +26,7 @@ impl GCContext {
         // create an executor and put the empty page reclamation task on a dedicated thread
         let ex = async_executor::Executor::new();
         let task = gc::GLOBAL_PAGE_POOL.release_empty_pages();
-        std::thread::spawn(move || smol::future::block_on(ex.run( async { 
-            task.await
-        })));
+        std::thread::spawn(move || smol::future::block_on(ex.run(async { task.await })));
         GCContext
     }
 }

@@ -50,7 +50,10 @@ impl Unmarshal for HelloRequest {
         let mut this =
             ShmPtr::new(this_app_addr as *mut Self, sg_list[0].ptr as *mut Self).unwrap();
         let vec_buf_addr_backend = sg_list[1].ptr;
-        let vec_buf_addr_app = salloc_state.resource.query_app_addr(vec_buf_addr_backend).unwrap();
+        let vec_buf_addr_app = salloc_state
+            .resource
+            .query_app_addr(vec_buf_addr_backend)
+            .unwrap();
         this.as_mut_backend()
             .name
             .update_buf_ptr(vec_buf_addr_app as *mut u8, vec_buf_addr_backend as *mut u8);
@@ -101,7 +104,10 @@ impl Unmarshal for HelloReply {
         let mut this =
             ShmPtr::new(this_app_addr as *mut Self, sg_list[0].ptr as *mut Self).unwrap();
         let vec_buf_addr_backend = sg_list[1].ptr;
-        let vec_buf_addr_app = salloc_state.resource.query_app_addr(vec_buf_addr_backend).unwrap();
+        let vec_buf_addr_app = salloc_state
+            .resource
+            .query_app_addr(vec_buf_addr_backend)
+            .unwrap();
         this.as_mut_backend()
             .name
             .update_buf_ptr(vec_buf_addr_app as *mut u8, vec_buf_addr_backend as *mut u8);

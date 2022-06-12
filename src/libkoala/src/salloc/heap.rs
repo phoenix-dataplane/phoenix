@@ -239,10 +239,13 @@ impl SharedHeapAllocator {
                                 Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
                             let ptr_backend =
                                 ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
-                            let ptr =
-                                ShmNonNull::slice_from_raw_parts(ptr_app, ptr_backend, layout.size());
+                            let ptr = ShmNonNull::slice_from_raw_parts(
+                                ptr_app,
+                                ptr_backend,
+                                layout.size(),
+                            );
 
-                            // TODO(wyj): release empty pages to global pool 
+                            // TODO(wyj): release empty pages to global pool
 
                             Ok(ptr)
                         }
@@ -313,8 +316,11 @@ impl SharedHeapAllocator {
                                 Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
                             let ptr_backend =
                                 ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
-                            let ptr =
-                                ShmNonNull::slice_from_raw_parts(ptr_app, ptr_backend, layout.size());
+                            let ptr = ShmNonNull::slice_from_raw_parts(
+                                ptr_app,
+                                ptr_backend,
+                                layout.size(),
+                            );
 
                             // TODO(wyj): release empty pages to global pool
 
@@ -408,7 +414,11 @@ impl SharedHeapAllocator {
         // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr_app(), new_ptr.as_mut_ptr_app(), old_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            old_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)
@@ -433,7 +443,11 @@ impl SharedHeapAllocator {
         // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr_app(), new_ptr.as_mut_ptr_app(), old_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            old_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)
@@ -457,7 +471,11 @@ impl SharedHeapAllocator {
         // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr_app(), new_ptr.as_mut_ptr_app(), new_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            new_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)

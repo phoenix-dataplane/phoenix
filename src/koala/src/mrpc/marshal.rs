@@ -37,14 +37,13 @@ pub(crate) trait Unmarshal: Sized {
 }
 
 pub(crate) trait MetaUnpacking: Sized {
-    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()> ;
+    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()>;
 }
-
 
 impl MetaUnpacking for MessageMeta {
     unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()> {
         if sge.len != mem::size_of::<Self>() {
-            return Err(())
+            return Err(());
         }
         let ptr = sge.ptr as *const Self;
         Ok(std::ptr::read(ptr))

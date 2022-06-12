@@ -106,7 +106,6 @@ impl<T: ?Sized> ShmNonNull<T> {
         self.ptr_backend.as_mut()
     }
 
-
     /// Casts to a pointer of another type
     #[must_use = "this returns the result of the operation, \
                   without modifying the original"]
@@ -178,7 +177,6 @@ impl<T> ShmNonNull<[T]> {
     }
 }
 
-
 impl<T: ?Sized> From<ShmPtr<T>> for ShmNonNull<T> {
     #[inline]
     fn from(shmptr: ShmPtr<T>) -> Self {
@@ -204,17 +202,17 @@ impl<T: ?Sized> Copy for ShmNonNull<T> {}
 impl<T: ?Sized> fmt::Debug for ShmNonNull<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ShmNonNull")
-         .field(&self.as_ptr_app())
-         .field(&self.as_ptr_backend())
-         .finish()
+            .field(&self.as_ptr_app())
+            .field(&self.as_ptr_backend())
+            .finish()
     }
 }
 
 impl<T: ?Sized> fmt::Pointer for ShmNonNull<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ShmNonNull")
-         .field(&self.as_ptr_app())
-         .field(&self.as_ptr_backend())
-         .finish()
+            .field(&self.as_ptr_app())
+            .field(&self.as_ptr_backend())
+            .finish()
     }
 }

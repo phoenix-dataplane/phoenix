@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::os::unix::net::{SocketAddr, UCred};
-use std::sync::Arc;
 use std::ptr::Unique;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -82,7 +82,7 @@ impl RpcAdapterEngineBuilder {
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
-       
+
         let array = std::mem::MaybeUninit::uninit_array();
         let mut meta_buf = unsafe { Box::new(std::mem::MaybeUninit::array_assume_init(array)) };
         let meta_ptr: *mut interface::rpc::MessageMeta = meta_buf.as_mut_ptr();

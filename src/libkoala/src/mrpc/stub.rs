@@ -11,7 +11,7 @@ use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
 
 /// Re-exports
-pub use interface::rpc::{MessageMeta, MessageErased, RpcMsgType};
+pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 use interface::Handle;
 pub use ipc::mrpc::control_plane::TransportType;
 
@@ -19,8 +19,7 @@ use crate::mrpc::alloc::Box;
 use crate::mrpc::{Error, MRPC_CTX};
 use crate::rx_recv_impl;
 use crate::salloc::gc::{
-CS_STUB_ID_COUNTER, GARBAGE_COLLECTOR, MESSAGE_ID_COUNTER,
-    OUTSTANDING_WR,
+    CS_STUB_ID_COUNTER, GARBAGE_COLLECTOR, MESSAGE_ID_COUNTER, OUTSTANDING_WR,
 };
 use crate::salloc::owner::AppOwned;
 use crate::salloc::region::SharedRecvBuffer;
@@ -30,7 +29,7 @@ use crate::salloc::SA_CTX;
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
     pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<dp::WRIdentifier, MessageErased>> = RefCell::new(FnvHashMap::default());
-    // maintain a per server stub recv buffer 
+    // maintain a per server stub recv buffer
     pub(crate) static RECV_REQUEST_CACHE: RefCell<FnvHashMap<u64, Vec<MessageErased>>> = RefCell::new(FnvHashMap::default());
     // map conn_id to server stub
     pub(crate) static CONN_SERVER_STUB_MAP: RefCell<FnvHashMap<Handle, u64>> = RefCell::new(FnvHashMap::default());
@@ -79,7 +78,6 @@ impl<T: RpcData> Drop for RpcMessage<T> {
     }
 }
 
-
 pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
     const BUF_LEN: usize = 32;
     let mut buffer = Vec::with_capacity(BUF_LEN);
@@ -97,10 +95,9 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                     let conn_id = msg.meta.conn_id;
                     let call_id = msg.meta.call_id;
                     match msg.meta.msg_type {
-                        RpcMsgType::Request =>  {
-                            let stub_id = CONN_SERVER_STUB_MAP.with(|map| {
-                                map.borrow().get(&conn_id).map(|x| *x)
-                            });
+                        RpcMsgType::Request => {
+                            let stub_id = CONN_SERVER_STUB_MAP
+                                .with(|map| map.borrow().get(&conn_id).map(|x| *x));
                             if let Some(stub_id) = stub_id {
                                 RECV_REQUEST_CACHE.with(|cache| {
                                     if let Some(buffer) = cache.borrow_mut().get_mut(&stub_id) {
@@ -109,12 +106,12 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                                 })
                             }
                         }
-                        RpcMsgType::Response => {
-                            RECV_REPLY_CACHE.with(|cache| {
-                                cache.borrow_mut().insert(dp::WRIdentifier(conn_id, call_id), msg);
-                            })
-                        }
-                    } 
+                        RpcMsgType::Response => RECV_REPLY_CACHE.with(|cache| {
+                            cache
+                                .borrow_mut()
+                                .insert(dp::WRIdentifier(conn_id, call_id), msg);
+                        }),
+                    }
                 }
                 dp::Completion::SendCompletion(conn_id, call_id) => {
                     let msg_id = OUTSTANDING_WR.with(|outstanding| {
@@ -158,7 +155,7 @@ impl ClientStub {
     pub(crate) fn post_request<T: RpcData>(
         &self,
         msg: &mut RpcMessage<T>,
-        meta: MessageMeta
+        meta: MessageMeta,
     ) -> Result<(), Error> {
         tracing::trace!(
             "client post request to mRPC engine, call_id={}",
@@ -250,9 +247,7 @@ impl Drop for ClientStub {
     fn drop(&mut self) {
         OUTSTANDING_WR.with(|outstanding| {
             let mut borrow = outstanding.borrow_mut();
-            let wrs = borrow.drain_filter(|wr_id, _| {
-                self.handle == wr_id.0
-            });
+            let wrs = borrow.drain_filter(|wr_id, _| self.handle == wr_id.0);
 
             let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
                 *acc.entry(msg_id).or_insert(0u64) += 1;
@@ -292,7 +287,9 @@ impl Server {
                 let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 // setup recv cache
                 RECV_REQUEST_CACHE.with(|cache| {
-                    cache.borrow_mut().insert(stub_id, Vec::with_capacity(RECV_BUF_SIZE))
+                    cache
+                        .borrow_mut()
+                        .insert(stub_id, Vec::with_capacity(RECV_BUF_SIZE))
                 });
                 Ok(Self {
                     stub_id,
@@ -338,9 +335,8 @@ impl Server {
                         assert_eq!(fds.len(), ret.1.len());
                         assert!(self.handles.insert(ret.0));
                         // setup recv cache
-                        CONN_SERVER_STUB_MAP.with(|map| {
-                            map.borrow_mut().insert(ret.0, self.stub_id)
-                        });
+                        CONN_SERVER_STUB_MAP
+                            .with(|map| map.borrow_mut().insert(ret.0, self.stub_id));
                         for (mr, &fd) in ret.1.into_iter().zip(&fds) {
                             let memfd = Memfd::try_from_fd(fd)
                                 .map_err(|_| io::Error::last_os_error())
@@ -372,11 +368,7 @@ impl Server {
         })
     }
 
-    pub(crate) fn post_reply(
-        &self,
-        erased: MessageErased,
-        msg_id: u64,
-    ) -> Result<(), Error> {
+    pub(crate) fn post_reply(&self, erased: MessageErased, msg_id: u64) -> Result<(), Error> {
         tracing::trace!(
             "client post reply to mRPC engine, call_id={}",
             erased.meta.call_id
@@ -454,16 +446,12 @@ impl Drop for Server {
                 borrow.remove(conn_id);
             }
         });
-        RECV_REQUEST_CACHE.with(|cache| {
-            cache.borrow_mut().remove(&self.stub_id)
-        });
+        RECV_REQUEST_CACHE.with(|cache| cache.borrow_mut().remove(&self.stub_id));
 
         // remove all outstanding WR releated to this client/server stub
         OUTSTANDING_WR.with(|outstanding| {
             let mut borrow = outstanding.borrow_mut();
-            let wrs = borrow.drain_filter(|wr_id, _| {
-                self.handles.contains(&wr_id.0)
-            });
+            let wrs = borrow.drain_filter(|wr_id, _| self.handles.contains(&wr_id.0));
 
             let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
                 *acc.entry(msg_id).or_insert(0u64) += 1;

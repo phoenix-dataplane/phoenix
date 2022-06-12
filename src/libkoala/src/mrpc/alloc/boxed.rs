@@ -60,7 +60,7 @@ impl<T> Box<T> {
     }
 
     pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError>
-    where {
+where {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
         let (ptr_app, ptr_backend) = ptr.to_raw_parts();

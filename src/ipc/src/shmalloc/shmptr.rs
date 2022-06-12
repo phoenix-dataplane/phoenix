@@ -126,7 +126,6 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 }
 
-
 impl<T: ?Sized> Clone for ShmPtr<T> {
     #[inline]
     fn clone(&self) -> Self {

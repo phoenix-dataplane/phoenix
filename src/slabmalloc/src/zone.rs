@@ -293,29 +293,23 @@ impl<'a> ZoneAllocator<'a> {
     pub fn allocate_with_release<'b>(
         &'b mut self,
         layout: Layout,
-    ) -> Result<
-        (
-            NonNull<u8>,
-            Option<ReleasedEmptyPages<'a, 'b>>,
-        ),
-        AllocationError,
-    > {
+    ) -> Result<(NonNull<u8>, Option<ReleasedEmptyPages<'a, 'b>>), AllocationError> {
         match ZoneAllocator::get_slab(layout.size()) {
-            Slab::Base(idx) => { 
+            Slab::Base(idx) => {
                 let (ptr, released_pages) = self.small_slabs[idx].allocate_with_release(layout)?;
                 let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Small(pages));
                 Ok((ptr, released_pages))
-            },
+            }
             Slab::Large(idx) => {
                 let (ptr, released_pages) = self.big_slabs[idx].allocate_with_release(layout)?;
                 let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Large(pages));
                 Ok((ptr, released_pages))
-            },
+            }
             Slab::Huge(idx) => {
                 let (ptr, released_pages) = self.huge_slabs[idx].allocate_with_release(layout)?;
                 let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Huge(pages));
                 Ok((ptr, released_pages))
-            },
+            }
             Slab::Unsupported => Err(AllocationError::InvalidLayout),
         }
     }
