@@ -36,46 +36,17 @@ pub(crate) trait Unmarshal: Sized {
     ) -> Result<ShmPtr<Self>, Self::Error>;
 }
 
-impl MessageMeta {
-    pub(crate) fn marshal(&self) -> ShmBuf {
-        todo!()
-    }
-    
-    pub(crate) unsafe fn unmarshal(sge: &ShmBuf) -> Self {
-        todo!()
-    }
+pub(crate) trait MetaUnpacking: Sized {
+    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()> ;
 }
 
-// impl Marshal for MessageMeta {
-//     type Error = ();
-//     fn marshal(&self) -> Result<SgList, Self::Error> {
-//         let selfptr = self as *const _ as usize;
-//         let len = mem::size_of::<Self>();
-//         Ok(SgList(vec![ShmBuf { ptr: selfptr, len }]))
-//     }
-// }
 
-// impl Unmarshal for MessageMeta {
-//     type Error = ();
-//     unsafe fn unmarshal(
-//         sg_list: SgList,
-//         salloc_state: &Arc<SallocShared>,
-//     ) -> Result<ShmPtr<Self>, Self::Error> {
-//         if sg_list.0.len() != 1 {
-//             return Err(());
-//         }
-//         if sg_list.0[0].len != mem::size_of::<Self>() {
-//             return Err(());
-//         }
-//         let app_addr = salloc_state
-//             .resource
-//             .query_app_addr(sg_list.0[0].ptr)
-//             .unwrap();
-//         let ptr_backend = sg_list.0[0].ptr as *mut Self;
-//         let ptr_app = ptr_backend.with_addr(app_addr);
-//         let this =
-//             ShmPtr::new(ptr_app, ptr_backend).unwrap();
-//         Ok(this)
-//     }
-// }
-
+impl MetaUnpacking for MessageMeta {
+    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()> {
+        if sge.len != mem::size_of::<Self>() {
+            return Err(())
+        }
+        let ptr = sge.ptr as *const Self;
+        Ok(std::ptr::read(ptr))
+    }
+}

@@ -45,7 +45,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         smol::block_on(async {
             let mut name = Vec::with_capacity(1000000);
             name.resize(1000000, 42);
-            let mut req = RpcMessage::new_request(HelloRequest { name });
+            let mut req = RpcMessage::new(HelloRequest { name });
 
             for i in 0..16384 {
                 let _resp = client.say_hello(&mut req).await.unwrap();
@@ -70,7 +70,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             for _ in 0..128 {
                 let mut name = Vec::with_capacity(1000000);
                 name.resize(1000000, 42);
-                let req = RpcMessage::new_request(HelloRequest { name });
+                let req = RpcMessage::new(HelloRequest { name });
                 reqs.push(req);
             }
 

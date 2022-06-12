@@ -1,4 +1,3 @@
-use std::alloc::Global;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::LinkedList;
@@ -10,21 +9,19 @@ use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 
-use interface::Handle;
+use ipc::mrpc::dp::WRIdentifier;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
-
-use crate::mrpc::stub::MessageTemplate;
 
 use super::heap::SHARED_HEAP_REGIONS;
 use super::owner::AppOwned;
 
 thread_local! {
     // thread-local oustanding work request
-    // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID and Client/Server ID
+    // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID
     // insert when WR is posted, remove when corresponding WC is polled
     // each user app thread corresponds to a set of mRPC + RpcAdapter + SAlloc engines
     // the thread which posts the WR must also polls the corresponding work request completion
-    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<(Handle, u32), (u64, u64)>> = RefCell::new(HashMap::new());
+    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<WRIdentifier, u64>> = RefCell::new(HashMap::new());
 }
 
 lazy_static! {
@@ -51,7 +48,7 @@ impl GarbageCollector {
 
     pub(crate) fn collect<T: 'static + Send + Sync>(
         &self,
-        message: crate::mrpc::alloc::Box<MessageTemplate<T, AppOwned>, AppOwned>,
+        message: crate::mrpc::alloc::Box<T, AppOwned>,
         message_id: u64,
         send_count: u64,
     ) {
@@ -198,15 +195,15 @@ impl GlobalShreadHeapPagePool {
 
     
     // Caller must ensure provided pages are empty
-    pub(crate) unsafe fn recycle_empty_small_pages<I: IntoIterator<Item = &'static mut ObjectPage<'static>>>(
-        &self,
-        pages: I,
-    ) {
-        let pages = pages.into_iter().map(|page| 
-            unsafe { Unique::new_unchecked(page as *mut _) }
-        );
-        self.empty_small_pages.lock().extend(pages)
-    }
+    // pub(crate) unsafe fn recycle_empty_small_pages<I: IntoIterator<Item = &'static mut ObjectPage<'static>>>(
+    //     &self,
+    //     pages: I,
+    // ) {
+    //     let pages = pages.into_iter().map(|page| 
+    //         unsafe { Unique::new_unchecked(page as *mut _) }
+    //     );
+    //     self.empty_small_pages.lock().extend(pages)
+    // }
 
     pub(crate) fn recycle_large_page(
         &self,

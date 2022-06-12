@@ -4,7 +4,6 @@ use std::ptr;
 use std::ptr::NonNull;
 
 use super::ShmPtr;
-use super::SwitchAddressSpace;
 
 pub struct ShmNonNull<T: ?Sized> {
     // For remote pointer (ptr_backend on app side / ptr_app on backend side)

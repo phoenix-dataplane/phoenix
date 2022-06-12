@@ -12,7 +12,7 @@ use std::ops::{self, Index, IndexMut, RangeBounds};
 use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
-use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::ShmPtr;
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
@@ -67,15 +67,15 @@ impl<T> Vec<T> {
         self.buf.shrink_to_fit(cmp::max(self.len, min_capacity));
     }
 
-    // pub fn into_boxed_slice(mut self) -> Box<[T]> {
-    //     unsafe {
-    //         self.shrink_to_fit();
-    //         let me = ManuallyDrop::new(self);
-    //         let buf = ptr::read(&me.buf);
-    //         let len = me.len();
-    //         buf.into_box(len).assume_init()
-    //     }
-    // }
+    pub fn into_boxed_slice(mut self) -> Box<[T]> {
+        unsafe {
+            self.shrink_to_fit();
+            let me = ManuallyDrop::new(self);
+            let buf = ptr::read(&me.buf);
+            let len = me.len();
+            buf.into_box(len).assume_init()
+        }
+    }
 
     pub fn truncate(&mut self, len: usize) {
         unsafe {
@@ -94,21 +94,21 @@ impl<T> Vec<T> {
         self
     }
 
-    /// ptr, ptr_remote, len, capacity
+    /// ptr_app, ptr_backend, len, capacity
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
         let me = ManuallyDrop::new(self);
-        let (ptr, ptr_remote) = me.buf.shmptr().to_raw_parts();
-        (ptr.as_ptr(), ptr_remote.as_ptr(), me.len(), me.capacity())
+        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        (ptr_app.as_ptr(), ptr_backend.as_ptr(), me.len(), me.capacity())
     }
 
     pub(crate) unsafe fn from_raw_parts(
-        ptr: *mut T,
-        ptr_remote: *mut T,
+        ptr_app: *mut T,
+        ptr_backend: *mut T,
         length: usize,
         capacity: usize,
     ) -> Vec<T> {
         Vec {
-            buf: RawVec::from_raw_parts(ptr, ptr_remote, capacity),
+            buf: RawVec::from_raw_parts(ptr_app, ptr_backend, capacity),
             len: length,
         }
     }
@@ -498,13 +498,13 @@ impl<T> Vec<T> {
         }
     }
 
-    // #[inline]
-    // pub fn leak<'a>(vec: Vec<T>) -> &'a mut [T]
-    // where
-    //     T: 'a, // Technically not needed, but kept to be explicit.
-    // {
-    //     Box::leak(vec.into_boxed_slice())
-    // }
+    #[inline]
+    pub fn leak<'a>(vec: Vec<T>) -> &'a mut [T]
+    where
+        T: 'a, // Technically not needed, but kept to be explicit.
+    {
+        Box::leak(vec.into_boxed_slice())
+    }
 }
 
 impl<T, O: AllocOwner> Vec<T, O> {
@@ -586,15 +586,6 @@ impl<T, O: AllocOwner> SpecializedDrop for Vec<T, O> {
 impl<T, O: AllocOwner> Drop for Vec<T, O> {
     fn drop(&mut self) {
         (self as &mut dyn SpecializedDrop).drop();
-    }
-}
-
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
-    fn switch_address_space(&mut self) {
-        for v in self.iter_mut() {
-            v.switch_address_space()
-        }
-        self.buf.switch_address_space();
     }
 }
 
@@ -853,14 +844,15 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 
 mod hack {
     use super::Vec;
+    use super::Box;
 
-    // pub fn into_vec<T>(b: Box<[T]>) -> Vec<T> {
-    //     unsafe {
-    //         let len = b.len();
-    //         let (b, addr_remote) = Box::into_raw(b);
-    //         Vec::from_raw_parts(b as *mut T, addr_remote, len, len)
-    //     }
-    // }
+    pub fn into_vec<T>(b: Box<[T]>) -> Vec<T> {
+        unsafe {
+            let len = b.len();
+            let (ptr_app, ptr_backend) = Box::into_raw(b);
+            Vec::from_raw_parts(ptr_app as *mut T, ptr_backend as *mut T, len, len)
+        }
+    }
 
     #[inline]
     pub fn to_vec<T>(s: &[T]) -> Vec<T>
@@ -1390,9 +1382,9 @@ impl<T> Drop for IntoIter<T> {
         impl<T> Drop for DropGuard<'_, T> {
             fn drop(&mut self) {
                 // RawVec handles deallocation
-                let (ptr, ptr_remote) = self.0.buf.to_raw_parts();
+                let (ptr_app, ptr_backend) = self.0.buf.to_raw_parts();
                 let _ = unsafe {
-                    RawVec::from_raw_parts(ptr.as_ptr(), ptr_remote.as_ptr(), self.0.cap)
+                    RawVec::from_raw_parts(ptr_app.as_ptr(), ptr_backend.as_ptr(), self.0.cap)
                 };
             }
         }

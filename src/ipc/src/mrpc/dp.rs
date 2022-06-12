@@ -5,7 +5,7 @@ use interface::{rpc::MessageErased, Handle};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct WRIdentifier(Handle, u64);
+pub struct WRIdentifier(pub Handle, pub u32);
 
 pub type WorkRequestSlot = [u8; 64];
 

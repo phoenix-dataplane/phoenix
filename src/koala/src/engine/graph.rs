@@ -4,8 +4,6 @@ use interface::engine::EngineType;
 use interface::Handle;
 use interface::rpc::MessageErased;
 
-use crate::mrpc::marshal::RpcMessage;
-
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
