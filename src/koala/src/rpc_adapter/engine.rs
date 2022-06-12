@@ -59,7 +59,7 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
 
-    pub(crate) meta_buffer: Box<[MessageMeta; 128]>,
+    pub(crate) _meta_buffer: Box<[MessageMeta; 128]>,
     pub(crate) meta_freelist: Vec<Unique<MessageMeta>>,
     pub(crate) meta_usedlist: fnv::FnvHashMap<u64, Unique<MessageMeta>>,
 
@@ -219,7 +219,6 @@ impl RpcAdapterEngine {
             }
 
             let ctx = ((cmid_handle.0 as u64) << 32) | (call_id as u64);
-
             let meta_buf = self.meta_freelist.pop().expect("MessageMeta buffer depleted");
             unsafe { std::ptr::write(meta_buf.as_ptr(), meta) }
             let meta_sge = ShmBuf {
@@ -233,7 +232,7 @@ impl RpcAdapterEngine {
             {
                 // post send message meta
                 unsafe {
-                    cmid.post_send(odp_mr, meta_sge.ptr..meta_sge.ptr + meta_sge.len, 0, SendFlags::SIGNALED);
+                    cmid.post_send(odp_mr, meta_sge.ptr..meta_sge.ptr + meta_sge.len, 0, SendFlags::SIGNALED)?;
                 }
                 
                 for (i, &sge) in sglist.0.iter().enumerate() {

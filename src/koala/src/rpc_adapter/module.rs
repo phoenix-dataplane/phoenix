@@ -103,7 +103,7 @@ impl RpcAdapterEngineBuilder {
             cmd_tx: self.cmd_tx,
             _mode: self.mode,
             indicator: None,
-            meta_buffer: meta_buf,
+            _meta_buffer: meta_buf,
             meta_freelist: freelist,
             meta_usedlist: fnv::FnvHashMap::default(),
         })
