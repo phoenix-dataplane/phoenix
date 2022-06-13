@@ -279,21 +279,21 @@ impl RpcAdapterEngine {
         }
 
         match self.tx_inputs()[0].try_recv() {
-            Ok(msg) => {
-                match msg {
-                    EngineTxMessage::RpcMessage(msg) =>  self.local_buffer.push_back(msg),
-                    EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
-                        let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
-                        let cmid = &conn_ctx.cmid;
+            Ok(msg) => match msg {
+                EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
+                EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                    let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
+                    let cmid = &conn_ctx.cmid;
 
-                        for call_id in call_ids {
-                            let recv_mrs = self.recv_mr_usage.remove(&WRIdentifier(conn_id, call_id)).expect("invalid WR identifier");
-                            self.reclaim_recv_buffers(cmid, &recv_mrs[1..])?;
-                        }
-                    },
+                    for call_id in call_ids {
+                        let recv_mrs = self
+                            .recv_mr_usage
+                            .remove(&WRIdentifier(conn_id, call_id))
+                            .expect("invalid WR identifier");
+                        self.reclaim_recv_buffers(cmid, &recv_mrs[1..])?;
+                    }
                 }
-               
-            }
+            },
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
@@ -424,12 +424,18 @@ impl RpcAdapterEngine {
                                 );
                                 use std::ops::DerefMut;
                                 let recv_ctx = mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
-                                let recv_id = self.unmarshal_and_deliver_up(recv_ctx.sg_list, Arc::clone(&conn_ctx))?;
+                                let recv_id = self.unmarshal_and_deliver_up(
+                                    recv_ctx.sg_list,
+                                    Arc::clone(&conn_ctx),
+                                )?;
 
                                 // reclaim recv mr that taken by MessageMeta
                                 let cmid = &conn_ctx.cmid;
                                 let meta_recv_mr = recv_ctx.recv_mrs[0];
-                                self.reclaim_recv_buffers(cmid, std::slice::from_ref(&meta_recv_mr));
+                                self.reclaim_recv_buffers(
+                                    cmid,
+                                    std::slice::from_ref(&meta_recv_mr),
+                                );
                                 self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
                             }
                             progress += 1;
@@ -453,7 +459,6 @@ impl RpcAdapterEngine {
         cmid: &ulib::ucm::CmId,
         mr_handles: &[Handle],
     ) -> Result<(), DatapathError> {
-
         for handle in mr_handles {
             let recv_mr = self.salloc.resource().recv_mr_table.get(handle)?;
             let off = recv_mr.as_ptr().expose_addr();

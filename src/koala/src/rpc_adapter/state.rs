@@ -86,8 +86,8 @@ pub(crate) struct ReqContext {
 pub(crate) struct RecvContext {
     // buffer for recevied sges
     pub(crate) sg_list: SgList,
-    // recv mrs that received sges are on  
-    pub(crate) recv_mrs: Vec<interface::Handle>
+    // recv mrs that received sges are on
+    pub(crate) recv_mrs: Vec<interface::Handle>,
 }
 
 #[derive(Debug)]

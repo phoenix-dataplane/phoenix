@@ -209,8 +209,9 @@ impl MrpcEngine {
                 }
             }
             WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
-                self.tx_outputs()[0].send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
-            },
+                self.tx_outputs()[0]
+                    .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
+            }
         }
         Ok(())
     }

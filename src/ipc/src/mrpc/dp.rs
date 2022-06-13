@@ -18,7 +18,7 @@ pub enum WorkRequest {
     // this will also deallocate
     Reply(MessageErased),
     // conn_id and an array of call_id
-    ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS])
+    ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
 }
 
 pub type CompletionSlot = [u8; 64];

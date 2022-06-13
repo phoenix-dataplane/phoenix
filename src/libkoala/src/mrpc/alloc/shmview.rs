@@ -1,16 +1,16 @@
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
-use std::cell::RefCell;
 
 use arrayvec::ArrayVec;
 
-use ipc::mrpc::dp::{WRIdentifier, RECV_RECLAIM_BS, WorkRequest};
+use ipc::mrpc::dp::{WRIdentifier, WorkRequest, RECV_RECLAIM_BS};
 
-use crate::mrpc::MRPC_CTX;
 use super::boxed::Box;
+use crate::mrpc::MRPC_CTX;
 
 pub(crate) mod from_backend {
     pub trait CloneFromBackendOwned {
@@ -22,13 +22,12 @@ pub(crate) mod from_backend {
 
 use from_backend::CloneFromBackendOwned;
 
-
 pub struct ShmView<'a, A: CloneFromBackendOwned> {
     inner: ManuallyDrop<
         Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>,
     >,
     wr_id: WRIdentifier,
-    reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>
+    reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
 }
 
 impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
@@ -38,12 +37,12 @@ impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
             crate::salloc::owner::BackendOwned,
         >,
         wr_id: WRIdentifier,
-        reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>
+        reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
     ) -> Self {
         ShmView {
             inner: ManuallyDrop::new(backend_owned),
             wr_id,
-            reclamation_buffer
+            reclamation_buffer,
         }
     }
 }

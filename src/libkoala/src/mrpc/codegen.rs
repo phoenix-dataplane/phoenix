@@ -10,7 +10,6 @@ use crate::mrpc::alloc::ShmView;
 use crate::mrpc::stub::{ClientStub, MessageErased, NamedService, RpcMessage, Service};
 use crate::salloc::owner::{AppOwned, BackendOwned};
 
-
 // mimic the generated code of tonic-helloworld
 
 // # Safety
@@ -59,8 +58,6 @@ mod inner {
     }
 }
 
-
-
 #[derive(Debug)]
 pub struct GreeterClient {
     stub: ClientStub,
@@ -105,7 +102,7 @@ impl GreeterClient {
         let fut = crate::mrpc::stub::ReqFuture {
             wr_id: ipc::mrpc::dp::WRIdentifier(conn_id, call_id),
             reclaim_buffer: &self.stub.recv_reclaim_buffer,
-            _marker: PhantomData
+            _marker: PhantomData,
         };
         fut
     }
@@ -141,7 +138,13 @@ impl<T: Greeter> NamedService for GreeterServer<T> {
 }
 
 impl<T: Greeter> Service for GreeterServer<T> {
-    fn call(&mut self, req: interface::rpc::MessageErased, reclaim_buffer: &std::cell::RefCell<arrayvec::ArrayVec<u32, { ipc::mrpc::dp::RECV_RECLAIM_BS }>>) -> (interface::rpc::MessageErased, u64) {
+    fn call(
+        &mut self,
+        req: interface::rpc::MessageErased,
+        reclaim_buffer: &std::cell::RefCell<
+            arrayvec::ArrayVec<u32, { ipc::mrpc::dp::RECV_RECLAIM_BS }>,
+        >,
+    ) -> (interface::rpc::MessageErased, u64) {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
