@@ -1053,6 +1053,7 @@ name = "libkoala"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "async-executor",
  "bincode",
  "dashmap",

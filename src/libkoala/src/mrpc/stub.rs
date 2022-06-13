@@ -1,14 +1,20 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
+use std::pin::Pin;
+use std::future::Future;
+use std::task::{Context, Poll};
 
+use arrayvec::ArrayVec;
 use fnv::FnvHashMap;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
-use ipc::mrpc::dp;
+use ipc::mrpc::dp::{self, WRIdentifier};
+use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
 /// Re-exports
 pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
@@ -25,6 +31,8 @@ use crate::salloc::owner::AppOwned;
 use crate::salloc::region::SharedRecvBuffer;
 
 use crate::salloc::SA_CTX;
+
+use super::alloc::{ShmView, CloneFromBackendOwned};
 
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
@@ -128,6 +136,40 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
     })
 }
 
+// NOTE: handle visiblity
+pub struct ReqFuture<'a, T: CloneFromBackendOwned + RpcData + std::marker::Unpin> {
+    pub wr_id: WRIdentifier,
+    pub reclaim_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
+    pub _marker: PhantomData<T>
+}
+
+impl<'a, T: CloneFromBackendOwned + RpcData + std::marker::Unpin> Future for ReqFuture<'a, T> {
+    type Output = Result<ShmView<'a, T>, crate::mrpc::Status>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+
+        let this = self.get_mut();
+        check_completion_queue();
+        if let Some(erased) = RECV_REPLY_CACHE.with(|cache| {
+            cache
+                .borrow_mut()
+                .remove(&this.wr_id)
+        }) {
+            tracing::trace!(
+                "ReqFuture receive reply from mRPC engine, call_id={}",
+                erased.meta.call_id
+            );
+            let ptr_app = erased.shm_addr_app as *mut <T as CloneFromBackendOwned>::BackendOwned;
+            let ptr_backend = ptr_app.with_addr(erased.shm_addr_backend);
+            let msg = unsafe { crate::mrpc::alloc::Box::from_backend_raw(ptr_app, ptr_backend) };
+            let reply = ShmView::new_from_backend_owned(msg, this.wr_id, this.reclaim_buffer);
+            Poll::Ready(Ok(reply))
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ClientStub {
     // identifier for the stub
@@ -135,6 +177,8 @@ pub struct ClientStub {
     // mRPC connection handle
     handle: Handle,
     reply_mrs: Vec<SharedRecvBuffer>,
+    // how to handle visibility here?
+    pub recv_reclaim_buffer: RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>
 }
 
 impl ClientStub {
@@ -234,6 +278,7 @@ impl ClientStub {
                     stub_id,
                     handle: ret.0,
                     reply_mrs,
+                    recv_reclaim_buffer: RefCell::new(ArrayVec::new())
                 })
             })
         })
@@ -270,6 +315,7 @@ pub struct Server {
     mrs: HashMap<Handle, Vec<SharedRecvBuffer>>,
     // func_id -> Service
     routes: HashMap<u32, std::boxed::Box<dyn Service>>,
+    recv_reclaim_buffer: FnvHashMap<Handle, RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>>
 }
 
 impl Server {
@@ -297,6 +343,7 @@ impl Server {
                     handles: HashSet::default(),
                     mrs: Default::default(),
                     routes: HashMap::default(),
+                    recv_reclaim_buffer: FnvHashMap::default()
                 })
             })
         })
@@ -334,9 +381,10 @@ impl Server {
                         use memfd::Memfd;
                         assert_eq!(fds.len(), ret.1.len());
                         assert!(self.handles.insert(ret.0));
-                        // setup recv cache
+                        // setup recv cache and recv reclaim buffer
                         CONN_SERVER_STUB_MAP
                             .with(|map| map.borrow_mut().insert(ret.0, self.stub_id));
+                        self.recv_reclaim_buffer.insert(ret.0, RefCell::new(ArrayVec::new()));
                         for (mr, &fd) in ret.1.into_iter().zip(&fds) {
                             let memfd = Memfd::try_from_fd(fd)
                                 .map_err(|_| io::Error::last_os_error())
@@ -420,7 +468,8 @@ impl Server {
                 let func_id = request.meta.func_id;
                 match self.routes.get_mut(&func_id) {
                     Some(s) => {
-                        let (reply_erased, msg_id) = s.call(request);
+                        let recv_buffer = self.recv_reclaim_buffer.get(&request.meta.conn_id).unwrap();
+                        let (reply_erased, msg_id) = s.call(request, recv_buffer);
                         msgs.push((reply_erased, msg_id));
                     }
                     None => {
@@ -471,5 +520,5 @@ pub trait NamedService {
 
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    fn call(&mut self, req: MessageErased) -> (MessageErased, u64);
+    fn call(&mut self, req: MessageErased, reclaim_buffer: &RefCell<arrayvec::ArrayVec<u32, RECV_RECLAIM_BS>>) -> (MessageErased, u64);
 }

@@ -6,6 +6,8 @@ use std::ptr::Unique;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use fnv::FnvHashMap;
+
 use ipc::mrpc;
 use ipc::mrpc::dp::WRIdentifier;
 
@@ -16,6 +18,7 @@ use interface::{AsHandle, Handle};
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
+use crate::engine::graph::EngineTxMessage;
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
@@ -52,8 +55,13 @@ pub(crate) struct RpcAdapterEngine {
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<MessageErased>,
 
-    // records the recv mr usage (a list of addr) of each received message (identified by connection handle and call id)
-    // pub(crate) recv_mr_usage: HashMap<WRIdentifier, Vec<usize>>,
+    // records the recv mr usage (a list of recv mr Handle) of each received message (identified by connection handle and call id)
+    // if in the future multiple sge are packed into a single recv mr
+    // then we only needs to maintain an additional reference counter for each recv mr, i.e., HashMap<Handle, u64>;
+    // if in the future recv mr's addr is directly used as wr_id in post_recv,
+    // just change Handle here to usize
+    pub(crate) recv_mr_usage: FnvHashMap<WRIdentifier, Vec<Handle>>,
+
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
@@ -272,7 +280,19 @@ impl RpcAdapterEngine {
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
-                self.local_buffer.push_back(msg);
+                match msg {
+                    EngineTxMessage::RpcMessage(msg) =>  self.local_buffer.push_back(msg),
+                    EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                        let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
+                        let cmid = &conn_ctx.cmid;
+
+                        for call_id in call_ids {
+                            let recv_mrs = self.recv_mr_usage.remove(&WRIdentifier(conn_id, call_id)).expect("invalid WR identifier");
+                            self.reclaim_recv_buffers(cmid, &recv_mrs[1..])?;
+                        }
+                    },
+                }
+               
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
@@ -284,7 +304,7 @@ impl RpcAdapterEngine {
         &mut self,
         sgl: SgList,
         conn_ctx: Arc<ConnectionContext>,
-    ) -> Result<Status, DatapathError> {
+    ) -> Result<WRIdentifier, DatapathError> {
         use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
@@ -294,6 +314,7 @@ impl RpcAdapterEngine {
         let mut meta = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         meta.conn_id = conn_ctx.cmid.as_handle();
 
+        let recv_id = WRIdentifier(meta.conn_id, meta.call_id);
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
             // let span = info_span!("replenish the credits");
@@ -338,14 +359,10 @@ impl RpcAdapterEngine {
                 _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
             },
         };
-        {
-            // let span = info_span!("unmarshal_and_deliver_up: rx_outputs send");
-            // let _enter = span.enter();
-            self.rx_outputs()[0]
-                .send(EngineRxMessage::RpcMessage(erased))
-                .unwrap();
-        }
-        Ok(Progress(1))
+        self.rx_outputs()[0]
+            .send(EngineRxMessage::RpcMessage(erased))
+            .unwrap();
+        Ok(recv_id)
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
@@ -391,7 +408,11 @@ impl RpcAdapterEngine {
                                     len: wc.byte_len as _, // note this byte_len is only valid for
                                                            // recv request
                                 };
-                                conn_ctx.receiving_sgl.lock().0.push(sge);
+                                {
+                                    let mut recv_ctx = conn_ctx.receiving_ctx.lock();
+                                    recv_ctx.sg_list.0.push(sge);
+                                    recv_ctx.recv_mrs.push(Handle(wc.wr_id as u32));
+                                }
                                 conn_ctx
                             };
 
@@ -402,30 +423,15 @@ impl RpcAdapterEngine {
                                     wc.wr_id
                                 );
                                 use std::ops::DerefMut;
-                                let sgl = mem::take(conn_ctx.receiving_sgl.lock().deref_mut());
-                                self.unmarshal_and_deliver_up(sgl, Arc::clone(&conn_ctx))?;
+                                let recv_ctx = mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
+                                let recv_id = self.unmarshal_and_deliver_up(recv_ctx.sg_list, Arc::clone(&conn_ctx))?;
+
+                                // reclaim recv mr that taken by MessageMeta
+                                let cmid = &conn_ctx.cmid;
+                                let meta_recv_mr = recv_ctx.recv_mrs[0];
+                                self.reclaim_recv_buffers(cmid, std::slice::from_ref(&meta_recv_mr));
+                                self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
                             }
-                            // XXX(cjr): only when the upper layer app finish using the data
-                            // we can repost the receives
-                            let cmid = &conn_ctx.cmid;
-
-                            let recv_mr = self
-                                .salloc
-                                .resource()
-                                .recv_mr_table
-                                .get(&Handle(wc.wr_id as u32))?;
-                            let mut odp_mr = self.get_or_init_odp_mr();
-                            let off = recv_mr.as_ptr().expose_addr();
-                            let len = recv_mr.len();
-
-                            unsafe {
-                                // TODO(wyj, cjr): This is incorrect. The backend should only
-                                // post_recv when the user completes the usage.
-                                // let span = info_span!("post_recv");
-                                // let _enter = span.enter();
-                                cmid.post_recv(&mut odp_mr, off..off + len, wc.wr_id)?;
-                            }
-
                             progress += 1;
                         }
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
@@ -440,6 +446,25 @@ impl RpcAdapterEngine {
         // COMMENT(cjr): Progress(0) here is okay for now because we haven't use the progress as
         // any indicator.
         Ok(Status::Progress(progress))
+    }
+
+    fn reclaim_recv_buffers(
+        &mut self,
+        cmid: &ulib::ucm::CmId,
+        mr_handles: &[Handle],
+    ) -> Result<(), DatapathError> {
+
+        for handle in mr_handles {
+            let recv_mr = self.salloc.resource().recv_mr_table.get(handle)?;
+            let off = recv_mr.as_ptr().expose_addr();
+            let len = recv_mr.len();
+
+            let mut odp_mr = self.get_or_init_odp_mr();
+            unsafe {
+                cmid.post_recv(&mut odp_mr, off..off + len, handle.0 as u64)?;
+            }
+        }
+        Ok(())
     }
 
     async fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
@@ -579,9 +604,6 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
-            }
-            mrpc::cmd::Command::RecycleRecvMr(_) => {
-                unimplemented!();
             }
         }
     }

@@ -25,10 +25,12 @@
 #![crate_type = "lib"]
 
 mod pages;
+mod pool;
 mod sc;
 mod zone;
 
 pub use pages::*;
+pub use pool::*;
 pub use sc::*;
 pub use zone::*;
 
@@ -42,7 +44,6 @@ extern crate alloc;
 
 #[cfg(test)]
 mod tests;
-
 use core::alloc::Layout;
 use core::fmt;
 use core::mem;

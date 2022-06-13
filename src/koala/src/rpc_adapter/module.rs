@@ -106,6 +106,7 @@ impl RpcAdapterEngineBuilder {
             _meta_buffer: meta_buf,
             meta_freelist: freelist,
             meta_usedlist: fnv::FnvHashMap::default(),
+            recv_mr_usage: fnv::FnvHashMap::default()
         })
     }
 }

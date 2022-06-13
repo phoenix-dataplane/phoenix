@@ -3,12 +3,18 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use interface::engine::EngineType;
 use interface::rpc::MessageErased;
 use interface::Handle;
+use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
-pub(crate) type TxIQueue = UnboundedReceiver<MessageErased>;
-pub(crate) type TxOQueue = UnboundedSender<MessageErased>;
+pub(crate) enum EngineTxMessage {
+    RpcMessage(MessageErased),
+    ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
+}
+
+pub(crate) type TxIQueue = UnboundedReceiver<EngineTxMessage>;
+pub(crate) type TxOQueue = UnboundedSender<EngineTxMessage>;
 
 #[derive(Debug)]
 pub(crate) enum EngineRxMessage {

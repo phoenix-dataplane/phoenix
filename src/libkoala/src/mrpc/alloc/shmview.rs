@@ -1,10 +1,15 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
+use std::cell::RefCell;
 
+use arrayvec::ArrayVec;
+
+use ipc::mrpc::dp::{WRIdentifier, RECV_RECLAIM_BS, WorkRequest};
+
+use crate::mrpc::MRPC_CTX;
 use super::boxed::Box;
 
 pub(crate) mod from_backend {
@@ -17,20 +22,13 @@ pub(crate) mod from_backend {
 
 use from_backend::CloneFromBackendOwned;
 
-#[derive(Clone, Copy)]
-pub(crate) struct ShmRecvContext<'a>(PhantomData<&'a ()>);
-
-impl<'a> ShmRecvContext<'a> {
-    pub(crate) fn new<T>(_ctx: &'a T) -> Self {
-        ShmRecvContext(PhantomData)
-    }
-}
 
 pub struct ShmView<'a, A: CloneFromBackendOwned> {
     inner: ManuallyDrop<
         Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>,
     >,
-    _ctx: ShmRecvContext<'a>,
+    wr_id: WRIdentifier,
+    reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>
 }
 
 impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
@@ -39,11 +37,43 @@ impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
             <A as CloneFromBackendOwned>::BackendOwned,
             crate::salloc::owner::BackendOwned,
         >,
-        ctx: ShmRecvContext<'a>,
+        wr_id: WRIdentifier,
+        reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>
     ) -> Self {
         ShmView {
             inner: ManuallyDrop::new(backend_owned),
-            _ctx: ctx,
+            wr_id,
+            reclamation_buffer
+        }
+    }
+}
+
+impl<'a, A: CloneFromBackendOwned> Drop for ShmView<'a, A> {
+    fn drop(&mut self) {
+        let mut borrow = self.reclamation_buffer.borrow_mut();
+
+        // only reclaim recv mr when the buffer is full
+        // it is fine that there are some leftover messages in the buffer,
+        // as all the recv mrs will be deallocated when the connection is closed
+        borrow.push(self.wr_id.1);
+        if borrow.is_full() {
+            let msgs: [MaybeUninit<u32>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();
+            let mut msgs = unsafe { MaybeUninit::array_assume_init(msgs) };
+            msgs.copy_from_slice(borrow.as_slice());
+            borrow.clear();
+
+            let conn_id = self.wr_id.0;
+            let reclaim_wr = WorkRequest::ReclaimRecvBuf(conn_id, msgs);
+            MRPC_CTX.with(move |ctx| {
+                let mut sent = false;
+                while !sent {
+                    let _ = ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
+                        ptr.cast::<WorkRequest>().write(reclaim_wr);
+                        sent = true;
+                        1
+                    });
+                }
+            });
         }
     }
 }

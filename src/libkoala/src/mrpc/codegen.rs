@@ -1,18 +1,15 @@
+use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
-use std::pin::Pin;
 
 use std::future::Future;
-use std::task::{Context, Poll};
 
 use interface::rpc::{MessageMeta, RpcMsgType};
 
-// use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
-use crate::mrpc::alloc::{ShmRecvContext, ShmView};
+use crate::mrpc::alloc::ShmView;
 use crate::mrpc::stub::{ClientStub, MessageErased, NamedService, RpcMessage, Service};
 use crate::salloc::owner::{AppOwned, BackendOwned};
 
-use super::stub::{check_completion_queue, RECV_REPLY_CACHE};
 
 // mimic the generated code of tonic-helloworld
 
@@ -62,39 +59,7 @@ mod inner {
     }
 }
 
-pub struct ReqFuture<'a> {
-    conn_id: interface::Handle,
-    call_id: u32,
-    ctx: ShmRecvContext<'a>,
-}
 
-impl<'a> Future for ReqFuture<'a> {
-    type Output = Result<ShmView<'a, HelloReply>, mrpc::Status>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use ipc::mrpc::dp::WRIdentifier;
-
-        let this = self.get_mut();
-        check_completion_queue();
-        if let Some(erased) = RECV_REPLY_CACHE.with(|cache| {
-            cache
-                .borrow_mut()
-                .remove(&WRIdentifier(this.conn_id, this.call_id))
-        }) {
-            tracing::trace!(
-                "ReqFuture receive reply from mRPC engine, call_id={}",
-                erased.meta.call_id
-            );
-            let ptr_app = erased.shm_addr_app as *mut inner::HelloReply<BackendOwned>;
-            let ptr_backend = ptr_app.with_addr(erased.shm_addr_backend);
-            let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_app, ptr_backend) };
-            let reply = ShmView::new_from_backend_owned(msg, this.ctx);
-            Poll::Ready(Ok(reply))
-        } else {
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct GreeterClient {
@@ -137,13 +102,12 @@ impl GreeterClient {
         msg.send_count += 1;
         self.stub.post_request(msg, meta).unwrap();
 
-        let ctx = ShmRecvContext::new(self);
-
-        ReqFuture {
-            conn_id,
-            call_id,
-            ctx,
-        }
+        let fut = crate::mrpc::stub::ReqFuture {
+            wr_id: ipc::mrpc::dp::WRIdentifier(conn_id, call_id),
+            reclaim_buffer: &self.stub.recv_reclaim_buffer,
+            _marker: PhantomData
+        };
+        fut
     }
 }
 
@@ -177,10 +141,11 @@ impl<T: Greeter> NamedService for GreeterServer<T> {
 }
 
 impl<T: Greeter> Service for GreeterServer<T> {
-    fn call(&mut self, req: interface::rpc::MessageErased) -> (interface::rpc::MessageErased, u64) {
+    fn call(&mut self, req: interface::rpc::MessageErased, reclaim_buffer: &std::cell::RefCell<arrayvec::ArrayVec<u32, { ipc::mrpc::dp::RECV_RECLAIM_BS }>>) -> (interface::rpc::MessageErased, u64) {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
+        let wr_id = ipc::mrpc::dp::WRIdentifier(conn_id, call_id);
 
         let ptr_app = req.shm_addr_app as *mut inner::HelloRequest<BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
@@ -191,8 +156,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
 
         // TODO(wyj): lifetime bound for ShmView
         // ShmView should be !Send and !Sync
-        let ctx = ();
-        let req = ShmView::new_from_backend_owned(msg, ShmRecvContext::new(&ctx));
+        let req = ShmView::new_from_backend_owned(msg, wr_id, reclaim_buffer);
 
         match self.inner.say_hello(req) {
             Ok(reply) => {

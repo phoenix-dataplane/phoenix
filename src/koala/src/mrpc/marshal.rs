@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use interface::rpc::{MessageMeta, RpcMsgType};
-use interface::Handle;
+use interface::rpc::MessageMeta;
 
 use ipc::shmalloc::ShmPtr;
 

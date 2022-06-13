@@ -8,6 +8,7 @@ use ipc::mrpc::{cmd, control_plane, dp};
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
+use crate::engine::graph::EngineTxMessage;
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::node::Node;
 
@@ -133,9 +134,6 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
-            Command::RecycleRecvMr(_) => {
-                unimplemented!()
-            }
         }
     }
 
@@ -191,7 +189,7 @@ impl MrpcEngine {
 
                         // if access to message's data fields are desired,
                         // typed message can be conjured up here via matching func_id
-                        self.tx_outputs()[0].send(*erased)?;
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(*erased))?;
                     }
                     _ => unimplemented!(),
                 }
@@ -205,11 +203,14 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        self.tx_outputs()[0].send(*erased)?;
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(*erased))?;
                     }
                     _ => unimplemented!(),
                 }
             }
+            WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
+                self.tx_outputs()[0].send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
+            },
         }
         Ok(())
     }
