@@ -1001,7 +1001,6 @@ dependencies = [
  "tracing-chrome",
  "tracing-core",
  "tracing-subscriber",
- "unique",
  "uuid",
  "version",
 ]
