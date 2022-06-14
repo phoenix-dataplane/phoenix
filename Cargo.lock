@@ -605,7 +605,7 @@ dependencies = [
  "ringbuf",
  "serde",
  "shmem-ipc",
- "slabmalloc 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slabmalloc",
  "spin",
  "structopt",
  "thiserror",
@@ -1070,7 +1070,7 @@ dependencies = [
  "memmap2 0.5.0",
  "nix 0.23.0",
  "serde",
- "slabmalloc 0.10.0",
+ "slabmalloc",
  "smol",
  "spin",
  "thiserror",
@@ -1841,15 +1841,6 @@ dependencies = [
  "log",
  "rand 0.8.4",
  "spin",
-]
-
-[[package]]
-name = "slabmalloc"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c3c80fc5058288346b67f19c9d57677bfabb4930386dcb9eeb23d14d1e10f0"
-dependencies = [
- "log",
 ]
 
 [[package]]

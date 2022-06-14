@@ -65,7 +65,22 @@ const LARGE_PAGE_SIZE: usize = 2 * 1024 * 1024;
 #[allow(unused)]
 const HUGE_PAGE_SIZE: usize = 1024 * 1024 * 1024;
 
-#[cfg(target_arch = "x86_64")]
+
+#[cfg(target_arch = "aarch64")]
+const CACHE_LINE_SIZE: usize = 64;
+
+#[cfg(target_arch = "aarch64")]
+const BASE_PAGE_SIZE: usize = 4096;
+
+#[cfg(target_arch = "aarch64")]
+#[allow(unused)]
+const LARGE_PAGE_SIZE: usize = 2 * 1024 * 1024;
+
+#[cfg(target_arch = "aarch64")]
+#[allow(unused)]
+const HUGE_PAGE_SIZE: usize = 1024 * 1024 * 1024;
+
+#[cfg(target_arch = "aarch64")]
 type VAddr = usize;
 
 /// Error that can be returned for `allocation` and `deallocation` requests.
