@@ -8,7 +8,7 @@ use libkoala::{cm, verbs::WcStatus, Error};
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -26,7 +26,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &read_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &read_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
     write_mr.fill(0u8);
 
@@ -35,13 +35,15 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
     let mut scnt = 0;
     let mut ccnt = 0;
-    let cq = &id.qp().send_cq;
+    let cq = id.qp().send_cq();
     while scnt < ctx.opt.num || ccnt < ctx.opt.num {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
             unsafe_write_bytes!(u32, scnt as u32, write_mr.as_mut_slice());
-            id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
-                .expect("Post write failed!");
+            unsafe {
+                id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
+                    .expect("Post write failed!");
+            }
             scnt += 1;
         }
         if ccnt < ctx.opt.num {
@@ -55,8 +57,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     }
 
     unsafe_write_bytes!(u32, ctx.opt.num as u32, write_mr.as_mut_slice());
-    id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
-        .expect("Post write failed!");
+    unsafe {
+        id.post_write(&write_mr, .., 0, send_flags, rkey, 0)
+            .expect("Post write failed!");
+    }
     let wc = id.get_send_comp().expect("Get send comp failed!");
     assert_eq!(wc.status, WcStatus::Success);
 
@@ -78,7 +82,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (_id, _rkey) = handshake(pre_id, &ctx, &read_mr.rkey()).expect("Handshake failed!");
+    let (_id, _rkey) = handshake(pre_id, ctx, &read_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != ctx.opt.num as u32 {}

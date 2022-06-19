@@ -17,6 +17,9 @@ pub use ffi::ibv_wc_status;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "koala")]
+use interface::{AsHandle, Handle};
+
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
 
@@ -132,7 +135,7 @@ impl<'devlist> Device<'devlist> {
     ///  - `EMFILE`: Too many files are opened by this process (from `ibv_query_gid`).
     ///  - Other: the device is not in `ACTIVE` or `ARMED` state.
     pub fn open(&self) -> io::Result<Context> {
-        Context::with_device(*self.0)
+        unsafe { Context::with_device(*self.0) }
     }
 
     /// Returns a string of the name, which is associated with this RDMA device.
@@ -205,6 +208,7 @@ impl<'devlist> Device<'devlist> {
 }
 
 /// An RDMA context bound to a device.
+#[repr(transparent)]
 pub struct Context {
     pub(crate) ctx: *mut ffi::ibv_context,
 }
@@ -212,12 +216,23 @@ pub struct Context {
 unsafe impl Sync for Context {}
 unsafe impl Send for Context {}
 
+/// __safety__: The safety of this conversion depends on the validity of ibv_context.
+impl AsRef<Context> for *mut ffi::ibv_context {
+    fn as_ref(&self) -> &Context {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &Context>(self) }
+    }
+}
+
 impl Context {
     /// Opens a context for the given device, and queries its port and gid.
-    pub fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
+    ///
+    /// # Safety
+    /// The parameter `dev` must be a valid ibv_context.
+    pub unsafe fn with_device(dev: *mut ffi::ibv_device) -> io::Result<Context> {
         assert!(!dev.is_null());
 
-        let ctx = unsafe { ffi::ibv_open_device(dev) };
+        let ctx = ffi::ibv_open_device(dev);
         if ctx.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -325,10 +340,10 @@ impl Context {
     /// A protection domain is a means of protection, and helps you create a group of object that
     /// can work together. If several objects were created using PD1, and others were created using
     /// PD2, working with objects from group1 together with objects from group2 will not work.
-    pub fn alloc_pd(&self) -> Result<ProtectionDomain<'_>, ()> {
+    pub fn alloc_pd(&self) -> Result<ProtectionDomain<'_>, AllocPdError> {
         let pd = unsafe { ffi::ibv_alloc_pd(self.ctx) };
         if pd.is_null() {
-            Err(())
+            Err(AllocPdError)
         } else {
             Ok(ProtectionDomain {
                 _phantom: PhantomData,
@@ -338,6 +353,10 @@ impl Context {
     }
 }
 
+/// Error on allocating a protection domain (PD).
+#[derive(Debug)]
+pub struct AllocPdError;
+
 impl Drop for Context {
     fn drop(&mut self) {
         let ok = unsafe { ffi::ibv_close_device(self.ctx) };
@@ -346,6 +365,7 @@ impl Drop for Context {
 }
 
 /// A completion queue that allows subscribing to the completion of queued sends and receives.
+#[repr(transparent)]
 pub struct CompletionQueue<'ctx> {
     _phantom: PhantomData<&'ctx ()>,
     cq: *mut ffi::ibv_cq,
@@ -354,13 +374,27 @@ pub struct CompletionQueue<'ctx> {
 unsafe impl<'a> Send for CompletionQueue<'a> {}
 unsafe impl<'a> Sync for CompletionQueue<'a> {}
 
-impl<'ctx> CompletionQueue<'ctx> {
-    /// Returns the inner handle of this CompletionQueue.
-    pub fn handle(&self) -> u32 {
-        assert!(!self.cq.is_null());
-        unsafe { &*self.cq }.handle
+/// __safety__: The safety of this conversion depends on the validity of ibv_cq. That is,
+/// the inner pointers/objects of this ibv_cq must also be valid.
+impl<'a> AsRef<CompletionQueue<'a>> for *mut ffi::ibv_cq {
+    fn as_ref(&self) -> &CompletionQueue<'a> {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &CompletionQueue<'a>>(self) }
     }
 }
+
+#[cfg(feature = "koala")]
+impl<'ctx> AsHandle for CompletionQueue<'ctx> {
+    /// Returns the inner handle of this CompletionQueue.
+    fn as_handle(&self) -> Handle {
+        assert!(!self.cq.is_null());
+        Handle(unsafe { &*self.cq }.handle)
+    }
+}
+
+/// Error on polling a completion queue (CQ).
+#[derive(Debug)]
+pub struct PollCqError;
 
 impl<'ctx> CompletionQueue<'ctx> {
     /// Poll for (possibly multiple) work completions.
@@ -387,7 +421,7 @@ impl<'ctx> CompletionQueue<'ctx> {
     pub fn poll<'c>(
         &self,
         completions: &'c mut [ffi::ibv_wc],
-    ) -> Result<&'c mut [ffi::ibv_wc], ()> {
+    ) -> Result<&'c mut [ffi::ibv_wc], PollCqError> {
         // TODO: from http://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
         //
         //   One should consume Work Completions at a rate that prevents the CQ from being overrun
@@ -405,10 +439,16 @@ impl<'ctx> CompletionQueue<'ctx> {
         };
 
         if n < 0 {
-            Err(())
+            Err(PollCqError)
         } else {
             Ok(&mut completions[0..n as usize])
         }
+    }
+
+    /// Returns the capacity of the CQ. The CQ can hold have at least this number of elements.
+    #[inline]
+    pub fn capacity(&self) -> u32 {
+        unsafe { &*self.cq }.cqe as _
     }
 }
 
@@ -796,10 +836,10 @@ pub struct PreparedQueuePair<'res> {
 ///
 /// ```c
 /// union ibv_gid {
-///     uint8_t   raw[16];
+///     uint8_t    raw[16];
 ///     struct {
-/// 	    __be64	subnet_prefix;
-/// 	    __be64	interface_id;
+///         __be64    subnet_prefix;
+///         __be64    interface_id;
 ///     } global;
 /// };
 /// ```
@@ -917,11 +957,13 @@ impl<'res> PreparedQueuePair<'res> {
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
     pub fn handshake(self, remote: QueuePairEndpoint) -> io::Result<QueuePair<'res>> {
         // init and associate with port
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_INIT;
-        attr.qp_access_flags = self.access.0;
-        attr.pkey_index = 0;
-        attr.port_num = PORT_NUM;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_INIT,
+            qp_access_flags: self.access.0,
+            pkey_index: 0,
+            port_num: PORT_NUM,
+            ..Default::default()
+        };
         let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
             | ffi::ibv_qp_attr_mask::IBV_QP_PKEY_INDEX
             | ffi::ibv_qp_attr_mask::IBV_QP_PORT
@@ -932,13 +974,15 @@ impl<'res> PreparedQueuePair<'res> {
         }
 
         // set ready to receive
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_RTR;
-        attr.path_mtu = self.port_attr.active_mtu;
-        attr.dest_qp_num = remote.num;
-        attr.rq_psn = 0;
-        attr.max_dest_rd_atomic = 1;
-        attr.min_rnr_timer = self.min_rnr_timer;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_RTR,
+            path_mtu: self.port_attr.active_mtu,
+            dest_qp_num: remote.num,
+            rq_psn: 0,
+            max_dest_rd_atomic: 1,
+            min_rnr_timer: self.min_rnr_timer,
+            ..Default::default()
+        };
         attr.ah_attr.is_global = 1;
         attr.ah_attr.dlid = remote.lid;
         attr.ah_attr.sl = 0;
@@ -959,13 +1003,15 @@ impl<'res> PreparedQueuePair<'res> {
         }
 
         // set ready to send
-        let mut attr = ffi::ibv_qp_attr::default();
-        attr.qp_state = ffi::ibv_qp_state::IBV_QPS_RTS;
-        attr.timeout = self.timeout;
-        attr.retry_cnt = self.retry_count;
-        attr.sq_psn = 0;
-        attr.rnr_retry = self.rnr_retry;
-        attr.max_rd_atomic = 1;
+        let mut attr = ffi::ibv_qp_attr {
+            qp_state: ffi::ibv_qp_state::IBV_QPS_RTS,
+            timeout: self.timeout,
+            retry_cnt: self.retry_count,
+            sq_psn: 0,
+            rnr_retry: self.rnr_retry,
+            max_rd_atomic: 1,
+            ..Default::default()
+        };
         let mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
             | ffi::ibv_qp_attr_mask::IBV_QP_TIMEOUT
             | ffi::ibv_qp_attr_mask::IBV_QP_RETRY_CNT
@@ -1029,6 +1075,7 @@ impl<T> Drop for MemoryRegion<T> {
 pub struct AccessFlags(pub ffi::ibv_access_flags);
 
 /// A protection domain for a device's context.
+#[repr(transparent)]
 pub struct ProtectionDomain<'ctx> {
     pub(crate) _phantom: PhantomData<&'ctx ()>,
     pub(crate) pd: *mut ffi::ibv_pd,
@@ -1037,21 +1084,44 @@ pub struct ProtectionDomain<'ctx> {
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}
 unsafe impl<'a> Send for ProtectionDomain<'a> {}
 
+impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
+    fn as_ref(&self) -> &ProtectionDomain<'a> {
+        // __safety__: cjr: I'm not sure if this is really sound. It looks like if pd is not
+        // null, and the inner ibv_context has a longer lifetime, it is valid then. But how on the
+        // earth do I know the lifetime of ctx is longer? I can only check if the inner ctx is
+        // valud for now.
+        assert!(!self.is_null());
+        assert!(!unsafe { &**self }.context.is_null());
+        unsafe { mem::transmute::<&*mut ffi::ibv_pd, &ProtectionDomain<'a>>(self) }
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'ctx> ProtectionDomain<'ctx> {
+    /// Exposes the inner pd structure.
+    #[inline]
+    pub fn pd(&self) -> *mut ffi::ibv_pd {
+        self.pd
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'ctx> AsHandle for ProtectionDomain<'ctx> {
+    /// Returns the inner handle of this protection domain.
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        assert!(!self.pd.is_null());
+        Handle(unsafe { &*self.pd }.handle)
+    }
+}
+
 impl<'ctx> ProtectionDomain<'ctx> {
     /// Returns the context of the protection domain.
     #[inline]
-    pub fn context(&self) -> Context {
+    pub fn context(&self) -> &Context {
         assert!(!self.pd.is_null());
-        Context {
-            ctx: unsafe { &*self.pd }.context,
-        }
-    }
-
-    /// Returns the inner handle of this protection domain.
-    #[inline]
-    pub fn handle(&self) -> u32 {
-        assert!(!self.pd.is_null());
-        unsafe { &*self.pd }.handle
+        let ctx = &unsafe { &*self.pd }.context;
+        ctx.as_ref()
     }
 
     /// Creates a queue pair builder associated with this protection domain.
@@ -1168,6 +1238,7 @@ impl<'a> Drop for ProtectionDomain<'a> {
 /// which is maintained by the network stack and doesn't have a physical resource behind it. A QP
 /// is a resource of an RDMA device and a QP number can be used by one process at the same time
 /// (similar to a socket that is associated with a specific TCP or UDP port number)
+#[repr(transparent)]
 pub struct QueuePair<'res> {
     pub(crate) _phantom: PhantomData<&'res ()>,
     pub(crate) qp: *mut ffi::ibv_qp,
@@ -1176,48 +1247,83 @@ pub struct QueuePair<'res> {
 unsafe impl<'a> Send for QueuePair<'a> {}
 unsafe impl<'a> Sync for QueuePair<'a> {}
 
-impl<'res> QueuePair<'res> {
+/// __safety__: The safety of this conversion depends on the validity of ibv_qp. That is,
+/// the inner pointers/objects of this ibv_qp must also be valid.
+impl<'a> AsRef<QueuePair<'a>> for *mut ffi::ibv_qp {
+    fn as_ref(&self) -> &QueuePair<'a> {
+        assert!(!self.is_null());
+        unsafe { mem::transmute::<&Self, &QueuePair<'a>>(self) }
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'res> AsHandle for QueuePair<'res> {
     /// Returns the inner handle of this QP.
     #[inline]
-    pub fn handle(&self) -> u32 {
+    fn as_handle(&self) -> Handle {
         assert!(!self.qp.is_null());
-        unsafe { &*self.qp }.handle
+        Handle(unsafe { &*self.qp }.handle)
+    }
+}
+
+impl<'res> QueuePair<'res> {
+    /// Takes the inner objects of this QP.
+    ///
+    /// # Safety
+    ///
+    /// This function should be only called once right before
+    /// break up the QP into different resources and insert them into the resource tables.
+    /// The purpose of this is to avoid self-referencing in Resource, which would cause a lot of
+    /// trouble.
+    pub unsafe fn take_inner_objects(
+        &self,
+    ) -> (
+        ProtectionDomain<'res>,
+        CompletionQueue<'res>,
+        CompletionQueue<'res>,
+    ) {
+        assert!(!self.qp.is_null());
+        let qp = &*self.qp;
+        assert!(!qp.pd.is_null());
+        assert!(!qp.send_cq.is_null());
+        assert!(!qp.recv_cq.is_null());
+        let pd_ret = ProtectionDomain {
+            _phantom: PhantomData,
+            pd: qp.pd,
+        };
+        let send_cq_ret = CompletionQueue {
+            _phantom: PhantomData,
+            cq: qp.send_cq,
+        };
+        let recv_cq_ret = CompletionQueue {
+            _phantom: PhantomData,
+            cq: qp.recv_cq,
+        };
+        (pd_ret, send_cq_ret, recv_cq_ret)
     }
 
     /// Returns the protection domain of this QP.
     #[inline]
-    pub fn pd(&self) -> ProtectionDomain<'res> {
+    pub fn pd(&self) -> &ProtectionDomain<'res> {
         assert!(!self.qp.is_null());
-        let pd = unsafe { &*self.qp }.pd;
-        assert!(!pd.is_null());
-        ProtectionDomain {
-            _phantom: PhantomData,
-            pd,
-        }
+        let pd = &unsafe { &*self.qp }.pd;
+        pd.as_ref()
     }
 
     /// Returns the send_cq that this QP assocates with.
     #[inline]
-    pub fn send_cq(&self) -> CompletionQueue<'res> {
+    pub fn send_cq(&self) -> &CompletionQueue<'res> {
         assert!(!self.qp.is_null());
-        let cq = unsafe { &*self.qp }.send_cq;
-        assert!(!cq.is_null());
-        CompletionQueue {
-            _phantom: PhantomData,
-            cq,
-        }
+        let cq = &unsafe { &*self.qp }.send_cq;
+        cq.as_ref()
     }
 
     /// Returns the recv_cq that this QP assocates with.
     #[inline]
-    pub fn recv_cq(&self) -> CompletionQueue<'res> {
+    pub fn recv_cq(&self) -> &CompletionQueue<'res> {
         assert!(!self.qp.is_null());
-        let cq = unsafe { &*self.qp }.recv_cq;
-        assert!(!cq.is_null());
-        CompletionQueue {
-            _phantom: PhantomData,
-            cq,
-        }
+        let cq = &unsafe { &*self.qp }.recv_cq;
+        cq.as_ref()
     }
 }
 
@@ -1269,7 +1375,7 @@ impl<'res> QueuePair<'res> {
             lkey: (&*mr.mr).lkey,
         };
         let mut wr = ffi::ibv_send_wr {
-            wr_id: wr_id,
+            wr_id,
             next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
             sg_list: &mut sge as *mut _,
             num_sge: 1,
@@ -1353,7 +1459,7 @@ impl<'res> QueuePair<'res> {
             lkey: (&*mr.mr).lkey,
         };
         let mut wr = ffi::ibv_recv_wr {
-            wr_id: wr_id,
+            wr_id,
             next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
             sg_list: &mut sge as *mut _,
             num_sge: 1,

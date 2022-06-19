@@ -9,7 +9,7 @@ use libkoala::{cm, verbs::WcStatus, Error};
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -32,12 +32,14 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
     let mut scnt = 0;
     let mut ccnt = 0;
-    let cq = &id.qp().send_cq;
+    let cq = id.qp().send_cq();
     while scnt < ctx.opt.num || ccnt < ctx.opt.num {
         if scnt < ctx.opt.num && scnt - ccnt < ctx.cap.max_send_wr as usize {
             tposted.push(Instant::now());
-            id.post_send(&send_mr, .., 0, send_flags)
-                .expect("Post send failed!");
+            unsafe {
+                id.post_send(&send_mr, .., 0, send_flags)
+                    .expect("Post send failed!");
+            }
             scnt += 1;
         }
         if ccnt < ctx.opt.num {
@@ -81,7 +83,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     eprintln!("Connection established");
 
     let mut wcs = Vec::with_capacity(CTX_POLL_BATCH);
-    let cq = &id.qp().recv_cq;
+    let cq = id.qp().recv_cq();
     while rcnt < ctx.opt.num || ccnt < ctx.opt.num {
         if rcnt < ctx.opt.num && rcnt - ccnt < ctx.cap.max_recv_wr as usize {
             unsafe {

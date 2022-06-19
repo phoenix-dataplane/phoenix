@@ -13,27 +13,50 @@ libc = "0.2.103"
 structopt = "0.3.23"
 anyhow = "1.0.44"
 scheduler = "0.1.3"
+clap = "2.33.3"
+fnv = "1.0.7"
+thiserror = "1.0.29"
+unique = "0.9.1"
+smol = "1.2.5"
+chrono = "0.4.19"
+env_logger = "0.9.0"
+futures = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [[bin]]
 name = "sender"
-path = "src/sender.rs"
+path = "src/hello/sender.rs"
 
 [[bin]]
 name = "receiver"
-path = "src/receiver.rs"
+path = "src/hello/receiver.rs"
  
 [[bin]]
 name = "send_bw"
-path = "src/send_bw.rs"
+path = "src/send_bw/main.rs"
 
 [[bin]]
 name = "send_lat"
-path = "src/send_lat.rs"
+path = "src/send_lat/main.rs"
 
 [[bin]]
 name = "bench_lat"
-path = "src/bench_lat.rs"
+path = "src/bench/bench_lat.rs"
 
 [[bin]]
 name = "bench_bw"
-path = "src/bench_bw.rs"
+path = "src/bench/bench_bw.rs"
+
+[[bin]]
+name = "alltoall"
+path = "src/alltoall/main.rs"
+
+[[bin]]
+name = "rpc_hello_client"
+path = "src/rpc_hello/client.rs"
+
+[[bin]]
+name = "rpc_hello_server"
+path = "src/rpc_hello/server.rs"

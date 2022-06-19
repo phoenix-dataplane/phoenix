@@ -1,7 +1,4 @@
-use std::cmp::max;
-use std::convert::{From, TryInto};
-use std::mem;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
 
 use interface::{RemoteKey, SendFlags, WcStatus};
@@ -51,7 +48,7 @@ pub struct Context {
 
 impl Context {
     pub fn new(mut opt: Opts, tst: Test) -> Self {
-        opt.size = max(opt.size, 4);
+        opt.size = std::cmp::max(opt.size, 4);
         if tst == Test::BW && opt.num < opt.warmup {
             opt.num += opt.warmup;
         }
@@ -66,13 +63,13 @@ impl Context {
 
         Context {
             client: opt.ip != "0.0.0.0",
-            opt: opt,
-            tst: tst,
-            cap: cap,
+            opt,
+            tst,
+            cap,
         }
     }
 
-    pub fn print(self: &Self) {
+    pub fn print(&self) {
         println!("machine: {}", if self.client { "client" } else { "sever" });
         println!(
             "num:{}, size:{}, warmup:{}",
@@ -100,12 +97,6 @@ macro_rules! unsafe_write_bytes {
     };
 }
 
-macro_rules! read_bytes {
-    ($ty:ty, $buf:expr) => {
-        <$ty>::from_be_bytes($buf.try_into().unwrap())
-    };
-}
-
 macro_rules! unsafe_read_volatile {
     ($ty:ty,$addr:expr) => {
         <$ty>::from_be(unsafe { std::ptr::read_volatile($addr) })
@@ -115,14 +106,12 @@ macro_rules! unsafe_read_volatile {
 pub fn handshake(
     pre_id: cm::PreparedCmId,
     ctx: &Context,
-    rkey: &RemoteKey,
+    my_rkey: &RemoteKey,
 ) -> Result<(cm::CmId, RemoteKey), Error> {
-    let mut send_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
-    let mut recv_mr: verbs::MemoryRegion<u8> = pre_id.alloc_msgs(mem::size_of::<RemoteKey>())?;
+    let mut send_mr: verbs::MemoryRegion<RemoteKey> = pre_id.alloc_msgs(1)?;
+    let mut recv_mr: verbs::MemoryRegion<RemoteKey> = pre_id.alloc_msgs(1)?;
 
-    let (addr_buf, rkey_buf) = send_mr.as_mut_slice().split_at_mut(mem::size_of::<u64>());
-    unsafe_write_bytes!(u64, rkey.addr, addr_buf);
-    unsafe_write_bytes!(u32, rkey.rkey, rkey_buf);
+    send_mr[0] = *my_rkey;
 
     unsafe {
         pre_id
@@ -131,12 +120,14 @@ pub fn handshake(
     }
 
     let id = if ctx.client {
-        pre_id.connect(None).expect("Connect failed!")
+        pre_id.connect(None)?
     } else {
-        pre_id.accept(None).expect("Accept failed!")
+        pre_id.accept(None)?
     };
 
-    id.post_send(&send_mr, .., 0, SendFlags::SIGNALED | SendFlags::INLINE)?;
+    unsafe {
+        id.post_send(&send_mr, .., 0, SendFlags::SIGNALED)?;
+    }
 
     let wc = id.get_send_comp()?;
     assert_eq!(wc.status, WcStatus::Success);
@@ -144,44 +135,33 @@ pub fn handshake(
     let wc = id.get_recv_comp()?;
     assert_eq!(wc.status, WcStatus::Success);
 
-    let (addr, rkey) = recv_mr.as_slice().split_at(mem::size_of::<u64>());
-    Ok((
-        id,
-        RemoteKey {
-            addr: read_bytes!(u64, addr),
-            rkey: read_bytes!(u32, rkey),
-        },
-    ))
+    Ok((id, recv_mr[0]))
 }
 
 const LAT_MEASURE_TAIL: usize = 2;
-pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
+pub fn print_lat(ctx: &Context, times: &[Instant]) {
     let num = ctx.opt.num - ctx.opt.warmup;
     assert!(num > 0);
     let mut delta = Vec::new();
     for i in 0..num {
-        delta.push(
-            times[i + ctx.opt.warmup + 1]
-                .duration_since(times[i + ctx.opt.warmup])
-                .as_micros(),
-        );
+        delta.push(times[i + ctx.opt.warmup + 1].duration_since(times[i + ctx.opt.warmup]));
     }
-    delta.sort();
+    delta.sort_unstable();
 
-    let factor = if ctx.opt.verb == Verb::Read { 1.0 } else { 2.0 };
+    let factor = if ctx.opt.verb == Verb::Read { 1 } else { 2 };
 
     let cnt = num - LAT_MEASURE_TAIL;
-    let mut duration = 0.0;
+    let mut duration = Duration::new(0, 0);
     let mut lat = Vec::new();
-    for i in 0..cnt {
-        let t = delta[i] as f64 / factor;
-        duration += t;
-        lat.push(t);
+    for t in delta.into_iter().take(cnt) {
+        duration += t / factor;
+        lat.push(t / factor);
     }
     println!(
-        "duration: {:.2}, avg: {:.2}, min: {:.2}, median: {:.2}, p95: {:.2}, p99: {:.2}, max: {:.2}",
+        "duration: {:?}, #iters: {}, avg: {:?}, min: {:?}, median: {:?}, P95: {:?}, P99: {:?}, max: {:?}",
         duration,
-        duration / cnt as f64,
+        cnt,
+        duration / cnt as u32,
         lat[0],
         lat[cnt / 2],
         lat[(cnt as f64 * 0.95) as usize],
@@ -190,17 +170,12 @@ pub fn print_lat(ctx: &Context, times: &Vec<Instant>) {
     );
 }
 
-pub fn print_bw(ctx: &Context, tposted: &Vec<Instant>, tcompleted: &Vec<Instant>) {
-    let tus = tcompleted[ctx.opt.num - 1]
-        .duration_since(tposted[0])
-        .as_micros() as f64;
-    let mbytes = (ctx.opt.size * ctx.opt.num) as f64 / tus; // MB=10^6B
-    let gbytes = mbytes / 1000.0; // 1GB=10^9B
-    let mpps = ctx.opt.num as f64 / tus;
+pub fn print_bw(ctx: &Context, tposted: &[Instant], tcompleted: &[Instant]) {
+    let dura = tcompleted[ctx.opt.num - 1].duration_since(tposted[0]);
+    let bw_gbps = (ctx.opt.size * ctx.opt.num) as f64 * 8.0 / dura.as_secs_f64() / 1e9;
+    let msg_rate = ctx.opt.num as f64 / dura.as_secs_f64() / 1e6;
     println!(
-        "avg bw: {:.2}GB/s, {:.2}Gbps, {:.5}Mpps",
-        gbytes,
-        gbytes * 8.0,
-        mpps
+        "duration: {:?}, bandwidth: {:.2} Gb/s, rate: {:.5} Mpps",
+        dura, bw_gbps, msg_rate,
     );
 }

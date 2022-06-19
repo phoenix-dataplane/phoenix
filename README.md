@@ -1,22 +1,24 @@
 # koala
 
+[![Build Status](https://github.com/koalanet-project/koala/workflows/build/badge.svg)](https://github.com/koalanet-project/koala/actions)
+
 On server `rdma0.danyang-06`, start koala backend,
 ```
-KOALA_LOG=trace cargo run --release --bin koala
+KOALA_LOG=trace cargo rr --bin koala
 ```
 
 then run the examples
 ```
-cargo run --release --bin send_bw --
+cargo rr --bin send_bw --
 ```
 
 
 On server B, start koala backend,
 ```
-KOALA_LOG=trace cargo run --release --bin koala
+KOALA_LOG=trace cargo rr --bin koala
 ```
 
 then run the examples
 ```
-cargo run --release --bin send_bw -- -c rdma0.danyang-06
+cargo rr --bin send_bw -- -c rdma0.danyang-06
 ```

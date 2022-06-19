@@ -1,0 +1,14 @@
+name = "benchmark/send_bw-64kb"
+description = "Run bandwidth benchmark for send/recv"
+group = "send_bw"
+
+[[worker]]
+host = "danyang-06"
+bin = "send_bw"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "send_bw"
+args = "-c rdma0.danyang-06"
+# command = "cargo rr --bin send_bw -- -c rdma0.danyang-06"

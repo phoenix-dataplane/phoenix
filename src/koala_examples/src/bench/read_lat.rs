@@ -14,7 +14,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let pre_id = builder.set_cap(ctx.cap).build().expect("Create QP failed!");
     eprintln!("QP created");
 
-    let read_mr: MemoryRegion<u8> = pre_id
+    let mut read_mr: MemoryRegion<u8> = pre_id
         .alloc_msgs(ctx.opt.size)
         .expect("Memory registration failed!");
     let mut write_mr: MemoryRegion<u8> = pre_id
@@ -22,15 +22,17 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     // unsafe_write_bytes!(u32, 0, write_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     let mut times = Vec::with_capacity(ctx.opt.num + 1);
     for _i in 0..ctx.opt.num {
         times.push(Instant::now());
 
-        id.post_read(&read_mr, .., 0, send_flags, rkey, 0)
-            .expect("Post read failed!");
+        unsafe {
+            id.post_read(&mut read_mr, .., 0, send_flags, rkey, 0)
+                .expect("Post read failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
     }
@@ -60,12 +62,14 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
         .expect("Memory registration failed!");
     unsafe_write_bytes!(u32, u32::MAX, read_mr.as_mut_slice());
 
-    let (id, rkey) = handshake(pre_id, &ctx, &write_mr.rkey()).expect("Handshake failed!");
+    let (id, rkey) = handshake(pre_id, ctx, &write_mr.rkey()).expect("Handshake failed!");
     eprintln!("Handshake finished");
 
     while unsafe_read_volatile!(u32, read_mr.as_ptr() as *const u32) != ctx.opt.num as u32 {
-        id.post_read(&read_mr, .., 0, send_flags, rkey, 0)
-            .expect("Post read failed!");
+        unsafe {
+            id.post_read(&mut read_mr, .., 0, send_flags, rkey, 0)
+                .expect("Post read failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
     }

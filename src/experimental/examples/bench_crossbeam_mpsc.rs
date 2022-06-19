@@ -15,7 +15,9 @@ fn main() {
         let (sender_core, receiver_core) = get_hyperthread_core_pair();
 
         let sender = s.spawn(move |_| {
-            set_affinity_for_current(sender_core).unwrap();
+            if opts.set_affinity {
+                set_affinity_for_current(sender_core).unwrap();
+            }
             let backoff = Backoff::new();
             for i in 0..opts.warm_iters + opts.total_iters {
                 // tx.send(i).unwrap();
@@ -26,7 +28,9 @@ fn main() {
         });
 
         let receiver = s.spawn(move |_| {
-            set_affinity_for_current(receiver_core).unwrap();
+            if opts.set_affinity {
+                set_affinity_for_current(receiver_core).unwrap();
+            }
             let backoff = Backoff::new();
             for i in 0..opts.warm_iters {
                 // let x = rx.recv().unwrap();

@@ -1,17 +1,21 @@
 use std::num::NonZeroU32;
+use std::os::unix::io::RawFd;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod addrinfo;
+pub mod engine;
+pub mod rpc;
 
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum Error {
     #[error("{0}")]
     Generic(String),
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Handle(pub u32);
 
@@ -19,13 +23,25 @@ impl Handle {
     pub const INVALID: Handle = Handle(u32::MAX);
 }
 
-impl From<u32> for Handle {
-    fn from(x: u32) -> Self {
-        Handle(x as _)
+pub trait AsHandle {
+    #[must_use]
+    fn as_handle(&self) -> Handle;
+}
+
+impl AsHandle for RawFd {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        if *self >= 0 {
+            Handle(*self as _)
+        } else {
+            Handle::INVALID
+        }
     }
 }
 
 // These data struct can be `Copy` because they are only for IPC use.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct VerbsContext(pub Handle);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CmId(pub Handle);
@@ -47,6 +63,11 @@ pub struct QueuePair(pub Handle);
 
 pub mod returned {
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct VerbsContext {
+        pub handle: super::VerbsContext,
+    }
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct ProtectionDomain {
@@ -73,10 +94,15 @@ pub mod returned {
         pub qp: Option<QueuePair>,
     }
 
+    // TODO(cjr): remove redundant fields
     #[derive(Debug, Serialize, Deserialize)]
     pub struct MemoryRegion {
         pub handle: super::MemoryRegion,
         pub rkey: super::RemoteKey,
+        pub vaddr: u64,
+        pub map_len: u64,
+        pub file_off: u64,
+        pub pd: super::ProtectionDomain,
     }
 }
 
@@ -214,6 +240,11 @@ pub struct WorkCompletion {
     pub qp_num: u32,
     pub ud_src_qp: u32,
     pub wc_flags: WcFlags,
+    // user should not bother with these following fields
+    pub pkey_index: u16,
+    pub slid: u16,
+    pub sl: u8,
+    pub dlid_path_bits: u8,
 }
 
 impl WorkCompletion {
@@ -228,6 +259,10 @@ impl WorkCompletion {
             qp_num: 0,
             ud_src_qp: 0,
             wc_flags: WcFlags::empty(),
+            pkey_index: 0,
+            slid: 0,
+            sl: 0,
+            dlid_path_bits: 0,
         }
     }
 
@@ -242,11 +277,15 @@ impl WorkCompletion {
             qp_num: 0,
             ud_src_qp: 0,
             wc_flags: WcFlags::empty(),
+            pkey_index: 0,
+            slid: 0,
+            sl: 0,
+            dlid_path_bits: 0,
         }
     }
 }
 
-// TODO(cjr): add static assert to make sure WorkCompletion is compatible with ibv_wc
+// TODO(cjr): add more static asserts to make sure WorkCompletion is compatible with ibv_wc
 mod sa {
     use super::*;
     use static_assertions::const_assert_eq;
@@ -254,5 +293,5 @@ mod sa {
 
     const_assert_eq!(size_of::<WcStatus>(), 4);
     const_assert_eq!(size_of::<WcOpcode>(), 4);
-    const_assert_eq!(size_of::<WorkCompletion>(), 40);
+    const_assert_eq!(size_of::<WorkCompletion>(), 48);
 }

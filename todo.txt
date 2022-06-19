@@ -1,48 +1,173 @@
 TODO
 
 RPC
-- zero-copy RPC interface
+- Prost codegen
+-[x] zero-copy RPC interface
+-[x] RPC Trait
+-[x] Heap allocator
+
+Benchmark Suite
+- build then run
+- worker starting order
+- auto kill on clean up
+- collect and print result
+-[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
+- <s>Build a CI pipeline with all kinds of tests and benchmarks</s>
+- simplify rpc_hello, add more complex rpc_hello
+- also test latency
+
+Engine Framework
+- suspend the runtime to save CPUs based on indicator
+- Implemented Shared scheduling policy
+- move CmEngine and AcceptorEngine to Shared
+- <s>new challenge: *fault isolation*</s> Updated: doen through careful
+  engineering
+- futures::executor::block_on seems to start an extra engine, need an
+  lazy/sleepy runtime
+- *RpcAdapter/CmEngine can only be shut down when the other side has gone.*
+-[x] *Change Engine trait to a huge Generator*, all block waitings become
+  yields
+-[x] *Call an engine's method from another engine*, some engines go to an
+  separate runtime, some engines become the member of other engines;
+  the original big match arm becomes a series of methods
+-[x] Blocking network APIs in transport engine may block the entire
+     runtime
+-[x] What should Engine::run() return?
+- maybe the xatu customer/service framework and queues need to be
+  adjusted, separating data/control queues are no more useful
+- SchedulingMode::Bundled
+
+Misc
+- for more flexible IO event notification, need a bus/mailbox/pub-sub.
+- *UDP socket send/recv fd must be nonblocking*
+-[x] add span_info back
+-[x] create koala-trace dir
+- <s>use env_logger and minitrace to replace tokio-tracing</s>
+-[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
+- Garbage collect CmEngine
+-[x] *add static tracing* points at various points in code for performance
+  analysis
+- CmIdBuilder::new() -> CmId::builder()
+-[x] get configuration from a file to run multiple backends for developing
+-[x] simplify ConnParam. Allow to set fields in QpBuilder.
+-[x] update the code and directory structure of koala_examples
+-[x] Add lifetime constraint to CmId in rdmacm library
+-[x] Add AsHandle Trait so that open_or_create_resource can do sanity check
+     and testing on the same machine
+-[x] Remove repeatitive code in libkoala/cm.rs
+-[x] Handle conn_param
+-[x] error msg of libkoala
+-[x] add method to access members by reference in libkoala
+-[x] RDMA Read/Write
+-[x] upgrade to 1.60, 2021
+-[x] add an .cargo config, rr alias
+- Also implement handle for CmId, use the pointer as the identifier.
+  Now the problem is that pointers are 64-bit. Handle now is only a u32.
+- support ibv functions, especially ibv_post_send for batched posting
+- update all `trace!`s in TransportEngine::process_cmd
+- bench_queues add an option,
+  --affinity=[none,hyperthread,numa,crossnuma/inter_numa/inter_cpu]
+  --affinity=[casual,l1,l3,mem]
+
+- SAllocEngine and CmEngine should be per-process one engine. optmize
+  the number of engines to build.
+
+Shared memory heap
+- *check if a read only shm file descriptor can be open with write
+  permission and really written*
+- shared heap dealloc
+- use MMAP_HUGETLB, also reg_mr with huge tlb
+-[x] SharedHeapAllocator should not use MemoryRegion any more. The pd and
+  rkey, inner_handle are unnecessary. And TCP does not have these
+  fields, either.
+- remove file_off (it should be all zero now, given the existence of
+  AddressMediator)
+-[x] need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
+  rpc_adapter.
+- use pointer strict provenance
+-[x] rdma mr.rs handle layout (size + alignment) rather than just size
+-[x] find a more efficient way to allocate aligned `shared memory`, maybe
+  using map_fixed
+-[x] use MAP_FIXED_NOREPLACE
+-[x] replace Unique with ShmPtr
+- ShmBox, ShmPtr, Coa
+-[x] slabmalloc use 1GB huge page
+- dyn RpcMessage may some more fields, e.g., to access the content of
+  message
+- dynamic dispatching is slow, embed meta with dyn RpcMessage
+- prost codegen marshal/unmarshal
+- prost codegen service interface
+
+RPC init version
+- fix bug in runtime.is_spinning()
+- releasing reply
+- needs to spend a lot of time checking new incoming connections
+- get sglist right after jumping into koala space
+- send/recv is too naive
+- API, req/resp must be moved into RPC (better to allow pass a reference)
+-[x] ODP
+-[x] *call rdma-transport directly from rpc_adapter/ulib*
+-[o] memory returned by allocate_shm is not page aligned, needs
+  improvement
+-[x] check incoming connect requests and make Listener::get_request()
+  non-blocking
+-[x] rpc client side async/.await, basically functionality done
+-[x] switch_addr_space to delivery the msg to application
+-[x] fill in requset metadata correctly
+-[x] resize cq on connection setup/destroy
+-[x] credit control on post send
+-[x] koala configuration, engine paths are not read from koala.toml
+- make modules in control.rs optional, based on their occurrences in
+  koala.toml
+- error handling at various places (user glue code, marshal/unmarshal)
+- Rewrite the marshal/unmarshal and SgList
+- MutableResourceTable (global lock and slot lock) (State)
+- the lifetime of a reply on the server credit?
 
 Policy
 - Implement more engines for global policy
 
-Socket
+Transport Trait
+- Design a unified transport trait for both socket and ibverbs
+- Let every data path operation return a future, and implement a runtime
+  for that
 - Implement a socket datapath
 
-Misc
--[x] Remove repeatitive code in libkoala/cm.rs
-- Add AsHandle Trait so that open_or_create_resource can do sanity check
-- Also implement handle for CmId, use the pointer as the identifier.
-- Handle conn_param
-- Add lifetime constraint to CmId in rdmacm library
-- update all `trace!`s in TransportEngine::process_cmd
-
 Performance & CPU efficiency
+- Change ResoruceTable to one of the implementations of a concurrent
+  hashmap (e.g., dashmap).
+- GetSendComp() is currently busy spinning
+- Save CPU cycles in TransportEngine::run()
 -[x] Use FnvHashMap in transport/engine
 -[x] Change to Ordering::Relaxed
 -[x] Control path is too slow
-- GetSendComp() is currently busy spinning
-- Save CPU cycles in TransportEngine::run()
 -[x] balance poll_cq and post_send/recv, reduce redundant poll_cq
     - <s>use seperate queues can work, but still can cause HOL among
       multiple CQs</s>
 
-Thread-safety
-- Move Resource struct of transport engine up a level.
-- Add spinlock to QueuePair, CompletionQueue... in libkoala
-- Most of the resources in transport/engine should be per-user, lock
-  or concurrent data structure is needed
-- Move CqBuffer from thread_local to lazy_static
-- Write a multi-threaded program to test the correctness
-- Per process resource management.
+Testing
+-[x] Test various threading models for koala
+- One thread post_send/recv, another thread poll_cq
+- Multiple threads operate on their own QPs, and poll the CQs associated
+  with those QPs
+- Run those tests simultaneously with multiple processes
 
-Engine Framework
--[x] Blocking network APIs in transport engine may block the entire
-     runtime
--[x] What should Engine::run() return?
-- *Change Engine trait to a huge Generator*
+Application
+- allreduce
+- alltoall is so slow, why?
+
+Thread-safety
+-[x] Move Resource struct of transport engine up a level.
+-[x] Add spinlock to QueuePair, CompletionQueue... in libkoala
+-[x] Most of the resources in transport/engine should be per-user, lock
+     or concurrent data structure is needed
+-[x] Move CqBuffer from thread_local to lazy_static
+- Write a multi-threaded program to test the correctness
+-[x] Per process resource management.
 
 Resource Releasing
+- Think over it carefully, rollback the creating resource operation when
+  there is exception in the middle.
 -[x] implement resource release
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 
@@ -67,3 +192,5 @@ libkoala interface
     -[x] CmIdListener::bind()
     -[x] CmIdListener::incoming()
     -[x] CmIdListener::accept()
+
+Multi-NIC

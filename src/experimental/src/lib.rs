@@ -9,11 +9,12 @@ use structopt::StructOpt;
 #[macro_use]
 extern crate log;
 
+mod aligned_alloc;
+pub mod ipc;
+mod mmap_aligned;
+mod regmr;
 pub mod ringbuffer;
 pub mod shm;
-// pub mod ipc;
-mod aligned_alloc;
-mod regmr;
 mod shmalloc;
 
 #[derive(StructOpt, Debug, Clone)]
@@ -30,6 +31,10 @@ pub struct QueueOpt {
     /// Queue bound
     #[structopt(short, long, default_value = "1024")]
     pub bound: usize,
+
+    /// Whether to set affinity to a hyperthread core pair
+    #[structopt(short = "a", long = "affinity")]
+    pub set_affinity: bool,
 }
 
 pub fn set_affinity_for_current(cpu_idx: usize) -> io::Result<usize> {

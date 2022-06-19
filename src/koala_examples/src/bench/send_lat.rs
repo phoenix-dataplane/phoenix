@@ -9,7 +9,7 @@ use libkoala::{cm, verbs::WcStatus, Error};
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -40,8 +40,10 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
     for i in 0..ctx.opt.num {
         times.push(Instant::now());
 
-        id.post_send(&send_mr, .., 0, send_flags)
-            .expect("Post send failed!");
+        unsafe {
+            id.post_send(&send_mr, .., 0, send_flags)
+                .expect("Post send failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
 
@@ -62,7 +64,7 @@ pub fn run_client(ctx: &Context) -> Result<(), Error> {
 pub fn run_server(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
     if ctx.cap.max_inline_data as usize >= ctx.opt.size {
-        send_flags = send_flags | SendFlags::INLINE;
+        send_flags |= SendFlags::INLINE;
     }
     send_flags |= SendFlags::SIGNALED;
 
@@ -102,8 +104,10 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
             }
         }
 
-        id.post_send(&send_mr, .., 0, send_flags)
-            .expect("Post send failed!");
+        unsafe {
+            id.post_send(&send_mr, .., 0, send_flags)
+                .expect("Post send failed!");
+        }
         let wc = id.get_send_comp().expect("Get send comp failed!");
         assert_eq!(wc.status, WcStatus::Success);
     }

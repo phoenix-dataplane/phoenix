@@ -1,5 +1,4 @@
 //! Buffer to hold the fat pointer of a slice.
-use std::mem;
 use std::slice::SliceIndex;
 
 use serde::{Deserialize, Serialize};
@@ -22,8 +21,8 @@ impl Range {
         let r1 = mr.as_ptr_range();
         let r2 = buffer.as_ptr_range();
         Range {
-            offset: (r2.start as u64 - r1.start as u64) * mem::size_of::<T>() as u64,
-            len: (r2.end as u64 - r2.start as u64) * mem::size_of::<T>() as u64,
+            offset: (r2.start as u64 - r1.start as u64),
+            len: (r2.end as u64 - r2.start as u64),
         }
     }
 }

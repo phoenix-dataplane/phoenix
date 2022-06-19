@@ -1,9 +1,64 @@
-modules = ["transport"]
+# overwrite with env KOALA_LOG
+log_level = "debug"
 
-[transport]
+# modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]
+modules = ["Mrpc", "RpcAdapter", "Overload"]
+
+[tracing]
+# overwrite with env KOALA_TRACING
+enable = false
+# this will log messages level lower than specified into file
+# e.g., min_event_level="debug" will log events of "trace" and "debug" to file
+# overwrite with env KOALA_TRACING_EVENT
+min_event_level = "trace"
+# overwrite with env KOALA_TRACING_SPAN
+span_level = "info"
+# overwrite with env KOALA_TRACING_DIR
+output_dir = "/tmp/koala-trace"
+
+[control]
 prefix = "/tmp/koala"
-module_path = "koala-transport.sock"
-engine_basename = "koala-transport-engine"
+path = "koala-control.sock"
+
+[mrpc]
+prefix = "/tmp/koala"
+engine_basename = "koala-mrpc-engine"
+
+[salloc]
+prefix = "/tmp/koala"
+engine_basename = "koala-salloc"
+
+[transport-tcp]
+prefix = "/tmp/koala"
+engine_basename = "koala-transport-engine-tcp"
+
+[transport-rdma]
+prefix = "/tmp/koala"
+engine_basename = "koala-transport-engine-rdma"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
 command_max_interval_ms = 1000
+
+[[node]]
+id = "mrpc.0"
+type = "Mrpc"
+
+# [[node]]
+# id = "overload"
+# type = "Overload"
+
+[[node]]
+id = "rpc-adapter"
+type = "RpcAdapter"
+
+[edges]
+egress = [
+  ["mrpc.0", "rpc-adapter"],
+]
+# egress = [
+#   ["mrpc.0", "overload"],
+#   ["overload", "rpc-adapter"],
+# ]
+ingress = [
+  ["rpc-adapter", "mrpc.0"],
+]
