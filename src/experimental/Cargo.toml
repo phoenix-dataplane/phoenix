@@ -29,6 +29,9 @@ interface = { path = "../interface" }
 uuid = "0.8.2"
 thiserror = "1.0.29"
 shmem-ipc = "0.2.0"
+chashmap = "2.2.2"
+dashmap = "5.3.4"
+fnv = "1.0.7"
 
 [dev-dependencies]
 rand = "0.8.3"
