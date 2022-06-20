@@ -241,7 +241,7 @@ impl GlobalShreadHeapPagePool {
     const SMALL_PAGE_RELEASE_CNT: usize = 2048;
     const LARGE_PAGE_RELEASE_THRESHOLD: usize = 4096;
     const LARGE_PAGE_RELEASE_CNT: usize = 2048;
-    const RELEASE_INTERVAL: u64 = 5000;
+    const RELEASE_INTERVAL_MS: u64 = 5000;
 
     pub(crate) async fn release_empty_pages(&self) {
         loop {
@@ -289,7 +289,7 @@ impl GlobalShreadHeapPagePool {
                 }
             }
 
-            smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL)).await;
+            smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL_MS)).await;
         }
     }
 }
