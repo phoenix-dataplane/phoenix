@@ -147,7 +147,8 @@ impl<'a, T: CloneFromBackendOwned + RpcData + std::marker::Unpin> Future for Req
     type Output = Result<ShmView<'a, T>, crate::mrpc::Status>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        check_completion_queue();
+        // TODO(wyj): properly handle Result here
+        let _ = check_completion_queue();
         if let Some(erased) = RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&this.wr_id))
         {
             tracing::trace!(
