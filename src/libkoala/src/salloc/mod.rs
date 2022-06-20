@@ -15,18 +15,16 @@ thread_local! {
 }
 
 lazy_static! {
-    pub(crate) static ref GC_CTX: GCContext = GCContext::register();
+    pub(crate) static ref GC_CTX: GCContext = GCContext::initialize();
 }
 
 pub(crate) struct GCContext;
 
 impl GCContext {
-    fn register() -> GCContext {
+    fn initialize() -> GCContext {
         lazy_static::initialize(&gc::GLOBAL_PAGE_POOL);
-        // create an executor and put the empty page reclamation task on a dedicated thread
-        let ex = async_executor::Executor::new();
         let task = gc::GLOBAL_PAGE_POOL.release_empty_pages();
-        std::thread::spawn(move || smol::future::block_on(ex.run(async { task.await })));
+        std::thread::spawn(move || smol::future::block_on(task));
         GCContext
     }
 }
