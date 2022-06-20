@@ -90,14 +90,11 @@ impl MrpcEngine {
     // (whether successful or not), to release message meta pool and shutdown mRPC engine
     async fn wait_meta_pool_free(&mut self) -> Result<(), DatapathError> {
         use tokio::sync::mpsc::error::TryRecvError;
-        loop {
+        while self.meta_pool.freelist.len() < META_POOL_CAP {
             match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => {
                     if let EngineRxMessage::SendCompletion(wr_id) = msg {
                         self.meta_pool.put(wr_id)?;
-                        if self.meta_pool.freelist.len() == META_POOL_CAP {
-                            return Ok(());
-                        }
                     }
                 }
                 Err(TryRecvError::Disconnected) => return Ok(()),
@@ -105,6 +102,7 @@ impl MrpcEngine {
             }
             future::yield_now().await;
         }
+        Ok(())
     }
 
     async fn check_cmd(&mut self) -> Result<Status, Error> {

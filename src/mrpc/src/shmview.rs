@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
 
-use ipc::mrpc::dp::{WrIdentifier, WorkRequest, RECV_RECLAIM_BS};
+use ipc::mrpc::dp::{WorkRequest, WrIdentifier, RECV_RECLAIM_BS};
 
 use crate::alloc::Box;
 use crate::stub::ReclaimBuffer;
