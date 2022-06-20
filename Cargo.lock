@@ -193,6 +193,7 @@ dependencies = [
 name = "benchmark"
 version = "0.1.0"
 dependencies = [
+ "ansi_term",
  "anyhow",
  "bytes",
  "chrono",
@@ -1884,7 +1885,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpc_hello"
+name = "rpc_bench"
 version = "0.1.0"
 dependencies = [
  "futures",
@@ -1896,6 +1897,18 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rpc_hello"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
 ]
 
 [[package]]

@@ -182,8 +182,8 @@ impl<T: ?Sized> From<ShmPtr<T>> for ShmNonNull<T> {
     fn from(shmptr: ShmPtr<T>) -> Self {
         // SAFETY: A ShmNonNull pointer cannot be null, so the conditions for
         // new_unchecked() are respected.
-        let (ptr, ptr_remote) = shmptr.to_raw_parts();
-        unsafe { ShmNonNull::new_unchecked(ptr.as_ptr(), ptr_remote.as_ptr()) }
+        let (ptr_app, ptr_backend) = shmptr.to_raw_parts();
+        unsafe { ShmNonNull::new_unchecked(ptr_app.as_ptr(), ptr_backend.as_ptr()) }
     }
 }
 

@@ -2,7 +2,7 @@
 use std::mem;
 use std::sync::Arc;
 
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 use crate::mrpc::dtypes::Vec;
 use crate::mrpc::marshal::{Marshal, SgList, ShmBuf, Unmarshal};

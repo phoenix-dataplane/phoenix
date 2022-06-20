@@ -42,6 +42,14 @@ RPC
 - RPC scalability: How much more memory is needed for RPC as a service
   this architecture?
 
+API
+- the return value of a rpc call at the service side should be a Future
+- mrpc::Status should contains specific error, and be renamed
+- return value should not be a &mut RpcMessage
+- moving RpcMessage from stub to root
+- adding prelude (ShmView, RpcMessage)
+- service handler should not take &mut self
+
 Benchmark Suite
 -[x] build then run
 - worker starting order
@@ -76,6 +84,7 @@ Engine Framework
 Misc
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
 - *UDP socket send/recv fd must be nonblocking*
+- visibility of mods in koala backend code
 -[x] add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>

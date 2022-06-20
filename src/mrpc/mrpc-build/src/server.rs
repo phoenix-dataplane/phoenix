@@ -69,7 +69,7 @@ pub fn generate<T: Service>(
 
             impl<T: #server_trait> Service for #server_service<T> {
                 fn call(
-                    &mut self,
+                    &self,
                     req: mrpc::MessageErased,
                     reclaim_buffer: &mrpc::stub::ReclaimBuffer,
                 ) -> (::mrpc::MessageErased, u64) {
@@ -123,9 +123,9 @@ fn generate_trait_methods<T: Service>(
         let method = quote::quote! {
             #method_doc
             fn #name(
-                &mut self,
+                &self,
                 request: mrpc::shmview::ShmView<#req_type>
-            ) -> Result<&mut RpcMessage<#res_type>, mrpc::Status>;
+            ) -> Result<&RpcMessage<#res_type>, mrpc::Status>;
         };
 
         stream.extend(method);

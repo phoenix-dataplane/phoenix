@@ -72,9 +72,9 @@ pub mod greeter_server {
     // #[async_trait]
     pub trait Greeter: Send + Sync + 'static {
         fn say_hello(
-            &mut self,
+            &self,
             request: ::mrpc::shmview::ShmView<HelloRequest>,
-        ) -> Result<&mut RpcMessage<HelloReply>, mrpc::Status>;
+        ) -> Result<&RpcMessage<HelloReply>, mrpc::Status>;
     }
 
     /// Translate erased message to concrete type, and call the inner callback function.
@@ -97,7 +97,7 @@ pub mod greeter_server {
 
     impl<T: Greeter> Service for GreeterServer<T> {
         fn call(
-            &mut self,
+            &self,
             req: mrpc::MessageErased,
             reclaim_buffer: &mrpc::stub::ReclaimBuffer,
         ) -> (::mrpc::MessageErased, u64) {

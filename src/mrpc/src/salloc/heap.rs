@@ -11,8 +11,8 @@ use lazy_static::lazy_static;
 use memfd::Memfd;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
+use ipc::ptr::ShmNonNull;
 use ipc::salloc::cmd;
-use ipc::shmalloc::ShmNonNull;
 
 use super::gc::GLOBAL_PAGE_POOL;
 use super::region::SharedHeapRegion;

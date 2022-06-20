@@ -84,5 +84,6 @@ pub enum Error {
     Connect(interface::Error),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Error)]
+#[error("mRPC Status")]
 pub struct Status;

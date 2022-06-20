@@ -12,7 +12,7 @@ use std::ops::{self, Index, IndexMut, RangeBounds};
 use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
@@ -559,6 +559,7 @@ impl<T: Clone> Vec<T> {
 
 impl<T> Drop for Vec<T> {
     fn drop(&mut self) {
+        // SAFETY: the Vec must be on the sender heap.
         unsafe {
             // use drop for [T]
             // use a raw slice to refer to the elements of the vector as weakest necessary type;

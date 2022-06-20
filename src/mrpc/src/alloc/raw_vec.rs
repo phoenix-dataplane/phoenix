@@ -10,7 +10,7 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use ipc::shmalloc::{ShmNonNull, ShmPtr};
+use ipc::ptr::{ShmNonNull, ShmPtr};
 
 use crate::salloc::heap::SharedHeapAllocator;
 
@@ -293,6 +293,9 @@ impl<T> Drop for RawVec<T> {
     fn drop(&mut self) {
         if let Some((ptr, layout)) = self.current_memory() {
             // Contents (T) are dropped by RawVec's users
+
+            // SAFETY: The `ptr` must be pointing to a previously allocated
+            // location on the sender shared heap.
             unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
         }
     }

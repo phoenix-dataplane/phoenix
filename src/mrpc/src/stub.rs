@@ -119,10 +119,7 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
                 "ReqFuture receive reply from mRPC engine, call_id={}",
                 erased.meta.call_id
             );
-            let ptr_app = erased.shm_addr_app as *mut T;
-            let ptr_backend = ptr_app.with_addr(erased.shm_addr_backend);
-            let backend_owned_msg = unsafe { Box::from_raw(ptr_app, ptr_backend) };
-            let reply = ShmView::new(backend_owned_msg, this.wr_id, &this.reclaim_buffer);
+            let reply = ShmView::new(&erased, &this.reclaim_buffer);
             Poll::Ready(Ok(reply))
         } else {
             cx.waker().wake_by_ref();
@@ -570,28 +567,20 @@ pub trait NamedService {
 
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    fn call(&mut self, req: MessageErased, reclaim_buffer: &ReclaimBuffer) -> (MessageErased, u64);
+    fn call(&self, req: MessageErased, reclaim_buffer: &ReclaimBuffer) -> (MessageErased, u64);
 }
 
 pub fn service_pre_handler<'a, T: Unpin>(
     req: &MessageErased,
     reclaim_buffer: &'a ReclaimBuffer,
 ) -> ShmView<'a, T> {
-    let wr_id = dp::WrIdentifier(req.meta.conn_id, req.meta.call_id);
-    let ptr_app = req.shm_addr_app as *mut T;
-    // TODO(wyj): refine the following line, this pointer may be invalid.
-    // should we directly constrct a pointer using remote addr?
-    // or just keep the addr u64?
-    let ptr_backend = ptr_app.with_addr(req.shm_addr_backend);
-    let backend_owned_msg = unsafe { Box::from_raw(ptr_app, ptr_backend) };
-
     // TODO(wyj): lifetime bound for ShmView
     // ShmView should be !Send and !Sync
-    ShmView::new(backend_owned_msg, wr_id, reclaim_buffer)
+    ShmView::new(&req, reclaim_buffer)
 }
 
 pub fn service_post_handler<T: RpcData>(
-    reply: &mut RpcMessage<T>,
+    reply: &RpcMessage<T>,
     conn_id: Handle,
     service_id: u32,
     func_id: u32,

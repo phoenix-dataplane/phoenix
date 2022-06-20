@@ -15,7 +15,7 @@ use std::ptr::NonNull;
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use ipc::shmalloc::{ShmNonNull, ShmPtr};
+use ipc::ptr::{ShmNonNull, ShmPtr};
 
 use crate::salloc::heap::SharedHeapAllocator;
 
@@ -192,6 +192,10 @@ impl<T: ?Sized> Box<T> {
 
 impl<T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
+        // SAFETY: users of Box (i.e., developers) must ensure that the Box is
+        // only used for the sender heap. There is currently two places in the
+        // code that we directly create a Box on the receiver heap.
+        // For those cases, the box must not be dropped.
         unsafe {
             let size = core::intrinsics::size_of_val(self.0.as_ref_app());
             let align = core::intrinsics::min_align_of_val(self.0.as_ref_app());
@@ -211,8 +215,8 @@ impl<T: Default> Default for Box<T> {
 
 #[inline]
 pub unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
-    let (ptr, ptr_remote) = Box::into_raw(v);
-    Box::from_raw(ptr as *mut str, ptr_remote as *mut str)
+    let (ptr_app, ptr_backend) = Box::into_raw(v);
+    Box::from_raw(ptr_app as *mut str, ptr_backend as *mut str)
 }
 
 pub(crate) trait WriteCloneIntoRaw: Sized {
@@ -373,8 +377,8 @@ impl Box<dyn Any> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, ptr_remote): (*mut dyn Any, _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        let (raw_app, ptr_backend): (*mut dyn Any, _) = Box::into_raw(self);
+        Box::from_raw(raw_app as *mut T, ptr_backend as *mut T)
     }
 }
 
@@ -391,8 +395,8 @@ impl Box<dyn Any + Send> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, ptr_remote): (*mut (dyn Any + Send), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        let (raw_app, ptr_backend): (*mut (dyn Any + Send), _) = Box::into_raw(self);
+        Box::from_raw(raw_app as *mut T, ptr_backend as *mut T)
     }
 }
 
@@ -409,8 +413,8 @@ impl Box<dyn Any + Send + Sync> {
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let (raw, ptr_remote): (*mut (dyn Any + Send + Sync), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        let (raw_app, ptr_backend): (*mut (dyn Any + Send + Sync), _) = Box::into_raw(self);
+        Box::from_raw(raw_app as *mut T, ptr_backend as *mut T)
     }
 }
 
