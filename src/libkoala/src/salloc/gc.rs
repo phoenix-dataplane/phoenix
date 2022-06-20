@@ -9,23 +9,19 @@ use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 
-use interface::Handle;
+use ipc::mrpc::dp::WrIdentifier;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
 
-use crate::mrpc::stub::MessageTemplate;
-
+use super::heap::SHARED_HEAP_REGIONS;
 use super::owner::AppOwned;
 
 thread_local! {
     // thread-local oustanding work request
-    // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID and Client/Server ID
+    // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID
     // insert when WR is posted, remove when corresponding WC is polled
     // each user app thread corresponds to a set of mRPC + RpcAdapter + SAlloc engines
     // the thread which posts the WR must also polls the corresponding work request completion
-    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<(Handle, u32), (u64, u64)>> = RefCell::new(HashMap::new());
-    // thread-local per-client/server outstanding WR count
-    // maps from client/server ID to the number of outstanding WRs of that client/server.
-    pub(crate) static CS_OUTSTANDING_WR_CNT: RefCell<HashMap<u64, u64>> = RefCell::new(HashMap::new());
+    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<WrIdentifier, u64>> = RefCell::new(HashMap::new());
 }
 
 lazy_static! {
@@ -52,7 +48,7 @@ impl GarbageCollector {
 
     pub(crate) fn collect<T: 'static + Send + Sync>(
         &self,
-        message: crate::mrpc::alloc::Box<MessageTemplate<T, AppOwned>, AppOwned>,
+        message: crate::mrpc::alloc::Box<T, AppOwned>,
         message_id: u64,
         send_count: u64,
     ) {
@@ -68,16 +64,16 @@ impl GarbageCollector {
         }
     }
 
-    pub(crate) fn register_wr_completion(&self, message_id: u64) {
+    pub(crate) fn register_wr_completion(&self, message_id: u64, cnt: u64) {
         let comp_cnt = match self.wr_completion_count.entry(message_id) {
             Entry::Occupied(mut entry) => {
                 let val = entry.get_mut();
-                *val += 1;
+                *val += cnt;
                 *val
             }
             Entry::Vacant(entry) => {
-                entry.insert(1);
-                1
+                entry.insert(cnt);
+                cnt
             }
         };
 
@@ -91,6 +87,9 @@ impl GarbageCollector {
     }
 }
 
+// Empty page pool should be maintained by our SharedHeapAllocator/GC
+// instead of slabmalloc,
+// as it is SharedHeapAllocator who refills ZoneAllocator with empty pages
 pub struct GlobalShreadHeapPagePool {
     empty_small_pages: spin::Mutex<VecDeque<Unique<ObjectPage<'static>>>>,
     empty_large_pages: spin::Mutex<VecDeque<Unique<LargeObjectPage<'static>>>>,
@@ -193,6 +192,17 @@ impl GlobalShreadHeapPagePool {
         }
     }
 
+    // Caller must ensure provided pages are empty
+    // pub(crate) unsafe fn recycle_empty_small_pages<I: IntoIterator<Item = &'static mut ObjectPage<'static>>>(
+    //     &self,
+    //     pages: I,
+    // ) {
+    //     let pages = pages.into_iter().map(|page|
+    //         unsafe { Unique::new_unchecked(page as *mut _) }
+    //     );
+    //     self.empty_small_pages.lock().extend(pages)
+    // }
+
     pub(crate) fn recycle_large_page(
         &self,
         page: &'static mut LargeObjectPage<'static>,
@@ -222,6 +232,64 @@ impl GlobalShreadHeapPagePool {
             self.used_huge_pages
                 .lock()
                 .push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
+        }
+    }
+}
+
+impl GlobalShreadHeapPagePool {
+    const SMALL_PAGE_RELEASE_THRESHOLD: usize = 4096;
+    const SMALL_PAGE_RELEASE_CNT: usize = 2048;
+    const LARGE_PAGE_RELEASE_THRESHOLD: usize = 4096;
+    const LARGE_PAGE_RELEASE_CNT: usize = 2048;
+    const RELEASE_INTERVAL_MS: u64 = 5000;
+
+    pub(crate) async fn release_empty_pages(&self) {
+        loop {
+            {
+                self.check_small_page_assignments();
+                let mut guard = self.empty_small_pages.lock();
+                if guard.len() > Self::SMALL_PAGE_RELEASE_THRESHOLD {
+                    for empty_page in guard.drain(..Self::SMALL_PAGE_RELEASE_CNT) {
+                        let addr = empty_page.as_ptr() as usize;
+                        // tell backend to dealloc page
+                        SHARED_HEAP_REGIONS
+                            .lock()
+                            .remove(&addr)
+                            .expect("page already released");
+                    }
+                }
+            }
+
+            {
+                self.check_large_page_assignments();
+                let mut guard = self.empty_large_pages.lock();
+                if guard.len() > Self::LARGE_PAGE_RELEASE_THRESHOLD {
+                    for empty_page in guard.drain(..Self::LARGE_PAGE_RELEASE_CNT) {
+                        let addr = empty_page.as_ptr() as usize;
+                        // tell backend to dealloc page
+                        SHARED_HEAP_REGIONS
+                            .lock()
+                            .remove(&addr)
+                            .expect("page already released");
+                    }
+                }
+            }
+
+            {
+                self.check_huge_page_assignments();
+                // release all huge pages immediately
+                let mut guard = self.empty_huge_pages.lock();
+                for empty_page in guard.drain(..) {
+                    let addr = empty_page.as_ptr() as usize;
+                    // tell backend to dealloc page
+                    SHARED_HEAP_REGIONS
+                        .lock()
+                        .remove(&addr)
+                        .expect("page already released");
+                }
+            }
+
+            smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL_MS)).await;
         }
     }
 }

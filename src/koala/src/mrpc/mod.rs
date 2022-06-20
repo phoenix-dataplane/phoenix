@@ -6,6 +6,7 @@ pub mod codegen;
 mod dtypes;
 pub mod engine;
 pub mod marshal;
+pub mod meta_pool;
 pub mod module;
 pub mod state;
 
@@ -36,6 +37,8 @@ pub(crate) enum DatapathError {
     ShmIpc(#[from] ipc::shmem_ipc::ShmIpcError),
     #[error("Shared memory queue ringbuf error: {0}.")]
     ShmRingbuf(#[from] ipc::shmem_ipc::ShmRingbufError),
+    #[error("Resource error: {0}")]
+    Resource(#[from] ResourceError),
     #[error("Internal queue send error")]
     InternalQueueSend,
 }

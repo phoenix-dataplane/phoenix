@@ -93,6 +93,7 @@ impl RpcAdapterEngineBuilder {
             cmd_tx: self.cmd_tx,
             _mode: self.mode,
             indicator: None,
+            recv_mr_usage: fnv::FnvHashMap::default(),
         })
     }
 }

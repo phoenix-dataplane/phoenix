@@ -1,24 +1,17 @@
-use ipc::shmalloc::{ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::ShmPtr;
 
 pub struct RawVec<T> {
     ptr: ShmPtr<T>,
     _cap: usize,
 }
 
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
-    fn switch_address_space(&mut self) {
-        // RawVec does not handle T's switch_address_space; this is left for the users of RawVec
-        self.ptr.switch_address_space();
-    }
-}
-
 impl<T> RawVec<T> {
     #[inline]
-    pub fn ptr(&self) -> *mut T {
-        self.ptr.as_ptr()
+    pub fn ptr_backend(&self) -> *mut T {
+        self.ptr.as_ptr_backend()
     }
 
-    pub(crate) unsafe fn update_buf_shmptr(&mut self, ptr: *mut T, addr_remote: usize) {
-        self.ptr = ShmPtr::new(ptr, addr_remote as *mut T).unwrap();
+    pub(crate) unsafe fn update_buf_ptr(&mut self, ptr_app: *mut T, ptr_backend: *mut T) {
+        self.ptr = ShmPtr::new(ptr_app, ptr_backend).unwrap();
     }
 }

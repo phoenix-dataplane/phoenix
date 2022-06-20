@@ -1,21 +1,14 @@
+use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
-use std::pin::Pin;
 
 use std::future::Future;
-use std::task::{Context, Poll};
 
-use ipc::shmalloc::SwitchAddressSpace;
+use interface::rpc::{MessageMeta, RpcMsgType};
 
-// use crate::mrpc::shmptr::ShmPtr;
 use crate::mrpc;
 use crate::mrpc::alloc::ShmView;
-use crate::mrpc::stub::{
-    ClientStub, MessageTemplate, MessageTemplateErased, NamedService, RpcMessage, Service,
-};
+use crate::mrpc::stub::{ClientStub, MessageErased, NamedService, RpcMessage, Service};
 use crate::salloc::owner::{AppOwned, BackendOwned};
-
-use super::stub::ownership::{AppOwendReply, AppOwendRequest};
-use super::stub::{check_completion_queue, RECV_CACHE};
 
 // mimic the generated code of tonic-helloworld
 
@@ -29,12 +22,7 @@ use super::stub::{check_completion_queue, RECV_CACHE};
 pub type HelloRequest = inner::HelloRequest;
 pub type HelloReply = inner::HelloReply;
 
-impl AppOwendRequest for HelloRequest {}
-impl AppOwendReply for HelloReply {}
-
 mod inner {
-    use ipc::shmalloc::SwitchAddressSpace;
-
     use crate::mrpc;
     use crate::mrpc::alloc::CloneFromBackendOwned;
     use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
@@ -42,12 +30,6 @@ mod inner {
     #[derive(Debug)]
     pub struct HelloRequest<O: AllocOwner = AppOwned> {
         pub name: mrpc::alloc::Vec<u8, O>,
-    }
-
-    unsafe impl SwitchAddressSpace for HelloRequest<AppOwned> {
-        fn switch_address_space(&mut self) {
-            self.name.switch_address_space();
-        }
     }
 
     impl CloneFromBackendOwned for HelloRequest<AppOwned> {
@@ -65,12 +47,6 @@ mod inner {
         pub name: mrpc::alloc::Vec<u8, O>, // change to mrpc::alloc::Vec<u8>, -> String
     }
 
-    unsafe impl SwitchAddressSpace for HelloReply<AppOwned> {
-        fn switch_address_space(&mut self) {
-            self.name.switch_address_space();
-        }
-    }
-
     impl CloneFromBackendOwned for HelloReply<AppOwned> {
         type BackendOwned = HelloReply<BackendOwned>;
 
@@ -82,69 +58,10 @@ mod inner {
     }
 }
 
-pub struct ReqFuture {
-    conn_id: interface::Handle,
-    call_id: u32,
-}
-
-impl Future for ReqFuture {
-    type Output = Result<ShmView<HelloReply>, mrpc::Status>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        check_completion_queue();
-        if let Some(erased) =
-            RECV_CACHE.with(|cache| cache.borrow_mut().remove(&(this.conn_id, this.call_id)))
-        {
-            tracing::trace!(
-                "ReqFuture receive reply from mRPC engine, call_id={}",
-                erased.meta.call_id
-            );
-            let ptr_local = erased.shm_addr
-                as *mut MessageTemplate<inner::HelloReply<BackendOwned>, BackendOwned>;
-            let ptr_remote = ptr_local.with_addr(erased.shm_addr_remote);
-            let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
-            let reply = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
-            let reply = ShmView::new_from_backend_owned(reply);
-            Poll::Ready(Ok(reply))
-        } else {
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    }
-}
-
-// Reply cache, call_id -> Reply, Sync, not durable
-// #[derive(Debug)]
-// pub struct ReplyCache {
-//     cache: spin::Mutex<HashMap<u64, MessageTemplateErased>>,
-// }
-
-// impl ReplyCache {
-//     fn new() -> Self {
-//         Self {
-//             cache: spin::Mutex::new(HashMap::default()),
-//         }
-//     }
-
-//     #[inline]
-//     fn insert(&self, call_id: u64, erased: MessageTemplateErased) {
-//         self.cache
-//             .lock()
-//             .insert(call_id, erased)
-//             .ok_or(())
-//             .unwrap_err();
-//     }
-
-//     #[inline]
-//     fn remove(&self, call_id: u64) -> Option<MessageTemplateErased> {
-//         self.cache.lock().remove(&call_id)
-//     }
-// }
-
 #[derive(Debug)]
 pub struct GreeterClient {
     stub: ClientStub,
-    pub call_counter: u32,
+    call_counter: std::cell::Cell<u32>,
 }
 
 impl GreeterClient {
@@ -157,27 +74,37 @@ impl GreeterClient {
         let stub = ClientStub::connect(dst).unwrap();
         Ok(Self {
             stub,
-            call_counter: 0,
+            call_counter: std::cell::Cell::new(0),
         })
     }
 
     pub fn say_hello(
-        &mut self,
+        &self,
         msg: &mut RpcMessage<inner::HelloRequest<AppOwned>>,
-    ) -> impl Future<Output = Result<ShmView<HelloReply>, mrpc::Status>> {
+    ) -> impl Future<Output = Result<ShmView<HelloReply>, mrpc::Status>> + '_ {
         let conn_id = self.stub.get_handle();
-        let call_id = self.call_counter;
-        msg.inner.meta.conn_id = conn_id;
-        msg.inner.meta.call_id = call_id;
-        msg.inner.meta.func_id = Self::FUNC_ID;
+        let call_id = self.call_counter.get();
+        self.call_counter.set(call_id + 1);
+
+        // construct meta
+        let meta = MessageMeta {
+            conn_id,
+            func_id: Self::FUNC_ID,
+            call_id,
+            len: 0,
+            msg_type: RpcMsgType::Request,
+        };
 
         // increase send count for RpcMessage
         msg.send_count += 1;
+        self.stub.post_request(msg, meta).unwrap();
 
-        self.call_counter += 1;
-
-        self.stub.post_request(msg).unwrap();
-        ReqFuture { conn_id, call_id }
+        let fut = crate::mrpc::stub::ReqFuture {
+            wr_id: ipc::mrpc::dp::WrIdentifier(conn_id, call_id),
+            reclaim_buffer: &self.stub.recv_reclaim_buffer,
+            _marker: PhantomData,
+        };
+        fut
     }
 }
 
@@ -213,45 +140,46 @@ impl<T: Greeter> NamedService for GreeterServer<T> {
 impl<T: Greeter> Service for GreeterServer<T> {
     fn call(
         &mut self,
-        req: interface::rpc::MessageTemplateErased,
-    ) -> (interface::rpc::MessageTemplateErased, u64) {
+        req: interface::rpc::MessageErased,
+        reclaim_buffer: &std::cell::RefCell<
+            arrayvec::ArrayVec<u32, { ipc::mrpc::dp::RECV_RECLAIM_BS }>,
+        >,
+    ) -> (interface::rpc::MessageErased, u64) {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let ptr_local =
-            req.shm_addr as *mut MessageTemplate<inner::HelloRequest<BackendOwned>, BackendOwned>;
+        let wr_id = ipc::mrpc::dp::WrIdentifier(conn_id, call_id);
+
+        let ptr_app = req.shm_addr_app as *mut inner::HelloRequest<BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.
         // should we directly constrct a pointer using remote addr?
         // or just keep the addr u64?
-        let ptr_remote = ptr_local.with_addr(req.shm_addr_remote);
-        let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_local, ptr_remote) };
-        let req = unsafe { mrpc::alloc::Box::from_backend_shmptr(msg.val) };
+        let ptr_backend = ptr_app.with_addr(req.shm_addr_backend);
+        let msg = unsafe { mrpc::alloc::Box::from_backend_raw(ptr_app, ptr_backend) };
+
         // TODO(wyj): lifetime bound for ShmView
         // ShmView should be !Send and !Sync
-        let req = ShmView::new_from_backend_owned(req);
-        // TODO(wyj): should not be forget.
-        // TODO(wyj): box should differentiate whether the memory is allocated by the app or from the
-        // backend's recv_mr. If is from the backend's recv_mr, send a signal to the backend to
-        // indicate that we will no longer use the region of this object, so that the backend can
-        // do post_recv.
-        std::mem::forget(msg);
+        let req = ShmView::new_from_backend_owned(msg, wr_id, reclaim_buffer);
+
         match self.inner.say_hello(req) {
             Ok(reply) => {
-                reply.inner.meta.conn_id = conn_id;
-                reply.inner.meta.call_id = call_id;
-                reply.inner.meta.func_id = Self::FUNC_ID;
+                // construct meta
+                let meta = MessageMeta {
+                    conn_id,
+                    func_id: Self::FUNC_ID,
+                    call_id,
+                    len: 0,
+                    msg_type: RpcMsgType::Response,
+                };
 
-                let meta = reply.inner.meta;
                 // increase send count of RpcMessage
                 reply.send_count += 1;
 
-                // TODO(wyj): get rid of this
-                reply.switch_address_space();
-                let (ptr, ptr_remote) = mrpc::alloc::Box::to_raw_parts(&reply.inner);
-                let erased = MessageTemplateErased {
+                let (ptr_app, ptr_backend) = mrpc::alloc::Box::to_raw_parts(&reply.inner);
+                let erased = MessageErased {
                     meta,
-                    shm_addr: ptr_remote.addr().get(),
-                    shm_addr_remote: ptr.addr().get(),
+                    shm_addr_app: ptr_app.addr().get(),
+                    shm_addr_backend: ptr_backend.addr().get(),
                 };
                 (erased, reply.identifier)
             }

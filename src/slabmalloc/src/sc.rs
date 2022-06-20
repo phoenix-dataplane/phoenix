@@ -62,7 +62,7 @@ pub struct SCAllocator<'a, P: AllocablePage> {
     pub(crate) full_slabs: PageList<'a, P>,
 
     // a buffer of addrs of the pages (shared regions) to be released
-    pub(crate) release_buffer: ArrayVec<usize, RELEASE_BUFFER_SIZE>,
+    pub(crate) release_buffer: ArrayVec<&'a mut P, RELEASE_BUFFER_SIZE>,
     // a counter for releasing empty pages to the release buffer
     pub(crate) release_count: usize,
 }
@@ -149,9 +149,8 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         let mut cap = self.release_buffer.remaining_capacity();
         while cap > 0 && self.empty_slabs.head.is_some() {
             let slab = self.empty_slabs.pop().unwrap();
-            let addr = slab as *mut P as usize;
             // NOTE(wyj): use push unchecked.
-            self.release_buffer.push(addr);
+            self.release_buffer.push(slab);
             cap -= 1;
         }
     }
@@ -337,7 +336,7 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
     ) -> Result<
         (
             NonNull<u8>,
-            Option<arrayvec::Drain<usize, RELEASE_BUFFER_SIZE>>,
+            Option<arrayvec::Drain<&'a mut P, RELEASE_BUFFER_SIZE>>,
         ),
         AllocationError,
     > {

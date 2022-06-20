@@ -18,6 +18,7 @@ use super::state::State;
 use crate::config::MrpcConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::mrpc::meta_pool::MessageMetaPool;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
 
@@ -66,6 +67,7 @@ impl MrpcEngineBuilder {
             node: self.node,
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
+            meta_pool: MessageMetaPool::new(),
             _mode: self.mode,
             transport_type: None,
             indicator: None,

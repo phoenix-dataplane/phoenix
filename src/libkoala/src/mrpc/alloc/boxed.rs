@@ -15,12 +15,12 @@ use std::ptr::NonNull;
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use ipc::shmalloc::{ShmNonNull, ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::{ShmNonNull, ShmPtr};
 
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
 
-use super::shmview::CloneFromBackendOwned;
+use super::shmview::from_backend::CloneFromBackendOwned;
 
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment
@@ -63,8 +63,8 @@ impl<T> Box<T> {
 where {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate(layout)?.cast();
-        let (local, remote) = ptr.to_raw_parts();
-        unsafe { Ok(Box::from_raw(local.as_ptr(), remote.as_ptr())) }
+        let (ptr_app, ptr_backend) = ptr.to_raw_parts();
+        unsafe { Ok(Box::from_app_raw(ptr_app.as_ptr(), ptr_backend.as_ptr())) }
     }
 
     pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
@@ -80,10 +80,10 @@ where {
     pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
-        let (local, remote) = ptr.to_raw_parts();
+        let (ptr_app, ptr_backend) = ptr.to_raw_parts();
         // let shmptr = unsafe { ShmPtr::new_unchecked(ptr.cast().as_ptr(), addr_remote) };
         // Ok(Box(shmptr, AppOwned))
-        unsafe { Ok(Box::from_raw(local.as_ptr(), remote.as_ptr())) }
+        unsafe { Ok(Box::from_app_raw(ptr_app.as_ptr(), ptr_backend.as_ptr())) }
     }
 
     #[inline(always)]
@@ -92,8 +92,8 @@ where {
     }
 
     pub fn into_boxed_slice(boxed: Self) -> Box<[T]> {
-        let (raw, ptr_remote) = Box::into_raw(boxed);
-        unsafe { Box::from_raw(raw as *mut [T; 1], ptr_remote as *mut [T; 1]) }
+        let (raw_app, raw_backend) = Box::into_raw(boxed);
+        unsafe { Box::from_app_raw(raw_app as *mut [T; 1], raw_backend as *mut [T; 1]) }
     }
 
     #[inline]
@@ -103,7 +103,7 @@ where {
     {
         let mut dst = mem::MaybeUninit::uninit();
         let non_null: ShmNonNull<T> = boxed.0.into();
-        let src = non_null.as_ptr();
+        let src = non_null.as_ptr_app();
         unsafe {
             // copy the content from shared heap to stack
             ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
@@ -127,8 +127,8 @@ where {
 impl<T> Box<mem::MaybeUninit<T>> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T> {
-        let (raw, ptr_remote) = Box::into_raw(self);
-        Box::from_raw(raw.cast(), ptr_remote.cast())
+        let (raw_app, raw_backend) = Box::into_raw(self);
+        Box::from_app_raw(raw_app.cast(), raw_backend.cast())
     }
 
     #[inline]
@@ -143,15 +143,15 @@ impl<T> Box<mem::MaybeUninit<T>> {
 impl<T> Box<[mem::MaybeUninit<T>]> {
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T]> {
-        let (raw, ptr_remote) = Box::into_raw(self);
-        Box::from_raw(raw as *mut [T], ptr_remote as *mut [T])
+        let (raw_app, raw_backend) = Box::into_raw(self);
+        Box::from_app_raw(raw_app as *mut [T], raw_backend as *mut [T])
     }
 }
 
 impl<T: ?Sized, O: AllocOwner> Box<T, O> {
     #[inline]
     pub(crate) fn as_ptr(b: &Self) -> *mut T {
-        b.0.as_ptr()
+        b.0.as_ptr_app()
     }
 
     #[inline]
@@ -162,8 +162,8 @@ impl<T: ?Sized, O: AllocOwner> Box<T, O> {
 
 impl<T: ?Sized> Box<T, BackendOwned> {
     #[inline]
-    pub(crate) unsafe fn from_backend_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
-        Box(ShmPtr::new_unchecked(ptr, ptr_remote), BackendOwned)
+    pub(crate) unsafe fn from_backend_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr_app, ptr_backend), BackendOwned)
     }
 
     pub(crate) unsafe fn from_backend_shmptr(raw: ShmPtr<T>) -> Self {
@@ -173,31 +173,20 @@ impl<T: ?Sized> Box<T, BackendOwned> {
 
 impl<T: ?Sized> Box<T, AppOwned> {
     #[inline]
-    pub(crate) unsafe fn from_raw(ptr: *mut T, ptr_remote: *mut T) -> Self {
-        Box(ShmPtr::new_unchecked(ptr, ptr_remote), AppOwned)
+    pub(crate) unsafe fn from_app_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
+        Box(ShmPtr::new_unchecked(ptr_app, ptr_backend), AppOwned)
     }
 
-    pub(crate) unsafe fn from_shmptr(shmptr: ShmPtr<T>) -> Self {
+    pub(crate) unsafe fn from_app_shmptr(shmptr: ShmPtr<T>) -> Self {
         Box(shmptr, AppOwned)
     }
 
     #[inline]
     pub(crate) fn into_raw(b: Self) -> (*mut T, *mut T) {
         let leaked = Box::into_shmptr(b);
-        let (local, remote) = leaked.to_raw_parts();
-        (local.as_ptr(), remote.as_ptr())
+        let (ptr_app, ptr_backend) = leaked.to_raw_parts();
+        (ptr_app.as_ptr(), ptr_backend.as_ptr())
     }
-
-    // #[inline]
-    // pub(crate) fn into_unique(b: Self) -> (Unique<T>, usize) {
-    //     // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
-    //     // raw pointer for the type system. Turning it directly into a raw pointer would not be
-    //     // recognized as "releasing" the unique pointer to permit aliased raw accesses,
-    //     // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
-    //     // behaves correctly.
-    //     let addr_remote = b.0.get_remote_addr();
-    //     (Unique::from(Box::leak(b)), addr_remote)
-    // }
 
     #[inline]
     pub(crate) fn into_shmptr<'a>(b: Self) -> ShmPtr<T> {
@@ -206,12 +195,12 @@ impl<T: ?Sized> Box<T, AppOwned> {
 
     #[inline]
     pub(crate) fn leak<'a>(b: Self) -> &'a mut T {
-        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
+        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr_app() }
     }
 
     pub fn into_pin(boxed: Self) -> Pin<Self> {
         // It's not possible to move or replace the insides of a `Pin<Box<T>>`
-        // when `T: !Unpin`,  so it's safe to pin it directly without any
+        // when `T: !Unpin`, so it's safe to pin it directly without any
         // additional requirements.
         unsafe { Pin::new_unchecked(boxed) }
     }
@@ -224,10 +213,10 @@ trait SpecializedDrop {
 impl<T: ?Sized> SpecializedDrop for Box<T, AppOwned> {
     fn drop(&mut self) {
         unsafe {
-            let size = core::intrinsics::size_of_val(self.0.as_ref());
-            let align = core::intrinsics::min_align_of_val(self.0.as_ref());
+            let size = core::intrinsics::size_of_val(self.0.as_ref_app());
+            let align = core::intrinsics::min_align_of_val(self.0.as_ref_app());
             let ptr: ShmNonNull<T> = self.0.into();
-            ptr::drop_in_place(ptr.as_ptr());
+            ptr::drop_in_place(ptr.as_ptr_app());
             let layout = Layout::from_size_align_unchecked(size, align);
             SharedHeapAllocator.deallocate(ptr.cast(), layout);
         }
@@ -253,13 +242,6 @@ impl<T: ?Sized, O: AllocOwner> Drop for Box<T, O> {
     }
 }
 
-unsafe impl<T: ?Sized + SwitchAddressSpace> SwitchAddressSpace for Box<T> {
-    fn switch_address_space(&mut self) {
-        unsafe { self.0.as_mut().switch_address_space() };
-        self.0.switch_address_space();
-    }
-}
-
 impl<T: Default> Default for Box<T> {
     fn default() -> Self {
         Box::new(T::default())
@@ -267,9 +249,9 @@ impl<T: Default> Default for Box<T> {
 }
 
 #[inline]
-pub(crate) unsafe fn from_boxed_utf8_unchecked(v: Box<[u8], AppOwned>) -> Box<str, AppOwned> {
+pub unsafe fn from_boxed_utf8_unchecked(v: Box<[u8], AppOwned>) -> Box<str, AppOwned> {
     let (ptr, ptr_remote) = Box::into_raw(v);
-    Box::from_raw(ptr as *mut str, ptr_remote as *mut str)
+    Box::from_app_raw(ptr as *mut str, ptr_remote as *mut str)
 }
 
 pub(crate) trait WriteCloneIntoRaw: Sized {
@@ -443,7 +425,7 @@ impl Box<dyn Any> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         let (raw, ptr_remote): (*mut dyn Any, _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        Box::from_app_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -461,7 +443,7 @@ impl Box<dyn Any + Send> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         let (raw, ptr_remote): (*mut (dyn Any + Send), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        Box::from_app_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -479,7 +461,7 @@ impl Box<dyn Any + Send + Sync> {
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
         let (raw, ptr_remote): (*mut (dyn Any + Send + Sync), _) = Box::into_raw(self);
-        Box::from_raw(raw as *mut T, ptr_remote as *mut T)
+        Box::from_app_raw(raw as *mut T, ptr_remote as *mut T)
     }
 }
 
@@ -506,13 +488,13 @@ impl<T: ?Sized, O: AllocOwner> Deref for Box<T, O> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe { self.0.as_ref() }
+        unsafe { self.0.as_ref_app() }
     }
 }
 
 impl<T: ?Sized> DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { self.0.as_mut() }
+        unsafe { self.0.as_mut_app() }
     }
 }
 

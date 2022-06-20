@@ -13,12 +13,6 @@ pub enum Command {
     SetTransport(TransportType),
     Connect(SocketAddr),
     Bind(SocketAddr),
-    // send a list of addr on recv_mr, corresponding to ptr of some SgList elements
-    // since backend has knowledge how many SgE there are on a recv_mr (currently only 1)
-    // we just need the start addr of each SgE from client
-    // backend will manage addr -> recv_mr lookup and manage ref counting
-    // (if multiple SgEs are put on a single recv_mr in the future)
-    RecycleRecvMr(Vec<usize>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
