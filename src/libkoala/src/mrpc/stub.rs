@@ -75,7 +75,7 @@ impl<T: RpcData> Deref for RpcMessage<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe { self.inner.as_ref() }
+        self.inner.as_ref()
     }
 }
 
