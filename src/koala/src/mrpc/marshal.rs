@@ -2,6 +2,7 @@
 use std::fmt;
 use std::mem;
 use std::sync::Arc;
+use std::ptr::Unique;
 
 use serde::{Deserialize, Serialize};
 
@@ -36,15 +37,16 @@ pub(crate) trait Unmarshal: Sized {
 }
 
 pub(crate) trait MetaUnpacking: Sized {
-    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()>;
+    unsafe fn unpack(sge: &ShmBuf) -> Result<Unique<Self>, ()>;
 }
 
 impl MetaUnpacking for MessageMeta {
-    unsafe fn unpack(sge: &ShmBuf) -> Result<Self, ()> {
+    unsafe fn unpack(sge: &ShmBuf) -> Result<Unique<Self>, ()> {
         if sge.len != mem::size_of::<Self>() {
             return Err(());
         }
-        let ptr = sge.ptr as *const Self;
-        Ok(std::ptr::read(ptr))
+        let ptr = sge.ptr as *mut Self;
+        let meta = Unique::new(ptr).unwrap();
+        Ok(meta)
     }
 }

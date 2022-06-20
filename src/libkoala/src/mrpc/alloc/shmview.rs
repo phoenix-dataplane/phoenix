@@ -7,7 +7,7 @@ use std::ops::Deref;
 
 use arrayvec::ArrayVec;
 
-use ipc::mrpc::dp::{WRIdentifier, WorkRequest, RECV_RECLAIM_BS};
+use ipc::mrpc::dp::{WrIdentifier, WorkRequest, RECV_RECLAIM_BS};
 
 use super::boxed::Box;
 use crate::mrpc::MRPC_CTX;
@@ -26,7 +26,7 @@ pub struct ShmView<'a, A: CloneFromBackendOwned> {
     inner: ManuallyDrop<
         Box<<A as CloneFromBackendOwned>::BackendOwned, crate::salloc::owner::BackendOwned>,
     >,
-    wr_id: WRIdentifier,
+    wr_id: WrIdentifier,
     reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
 }
 
@@ -36,7 +36,7 @@ impl<'a, A: CloneFromBackendOwned> ShmView<'a, A> {
             <A as CloneFromBackendOwned>::BackendOwned,
             crate::salloc::owner::BackendOwned,
         >,
-        wr_id: WRIdentifier,
+        wr_id: WrIdentifier,
         reclamation_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
     ) -> Self {
         ShmView {

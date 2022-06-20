@@ -5,7 +5,7 @@ use interface::{rpc::MessageErased, Handle};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct WRIdentifier(pub Handle, pub u32);
+pub struct WrIdentifier(pub Handle, pub u32);
 
 pub type WorkRequestSlot = [u8; 64];
 
@@ -27,7 +27,7 @@ pub type CompletionSlot = [u8; 64];
 #[derive(Debug)]
 pub enum Completion {
     Recv(MessageErased),
-    SendCompletion(Handle, u32),
+    SendCompletion(WrIdentifier),
 }
 
 mod sa {

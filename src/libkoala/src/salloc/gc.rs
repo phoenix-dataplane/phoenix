@@ -9,7 +9,7 @@ use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 
-use ipc::mrpc::dp::WRIdentifier;
+use ipc::mrpc::dp::WrIdentifier;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
 
 use super::heap::SHARED_HEAP_REGIONS;
@@ -21,7 +21,7 @@ thread_local! {
     // insert when WR is posted, remove when corresponding WC is polled
     // each user app thread corresponds to a set of mRPC + RpcAdapter + SAlloc engines
     // the thread which posts the WR must also polls the corresponding work request completion
-    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<WRIdentifier, u64>> = RefCell::new(HashMap::new());
+    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<WrIdentifier, u64>> = RefCell::new(HashMap::new());
 }
 
 lazy_static! {

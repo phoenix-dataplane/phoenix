@@ -1,15 +1,25 @@
+use std::ptr::Unique;
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use interface::engine::EngineType;
-use interface::rpc::MessageErased;
+use interface::rpc::MessageMeta;
 use interface::Handle;
-use ipc::mrpc::dp::RECV_RECLAIM_BS;
+use ipc::mrpc::dp::{RECV_RECLAIM_BS, WrIdentifier};
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
+
+#[derive(Debug)]
+pub(crate) struct RpcMessageTx {
+    pub(crate) meta: Unique<MessageMeta>,
+    pub(crate) addr_backend: usize,
+}
+
+#[derive(Debug)]
 pub(crate) enum EngineTxMessage {
-    RpcMessage(MessageErased),
+    RpcMessage(RpcMessageTx),
     ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
 }
 
@@ -17,9 +27,16 @@ pub(crate) type TxIQueue = UnboundedReceiver<EngineTxMessage>;
 pub(crate) type TxOQueue = UnboundedSender<EngineTxMessage>;
 
 #[derive(Debug)]
+pub(crate) struct RpcMessageRx {
+    pub(crate) meta: Unique<MessageMeta>,
+    pub(crate) addr_app: usize,
+    pub(crate) addr_backend: usize,
+}
+
+#[derive(Debug)]
 pub(crate) enum EngineRxMessage {
-    RpcMessage(MessageErased),
-    SendCompletion(Handle, u32),
+    RpcMessage(RpcMessageRx),
+    SendCompletion(WrIdentifier),
 }
 
 pub(crate) type RxIQueue = UnboundedReceiver<EngineRxMessage>;

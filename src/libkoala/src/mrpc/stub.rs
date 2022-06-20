@@ -14,7 +14,7 @@ use fnv::FnvHashMap;
 
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp::RECV_RECLAIM_BS;
-use ipc::mrpc::dp::{self, WRIdentifier};
+use ipc::mrpc::dp::{self, WrIdentifier};
 
 /// Re-exports
 pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
@@ -36,7 +36,7 @@ use super::alloc::{CloneFromBackendOwned, ShmView};
 
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
-    pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<dp::WRIdentifier, MessageErased>> = RefCell::new(FnvHashMap::default());
+    pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<dp::WrIdentifier, MessageErased>> = RefCell::new(FnvHashMap::default());
     // maintain a per server stub recv buffer
     pub(crate) static RECV_REQUEST_CACHE: RefCell<FnvHashMap<u64, Vec<MessageErased>>> = RefCell::new(FnvHashMap::default());
     // map conn_id to server stub
@@ -117,15 +117,15 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                         RpcMsgType::Response => RECV_REPLY_CACHE.with(|cache| {
                             cache
                                 .borrow_mut()
-                                .insert(dp::WRIdentifier(conn_id, call_id), msg);
+                                .insert(dp::WrIdentifier(conn_id, call_id), msg);
                         }),
                     }
                 }
-                dp::Completion::SendCompletion(conn_id, call_id) => {
+                dp::Completion::SendCompletion(WrIdentifier(conn_id, call_id)) => {
                     let msg_id = OUTSTANDING_WR.with(|outstanding| {
                         outstanding
                             .borrow_mut()
-                            .remove(&dp::WRIdentifier(conn_id, call_id))
+                            .remove(&dp::WrIdentifier(conn_id, call_id))
                             .expect("received unrecognized WR completion ACK")
                     });
                     GARBAGE_COLLECTOR.register_wr_completion(msg_id, 1);
@@ -138,7 +138,7 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
 
 // NOTE: handle visiblity
 pub struct ReqFuture<'a, T: CloneFromBackendOwned + RpcData + std::marker::Unpin> {
-    pub wr_id: WRIdentifier,
+    pub wr_id: WrIdentifier,
     pub reclaim_buffer: &'a RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>,
     pub _marker: PhantomData<T>,
 }
@@ -214,7 +214,7 @@ impl ClientStub {
         OUTSTANDING_WR.with(|outstanding| {
             outstanding
                 .borrow_mut()
-                .insert(dp::WRIdentifier(meta.conn_id, meta.call_id), msg.identifier);
+                .insert(dp::WrIdentifier(meta.conn_id, meta.call_id), msg.identifier);
         });
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
@@ -426,7 +426,7 @@ impl Server {
         OUTSTANDING_WR.with(|outstanding| {
             outstanding
                 .borrow_mut()
-                .insert(dp::WRIdentifier(meta.conn_id, meta.call_id), msg_id);
+                .insert(dp::WrIdentifier(meta.conn_id, meta.call_id), msg_id);
         });
 
         MRPC_CTX.with(|ctx| {

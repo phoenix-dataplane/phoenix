@@ -100,7 +100,7 @@ impl GreeterClient {
         self.stub.post_request(msg, meta).unwrap();
 
         let fut = crate::mrpc::stub::ReqFuture {
-            wr_id: ipc::mrpc::dp::WRIdentifier(conn_id, call_id),
+            wr_id: ipc::mrpc::dp::WrIdentifier(conn_id, call_id),
             reclaim_buffer: &self.stub.recv_reclaim_buffer,
             _marker: PhantomData,
         };
@@ -148,7 +148,7 @@ impl<T: Greeter> Service for GreeterServer<T> {
         assert_eq!(Self::FUNC_ID, req.meta.func_id);
         let conn_id = req.meta.conn_id;
         let call_id = req.meta.call_id;
-        let wr_id = ipc::mrpc::dp::WRIdentifier(conn_id, call_id);
+        let wr_id = ipc::mrpc::dp::WrIdentifier(conn_id, call_id);
 
         let ptr_app = req.shm_addr_app as *mut inner::HelloRequest<BackendOwned>;
         // TODO(wyj): refine the following line, this pointer may be invalid.

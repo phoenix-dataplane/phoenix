@@ -65,6 +65,8 @@ const LARGE_PAGE_SIZE: usize = 2 * 1024 * 1024;
 #[allow(unused)]
 const HUGE_PAGE_SIZE: usize = 1024 * 1024 * 1024;
 
+#[cfg(target_arch = "x86_64")]
+type VAddr = usize;
 
 #[cfg(target_arch = "aarch64")]
 const CACHE_LINE_SIZE: usize = 64;
