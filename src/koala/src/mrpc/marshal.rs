@@ -1,8 +1,8 @@
 // TODO(wyj): rewrite this file
 use std::fmt;
 use std::mem;
-use std::sync::Arc;
 use std::ptr::Unique;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 

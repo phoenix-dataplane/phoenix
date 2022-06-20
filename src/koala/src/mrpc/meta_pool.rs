@@ -25,7 +25,7 @@ impl<const CAP: usize> MessageMetaPool<CAP> {
         MessageMetaPool {
             _meta_buffer: meta_buf,
             freelist,
-            usedlist: fnv::FnvHashMap::default()
+            usedlist: fnv::FnvHashMap::default(),
         }
     }
 
@@ -41,10 +41,11 @@ impl<const CAP: usize> MessageMetaPool<CAP> {
             meta
         })
     }
-    
+
     #[inline]
-    pub(crate) fn put(&mut self, wr_id: WrIdentifier) -> Result<(), ResourceError>{
-        let meta_buf = self.usedlist
+    pub(crate) fn put(&mut self, wr_id: WrIdentifier) -> Result<(), ResourceError> {
+        let meta_buf = self
+            .usedlist
             .remove(&wr_id)
             .ok_or(ResourceError::NotFound)?;
         self.freelist.push(meta_buf);

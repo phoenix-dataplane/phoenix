@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use interface::rpc::{MessageMeta, RpcMsgType, MessageErased};
+use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::dp::WrIdentifier;
@@ -23,7 +23,7 @@ pub struct MrpcEngine {
     pub(crate) node: Node,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-    
+
     pub(crate) meta_pool: MessageMetaPool<META_POOL_CAP>,
 
     pub(crate) _mode: SchedulingMode,
@@ -101,7 +101,7 @@ impl MrpcEngine {
                     }
                 }
                 Err(TryRecvError::Disconnected) => return Ok(()),
-                Err(TryRecvError::Empty) => { }
+                Err(TryRecvError::Empty) => {}
             }
             future::yield_now().await;
         }
@@ -217,10 +217,13 @@ impl MrpcEngine {
 
                         // construct message meta on heap
                         let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self.meta_pool
+                        let meta_buf = self
+                            .meta_pool
                             .get(wr_identifier)
                             .expect("MessageMeta pool exhausted");
-                        unsafe { std::ptr::write(meta_buf.as_ptr(), erased.meta); }
+                        unsafe {
+                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                        }
 
                         let msg = RpcMessageTx {
                             meta: meta_buf,
@@ -243,16 +246,19 @@ impl MrpcEngine {
                         );
 
                         let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self.meta_pool
+                        let meta_buf = self
+                            .meta_pool
                             .get(wr_identifier)
                             .expect("MessageMeta pool exhausted");
-                        unsafe { std::ptr::write(meta_buf.as_ptr(), erased.meta); }
+                        unsafe {
+                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                        }
 
                         let msg = RpcMessageTx {
                             meta: meta_buf,
                             addr_backend: erased.shm_addr_backend,
                         };
-                        // if access to message's data 
+                        // if access to message's data
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     _ => unimplemented!(),

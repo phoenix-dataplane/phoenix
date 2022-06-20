@@ -7,7 +7,7 @@ use std::ops::Deref;
 
 use arrayvec::ArrayVec;
 
-use ipc::mrpc::dp::{WrIdentifier, WorkRequest, RECV_RECLAIM_BS};
+use ipc::mrpc::dp::{WorkRequest, WrIdentifier, RECV_RECLAIM_BS};
 
 use super::boxed::Box;
 use crate::mrpc::MRPC_CTX;

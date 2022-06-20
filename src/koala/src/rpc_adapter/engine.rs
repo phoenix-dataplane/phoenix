@@ -18,7 +18,7 @@ use interface::{AsHandle, Handle};
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
-use crate::engine::graph::{EngineTxMessage, RpcMessageTx, RpcMessageRx};
+use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
@@ -339,8 +339,8 @@ impl RpcAdapterEngine {
             },
         };
 
-        let msg = RpcMessageRx { 
-            meta: meta_ptr, 
+        let msg = RpcMessageRx {
+            meta: meta_ptr,
             addr_backend,
             addr_app,
         };
