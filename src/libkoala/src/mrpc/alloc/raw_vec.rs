@@ -10,7 +10,7 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use ipc::shmalloc::{ShmNonNull, ShmPtr, SwitchAddressSpace};
+use ipc::shmalloc::{ShmNonNull, ShmPtr};
 
 use crate::salloc::heap::SharedHeapAllocator;
 use crate::salloc::owner::{AllocOwner, AppOwned, BackendOwned};
@@ -64,11 +64,11 @@ impl<T> RawVec<T> {
         );
 
         let me = ManuallyDrop::new(self);
-        let (ptr, ptr_remote) = me.shmptr().to_raw_parts();
-        let slice = slice::from_raw_parts_mut(ptr.as_ptr() as *mut MaybeUninit<T>, len);
-        let slice_remote =
-            slice::from_raw_parts_mut(ptr_remote.as_ptr() as *mut MaybeUninit<T>, len);
-        Box::from_raw(slice, slice_remote)
+        let (ptr_app, ptr_backend) = me.shmptr().to_raw_parts();
+        let slice_app = slice::from_raw_parts_mut(ptr_app.as_ptr() as *mut MaybeUninit<T>, len);
+        let slice_backend =
+            slice::from_raw_parts_mut(ptr_backend.as_ptr() as *mut MaybeUninit<T>, len);
+        Box::from_app_raw(slice_app, slice_backend)
     }
 
     fn allocate(capacity: usize, init: AllocInit) -> Self {
@@ -87,12 +87,12 @@ impl<T> RawVec<T> {
                 AllocInit::Uninitialized => SharedHeapAllocator.allocate(layout),
                 AllocInit::Zeroed => SharedHeapAllocator.allocate_zeroed(layout),
             };
-            let (local, remote) = match result {
+            let (ptr_app, ptr_backend) = match result {
                 Ok(p) => p.to_raw_parts(),
                 Err(_) => handle_alloc_error(layout),
             };
             let ptr = unsafe {
-                ShmPtr::new_unchecked(local.as_mut_ptr().cast(), remote.as_mut_ptr().cast())
+                ShmPtr::new_unchecked(ptr_app.as_mut_ptr().cast(), ptr_backend.as_mut_ptr().cast())
             };
             Self {
                 ptr,
@@ -103,9 +103,9 @@ impl<T> RawVec<T> {
     }
 
     #[inline]
-    pub unsafe fn from_raw_parts(ptr: *mut T, ptr_remote: *mut T, capacity: usize) -> Self {
+    pub unsafe fn from_raw_parts(ptr_app: *mut T, ptr_backend: *mut T, capacity: usize) -> Self {
         Self {
-            ptr: ShmPtr::new_unchecked(ptr, ptr_remote),
+            ptr: ShmPtr::new_unchecked(ptr_app, ptr_backend),
             cap: capacity,
             _owner: AppOwned,
         }
@@ -115,7 +115,7 @@ impl<T> RawVec<T> {
 impl<T, O: AllocOwner> RawVec<T, O> {
     #[inline]
     pub fn ptr(&self) -> *mut T {
-        self.ptr.as_ptr()
+        self.ptr.as_ptr_app()
     }
 
     #[inline]
@@ -297,42 +297,14 @@ fn finish_grow(
     })
 }
 
-trait SpecializedDrop {
-    fn drop(&mut self);
-}
-
-impl<T> SpecializedDrop for RawVec<T, AppOwned> {
-    fn drop(&mut self) {
-        if let Some((ptr, layout)) = self.current_memory() {
-            // Contents (T) are dropped by RawVec's users
-            unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
-        }
-    }
-}
-
-impl<T> SpecializedDrop for RawVec<T, BackendOwned> {
-    fn drop(&mut self) {
-        // TODO(wyj)
-        return;
-    }
-}
-
-impl<T, O: AllocOwner> SpecializedDrop for RawVec<T, O> {
-    default fn drop(&mut self) {
-        unreachable!("SpecializedDrop should be specialized for AppOwned and BackendOwned");
-    }
-}
-
 impl<T, O: AllocOwner> Drop for RawVec<T, O> {
     fn drop(&mut self) {
-        (self as &mut dyn SpecializedDrop).drop();
-    }
-}
-
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for RawVec<T> {
-    fn switch_address_space(&mut self) {
-        // RawVec does not handle T's switch_address_space; this is left for the users of RawVec
-        self.ptr.switch_address_space();
+        if O::is_app_owend() {
+            if let Some((ptr, layout)) = self.current_memory() {
+                // Contents (T) are dropped by RawVec's users
+                unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
+            }
+        }
     }
 }
 

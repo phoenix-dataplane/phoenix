@@ -5,6 +5,10 @@
 #![feature(generic_associated_types)]
 #![feature(strict_provenance)]
 #![feature(int_roundings)]
+#![feature(ptr_internals)]
+// message meta buffer
+#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
 
 #[macro_use]
 extern crate tracing;

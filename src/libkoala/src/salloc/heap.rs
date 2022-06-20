@@ -24,8 +24,10 @@ thread_local! {
 }
 
 lazy_static! {
-    static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> =
-        spin::Mutex::new(BTreeMap::new());
+    pub(crate) static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> = {
+        lazy_static::initialize(&super::GC_CTX);
+        spin::Mutex::new(BTreeMap::new())
+    };
 }
 
 struct SharedHeap {
@@ -232,21 +234,19 @@ impl SharedHeapAllocator {
                     let mut shared_heap = shared_heap.borrow_mut();
 
                     let result = match shared_heap.zone_allocator.allocate_with_release(layout) {
-                        Ok((nptr, released_pages)) => {
-                            let addr_remote =
-                                Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
-                            let ptr_remote =
-                                nptr.with_addr(NonZeroUsize::new(addr_remote).unwrap());
-                            let ptr =
-                                ShmNonNull::slice_from_raw_parts(nptr, ptr_remote, layout.size());
+                        Ok((ptr_app, released_pages)) => {
+                            let addr_backend =
+                                Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
+                            let ptr_backend =
+                                ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
+                            let ptr = ShmNonNull::slice_from_raw_parts(
+                                ptr_app,
+                                ptr_backend,
+                                layout.size(),
+                            );
 
-                            // release empty pages
-                            if let Some(pages) = released_pages {
-                                let mut guard = SHARED_HEAP_REGIONS.lock();
-                                for addr in pages {
-                                    guard.remove(&addr).expect("page already released");
-                                }
-                            }
+                            // TODO(wyj): release empty pages to global pool
+
                             Ok(ptr)
                         }
                         Err(err) => Err(err),
@@ -308,24 +308,22 @@ impl SharedHeapAllocator {
                                     return Err(AllocError);
                                 }
                             }
-                            let (nptr, released_pages) = shared_heap
+                            let (ptr_app, released_pages) = shared_heap
                                 .zone_allocator
                                 .allocate_with_release(layout)
                                 .expect("Should success after refill");
-                            let addr_remote =
-                                Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
-                            let ptr_remote =
-                                nptr.with_addr(NonZeroUsize::new(addr_remote).unwrap());
-                            let ptr =
-                                ShmNonNull::slice_from_raw_parts(nptr, ptr_remote, layout.size());
+                            let addr_backend =
+                                Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
+                            let ptr_backend =
+                                ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
+                            let ptr = ShmNonNull::slice_from_raw_parts(
+                                ptr_app,
+                                ptr_backend,
+                                layout.size(),
+                            );
 
-                            // release empty pages
-                            if let Some(pages) = released_pages {
-                                let mut guard = SHARED_HEAP_REGIONS.lock();
-                                for addr in pages {
-                                    guard.remove(&addr).expect("page already released");
-                                }
-                            }
+                            // TODO(wyj): release empty pages to global pool
+
                             Ok(ptr)
                         }
                         Err(AllocationError::InvalidLayout) => {
@@ -348,19 +346,19 @@ impl SharedHeapAllocator {
                     match shared_heap.allocate_shm(aligned_size) {
                         Ok(sr) => {
                             let addr = sr.as_ptr().addr();
-                            let nptr = NonNull::new(sr.as_mut_ptr()).unwrap();
+                            let ptr_app = NonNull::new(sr.as_mut_ptr()).unwrap();
                             SHARED_HEAP_REGIONS
                                 .lock()
                                 .insert(addr, sr)
                                 .ok_or(())
                                 .unwrap_err();
-                            let addr_remote =
-                                Self::query_backend_addr(nptr.as_ptr().addr(), layout.align());
-                            let ptr_remote =
-                                nptr.with_addr(NonZeroUsize::new(addr_remote).unwrap());
+                            let addr_backend =
+                                Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
+                            let ptr_backend =
+                                ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
                             Ok(ShmNonNull::slice_from_raw_parts(
-                                nptr,
-                                ptr_remote,
+                                ptr_app,
+                                ptr_backend,
                                 layout.size(),
                             ))
                         }
@@ -394,7 +392,7 @@ impl SharedHeapAllocator {
     pub(crate) fn allocate_zeroed(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
         let ptr = self.allocate(layout)?;
         // SAFETY: `alloc` returns a valid memory block
-        unsafe { ptr.as_mut_ptr().write_bytes(0, ptr.len()) }
+        unsafe { ptr.as_mut_ptr_app().write_bytes(0, ptr.len()) }
         Ok(ptr)
     }
 
@@ -416,7 +414,11 @@ impl SharedHeapAllocator {
         // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            old_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)
@@ -441,7 +443,11 @@ impl SharedHeapAllocator {
         // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            old_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)
@@ -465,7 +471,11 @@ impl SharedHeapAllocator {
         // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
         // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
         // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_layout.size());
+        std::ptr::copy_nonoverlapping(
+            ptr.as_ptr_app(),
+            new_ptr.as_mut_ptr_app(),
+            new_layout.size(),
+        );
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)

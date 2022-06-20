@@ -82,13 +82,21 @@ pub(crate) struct ReqContext {
     pub(crate) sg_len: usize,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct RecvContext {
+    // buffer for recevied sges
+    pub(crate) sg_list: SgList,
+    // recv mrs that received sges are on
+    pub(crate) recv_mrs: Vec<interface::Handle>,
+}
+
 #[derive(Debug)]
 pub(crate) struct ConnectionContext {
     pub(crate) cmid: ulib::ucm::CmId,
     pub(crate) credit: AtomicUsize,
     // call_id, sg_len
     pub(crate) outstanding_req: spin::Mutex<VecDeque<ReqContext>>,
-    pub(crate) receiving_sgl: spin::Mutex<SgList>,
+    pub(crate) receiving_ctx: spin::Mutex<RecvContext>,
 }
 
 impl ConnectionContext {
@@ -97,7 +105,7 @@ impl ConnectionContext {
             cmid,
             credit: AtomicUsize::new(credit),
             outstanding_req: spin::Mutex::new(VecDeque::new()),
-            receiving_sgl: spin::Mutex::new(SgList(Vec::new())),
+            receiving_ctx: spin::Mutex::new(RecvContext::default()),
         }
     }
 }

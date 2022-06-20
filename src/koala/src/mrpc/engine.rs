@@ -1,16 +1,20 @@
 use std::future::Future;
 
-use interface::rpc::{MessageMeta, MessageTemplateErased, RpcMsgType};
+use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 
 use interface::engine::SchedulingMode;
+use ipc::mrpc::dp::WrIdentifier;
 use ipc::mrpc::{cmd, control_plane, dp};
 
+use super::meta_pool::MessageMetaPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
+use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
-use crate::mrpc::marshal::RpcMessage;
 use crate::node::Node;
+
+pub(crate) const META_POOL_CAP: usize = 128;
 
 pub struct MrpcEngine {
     pub(crate) _state: State,
@@ -19,6 +23,8 @@ pub struct MrpcEngine {
     pub(crate) node: Node,
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
+
+    pub(crate) meta_pool: MessageMetaPool<META_POOL_CAP>,
 
     pub(crate) _mode: SchedulingMode,
 
@@ -68,6 +74,7 @@ impl MrpcEngine {
             }
 
             if let Status::Disconnected = self.check_cmd().await? {
+                self.wait_meta_pool_free().await?;
                 return Ok(());
             }
 
@@ -79,6 +86,27 @@ impl MrpcEngine {
 }
 
 impl MrpcEngine {
+    // we need to wait for RpcAdapter engine to finish outstanding send requests
+    // (whether successful or not), to release message meta pool and shutdown mRPC engine
+    async fn wait_meta_pool_free(&mut self) -> Result<(), DatapathError> {
+        use tokio::sync::mpsc::error::TryRecvError;
+        loop {
+            match self.rx_inputs()[0].try_recv() {
+                Ok(msg) => {
+                    if let EngineRxMessage::SendCompletion(wr_id) = msg {
+                        self.meta_pool.put(wr_id)?;
+                        if self.meta_pool.freelist.len() == META_POOL_CAP {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(TryRecvError::Disconnected) => return Ok(()),
+                Err(TryRecvError::Empty) => {}
+            }
+            future::yield_now().await;
+        }
+    }
+
     async fn check_cmd(&mut self) -> Result<Status, Error> {
         match self.customer.try_recv_cmd() {
             // handle request
@@ -134,9 +162,6 @@ impl MrpcEngine {
                     other => panic!("unexpected: {:?}", other),
                 }
             }
-            Command::RecycleRecvMr(_) => {
-                unimplemented!()
-            }
         }
     }
 
@@ -174,8 +199,6 @@ impl MrpcEngine {
     }
 
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
-        use crate::mrpc::codegen;
-        use crate::mrpc::marshal::MessageTemplate;
         use dp::WorkRequest;
 
         let span = info_span!("MrpcEngine process_dp");
@@ -192,21 +215,23 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let msg = unsafe { MessageTemplate::<codegen::HelloRequest>::new(*erased) };
-                        // Safety: this is fine here because msg is already a unique
-                        // pointer
-                        // debug!("start to marshal");
-                        unsafe { msg.as_ref() }.marshal();
-                        // MessageTemplate::<codegen::HelloRequest>::marshal(unsafe { msg.as_ref() });
-                        // debug!("end marshal");
-
-                        let dyn_msg = MessageTemplate::into_rpc_message(msg);
-
-                        {
-                            // let span = info_span!("tx_outputs.send");
-                            // let _enter = span.enter();
-                            self.tx_outputs()[0].send(dyn_msg)?;
+                        // construct message meta on heap
+                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
+                        let meta_buf = self
+                            .meta_pool
+                            .get(wr_identifier)
+                            .expect("MessageMeta pool exhausted");
+                        unsafe {
+                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
                         }
+
+                        let msg = RpcMessageTx {
+                            meta: meta_buf,
+                            addr_backend: erased.shm_addr_backend,
+                        };
+                        // if access to message's data fields are desired,
+                        // typed message can be conjured up here via matching func_id
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     _ => unimplemented!(),
                 }
@@ -220,16 +245,28 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let msg = unsafe { MessageTemplate::<codegen::HelloReply>::new(*erased) };
-                        let dyn_msg = MessageTemplate::into_rpc_message(msg);
-                        {
-                            // let span = info_span!("tx_outputs.send");
-                            // let _enter = span.enter();
-                            self.tx_outputs()[0].send(dyn_msg)?;
+                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
+                        let meta_buf = self
+                            .meta_pool
+                            .get(wr_identifier)
+                            .expect("MessageMeta pool exhausted");
+                        unsafe {
+                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
                         }
+
+                        let msg = RpcMessageTx {
+                            meta: meta_buf,
+                            addr_backend: erased.shm_addr_backend,
+                        };
+                        // if access to message's data
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     _ => unimplemented!(),
                 }
+            }
+            WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
+                self.tx_outputs()[0]
+                    .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
             }
         }
         Ok(())
@@ -240,74 +277,41 @@ impl MrpcEngine {
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
-                    EngineRxMessage::RpcMessage(mut msg) => {
+                    EngineRxMessage::RpcMessage(msg) => {
                         let span = info_span!("MrpcEngine check_input_queue: recv_msg");
                         let _enter = span.enter();
 
-                        // deliver the msg to application
-                        let meta = {
-                            // let span = info_span!("constructing MessageMeta");
-                            // let _enter = span.enter();
-                            let msg_ref = unsafe { msg.as_ref() };
-                            let meta = MessageMeta {
-                                conn_id: msg_ref.conn_id(),
-                                func_id: msg_ref.func_id(),
-                                call_id: msg_ref.call_id(),
-                                len: msg_ref.len(),
-                                msg_type: if msg_ref.is_request() {
-                                    RpcMsgType::Request
-                                } else {
-                                    RpcMsgType::Response
-                                },
-                            };
-                            meta
-                        };
-
-                        let msg_mut = unsafe { msg.as_mut() };
-                        {
-                            // let span = info_span!("switch_addr_space");
-                            // let _enter = span.enter();
-                            msg_mut.switch_address_space();
-                        }
-                        // NOTE(wyj): this is the address of the pointer to `msg_mut`
-                        // while switch_address_space swithces the address of the actual payload
-                        // TODO(wyj): check which should be shm_addr, which should be shm_addr_remote
-                        // NOTE(wyj): This is message from backend to app
-                        // MessageTemplateErased is a just a message header
-                        // it does not holder actual payload
-                        // but a pointer to the payload on shared memory
-                        let (ptr, ptr_remote) = msg.to_raw_parts();
-                        let erased = MessageTemplateErased {
-                            meta,
-                            // casting to thin pointer first, drop the Pointee::Metadata
-                            shm_addr: ptr_remote.to_raw_parts().0.addr().get(),
-                            shm_addr_remote: ptr.to_raw_parts().0.addr().get(),
-                        };
+                        let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
                             "mRPC engine send message to App, call_id={}",
                             meta.call_id
                         );
-                        {
-                            // let span = info_span!("customer.enqueue_wc");
-                            // let _enter = span.enter();
-                            let mut sent = false;
-                            while !sent {
-                                self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                                    sent = true;
-                                    ptr.cast::<dp::Completion>()
-                                        .write(dp::Completion::Recv(erased));
-                                    1
-                                })?;
-                            }
-                        }
-                    }
-                    EngineRxMessage::SendCompletion(conn_id, call_id) => {
+
+                        let erased = MessageErased {
+                            meta,
+                            shm_addr_app: msg.addr_app,
+                            shm_addr_backend: msg.addr_backend,
+                        };
+
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::SendCompletion(conn_id, call_id));
+                                    .write(dp::Completion::Recv(erased));
+                                1
+                            })?;
+                        }
+                    }
+                    EngineRxMessage::SendCompletion(wr_id) => {
+                        // release message meta buffer
+                        self.meta_pool.put(wr_id)?;
+                        let mut sent = false;
+                        while !sent {
+                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                sent = true;
+                                ptr.cast::<dp::Completion>()
+                                    .write(dp::Completion::SendCompletion(wr_id));
                                 1
                             })?;
                         }
