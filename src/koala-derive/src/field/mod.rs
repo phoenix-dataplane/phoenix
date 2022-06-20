@@ -1,5 +1,5 @@
-mod scalar;
 mod message;
+mod scalar;
 
 use std::fmt;
 use std::slice;
@@ -11,7 +11,7 @@ use syn::{Attribute, Lit, LitBool, Meta, MetaList, MetaNameValue, NestedMeta};
 #[derive(Clone)]
 pub enum Field {
     Scalar(scalar::Field),
-    Message(message::Field)
+    Message(message::Field),
 }
 
 // dispatcher
@@ -51,9 +51,7 @@ impl Field {
         }
     }
 
-
     /// Returns a statement to recover additional information of the field from SgEs
-    /// ident should be `this.field`, where `this` is `&mut M`, M is a concrete type of RpcMessage
     pub fn excavate(&self, ident: TokenStream) -> TokenStream {
         match *self {
             Field::Scalar(ref scalar) => scalar.excavate(ident),
@@ -149,8 +147,8 @@ fn prost_attrs(attrs: Vec<Attribute>) -> Vec<Meta> {
 }
 
 pub fn set_option<T>(option: &mut Option<T>, value: T, message: &str) -> Result<(), Error>
-    where
-        T: fmt::Debug,
+where
+    T: fmt::Debug,
 {
     if let Some(ref existing) = *option {
         bail!("{}: {:?} and {:?}", message, existing, value);
@@ -184,17 +182,13 @@ fn bool_attr(key: &str, attr: &Meta) -> Result<Option<bool>, Error> {
             bail!("invalid {} attribute", key);
         }
         Meta::NameValue(MetaNameValue {
-                            lit: Lit::Str(ref lit),
-                            ..
-                        }) => lit
-            .value()
-            .parse::<bool>()
-            .map_err(Error::from)
-            .map(Some),
+            lit: Lit::Str(ref lit),
+            ..
+        }) => lit.value().parse::<bool>().map_err(Error::from).map(Some),
         Meta::NameValue(MetaNameValue {
-                            lit: Lit::Bool(LitBool { value, .. }),
-                            ..
-                        }) => Ok(Some(value)),
+            lit: Lit::Bool(LitBool { value, .. }),
+            ..
+        }) => Ok(Some(value)),
         _ => bail!("invalid {} attribute", key),
     }
 }
@@ -224,11 +218,7 @@ pub(super) fn tag_attr(attr: &Meta) -> Result<Option<u32>, Error> {
             bail!("invalid tag attribute: {:?}", attr);
         }
         Meta::NameValue(ref meta_name_value) => match meta_name_value.lit {
-            Lit::Str(ref lit) => lit
-                .value()
-                .parse::<u32>()
-                .map_err(Error::from)
-                .map(Some),
+            Lit::Str(ref lit) => lit.value().parse::<u32>().map_err(Error::from).map(Some),
             Lit::Int(ref lit) => Ok(Some(lit.base10_parse()?)),
             _ => bail!("invalid tag attribute: {:?}", attr),
         },

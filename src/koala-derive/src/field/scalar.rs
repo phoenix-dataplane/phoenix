@@ -3,9 +3,9 @@ use std::fmt;
 use anyhow::{bail, Error};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Meta, MetaNameValue, Lit, Ident};
+use syn::{Ident, Lit, Meta, MetaNameValue};
 
-use crate::field::{set_option, bool_attr, tag_attr, Label};
+use crate::field::{bool_attr, set_option, tag_attr, Label};
 
 /// A scalar protobuf field.
 #[derive(Clone)]
@@ -86,30 +86,28 @@ impl Field {
                 // the field has Rust type Vec<i32>
                 // emplace_repeated dumps the buffer in this Vec<32> into a SgE
                 // #ident here should be self.field_name, and it has type Vec<$ty>
-                let emplace_fn = quote!(crate::emplacement::#module::emplace_repeated);
+                let emplace_fn = quote!(crate::mrpc::emplacement::#module::emplace_repeated);
                 quote! {
                     #emplace_fn(&#ident, sgl)?;
                 }
             }
             Kind::Optional => {
                 if !self.ty.is_numeric() {
-                    let emplace_fn = quote!(crate::emplacement::#module::emplace_optional);
+                    let emplace_fn = quote!(crate::mrpc::emplacement::#module::emplace_optional);
                     quote! {
                         #emplace_fn(&#ident, sgl)?;
                     }
-                }
-                else {
+                } else {
                     TokenStream::new()
                 }
             }
             _ => {
                 if !self.ty.is_numeric() {
-                    let emplace_fn = quote!(crate::emplacement::#module::emplace);
+                    let emplace_fn = quote!(crate::mrpc::emplacement::#module::emplace);
                     quote! {
                         #emplace_fn(&#ident, sgl)?;
                     }
-                }
-                else {
+                } else {
                     TokenStream::new()
                 }
             }
@@ -120,30 +118,28 @@ impl Field {
         let module = self.ty.module();
         match self.kind {
             Kind::Repeated | Kind::Packed => {
-                let excavate_fn = quote!(crate::emplacement::#module::excavate_repeated);
+                let excavate_fn = quote!(crate::mrpc::emplacement::#module::excavate_repeated);
                 quote! {
                     #excavate_fn(&mut #ident, ctx)?;
                 }
             }
             Kind::Optional => {
                 if !self.ty.is_numeric() {
-                    let excavate_fn = quote!(crate::emplacement::#module::excavate_optional);
+                    let excavate_fn = quote!(crate::mrpc::emplacement::#module::excavate_optional);
                     quote! {
                         #excavate_fn(&mut #ident, ctx)?;
                     }
-                }
-                else {
+                } else {
                     TokenStream::new()
                 }
-            },
+            }
             _ => {
                 if !self.ty.is_numeric() {
-                    let excavate_fn = quote!(crate::emplacement::#module::excavate);
-                    quote!{
+                    let excavate_fn = quote!(crate::mrpc::emplacement::#module::excavate);
+                    quote! {
                         #excavate_fn(&mut #ident, ctx)?;
                     }
-                }
-                else {
+                } else {
                     TokenStream::new()
                 }
             }
@@ -155,19 +151,18 @@ impl Field {
 
         match self.kind {
             Kind::Repeated | Kind::Packed => {
-                let extent_fn = quote!(crate::emplacement::#module::extent_repeated);
+                let extent_fn = quote!(crate::mrpc::emplacement::#module::extent_repeated);
                 quote! {
                     #extent_fn(&#ident)
                 }
             }
             Kind::Optional => {
                 if !self.ty.is_numeric() {
-                    let extent_fn = quote!(crate::emplacement::#module::extent_optional);
+                    let extent_fn = quote!(crate::mrpc::emplacement::#module::extent_optional);
                     quote! {
                         #extent_fn(&#ident)
                     }
-                }
-                else {
+                } else {
                     quote! {
                         0
                     }
@@ -175,12 +170,11 @@ impl Field {
             }
             _ => {
                 if !self.ty.is_numeric() {
-                    let extent_fn = quote!(crate::emplacement::#module::extent);
+                    let extent_fn = quote!(crate::mrpc::emplacement::#module::extent);
                     quote! {
                         #extent_fn(&#ident)
                     }
-                }
-                else {
+                } else {
                     quote! {
                         0
                     }
@@ -216,16 +210,16 @@ impl Ty {
             Meta::Path(ref name) if name.is_ident("string") => Ty::String,
             Meta::Path(ref name) if name.is_ident("bytes") => Ty::Bytes,
             Meta::NameValue(MetaNameValue {
-                                ref path,
-                                lit: Lit::Str(ref l),
-                                ..
-                            }) if path.is_ident("bytes") => {
+                ref path,
+                lit: Lit::Str(ref l),
+                ..
+            }) if path.is_ident("bytes") => {
                 match &l.value()[..] {
                     // we only support Vec<u8> as Rust type for bytes
                     "vec" => Ty::Bytes,
-                    _ => return Ok(None)
+                    _ => return Ok(None),
                 }
-            },
+            }
             _ => return Ok(None),
         };
         Ok(Some(ty))
@@ -266,7 +260,6 @@ impl fmt::Display for Ty {
         f.write_str(self.as_str())
     }
 }
-
 
 /// Scalar Protobuf field types.
 #[derive(Clone)]

@@ -1,14 +1,14 @@
 use anyhow::{bail, Error};
-use quote::quote;
-use proc_macro2::TokenStream;
+use proc_macro::TokenStream;
 use proc_macro2::Span;
+use quote::quote;
 use syn::{Data, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident};
 
 mod field;
 use field::Field;
 
-pub fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
-    let input: DeriveInput = syn::parse2(input)?;
+fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
+    let input: DeriveInput = syn::parse(input)?;
     let ident = input.ident;
 
     let variant_data = match input.data {
@@ -80,7 +80,7 @@ pub fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
 
     let excavate = fields
         .iter()
-        .map(|&(ref field_ident, ref field)| field.excavate(quote!(this.#field_ident)));
+        .map(|&(ref field_ident, ref field)| field.excavate(quote!(self.#field_ident)));
 
     let extent = fields
         .iter()
@@ -88,28 +88,27 @@ pub fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
 
     let expanded = quote! {
         impl #impl_generics crate::mrpc::marshal::RpcMessage for #ident #ty_generics #where_clause {
-            fn marshal(&self) -> Result<crate::mrpc::marshal::SgList, crate::mrpc::marshal::MarshalError> {
+            fn marshal(&self) -> std::result::Result<crate::mrpc::marshal::SgList, crate::mrpc::marshal::MarshalError> {
                 let cap = 1 + self.extent();
                 let mut sgl = crate::mrpc::marshal::SgList(std::vec::Vec::with_capacity(cap));
-                let self_sge = SgE {
-                    ptr: self as *const _ as usize;
+                let self_sge = crate::mrpc::marshal::SgE {
+                    ptr: self as *const _ as usize,
                     len: std::mem::size_of::<Self>()
-                }
+                };
                 sgl.0.push(self_sge);
-                self.emplace(&mut sgl);
+                self.emplace(&mut sgl)?;
                 Ok(sgl)
             }
 
             unsafe fn unmarshal<'a>(
                 ctx: &mut crate::mrpc::marshal::ExcavateContext<'a>
-            ) -> std::result::Result<::ipc::shmalloc::ShmPtr<Self>, crate::mrpc::marshal::UnmarshalError>
-            {
+            ) -> std::result::Result<::ipc::shmalloc::ShmPtr<Self>, crate::mrpc::marshal::UnmarshalError> {
                 let self_sge = ctx.sgl
                     .next()
-                    .ok_err(Err(crate::mrpc::marshal::UnmarshalError::SgListUnderflow));
+                    .ok_or(crate::mrpc::marshal::UnmarshalError::SgListUnderflow)?;
 
-                if self_sge.len != std::mem::size_of<Self>() {
-                    return Err(crate::mrpc::marshal::UnmarshalError::SgELengthMismatch{
+                if self_sge.len != std::mem::size_of::<Self>() {
+                    return Err(crate::mrpc::marshal::UnmarshalError::SgELengthMismatch {
                         expected: std::mem::size_of::<Self>(),
                         actual: self_sge.len
                     });
@@ -118,29 +117,32 @@ pub fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
                 let backend_addr = self_sge.ptr;
                 let app_addr = ctx.salloc
                     .resource
-                    .query_app_addr(backend_addr);
+                    .query_app_addr(backend_addr)?;
 
                 let mut message = ::ipc::shmalloc::ShmPtr::new(app_addr as *mut Self, backend_addr as *mut Self).unwrap();
                 let this = message.as_mut_backend();
-
-                self.excavate(this, ctx)?
+                this.excavate(ctx)?;
 
                 Ok(message)
             }
 
 
             #[inline(always)]
-            fn empalce(&self, sgl: &mut SgList) -> std::result::Result<(), crate::mrpc::marshal::MarshalError> {
+            fn emplace(
+                &self,
+                sgl: &mut crate::mrpc::marshal::SgList
+            ) -> std::result::Result<(), crate::mrpc::marshal::MarshalError> {
                 #(#emplace)*
                 Ok(())
             }
 
             #[inline(always)]
             unsafe fn excavate(
-                this: &mut Self,
+                &mut self,
                 ctx: &mut crate::mrpc::marshal::ExcavateContext
-            ) -> std::result::Result<(), crate::mrpc::marshal::UnmarshalErrorr> {
+            ) -> std::result::Result<(), crate::mrpc::marshal::UnmarshalError> {
                 #(#excavate)*
+                Ok(())
             }
 
             #[inline(always)]
@@ -150,5 +152,11 @@ pub fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
         }
     };
 
+    eprintln!("{} ", expanded);
     Ok(expanded.into())
+}
+
+#[proc_macro_derive(Message, attributes(prost))]
+pub fn message(input: TokenStream) -> TokenStream {
+    try_message(input).unwrap()
 }

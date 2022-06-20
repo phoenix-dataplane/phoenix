@@ -1,8 +1,7 @@
-
 use std::ptr::Unique;
 use std::sync::Arc;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use interface::rpc::MessageMeta;
@@ -17,35 +16,32 @@ pub enum MarshalError {
 #[derive(Error, Debug)]
 pub enum UnmarshalError {
     #[error("SgE length mismatch (expected={expected}, actual={actual})")]
-    SgELengthMismatch {
-        expected: usize,
-        actual: usize
-    },
+    SgELengthMismatch { expected: usize, actual: usize },
     #[error("SgList underflow")]
     SgListUnderflow,
     #[error("could not find app addr: {0}")]
-    AppAddrNotFound(#[from] crate::resource::Error)
+    AppAddrNotFound(#[from] crate::resource::Error),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct SgE {
+pub struct SgE {
     pub ptr: usize,
     pub len: usize,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct SgList(pub Vec<SgE>);
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SgList(pub Vec<SgE>);
 
-pub(crate) struct ExcavateContext<'a> {
-    sgl: std::slice::Iter<'a, SgE>,
-    salloc: &'a std::sync::Arc<crate::salloc::state::Shared>
+pub struct ExcavateContext<'a> {
+    pub(crate) sgl: std::slice::Iter<'a, SgE>,
+    pub(crate) salloc: &'a std::sync::Arc<crate::salloc::state::Shared>,
 }
 
-pub(crate) trait RpcMessage: Sized {
+pub trait RpcMessage: Sized {
     fn marshal(&self) -> Result<SgList, MarshalError>;
-    unsafe fn unmarshal<'a>(&self, ctx: ExcavateContext<'a>) -> Result<ShmPtr<Self>, UnmarshalError>;
+    unsafe fn unmarshal<'a>(ctx: &mut ExcavateContext<'a>) -> Result<ShmPtr<Self>, UnmarshalError>;
     fn emplace(&self, sgl: &mut SgList) -> Result<(), MarshalError>;
-    unsafe fn excavate<'a>(&self, ctx: &mut ExcavateContext<'a>) -> Result<(), UnmarshalError>;
+    unsafe fn excavate<'a>(&mut self, ctx: &mut ExcavateContext<'a>) -> Result<(), UnmarshalError>;
     fn extent(&self) -> usize;
 }
 
@@ -63,5 +59,3 @@ impl MetaUnpacking for MessageMeta {
         Ok(meta)
     }
 }
-
-

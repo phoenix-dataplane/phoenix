@@ -10,7 +10,6 @@ use nix::unistd::Pid;
 use super::region::SharedRegion;
 use super::ControlPathError;
 use crate::engine::EngineLocalStorage;
-use crate::mrpc::marshal::ShmBuf;
 use crate::resource::{Error as ResourceError, ResourceTable};
 use crate::state_mgr::{StateManager, StateTrait};
 
@@ -146,19 +145,4 @@ impl Resource {
             None => Err(ResourceError::NotFound),
         }
     }
-
-    // #[inline]
-    // pub(crate) fn query_mr(&self, sge: ShmBuf) -> Result<Arc<SharedRegion>, ResourceError> {
-    //     let mr_table = self.mr_table.lock();
-    //     match mr_table.range(0..=sge.ptr).last() {
-    //         Some(kv) => {
-    //             if kv.0 + kv.1.len() >= sge.ptr + sge.len {
-    //                 Ok(Arc::clone(kv.1))
-    //             } else {
-    //                 Err(ResourceError::NotFound)
-    //             }
-    //         }
-    //         None => Err(ResourceError::NotFound),
-    //     }
-    // }
 }

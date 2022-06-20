@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
-use std::ptr::Unique;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -12,7 +11,7 @@ use ipc::mrpc;
 use ipc::mrpc::dp::WrIdentifier;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
+use interface::rpc::{MessageMeta, RpcMsgType};
 use interface::{AsHandle, Handle};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -22,7 +21,7 @@ use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
-use crate::mrpc::marshal::{Marshal, MetaUnpacking, SgList, ShmBuf, Unmarshal};
+use crate::mrpc::marshal::{ExcavateContext, MetaUnpacking, RpcMessage, SgE, SgList};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -218,7 +217,7 @@ impl RpcAdapterEngine {
             }
 
             let ctx = ((cmid_handle.0 as u64) << 32) | (call_id as u64);
-            let meta_sge = ShmBuf {
+            let meta_sge = SgE {
                 ptr: msg.meta.as_ptr().addr(),
                 len: mem::size_of::<MessageMeta>(),
             };
@@ -316,11 +315,15 @@ impl RpcAdapterEngine {
             drop(outstanding_req);
         }
 
+        let mut excavate_ctx = ExcavateContext {
+            sgl: sgl.0[1..].iter(),
+            salloc: &self.salloc.shared,
+        };
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
                 3687134534u32 => {
                     let msg = unsafe {
-                        codegen::HelloRequest::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
+                        codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap()
                     };
                     let (ptr_app, ptr_backend) = msg.to_raw_parts();
                     (ptr_app.addr().get(), ptr_backend.addr().get())
@@ -330,7 +333,7 @@ impl RpcAdapterEngine {
             RpcMsgType::Response => match meta.func_id {
                 3687134534u32 => {
                     let msg = unsafe {
-                        codegen::HelloReply::unmarshal(&sgl.0[1..], &self.salloc.shared).unwrap()
+                        codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap()
                     };
                     let (ptr_app, ptr_backend) = msg.to_raw_parts();
                     (ptr_app.addr().get(), ptr_backend.addr().get())
@@ -386,7 +389,7 @@ impl RpcAdapterEngine {
                                 let conn_ctx =
                                     self.state.resource().cmid_table.get(&cmid_handle)?;
                                 // received a segment of RPC message
-                                let sge = ShmBuf {
+                                let sge = SgE {
                                     ptr: wr_ctx.mr_addr,
                                     len: wc.byte_len as _, // note this byte_len is only valid for
                                                            // recv request

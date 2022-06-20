@@ -2,6 +2,7 @@
 members = [
   "src/experimental",
   "src/koala",
+  "src/koala-derive",
   "src/ipc",
   "src/rdma",
   "src/utils",

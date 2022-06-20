@@ -61,14 +61,14 @@ impl Field {
     pub fn emplace(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                crate::encoding::message::emplace_optional(&#ident, sgl)?;
+                crate::mrpc::emplacement::message::emplace_optional(&#ident, sgl)?;
             },
             Label::Required => quote! {
-                crate::encoding::message::emplace(&#ident, sgl)?;
+                crate::mrpc::emplacement::message::emplace(&#ident, sgl)?;
             },
             // #ident should be self.field, which is Vec<M>, M: RpcMessage
             Label::Repeated => quote! {
-                crate::encoding::message::emplace_repeated(&#ident, sgl)?;
+                crate::mrpc::emplacement::message::emplace_repeated(&#ident, sgl)?;
             },
         }
     }
@@ -76,13 +76,13 @@ impl Field {
     pub fn excavate(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                crate::encoding::message::excavate_optional(&mut #ident, ctx);
+                crate::mrpc::emplacement::message::excavate_optional(&mut #ident, ctx)?;
             },
             Label::Required => quote! {
-                crate::encoding::message::excavate(&mut #ident, ctx);
+                crate::mrpc::emplacement::message::excavate(&mut #ident, ctx)?;
             },
             Label::Repeated => quote! {
-                crate::encoding::message::excavate_repeated(&mut #ident, ctx);
+                crate::mrpc::emplacement::message::excavate_repeated(&mut #ident, ctx)?;
             },
         }
     }
@@ -90,13 +90,13 @@ impl Field {
     pub fn extent(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                crate::encoding::message::extent_optional(&#ident)
+                crate::mrpc::emplacement::message::extent_optional(&#ident)
             },
             Label::Required => quote! {
-                crate::encoding::message::extent(&#ident)
+                crate::mrpc::emplacement::message::extent(&#ident)
             },
             Label::Repeated => quote! {
-                crate::encoding::message::extent_repeated(&#ident)
+                crate::mrpc::emplacement::message::extent_repeated(&#ident)
             },
         }
     }
