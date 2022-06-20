@@ -66,7 +66,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
 
     if args.blocking {
         let name = Vec::new();
-        let msg = RpcMessage::new_reply(HelloReply { name });
+        let msg = RpcMessage::new(HelloReply { name });
         let _server = libkoala::mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
             .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
             .serve()?;
@@ -74,7 +74,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let mut replies = Vec::new();
         for _ in 0..128 {
             let name = Vec::new();
-            let msg = RpcMessage::new_reply(HelloReply { name });
+            let msg = RpcMessage::new(HelloReply { name });
             replies.push(msg);
         }
         let _server = libkoala::mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?

@@ -1,16 +1,24 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::{rpc::MessageTemplateErased, Handle};
+use interface::{rpc::MessageErased, Handle};
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct WrIdentifier(pub Handle, pub u32);
 
 pub type WorkRequestSlot = [u8; 64];
+
+pub const RECV_RECLAIM_BS: usize = 4;
 
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkRequest {
-    Call(MessageTemplateErased),
+    Call(MessageErased),
     // this will also deallocate
-    Reply(MessageTemplateErased),
+    Reply(MessageErased),
+    // conn_id and an array of call_id
+    ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
 }
 
 pub type CompletionSlot = [u8; 64];
@@ -18,8 +26,8 @@ pub type CompletionSlot = [u8; 64];
 #[repr(C, align(64))]
 #[derive(Debug)]
 pub enum Completion {
-    Recv(MessageTemplateErased),
-    SendCompletion(Handle, u32),
+    Recv(MessageErased),
+    SendCompletion(WrIdentifier),
 }
 
 mod sa {

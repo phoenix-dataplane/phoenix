@@ -21,6 +21,9 @@
 #![feature(drain_filter)]
 // stub
 #![feature(hash_drain_filter)]
+// shmview drop
+#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
 
 use std::borrow::Borrow;
 use std::env;

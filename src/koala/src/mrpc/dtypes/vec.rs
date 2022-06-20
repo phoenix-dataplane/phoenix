@@ -1,5 +1,4 @@
 use super::raw_vec::RawVec;
-use ipc::shmalloc::SwitchAddressSpace;
 
 pub struct Vec<T> {
     buf: RawVec<T>,
@@ -13,29 +12,18 @@ impl<T> Vec<T> {
     }
 
     #[inline]
-    pub(crate) fn get_buf_addr(&self) -> usize {
-        self.buf.ptr() as usize
+    pub(crate) fn get_buf_addr_backend(&self) -> usize {
+        self.buf.ptr_backend() as usize
     }
 
-    pub(crate) unsafe fn update_buf_shmptr(&mut self, ptr: *mut T, addr_remote: usize) {
-        self.buf.update_buf_shmptr(ptr, addr_remote);
-    }
-}
-
-unsafe impl<T: SwitchAddressSpace> SwitchAddressSpace for Vec<T> {
-    fn switch_address_space(&mut self) {
-        let ptr = self.buf.ptr();
-        let slice = unsafe { std::slice::from_raw_parts_mut(ptr, self.len) };
-        for v in slice.iter_mut() {
-            v.switch_address_space()
-        }
-        self.buf.switch_address_space();
+    pub(crate) unsafe fn update_buf_ptr(&mut self, ptr_app: *mut T, ptr_backend: *mut T) {
+        self.buf.update_buf_ptr(ptr_app, ptr_backend);
     }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Vec<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ptr = self.buf.ptr();
+        let ptr = self.buf.ptr_backend();
         let slice = unsafe { std::slice::from_raw_parts(ptr, self.len) };
         std::fmt::Debug::fmt(slice, f)
     }
