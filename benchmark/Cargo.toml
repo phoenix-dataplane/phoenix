@@ -18,6 +18,7 @@ shellexpand = "2.1.0"
 structopt = "0.3.26"
 tokio-anyfd = "0.2.0"
 toml = "0.5.9"
+walkdir = "2.3.2"
 
 [[bin]]
 name = "launcher"

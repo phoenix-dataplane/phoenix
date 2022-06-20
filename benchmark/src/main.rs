@@ -51,7 +51,7 @@ struct Opt {
 
     /// Run a single benchmark task
     #[structopt(short, long)]
-    benchmark: Option<path::PathBuf>,
+    benchmark: path::PathBuf,
 
     /// Run a benchmark group
     #[structopt(short, long)]
@@ -294,8 +294,21 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     Ok(())
 }
 
-fn run_benchmark_group(_opt: Opt, _group: String) -> anyhow::Result<()> {
-    todo!();
+fn run_benchmark_group(opt: Opt, group: String) -> anyhow::Result<()> {
+    use walkdir::WalkDir;
+
+    let dir = opt.benchmark.clone();
+    if !dir.is_dir() {
+        return Err(anyhow::anyhow!("{:?} must be a directory", dir));
+    }
+
+    for entry in WalkDir::new(dir).follow_links(true) {
+        let entry = entry.unwrap();
+        todo!();
+        println!("{}", entry.path().display());
+    }
+
+    Ok(())
 }
 
 fn run_benchmark(opt: Opt, path: path::PathBuf) -> anyhow::Result<()> {
@@ -403,15 +416,13 @@ fn main() {
     unsafe { signal::sigaction(signal::SIGINT, &sig_action) }
         .expect("failed to register sighandler");
 
-    if opt.benchmark.is_some() && opt.group.is_some() {
-        log::error!("should not provide both benchmark and group, exiting.");
-        return;
-    }
-
-    if let Some(b) = opt.benchmark.clone() {
-        run_benchmark(opt, b).unwrap();
-    } else if let Some(g) = opt.group.clone() {
-        run_benchmark_group(opt, g).unwrap();
+    if let Some(g) = opt.group.clone() {
+        // opt.benchmark should points to a directory
+        run_benchmark_group(opt, g).unwrap_or_else(|e| panic!("run_benchmark_group failed: {e}"));
+    } else {
+        // opt.benchmark should points to a file
+        let path = opt.benchmark.clone();
+        run_benchmark(opt, path).unwrap_or_else(|e| panic!("run_benchmark failed: {e}"));
     }
 }
 
