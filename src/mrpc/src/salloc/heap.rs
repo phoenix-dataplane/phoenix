@@ -9,12 +9,12 @@ use std::ptr::NonNull;
 // use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
 use memfd::Memfd;
+use slabmalloc::GLOBAL_PAGE_POOL;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
 use ipc::ptr::ShmNonNull;
 use ipc::salloc::cmd;
 
-use super::gc::GLOBAL_PAGE_POOL;
 use super::region::SharedHeapRegion;
 use super::{Error, SA_CTX};
 
@@ -25,55 +25,13 @@ thread_local! {
 
 lazy_static! {
     pub(crate) static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> = {
-        lazy_static::initialize(&super::GC_CTX);
+        lazy_static::initialize(&super::gc::PAGE_RECLAIMER_CTX);
         spin::Mutex::new(BTreeMap::new())
     };
 }
 
 struct SharedHeap {
-    zone_allocator: ZoneAllocator<'static>,
-}
-
-impl Drop for SharedHeap {
-    fn drop(&mut self) {
-        let relinquished_pages = unsafe { self.zone_allocator.relinquish_pages() };
-
-        // release empty pages
-        // NOTE(wyj): this is not really necessary.
-        for empty_page in relinquished_pages.empty_small {
-            let addr = empty_page as *mut ObjectPage as usize;
-            // tell backend to dealloc page
-            SHARED_HEAP_REGIONS
-                .lock()
-                .remove(&addr)
-                .expect("page already released");
-        }
-        for empty_page in relinquished_pages.empty_large {
-            let addr = empty_page as *mut LargeObjectPage as usize;
-            SHARED_HEAP_REGIONS
-                .lock()
-                .remove(&addr)
-                .expect("page already released");
-        }
-        for empty_page in relinquished_pages.empty_huge {
-            let addr = empty_page as *mut HugeObjectPage as usize;
-            SHARED_HEAP_REGIONS
-                .lock()
-                .remove(&addr)
-                .expect("page already released");
-        }
-
-        // recycle used pages to global pool
-        for (page, obj_per_page) in relinquished_pages.used_small {
-            GLOBAL_PAGE_POOL.recycle_small_page(page, obj_per_page)
-        }
-        for (page, obj_per_page) in relinquished_pages.used_large {
-            GLOBAL_PAGE_POOL.recycle_large_page(page, obj_per_page)
-        }
-        for (page, obj_per_page) in relinquished_pages.used_huge {
-            GLOBAL_PAGE_POOL.recycle_huge_page(page, obj_per_page)
-        }
-    }
+    zone_allocator: ZoneAllocator,
 }
 
 impl SharedHeap {
@@ -233,8 +191,8 @@ impl SharedHeapAllocator {
                 TL_SHARED_HEAP.with(|shared_heap| {
                     let mut shared_heap = shared_heap.borrow_mut();
 
-                    let result = match shared_heap.zone_allocator.allocate_with_release(layout) {
-                        Ok((ptr_app, released_pages)) => {
+                    let result = match shared_heap.zone_allocator.allocate(layout) {
+                        Ok(ptr_app) => {
                             let addr_backend =
                                 Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());
                             let ptr_backend =
@@ -308,9 +266,9 @@ impl SharedHeapAllocator {
                                     return Err(AllocError);
                                 }
                             }
-                            let (ptr_app, released_pages) = shared_heap
+                            let ptr_app = shared_heap
                                 .zone_allocator
-                                .allocate_with_release(layout)
+                                .allocate(layout)
                                 .expect("Should success after refill");
                             let addr_backend =
                                 Self::query_backend_addr(ptr_app.as_ptr().addr(), layout.align());

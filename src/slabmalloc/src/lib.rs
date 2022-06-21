@@ -23,10 +23,16 @@
 #![no_std]
 #![crate_name = "slabmalloc"]
 #![crate_type = "lib"]
+#![feature(ptr_internals)]
+#![feature(drain_filter)]
 
 mod pages;
+mod pool;
 mod sc;
 mod zone;
+
+pub use pool::GlobalPagePool;
+pub use pool::GLOBAL_PAGE_POOL;
 
 pub use pages::*;
 pub use sc::*;

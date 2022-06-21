@@ -2,7 +2,7 @@
 //!
 //! The ZoneAllocator achieves this by having many `SCAllocator`
 
-use crate::*;
+use crate::{pool::GLOBAL_PAGE_POOL, *};
 
 /// Creates an instance of a zone, we do this in a macro because we
 /// re-use the code in const and non-const functions
@@ -55,14 +55,16 @@ macro_rules! new_zone {
 ///
 /// The allocator provides to refill functions `refill` and `refill_large`
 /// to provide the underlying `SCAllocator` with more memory in case it runs out.
-pub struct ZoneAllocator<'a> {
-    small_slabs: [SCAllocator<'a, ObjectPage<'a>>; ZoneAllocator::MAX_BASE_SIZE_CLASSES],
-    big_slabs: [SCAllocator<'a, LargeObjectPage<'a>>; ZoneAllocator::MAX_LARGE_SIZE_CLASSES],
-    huge_slabs: [SCAllocator<'a, HugeObjectPage<'a>>; ZoneAllocator::MAX_HUGE_SIZE_CLASSES],
+pub struct ZoneAllocator {
+    small_slabs: [SCAllocator<'static, ObjectPage<'static>>; ZoneAllocator::MAX_BASE_SIZE_CLASSES],
+    big_slabs:
+        [SCAllocator<'static, LargeObjectPage<'static>>; ZoneAllocator::MAX_LARGE_SIZE_CLASSES],
+    huge_slabs:
+        [SCAllocator<'static, HugeObjectPage<'static>>; ZoneAllocator::MAX_HUGE_SIZE_CLASSES],
 }
 
-impl<'a> Default for ZoneAllocator<'a> {
-    fn default() -> ZoneAllocator<'a> {
+impl Default for ZoneAllocator {
+    fn default() -> ZoneAllocator {
         new_zone!()
     }
 }
@@ -74,7 +76,7 @@ enum Slab {
     Unsupported,
 }
 
-impl<'a> ZoneAllocator<'a> {
+impl ZoneAllocator {
     /// Maximum size that allocated within HugeObjectPages (1 GiB).
     /// This is also the maximum object size that this allocator can handle.
     pub const MAX_ALLOC_SIZE: usize = 1 << 26;
@@ -99,7 +101,7 @@ impl<'a> ZoneAllocator<'a> {
     const MAX_HUGE_SIZE_CLASSES: usize = 9;
 
     #[cfg(feature = "unstable")]
-    pub const fn new() -> ZoneAllocator<'a> {
+    pub const fn new() -> ZoneAllocator {
         new_zone!()
     }
 
@@ -196,13 +198,31 @@ impl<'a> ZoneAllocator<'a> {
     }
 }
 
-unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
+unsafe impl crate::Allocator<'static> for ZoneAllocator {
     /// Allocate a pointer to a block of memory described by `layout`.
     fn allocate(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocationError> {
         match ZoneAllocator::get_slab(layout.size()) {
-            Slab::Base(idx) => self.small_slabs[idx].allocate(layout),
-            Slab::Large(idx) => self.big_slabs[idx].allocate(layout),
-            Slab::Huge(idx) => self.huge_slabs[idx].allocate(layout),
+            Slab::Base(idx) => {
+                let (ptr, released_pages) = self.small_slabs[idx].allocate_with_release(layout)?;
+                if let Some(pages) = released_pages {
+                    GLOBAL_PAGE_POOL.recycle_small_pages(pages, None, true);
+                }
+                Ok(ptr)
+            }
+            Slab::Large(idx) => {
+                let (ptr, released_pages) = self.big_slabs[idx].allocate_with_release(layout)?;
+                if let Some(pages) = released_pages {
+                    GLOBAL_PAGE_POOL.recycle_large_pages(pages, None, true)
+                }
+                Ok(ptr)
+            }
+            Slab::Huge(idx) => {
+                let (ptr, released_pages) = self.huge_slabs[idx].allocate_with_release(layout)?;
+                if let Some(pages) = released_pages {
+                    GLOBAL_PAGE_POOL.recycle_huge_pages(pages, None, true)
+                }
+                Ok(ptr)
+            }
             Slab::Unsupported => Err(AllocationError::InvalidLayout),
         }
     }
@@ -229,7 +249,7 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
     unsafe fn refill(
         &mut self,
         layout: Layout,
-        new_page: &'a mut ObjectPage<'a>,
+        new_page: &'static mut ObjectPage<'static>,
     ) -> Result<(), AllocationError> {
         match ZoneAllocator::get_slab(layout.size()) {
             Slab::Base(idx) => {
@@ -249,7 +269,7 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
     unsafe fn refill_large(
         &mut self,
         layout: Layout,
-        new_page: &'a mut LargeObjectPage<'a>,
+        new_page: &'static mut LargeObjectPage<'static>,
     ) -> Result<(), AllocationError> {
         match ZoneAllocator::get_slab(layout.size()) {
             Slab::Base(_idx) => Err(AllocationError::InvalidLayout),
@@ -269,7 +289,7 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
     unsafe fn refill_huge(
         &mut self,
         layout: Layout,
-        new_page: &'a mut HugeObjectPage<'a>,
+        new_page: &'static mut HugeObjectPage<'static>,
     ) -> Result<(), AllocationError> {
         match ZoneAllocator::get_slab(layout.size()) {
             Slab::Base(_idx) => Err(AllocationError::InvalidLayout),
@@ -283,119 +303,37 @@ unsafe impl<'a> crate::Allocator<'a> for ZoneAllocator<'a> {
     }
 }
 
-pub enum ReleasedEmptyPages<'a, 'b> {
-    Small(arrayvec::Drain<'b, &'a mut ObjectPage<'a>, RELEASE_BUFFER_SIZE>),
-    Large(arrayvec::Drain<'b, &'a mut LargeObjectPage<'a>, RELEASE_BUFFER_SIZE>),
-    Huge(arrayvec::Drain<'b, &'a mut HugeObjectPage<'a>, RELEASE_BUFFER_SIZE>),
-}
-
-impl<'a> ZoneAllocator<'a> {
-    pub fn allocate_with_release<'b>(
-        &'b mut self,
-        layout: Layout,
-    ) -> Result<(NonNull<u8>, Option<ReleasedEmptyPages<'a, 'b>>), AllocationError> {
-        match ZoneAllocator::get_slab(layout.size()) {
-            Slab::Base(idx) => {
-                let (ptr, released_pages) = self.small_slabs[idx].allocate_with_release(layout)?;
-                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Small(pages));
-                Ok((ptr, released_pages))
-            }
-            Slab::Large(idx) => {
-                let (ptr, released_pages) = self.big_slabs[idx].allocate_with_release(layout)?;
-                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Large(pages));
-                Ok((ptr, released_pages))
-            }
-            Slab::Huge(idx) => {
-                let (ptr, released_pages) = self.huge_slabs[idx].allocate_with_release(layout)?;
-                let released_pages = released_pages.map(|pages| ReleasedEmptyPages::Huge(pages));
-                Ok((ptr, released_pages))
-            }
-            Slab::Unsupported => Err(AllocationError::InvalidLayout),
+impl Drop for ZoneAllocator {
+    fn drop(&mut self) {
+        unsafe {
+            self.relinquish_pages();
         }
     }
 }
-
-use alloc::vec::Vec;
-
-pub struct RelinquishedPages<'a> {
-    // empty pages
-    pub empty_small: alloc::vec::Vec<&'a mut ObjectPage<'a>>,
-    pub empty_large: alloc::vec::Vec<&'a mut LargeObjectPage<'a>>,
-    pub empty_huge: alloc::vec::Vec<&'a mut HugeObjectPage<'a>>,
-
-    // partial or full pages
-    pub used_small: alloc::vec::Vec<(&'a mut ObjectPage<'a>, usize)>,
-    pub used_large: alloc::vec::Vec<(&'a mut LargeObjectPage<'a>, usize)>,
-    pub used_huge: alloc::vec::Vec<(&'a mut HugeObjectPage<'a>, usize)>,
-}
-
-impl<'a> ZoneAllocator<'a> {
-    unsafe fn relinquish_empty_pages(
-        &mut self,
-    ) -> (
-        Vec<&'a mut ObjectPage<'a>>,
-        Vec<&'a mut LargeObjectPage<'a>>,
-        Vec<&'a mut HugeObjectPage<'a>>,
-    ) {
-        let mut small_pages = alloc::vec::Vec::new();
+impl ZoneAllocator {
+    unsafe fn relinquish_pages(&mut self) {
         for slab in self.small_slabs.iter_mut() {
             slab.check_page_assignments();
-            small_pages.extend(slab.relinquish_empty_pages());
+            let empty_pages = slab.relinquish_empty_pages();
+            GLOBAL_PAGE_POOL.recycle_small_pages(empty_pages, None, true);
+            let (used_pages, obj_per_page) = slab.relinquish_used_pages();
+            GLOBAL_PAGE_POOL.recycle_small_pages(used_pages, Some(obj_per_page), false);
         }
 
-        let mut large_pages = alloc::vec::Vec::new();
         for slab in self.big_slabs.iter_mut() {
             slab.check_page_assignments();
-            large_pages.extend(slab.relinquish_empty_pages());
+            let empty_pages = slab.relinquish_empty_pages();
+            GLOBAL_PAGE_POOL.recycle_large_pages(empty_pages, None, true);
+            let (used_pages, obj_per_page) = slab.relinquish_used_pages();
+            GLOBAL_PAGE_POOL.recycle_large_pages(used_pages, Some(obj_per_page), false);
         }
 
-        let mut huge_pages = alloc::vec::Vec::new();
         for slab in self.huge_slabs.iter_mut() {
             slab.check_page_assignments();
-            huge_pages.extend(slab.relinquish_empty_pages());
-        }
-
-        (small_pages, large_pages, huge_pages)
-    }
-
-    unsafe fn relinquish_used_pages(
-        &mut self,
-    ) -> (
-        Vec<(&'a mut ObjectPage<'a>, usize)>,
-        Vec<(&'a mut LargeObjectPage<'a>, usize)>,
-        Vec<(&'a mut HugeObjectPage<'a>, usize)>,
-    ) {
-        let mut small_pages = alloc::vec::Vec::new();
-        for slab in self.small_slabs.iter_mut() {
-            small_pages.extend(slab.relinquish_used_pages());
-        }
-
-        let mut large_pages = alloc::vec::Vec::new();
-        for slab in self.big_slabs.iter_mut() {
-            slab.check_page_assignments();
-            large_pages.extend(slab.relinquish_used_pages());
-        }
-
-        let mut huge_pages = alloc::vec::Vec::new();
-        for slab in self.huge_slabs.iter_mut() {
-            slab.check_page_assignments();
-            huge_pages.extend(slab.relinquish_used_pages());
-        }
-
-        (small_pages, large_pages, huge_pages)
-    }
-
-    pub unsafe fn relinquish_pages(&mut self) -> RelinquishedPages<'a> {
-        let (empty_small_pages, empty_large_pages, empty_huge_pages) =
-            self.relinquish_empty_pages();
-        let (used_small_pages, used_large_pages, used_huge_pages) = self.relinquish_used_pages();
-        RelinquishedPages {
-            empty_small: empty_small_pages,
-            empty_large: empty_large_pages,
-            empty_huge: empty_huge_pages,
-            used_small: used_small_pages,
-            used_large: used_large_pages,
-            used_huge: used_huge_pages,
+            let empty_pages = slab.relinquish_empty_pages();
+            GLOBAL_PAGE_POOL.recycle_huge_pages(empty_pages, None, true);
+            let (used_pages, obj_per_page) = slab.relinquish_used_pages();
+            GLOBAL_PAGE_POOL.recycle_huge_pages(used_pages, Some(obj_per_page), false);
         }
     }
 }

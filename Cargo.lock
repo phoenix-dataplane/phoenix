@@ -1043,6 +1043,7 @@ dependencies = [
  "memmap2 0.5.4",
  "memoffset",
  "mio 0.7.14",
+ "mrpc-derive",
  "nix 0.23.1",
  "num_cpus",
  "rdma",
@@ -1311,6 +1312,18 @@ dependencies = [
  "prost-build",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "mrpc-derive"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "thiserror",
 ]
 
 [[package]]
@@ -2074,6 +2087,7 @@ version = "0.10.0"
 dependencies = [
  "arrayvec",
  "env_logger 0.9.0",
+ "lazy_static",
  "log",
  "rand 0.8.5",
  "spin",
@@ -2175,9 +2189,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.96"
+version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0748dd251e24453cb8717f0354206b91557e4ec8703673a4b30208f2abaf1ebf"
+checksum = "c50aef8a904de4c23c788f104b7dddc7d6f79c647c7c8ce4cc8f73eb0ca773dd"
 dependencies = [
  "proc-macro2",
  "quote",
