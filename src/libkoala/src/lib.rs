@@ -1,37 +1,7 @@
-#![feature(negative_impls)]
-#![feature(peer_credentials_unix_socket)]
-#![feature(allocator_api)]
-#![feature(nonnull_slice_from_raw_parts)]
-#![feature(specialization)]
-#![feature(strict_provenance)]
-// boxed.rs
-// TODO: clean up
-#![feature(exact_size_is_empty)]
-#![feature(ptr_internals)]
-#![feature(ptr_metadata)]
-#![feature(core_intrinsics)]
-#![feature(ptr_const_cast)]
-#![feature(try_reserve_kind)]
-#![feature(trusted_len)]
-#![feature(extend_one)]
-#![feature(rustc_attrs)]
-#![feature(slice_ptr_get)]
-#![feature(slice_ptr_len)]
-// GC
-#![feature(drain_filter)]
-// stub
-#![feature(hash_drain_filter)]
-// shmview drop
-#![feature(maybe_uninit_uninit_array)]
-#![feature(maybe_uninit_array_assume_init)]
-
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;
 
-pub mod mrpc;
-// TODO(wyj): change to pub(crate)
-pub mod salloc;
 pub mod transport;
 
 // Re-exports
@@ -41,7 +11,7 @@ const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
 const DEFAULT_KOALA_CONTROL: &str = "koala-control.sock";
 
 lazy_static::lazy_static! {
-    pub(crate) static ref KOALA_PREFIX: PathBuf = {
+    pub static ref KOALA_PREFIX: PathBuf = {
         env::var("KOALA_PATH").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
             let path = PathBuf::from(p);
             assert!(path.is_dir(), "{path:?} is not a directly");
@@ -49,7 +19,7 @@ lazy_static::lazy_static! {
         })
     };
 
-    pub(crate) static ref KOALA_CONTROL_SOCK: PathBuf = {
+    pub static ref KOALA_CONTROL_SOCK: PathBuf = {
         env::var("KOALA_CONTROL")
             .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
     };
@@ -88,6 +58,7 @@ macro_rules! _rx_recv_impl {
     };
 }
 
+#[doc(hidden)]
 pub(crate) use _rx_recv_impl as rx_recv_impl;
 
 // Get an owned structure from a borrow
