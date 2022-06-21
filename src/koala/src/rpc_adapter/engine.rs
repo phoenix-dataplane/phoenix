@@ -180,7 +180,7 @@ impl RpcAdapterEngine {
             .iter()
             .map(|sge| mem::size_of::<u32>() + sge.len)
             .sum();
-        if nbytes_lens_and_value < MetaBuffer::capacity() {
+        if nbytes_lens_and_value < MetaBuffer::lens_and_value_capacity() {
             RpcStrategy::Fused
         } else {
             RpcStrategy::Standard
@@ -216,7 +216,7 @@ impl RpcAdapterEngine {
         meta_buf.num_sge = sglist.0.len() as u32;
 
         let mut value_len = 0;
-        let lens_buf = meta_buf.length_delimited.as_mut_ptr().cast::<u32>();
+        let lens_buf = meta_buf.lens_and_value.as_mut_ptr().cast::<u32>();
         let value_buf = unsafe { lens_buf.add(sglist.0.len()).cast::<u8>() };
 
         for (i, sge) in sglist.0.iter().enumerate() {
@@ -228,14 +228,17 @@ impl RpcAdapterEngine {
             value_len += sge.len;
         }
 
+        // write the values to MetaBuffer
+        meta_buf.value_len = value_len as u32;
+
         let odp_mr = self.get_or_init_odp_mr();
 
         // post send with imm
-        tracing::trace!("post_send_imm, len={}", meta_buf.header_len() + value_len);
+        tracing::trace!("post_send_imm, len={}", meta_buf.len());
         unsafe {
             cmid.post_send_with_imm(
                 odp_mr,
-                off..off + meta_buf.header_len() + value_len,
+                off..off + meta_buf.len(),
                 ctx,
                 SendFlags::SIGNALED,
                 0,
@@ -389,12 +392,12 @@ impl RpcAdapterEngine {
 
         let num_sge = meta_buf.num_sge as usize;
         let lens_buf = unsafe {
-            slice::from_raw_parts(meta_buf.length_delimited.as_ptr().cast::<u32>(), num_sge)
+            slice::from_raw_parts(meta_buf.lens_and_value.as_ptr().cast::<u32>(), num_sge)
         };
         let value_buf_offset = num_sge * mem::size_of::<u32>();
         for i in 0..num_sge {
             sg_list.0.push(SgE {
-                ptr: value_buf_offset + meta_buf.length_delimited.as_ptr().addr(),
+                ptr: value_buf_offset + meta_buf.lens_and_value.as_ptr().addr(),
                 len: lens_buf[i] as usize,
             });
         }
