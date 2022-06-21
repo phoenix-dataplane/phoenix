@@ -36,6 +36,18 @@ pub struct Args {
 
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
+
+    #[structopt(short, long, default_value = "1000000")]
+    pub req_size: usize,
+
+    #[structopt(long, default_value = "32")]
+    pub concurrency: usize,
+
+    #[structopt(short, long, default_value = "16384")]
+    pub total_iters: usize,
+
+    #[structopt(long, default_value = "128")]
+    pub provision_count: usize,
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
@@ -70,66 +82,60 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         });
     } else {
         smol::block_on(async {
+            // provision
             let mut reqs = Vec::new();
-            for _ in 0..128 {
-                let mut name = Vec::with_capacity(1000000);
-                name.resize(1000000, 42);
+            for _ in 0..args.provision_count {
+                let mut name = Vec::with_capacity(args.req_size);
+                name.resize(args.req_size, 42);
                 let req = RpcMessage::new(HelloRequest { name });
                 reqs.push(req);
             }
 
-            // let mut name = Vec::with_capacity(1000000);
-            // name.resize(1000000, 42);
-            // let mut req = RpcMessage::new_request(HelloRequest { name });
-
             let mut reply_futures = FuturesUnordered::new();
 
             let mut response_count = 0;
-            // warmup
-            for _ in 0..128 {
-                for i in 0..128 {
-                    // let resp = client.say_hello(&mut req).await.unwrap();
-                    let resp = client.say_hello(&reqs[i]);
-                    if reply_futures.len() >= 32 {
-                        let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                        eprintln!("resp {} received", response_count);
-                        response_count += 1;
-                    }
-                    reply_futures.push(resp);
-                }
 
-                while !reply_futures.is_empty() {
+            // warmup
+            for i in 0..args.total_iters {
+                // let resp = client.say_hello(&mut req).await.unwrap();
+                let resp = client.say_hello(&reqs[i % args.provision_count]);
+                if reply_futures.len() >= args.concurrency {
                     let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                    eprintln!("resp {} received", response_count);
+                    eprintln!("warmup: resp {} received", response_count);
                     response_count += 1;
                 }
+                reply_futures.push(resp);
             }
 
-            let mut starts = Vec::with_capacity(128 * 128);
-            let mut latencies = Vec::with_capacity(128 * 128);
-            let start = Instant::now();
-            for _ in 0..128 {
-                for i in 0..128 {
-                    // let resp = client.say_hello(&mut req).await.unwrap();
-                    starts.push(Instant::now());
-                    let resp = client.say_hello(&reqs[i]);
-                    if reply_futures.len() >= 32 {
-                        let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                        latencies.push(starts[latencies.len()].elapsed());
-                    }
-                    reply_futures.push(resp);
-                }
+            // warmup: receive the remaining messages
+            while !reply_futures.is_empty() {
+                let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                eprintln!("warmup: resp {} received", response_count);
+                response_count += 1;
+            }
 
-                while !reply_futures.is_empty() {
+            let mut starts = Vec::with_capacity(args.total_iters);
+            let mut latencies = Vec::with_capacity(args.total_iters);
+            let start = Instant::now();
+            for i in 0..args.total_iters {
+                starts.push(Instant::now());
+                let resp = client.say_hello(&reqs[i % args.provision_count]);
+                if reply_futures.len() >= args.concurrency {
                     let _response: Result<_, _> = reply_futures.next().await.unwrap();
                     latencies.push(starts[latencies.len()].elapsed());
                 }
+                reply_futures.push(resp);
             }
+            while !reply_futures.is_empty() {
+                let _response: Result<_, _> = reply_futures.next().await.unwrap();
+                latencies.push(starts[latencies.len()].elapsed());
+            }
+
             let dura = start.elapsed();
             println!(
                 "dura: {:?}, speed: {:?}",
                 dura,
-                8e-9 * 128.0 * 128.0 * 1e6 / dura.as_secs_f64()
+                8e-9 * args.total_iters as f64 * args.req_size as f64 / dura.as_secs_f64()
             );
 
             // print latencies

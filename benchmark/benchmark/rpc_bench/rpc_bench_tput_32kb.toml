@@ -1,0 +1,14 @@
+name = "benchmark/rpc_bench_tput_32kb"
+description = "Run rpc_bench benchmark"
+group = "rpc_bench_tput"
+timeout_secs = 10
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_server"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_client"
+args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32768"

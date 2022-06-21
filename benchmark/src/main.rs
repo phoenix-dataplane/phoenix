@@ -40,6 +40,7 @@ struct Benchmark {
     name: String,
     description: String,
     group: String,
+    timeout_secs: Option<u64>,
     worker: Vec<WorkerSpec>,
 }
 
@@ -48,7 +49,7 @@ struct Benchmark {
 struct Opt {
     /// Timeout in seconds, 0 means infinity. Can be overwritten by specific case configs.
     #[structopt(long = "timeout", default_value = "60")]
-    timeout_secs: u64,
+    global_timeout_secs: u64,
 
     /// Run a single benchmark task
     #[structopt(short, long)]
@@ -190,7 +191,11 @@ fn start_ssh(
         .map(|(name, val)| format!("{name}={val}"))
         .collect::<Vec<String>>()
         .join(" ");
-    let timeout = Duration::from_secs(opt.timeout_secs);
+    let timeout = if let Some(case_timeout) = benchmark.timeout_secs {
+        Duration::from_secs(case_timeout.min(opt.global_timeout_secs))
+    } else {
+        Duration::from_secs(opt.global_timeout_secs)
+    };
     let cargo_dir = config.workdir.clone();
 
     move || {
@@ -332,6 +337,7 @@ fn run_benchmark_group(opt: &Opt, group: &str) -> anyhow::Result<()> {
     }
 
     // run all matched benchmark cases
+    let start = Instant::now();
     for p in &suites {
         match run_benchmark(opt, p.clone()) {
             Ok(()) => {}
@@ -341,6 +347,11 @@ fn run_benchmark_group(opt: &Opt, group: &str) -> anyhow::Result<()> {
         }
 
         thread::sleep(Duration::from_millis(1000));
+
+        let terminate_ts = (*TERMINATE.lock().unwrap()).unwrap_or(start);
+        if terminate_ts > start {
+            break;
+        }
     }
 
     Ok(())
