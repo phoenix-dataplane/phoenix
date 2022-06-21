@@ -1,8 +1,9 @@
 TODO
 
 Yongji
-- memory reclamation
-- backend koala marshaling/unmarshaling codegen
+- codegen for RpcAdapter's dyanmic dispatch
+- builder of shared library of generated code
+  for dyanmic binding
 
 Shihan
 - TCP backend + RpcAdapterTcp
