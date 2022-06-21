@@ -1,6 +1,5 @@
 use std::io;
 
-use lazy_static::lazy_static;
 use thiserror::Error;
 
 use interface::engine::EngineType;

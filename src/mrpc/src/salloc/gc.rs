@@ -10,7 +10,6 @@ use lazy_static::lazy_static;
 use ipc::mrpc::dp::WrIdentifier;
 use slabmalloc::GLOBAL_PAGE_POOL;
 
-
 thread_local! {
     // thread-local oustanding work request
     // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID
