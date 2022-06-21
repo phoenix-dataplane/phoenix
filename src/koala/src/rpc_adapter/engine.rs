@@ -322,9 +322,8 @@ impl RpcAdapterEngine {
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
                 3687134534u32 => {
-                    let msg = unsafe {
-                        codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap()
-                    };
+                    let msg =
+                        unsafe { codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap() };
                     let (ptr_app, ptr_backend) = msg.to_raw_parts();
                     (ptr_app.addr().get(), ptr_backend.addr().get())
                 }
@@ -332,9 +331,7 @@ impl RpcAdapterEngine {
             },
             RpcMsgType::Response => match meta.func_id {
                 3687134534u32 => {
-                    let msg = unsafe {
-                        codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap()
-                    };
+                    let msg = unsafe { codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap() };
                     let (ptr_app, ptr_backend) = msg.to_raw_parts();
                     (ptr_app.addr().get(), ptr_backend.addr().get())
                 }

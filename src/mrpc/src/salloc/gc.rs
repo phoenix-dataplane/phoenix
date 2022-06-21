@@ -8,8 +8,8 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 
 use ipc::mrpc::dp::WrIdentifier;
-use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
 use slabmalloc::GLOBAL_PAGE_POOL;
+use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
 
 use super::heap::SHARED_HEAP_REGIONS;
 

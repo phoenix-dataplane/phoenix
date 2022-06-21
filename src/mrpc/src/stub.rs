@@ -20,9 +20,7 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::alloc::Box;
-use crate::salloc::gc::{
-    OBJECT_RECLAIMER, CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OUTSTANDING_WR,
-};
+use crate::salloc::gc::{CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OBJECT_RECLAIMER, OUTSTANDING_WR};
 use crate::salloc::region::SharedRecvBuffer;
 use crate::salloc::SA_CTX;
 use crate::{Error, MRPC_CTX};
