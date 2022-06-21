@@ -1,4 +1,4 @@
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 pub struct RawVec<T> {
     pub ptr: ShmPtr<T>,

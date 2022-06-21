@@ -102,7 +102,7 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
 
             unsafe fn unmarshal<'a>(
                 ctx: &mut crate::mrpc::marshal::ExcavateContext<'a>
-            ) -> std::result::Result<::ipc::shmalloc::ShmPtr<Self>, crate::mrpc::marshal::UnmarshalError> {
+            ) -> std::result::Result<::ipc::ptr::ShmPtr<Self>, crate::mrpc::marshal::UnmarshalError> {
                 let self_sge = ctx.sgl
                     .next()
                     .ok_or(crate::mrpc::marshal::UnmarshalError::SgListUnderflow)?;
@@ -119,7 +119,7 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
                     .resource
                     .query_app_addr(backend_addr)?;
 
-                let mut message = ::ipc::shmalloc::ShmPtr::new(app_addr as *mut Self, backend_addr as *mut Self).unwrap();
+                let mut message = ::ipc::ptr::ShmPtr::new(app_addr as *mut Self, backend_addr as *mut Self).unwrap();
                 let this = message.as_mut_backend();
                 this.excavate(ctx)?;
 

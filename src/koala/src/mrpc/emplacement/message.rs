@@ -2,7 +2,7 @@ use crate::mrpc::marshal::{
     ExcavateContext, MarshalError, RpcMessage, SgE, SgList, UnmarshalError,
 };
 use crate::mrpc::shadow::vec::Vec;
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 #[inline(always)]
 pub fn emplace<M: RpcMessage>(msg: &M, sgl: &mut SgList) -> Result<(), MarshalError> {

@@ -1,6 +1,6 @@
 use crate::mrpc::marshal::{ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
 use crate::mrpc::shadow::vec::Vec;
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 #[inline(always)]
 pub fn emplace(val: &Vec<u8>, sgl: &mut SgList) -> Result<(), MarshalError> {
