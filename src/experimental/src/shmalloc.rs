@@ -4,7 +4,7 @@ use spin::Mutex;
 use std::alloc::Allocator;
 use std::alloc::Layout;
 
-pub(crate) struct ShmAlloc<'a>(Mutex<ShmAllocInternal<'a>>);
+pub(crate) struct ShmAlloc(Mutex<ShmAllocInternal>);
 
 /// To use a ZoneAlloactor we require a lower-level allocator
 /// (not provided by this crate) that can supply the allocator
@@ -41,7 +41,7 @@ impl SharedPager {
     }
 }
 
-pub struct ShmAllocInternal<'a> {
-    slab: ZoneAllocator<'a>,
+pub struct ShmAllocInternal {
+    slab: ZoneAllocator,
     pager: SharedPager,
 }

@@ -1,3 +1,31 @@
+<<<<<<< HEAD
+=======
+#![feature(negative_impls)]
+#![feature(peer_credentials_unix_socket)]
+#![feature(allocator_api)]
+#![feature(nonnull_slice_from_raw_parts)]
+#![feature(specialization)]
+#![feature(strict_provenance)]
+// boxed.rs
+// TODO: clean up
+#![feature(exact_size_is_empty)]
+#![feature(ptr_internals)]
+#![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
+#![feature(ptr_const_cast)]
+#![feature(try_reserve_kind)]
+#![feature(trusted_len)]
+#![feature(extend_one)]
+#![feature(rustc_attrs)]
+#![feature(slice_ptr_get)]
+#![feature(slice_ptr_len)]
+// stub
+#![feature(hash_drain_filter)]
+// shmview drop
+#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
+
+>>>>>>> 679dbda (refactor gc)
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;

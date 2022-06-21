@@ -14,21 +14,6 @@ thread_local! {
     pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
 }
 
-lazy_static! {
-    pub(crate) static ref GC_CTX: GCContext = GCContext::initialize();
-}
-
-pub(crate) struct GCContext;
-
-impl GCContext {
-    fn initialize() -> GCContext {
-        lazy_static::initialize(&gc::GLOBAL_PAGE_POOL);
-        let task = gc::GLOBAL_PAGE_POOL.release_empty_pages();
-        std::thread::spawn(move || smol::future::block_on(task));
-        GCContext
-    }
-}
-
 pub(crate) struct SAContext {
     pub(crate) service:
         ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
