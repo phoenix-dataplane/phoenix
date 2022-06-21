@@ -9,7 +9,7 @@ use thiserror::Error;
 use interface::Handle;
 
 #[derive(Error, Debug, Clone)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("Resource not found in the table")]
     NotFound,
     #[error("Resource exists in the table")]

@@ -1,48 +1,56 @@
-// TODO(wyj): rewrite this file
-use std::fmt;
-use std::mem;
 use std::ptr::Unique;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use interface::rpc::MessageMeta;
 
 use ipc::ptr::ShmPtr;
 
-use crate::salloc::state::Shared as SallocShared;
+#[derive(Error, Debug)]
+pub enum MarshalError {
+    // TBD
+}
+
+#[derive(Error, Debug)]
+pub enum UnmarshalError {
+    #[error("SgE length mismatch (expected={expected}, actual={actual})")]
+    SgELengthMismatch { expected: usize, actual: usize },
+    #[error("SgList underflow")]
+    SgListUnderflow,
+    #[error("could not find app addr: {0}")]
+    AppAddrNotFound(#[from] crate::resource::Error),
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct ShmBuf {
+pub struct SgE {
     pub ptr: usize,
     pub len: usize,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct SgList(pub Vec<ShmBuf>);
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SgList(pub Vec<SgE>);
 
-pub(crate) trait Marshal {
-    type Error: fmt::Debug;
-    fn marshal(&self) -> Result<SgList, Self::Error>;
+pub struct ExcavateContext<'a> {
+    pub(crate) sgl: std::slice::Iter<'a, SgE>,
+    pub(crate) salloc: &'a std::sync::Arc<crate::salloc::state::Shared>,
 }
 
-pub(crate) trait Unmarshal: Sized {
-    type Error: fmt::Debug;
-    // An unsafe method is a method whose caller must satisfy certain assertions.
-    // Returns a ShmPtr<Self> to allow zerocopy unmarshal, and allow address space switching between backend and app.
-    unsafe fn unmarshal(
-        sg_list: &[ShmBuf],
-        salloc_state: &Arc<SallocShared>,
-    ) -> Result<ShmPtr<Self>, Self::Error>;
+pub trait RpcMessage: Sized {
+    fn marshal(&self) -> Result<SgList, MarshalError>;
+    unsafe fn unmarshal<'a>(ctx: &mut ExcavateContext<'a>) -> Result<ShmPtr<Self>, UnmarshalError>;
+    fn emplace(&self, sgl: &mut SgList) -> Result<(), MarshalError>;
+    unsafe fn excavate<'a>(&mut self, ctx: &mut ExcavateContext<'a>) -> Result<(), UnmarshalError>;
+    fn extent(&self) -> usize;
 }
 
 pub(crate) trait MetaUnpacking: Sized {
-    unsafe fn unpack(sge: &ShmBuf) -> Result<Unique<Self>, ()>;
+    unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, ()>;
 }
 
 impl MetaUnpacking for MessageMeta {
-    unsafe fn unpack(sge: &ShmBuf) -> Result<Unique<Self>, ()> {
-        if sge.len != mem::size_of::<Self>() {
+    unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, ()> {
+        if sge.len != std::mem::size_of::<Self>() {
             return Err(());
         }
         let ptr = sge.ptr as *mut Self;

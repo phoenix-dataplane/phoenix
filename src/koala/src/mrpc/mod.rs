@@ -3,11 +3,12 @@ use thiserror::Error;
 use crate::resource::Error as ResourceError;
 
 pub mod codegen;
-mod dtypes;
+pub(crate) mod emplacement;
 pub mod engine;
-pub mod marshal;
+pub(crate) mod marshal;
 pub mod meta_pool;
 pub mod module;
+pub(crate) mod shadow;
 pub mod state;
 
 #[derive(Debug, Error)]

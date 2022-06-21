@@ -1,6 +1,5 @@
 use std::io;
 
-use lazy_static::lazy_static;
 use thiserror::Error;
 
 use interface::engine::EngineType;
@@ -12,21 +11,6 @@ use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
-}
-
-lazy_static! {
-    pub(crate) static ref GC_CTX: GCContext = GCContext::initialize();
-}
-
-pub(crate) struct GCContext;
-
-impl GCContext {
-    fn initialize() -> GCContext {
-        lazy_static::initialize(&gc::GLOBAL_PAGE_POOL);
-        let task = gc::GLOBAL_PAGE_POOL.release_empty_pages();
-        std::thread::spawn(move || smol::future::block_on(task));
-        GCContext
-    }
 }
 
 pub(crate) struct SAContext {

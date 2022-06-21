@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
+use interface::rpc::MessageErased;
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::dp::WrIdentifier;

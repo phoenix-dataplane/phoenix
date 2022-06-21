@@ -20,9 +20,7 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::alloc::Box;
-use crate::salloc::gc::{
-    CS_STUB_ID_COUNTER, GARBAGE_COLLECTOR, MESSAGE_ID_COUNTER, OUTSTANDING_WR,
-};
+use crate::salloc::gc::{CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OBJECT_RECLAIMER, OUTSTANDING_WR};
 use crate::salloc::region::SharedRecvBuffer;
 use crate::salloc::SA_CTX;
 use crate::{Error, MRPC_CTX};
@@ -86,7 +84,7 @@ impl<T: RpcData> Deref for RpcMessage<T> {
 impl<T: RpcData> Drop for RpcMessage<T> {
     fn drop(&mut self) {
         let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        GARBAGE_COLLECTOR.collect(
+        OBJECT_RECLAIMER.collect(
             inner,
             self.identifier,
             self.send_count.load(Ordering::Acquire),
@@ -112,7 +110,8 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        check_completion_queue();
+        // handle the warning here
+        let _ = check_completion_queue();
         if let Some(erased) = RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&this.wr_id))
         {
             tracing::trace!(
@@ -170,7 +169,7 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                             .remove(&dp::WrIdentifier(conn_id, call_id))
                             .expect("received unrecognized WR completion ACK")
                     });
-                    GARBAGE_COLLECTOR.register_wr_completion(msg_id, 1);
+                    OBJECT_RECLAIMER.register_wr_completion(msg_id, 1);
                 }
             }
         }
@@ -342,7 +341,7 @@ impl Drop for ClientStub {
             });
 
             for (msg_id, cnt) in msg_cnt {
-                GARBAGE_COLLECTOR.register_wr_completion(msg_id, cnt);
+                OBJECT_RECLAIMER.register_wr_completion(msg_id, cnt);
             }
         });
     }
@@ -554,7 +553,7 @@ impl Drop for Server {
             });
 
             for (msg_id, cnt) in msg_cnt {
-                GARBAGE_COLLECTOR.register_wr_completion(msg_id, cnt);
+                OBJECT_RECLAIMER.register_wr_completion(msg_id, cnt);
             }
         });
     }
