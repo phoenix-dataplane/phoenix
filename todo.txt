@@ -27,13 +27,14 @@ Other major tasks
 	- explicit mr registration
 
 Prost codegen
-- encoding (update this)
+-[x] encoding (update this)
 -[x] writing the correct codegen, this file should be out-of-tree, give
   it correct visibility
-- write mrpc-build, generate the above code
+-[x] write mrpc-build, generate the above code
 - generate marshal/unmarshal
 - dynamic loading
-- remove redundant language features and dependencies
+-[x] remove redundant language features and dependencies
+- add support for string
 
 RPC
 - Prost codegen
@@ -45,15 +46,16 @@ RPC
 
 API
 - the return value of a rpc call at the service side should be a Future
-- mrpc::Status should contains specific error, and be renamed
-- return value should not be a &mut RpcMessage
 - moving RpcMessage from stub to root
 - adding prelude (ShmView, RpcMessage)
-- service handler should not take &mut self
+- mrpc::Status should contains specific error, and be renamed
+-[x] return value should not be a &mut RpcMessage
+-[x] service handler should not take &mut self
 
 Benchmark Suite
 -[x] build then run
 - worker starting order
+- allow setting timeouts in concrete cases
 -[x] auto kill on clean up
 - collect and print result
 -[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*

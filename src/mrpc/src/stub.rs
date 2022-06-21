@@ -48,6 +48,9 @@ thread_local! {
 pub trait RpcData: Send + Sync + 'static {}
 impl<T: Send + Sync + 'static> RpcData for T {}
 
+// TODO(cjr): Move RpcMessage out of stub. It's a little weird for user to use
+// mrpc::stub::something.
+
 // NOTE(wyj): if T is not an app owned request/reply
 // then RpcMessage<T> cannot be sent via public APIs
 // it will automatically be deallocated when it is dropped,
@@ -73,6 +76,14 @@ impl<T: RpcData> RpcMessage<T> {
     }
 }
 
+// Make RpcMessage type as transparent as possible to user.
+impl<T: RpcData> From<T> for RpcMessage<T> {
+    fn from(val: T) -> Self {
+        RpcMessage::new(val)
+    }
+}
+
+// Make RpcMessage type as transparent as possible to user.
 impl<T: RpcData> Deref for RpcMessage<T> {
     type Target = T;
 
