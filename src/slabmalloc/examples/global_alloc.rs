@@ -99,7 +99,7 @@ static mut PAGER: Pager = Pager;
 /// Note: This is not very scalable since we use a single big lock
 /// around the allocator. There are better ways make the ZoneAllocator
 /// thread-safe directly, but they are not implemented yet.
-pub struct SafeZoneAllocator(Mutex<ZoneAllocator<'static>>);
+pub struct SafeZoneAllocator(Mutex<ZoneAllocator>);
 
 unsafe impl GlobalAlloc for SafeZoneAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

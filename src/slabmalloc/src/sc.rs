@@ -261,16 +261,12 @@ impl<'a, P: AllocablePage> SCAllocator<'a, P> {
         relinquished
     }
 
-    //  relinquish used pages, together with obj_per_page for empty check
-    pub(crate) unsafe fn relinquish_used_pages(&mut self) -> alloc::vec::Vec<(&'a mut P, usize)> {
+    pub(crate) unsafe fn relinquish_used_pages(&mut self) -> (alloc::vec::Vec<&'a mut P>, usize) {
         let mut relinquished = alloc::vec::Vec::new();
         while let Some(slab) = self.slabs.pop() {
-            relinquished.push((slab, self.obj_per_page));
+            relinquished.push(slab);
         }
-        while let Some(slab) = self.full_slabs.pop() {
-            relinquished.push((slab, self.obj_per_page));
-        }
-        relinquished
+        (relinquished, self.obj_per_page)
     }
 
     /// Allocates a block of memory descriped by `layout`.

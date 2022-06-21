@@ -18,9 +18,9 @@ struct MyGreeter {
 impl Greeter for MyGreeter {
     fn say_hello(
         &self,
-        _request: ShmView<HelloRequest>,
+        request: ShmView<HelloRequest>,
     ) -> Result<&RpcMessage<HelloReply>, mrpc::Status> {
-        eprintln!("reply: {:?}", self.reply);
+        eprintln!("request: {:?}", request);
 
         Ok(&self.reply)
     }

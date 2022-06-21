@@ -1,8 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::LinkedList;
-use std::collections::{HashMap, VecDeque};
-use std::ptr::Unique;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 
 use dashmap::mapref::entry::Entry;
@@ -10,9 +8,7 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 
 use ipc::mrpc::dp::WrIdentifier;
-use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage};
-
-use super::heap::SHARED_HEAP_REGIONS;
+use slabmalloc::GLOBAL_PAGE_POOL;
 
 thread_local! {
     // thread-local oustanding work request
@@ -24,22 +20,62 @@ thread_local! {
 }
 
 lazy_static! {
-    pub(crate) static ref GARBAGE_COLLECTOR: GarbageCollector = GarbageCollector::new();
-    pub(crate) static ref GLOBAL_PAGE_POOL: GlobalShreadHeapPagePool =
-        GlobalShreadHeapPagePool::new();
     pub(crate) static ref MESSAGE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
     pub(crate) static ref CS_STUB_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 }
 
-pub struct GarbageCollector {
+lazy_static! {
+    pub(crate) static ref OBJECT_RECLAIMER: ObjectReclaimer = ObjectReclaimer::new();
+    pub(crate) static ref PAGE_RECLAIMER_CTX: PageReclaimerContext =
+        PageReclaimerContext::initialize();
+}
+
+pub(crate) struct PageReclaimerContext;
+
+impl PageReclaimerContext {
+    const SMALL_PAGE_RELEASE_THRESHOLD: usize = 4096;
+    const SMALL_PAGE_RELEASE_RESERVE: usize = 2048;
+    const LARGE_PAGE_RELEASE_THRESHOLD: usize = 256;
+    const LARGE_PAGE_RELEASE_RESERVE: usize = 128;
+    const HUGE_PAGE_RELEASE_THRESHOLD: usize = 0;
+    const HUGE_PAGE_RELEASE_RESERVE: usize = 0;
+    const RELEASE_INTERVAL_MS: u64 = 5000;
+
+    async fn reclaim_task() {
+        loop {
+            GLOBAL_PAGE_POOL.release_small_pages(
+                Self::SMALL_PAGE_RELEASE_THRESHOLD,
+                Self::SMALL_PAGE_RELEASE_RESERVE,
+            );
+            GLOBAL_PAGE_POOL.release_large_pages(
+                Self::LARGE_PAGE_RELEASE_THRESHOLD,
+                Self::LARGE_PAGE_RELEASE_RESERVE,
+            );
+            GLOBAL_PAGE_POOL.release_huge_pages(
+                Self::HUGE_PAGE_RELEASE_THRESHOLD,
+                Self::HUGE_PAGE_RELEASE_RESERVE,
+            );
+            smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL_MS)).await;
+        }
+    }
+
+    fn initialize() -> PageReclaimerContext {
+        lazy_static::initialize(&GLOBAL_PAGE_POOL);
+        let task = Self::reclaim_task();
+        std::thread::spawn(move || smol::future::block_on(task));
+        PageReclaimerContext
+    }
+}
+
+pub struct ObjectReclaimer {
     // completed WR count for each RpcMessage
     wr_completion_count: DashMap<u64, u64>,
     storage: DashMap<u64, (std::boxed::Box<dyn Any + Send + Sync>, u64)>,
 }
 
-impl GarbageCollector {
+impl ObjectReclaimer {
     fn new() -> Self {
-        GarbageCollector {
+        ObjectReclaimer {
             wr_completion_count: DashMap::new(),
             storage: DashMap::new(),
         }
@@ -82,213 +118,6 @@ impl GarbageCollector {
                 self.storage.remove(&message_id);
                 self.wr_completion_count.remove(&message_id);
             }
-        }
-    }
-}
-
-// Empty page pool should be maintained by our SharedHeapAllocator/GC
-// instead of slabmalloc,
-// as it is SharedHeapAllocator who refills ZoneAllocator with empty pages
-pub struct GlobalShreadHeapPagePool {
-    empty_small_pages: spin::Mutex<VecDeque<Unique<ObjectPage<'static>>>>,
-    empty_large_pages: spin::Mutex<VecDeque<Unique<LargeObjectPage<'static>>>>,
-    empty_huge_pages: spin::Mutex<VecDeque<Unique<HugeObjectPage<'static>>>>,
-
-    used_small_pages: spin::Mutex<LinkedList<(Unique<ObjectPage<'static>>, usize)>>,
-    used_large_pages: spin::Mutex<LinkedList<(Unique<LargeObjectPage<'static>>, usize)>>,
-    used_huge_pages: spin::Mutex<LinkedList<(Unique<HugeObjectPage<'static>>, usize)>>,
-}
-
-impl GlobalShreadHeapPagePool {
-    fn new() -> Self {
-        GlobalShreadHeapPagePool {
-            empty_small_pages: spin::Mutex::new(VecDeque::new()),
-            empty_large_pages: spin::Mutex::new(VecDeque::new()),
-            empty_huge_pages: spin::Mutex::new(VecDeque::new()),
-            used_small_pages: spin::Mutex::new(LinkedList::new()),
-            used_large_pages: spin::Mutex::new(LinkedList::new()),
-            used_huge_pages: spin::Mutex::new(LinkedList::new()),
-        }
-    }
-
-    fn check_small_page_assignments(&self) {
-        let mut guard = self.used_small_pages.lock();
-        let freed_pages = guard
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
-
-        let mut empty_gurad = self.empty_small_pages.lock();
-        for (page, _) in freed_pages {
-            empty_gurad.push_back(page);
-        }
-    }
-
-    fn check_large_page_assignments(&self) {
-        let mut guard = self.used_large_pages.lock();
-        let freed_pages = guard
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
-
-        let mut empty_gurad = self.empty_large_pages.lock();
-        for (page, _) in freed_pages {
-            empty_gurad.push_back(page);
-        }
-    }
-
-    fn check_huge_page_assignments(&self) {
-        let mut guard = self.used_huge_pages.lock();
-        let freed_pages = guard
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
-
-        let mut empty_gurad = self.empty_huge_pages.lock();
-        for (page, _) in freed_pages {
-            empty_gurad.push_back(page);
-        }
-    }
-
-    pub(crate) fn acquire_small_page(&self) -> Option<&'static mut ObjectPage<'static>> {
-        // TODO(wyj): do we really need to check each time?
-        self.check_small_page_assignments();
-        let page = self
-            .empty_small_pages
-            .lock()
-            .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
-    }
-
-    pub(crate) fn acquire_large_page(&self) -> Option<&'static mut LargeObjectPage<'static>> {
-        self.check_large_page_assignments();
-        let page = self
-            .empty_large_pages
-            .lock()
-            .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
-    }
-
-    pub(crate) fn acquire_huge_page(&self) -> Option<&'static mut HugeObjectPage<'static>> {
-        self.check_huge_page_assignments();
-        let page = self
-            .empty_huge_pages
-            .lock()
-            .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
-    }
-
-    pub(crate) fn recycle_small_page(
-        &self,
-        page: &'static mut ObjectPage<'static>,
-        obj_per_page: usize,
-    ) {
-        if page.is_empty(obj_per_page) {
-            self.empty_small_pages
-                .lock()
-                .push_back(unsafe { Unique::new_unchecked(page as *mut _) })
-        } else {
-            self.used_small_pages
-                .lock()
-                .push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
-        }
-    }
-
-    // Caller must ensure provided pages are empty
-    // pub(crate) unsafe fn recycle_empty_small_pages<I: IntoIterator<Item = &'static mut ObjectPage<'static>>>(
-    //     &self,
-    //     pages: I,
-    // ) {
-    //     let pages = pages.into_iter().map(|page|
-    //         unsafe { Unique::new_unchecked(page as *mut _) }
-    //     );
-    //     self.empty_small_pages.lock().extend(pages)
-    // }
-
-    pub(crate) fn recycle_large_page(
-        &self,
-        page: &'static mut LargeObjectPage<'static>,
-        obj_per_page: usize,
-    ) {
-        if page.is_empty(obj_per_page) {
-            self.empty_large_pages
-                .lock()
-                .push_back(unsafe { Unique::new_unchecked(page as *mut _) })
-        } else {
-            self.used_large_pages
-                .lock()
-                .push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
-        }
-    }
-
-    pub(crate) fn recycle_huge_page(
-        &self,
-        page: &'static mut HugeObjectPage<'static>,
-        obj_per_page: usize,
-    ) {
-        if page.is_empty(obj_per_page) {
-            self.empty_huge_pages
-                .lock()
-                .push_back(unsafe { Unique::new_unchecked(page as *mut _) })
-        } else {
-            self.used_huge_pages
-                .lock()
-                .push_back(unsafe { (Unique::new_unchecked(page as *mut _), obj_per_page) })
-        }
-    }
-}
-
-impl GlobalShreadHeapPagePool {
-    const SMALL_PAGE_RELEASE_THRESHOLD: usize = 4096;
-    const SMALL_PAGE_RELEASE_CNT: usize = 2048;
-    const LARGE_PAGE_RELEASE_THRESHOLD: usize = 4096;
-    const LARGE_PAGE_RELEASE_CNT: usize = 2048;
-    const RELEASE_INTERVAL_MS: u64 = 5000;
-
-    pub(crate) async fn release_empty_pages(&self) {
-        loop {
-            {
-                self.check_small_page_assignments();
-                let mut guard = self.empty_small_pages.lock();
-                if guard.len() > Self::SMALL_PAGE_RELEASE_THRESHOLD {
-                    for empty_page in guard.drain(..Self::SMALL_PAGE_RELEASE_CNT) {
-                        let addr = empty_page.as_ptr() as usize;
-                        // tell backend to dealloc page
-                        SHARED_HEAP_REGIONS
-                            .lock()
-                            .remove(&addr)
-                            .expect("page already released");
-                    }
-                }
-            }
-
-            {
-                self.check_large_page_assignments();
-                let mut guard = self.empty_large_pages.lock();
-                if guard.len() > Self::LARGE_PAGE_RELEASE_THRESHOLD {
-                    for empty_page in guard.drain(..Self::LARGE_PAGE_RELEASE_CNT) {
-                        let addr = empty_page.as_ptr() as usize;
-                        // tell backend to dealloc page
-                        SHARED_HEAP_REGIONS
-                            .lock()
-                            .remove(&addr)
-                            .expect("page already released");
-                    }
-                }
-            }
-
-            {
-                self.check_huge_page_assignments();
-                // release all huge pages immediately
-                let mut guard = self.empty_huge_pages.lock();
-                for empty_page in guard.drain(..) {
-                    let addr = empty_page.as_ptr() as usize;
-                    // tell backend to dealloc page
-                    SHARED_HEAP_REGIONS
-                        .lock()
-                        .remove(&addr)
-                        .expect("page already released");
-                }
-            }
-
-            smol::Timer::after(std::time::Duration::from_millis(Self::RELEASE_INTERVAL_MS)).await;
         }
     }
 }
