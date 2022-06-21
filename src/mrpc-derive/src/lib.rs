@@ -152,7 +152,6 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
         }
     };
 
-    eprintln!("{} ", expanded);
     Ok(expanded.into())
 }
 

@@ -1036,7 +1036,6 @@ dependencies = [
  "futures",
  "interface",
  "ipc",
- "koala-derive",
  "lazy_static",
  "libc",
  "memfd",
@@ -1044,6 +1043,7 @@ dependencies = [
  "memmap2 0.5.4",
  "memoffset",
  "mio 0.7.14",
+ "mrpc-derive",
  "nix 0.23.1",
  "num_cpus",
  "rdma",
@@ -1062,18 +1062,6 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "version",
-]
-
-[[package]]
-name = "koala-derive"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "itertools",
- "proc-macro2",
- "quote",
- "syn",
- "thiserror",
 ]
 
 [[package]]
@@ -1324,6 +1312,18 @@ dependencies = [
  "prost-build",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "mrpc-derive"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "thiserror",
 ]
 
 [[package]]
