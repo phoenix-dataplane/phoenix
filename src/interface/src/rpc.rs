@@ -14,6 +14,7 @@ pub enum RpcMsgType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageMeta {
     pub conn_id: Handle,
+    pub service_id: u32,
     pub func_id: u32,
     pub call_id: u32,
     pub len: u64,

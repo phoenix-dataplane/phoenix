@@ -1,6 +1,5 @@
 #![feature(peer_credentials_unix_socket)]
 #![feature(ptr_metadata)]
-#![feature(specialization)]
 #![feature(type_alias_impl_trait)]
 #![feature(generic_associated_types)]
 #![feature(strict_provenance)]

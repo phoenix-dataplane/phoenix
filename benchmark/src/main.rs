@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use ansi_term::Colour::Green;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -45,13 +46,13 @@ struct Benchmark {
 #[derive(Debug, StructOpt)]
 #[structopt(name = "launcher", about = "Launcher of the benchmark suite.")]
 struct Opt {
-    /// Timeout in seconds, 0 means infinity.
+    /// Timeout in seconds, 0 means infinity. Can be overwritten by specific case configs.
     #[structopt(long = "timeout", default_value = "60")]
     timeout_secs: u64,
 
     /// Run a single benchmark task
     #[structopt(short, long)]
-    benchmark: Option<path::PathBuf>,
+    benchmark: path::PathBuf,
 
     /// Run a benchmark group
     #[structopt(short, long)]
@@ -133,8 +134,10 @@ fn wait_command(
                 break;
             }
             Ok(None) => {
-                log::trace!("status not ready yet, sleep for 5 ms");
-                thread::sleep(Duration::from_millis(5));
+                if stdout_reader.is_none() && stdout_reader.is_none() {
+                    log::trace!("status not ready yet, sleep for 5 ms");
+                    thread::sleep(Duration::from_millis(5));
+                }
             }
             Err(e) => {
                 panic!("Command wasn't running: {}", e);
@@ -208,7 +211,7 @@ fn start_ssh(
             cmd.stdout(stdout).stderr(stderr);
         } else {
             // collect the result to local stdout, similar to mpirun
-            // cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
 
         cmd.arg("-oStrictHostKeyChecking=no")
@@ -223,7 +226,7 @@ fn start_ssh(
         let env_path = env::var("PATH").expect("failed to get PATH");
         if !debug_mode {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} cargo run --release --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -232,7 +235,7 @@ fn start_ssh(
             ));
         } else {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} cargo run --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --bin {} -- {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -292,11 +295,58 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     Ok(())
 }
 
-fn run_benchmark_group(_opt: Opt, _group: String) -> anyhow::Result<()> {
-    todo!();
+fn run_benchmark_group(opt: &Opt, group: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use walkdir::WalkDir;
+
+    let dir = opt.benchmark.clone();
+    if !dir.exists() || !dir.is_dir() {
+        return Err(anyhow::anyhow!("{:?} must be a directory", dir));
+    }
+
+    // find the matching benchmark cases
+    let mut suites = Vec::new();
+    for entry in WalkDir::new(dir).follow_links(true) {
+        let entry = entry.unwrap();
+        log::debug!("traversing {}", entry.path().display());
+        let path = path::PathBuf::from(entry.path());
+        if path.is_dir() {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path).with_context(|| "read_to_string")?;
+        match toml::from_str::<'_, Benchmark>(&content) {
+            Ok(spec) => {
+                if spec.group != group {
+                    continue;
+                }
+            }
+            Err(e) => log::warn!(
+                "{} is not an valid benchmark case: {}, skipping...",
+                path.display(),
+                e
+            ),
+        }
+
+        suites.push(path);
+    }
+
+    // run all matched benchmark cases
+    for p in &suites {
+        match run_benchmark(opt, p.clone()) {
+            Ok(()) => {}
+            Err(e) => {
+                log::error!("Failed to run benchmark {} because {}", p.display(), e);
+            }
+        }
+
+        thread::sleep(Duration::from_millis(1000));
+    }
+
+    Ok(())
 }
 
-fn run_benchmark(opt: Opt, path: path::PathBuf) -> anyhow::Result<()> {
+fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
     // read global config
     let config = Config::from_path(&opt.configfile)?;
     // read a single benchmark spec
@@ -327,6 +377,14 @@ fn run_benchmark(opt: Opt, path: path::PathBuf) -> anyhow::Result<()> {
     let binaries: Vec<String> = spec.worker.iter().map(|s| s.bin.clone()).collect();
     let cargo_dir = &config.workdir;
     build_all(&binaries, cargo_dir)?;
+
+    // print info
+    log::info!(
+        "{}: {}, description: {}",
+        Green.bold().paint("Running benchmark"),
+        spec.name,
+        spec.description
+    );
 
     // start workers
     let mut handles = vec![];
@@ -401,15 +459,13 @@ fn main() {
     unsafe { signal::sigaction(signal::SIGINT, &sig_action) }
         .expect("failed to register sighandler");
 
-    if opt.benchmark.is_some() && opt.group.is_some() {
-        log::error!("should not provide both benchmark and group, exiting.");
-        return;
-    }
-
-    if let Some(b) = opt.benchmark.clone() {
-        run_benchmark(opt, b).unwrap();
-    } else if let Some(g) = opt.group.clone() {
-        run_benchmark_group(opt, g).unwrap();
+    if let Some(g) = opt.group.clone() {
+        // opt.benchmark should points to a directory
+        run_benchmark_group(&opt, &g).unwrap_or_else(|e| panic!("run_benchmark_group failed: {e}"));
+    } else {
+        // opt.benchmark should points to a file
+        let path = opt.benchmark.clone();
+        run_benchmark(&opt, path).unwrap_or_else(|e| panic!("run_benchmark failed: {e}"));
     }
 }
 

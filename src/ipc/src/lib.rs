@@ -3,7 +3,6 @@
 #![feature(slice_index_methods)]
 // added by boxed.rs
 // TODO(cjr): remove unused feature.
-#![feature(specialization)]
 #![feature(strict_provenance)]
 #![feature(ptr_internals)]
 #![feature(ptr_metadata)]
@@ -34,8 +33,8 @@ pub(crate) use crate::shmem_ipc::{ShmReceiver, ShmSender};
 /// Common data structures passed between client and server
 pub mod control;
 pub mod mrpc;
+pub mod ptr;
 pub mod salloc;
-pub mod shmalloc;
 pub mod transport;
 
 /// Provides Range
