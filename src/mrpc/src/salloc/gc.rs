@@ -10,7 +10,6 @@ use lazy_static::lazy_static;
 use ipc::mrpc::dp::WrIdentifier;
 use slabmalloc::GLOBAL_PAGE_POOL;
 
-use super::heap::SHARED_HEAP_REGIONS;
 
 thread_local! {
     // thread-local oustanding work request
