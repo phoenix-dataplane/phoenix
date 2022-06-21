@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ansi_term = "0.12.1"
 anyhow = "1.0.57"
 bytes = "1.1.0"
 chrono = "0.4.19"
@@ -18,6 +19,7 @@ shellexpand = "2.1.0"
 structopt = "0.3.26"
 tokio-anyfd = "0.2.0"
 toml = "0.5.9"
+walkdir = "2.3.2"
 
 [[bin]]
 name = "launcher"

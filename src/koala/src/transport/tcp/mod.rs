@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use std::io;
 use thiserror::Error;
 

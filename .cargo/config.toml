@@ -1,5 +1,6 @@
 [alias]     # command aliases
 rr = "run --release"
+build-plan = "build --build-plan -Z unstable-options"
 
 [env]
 RUST_BACKTRACE = "1"

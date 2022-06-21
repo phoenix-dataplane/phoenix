@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use interface::rpc::MessageMeta;
 
-use ipc::shmalloc::ShmPtr;
+use ipc::ptr::ShmPtr;
 
 use crate::salloc::state::Shared as SallocShared;
 

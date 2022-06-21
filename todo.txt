@@ -1,20 +1,64 @@
 TODO
 
+Yongji
+- memory reclamation
+- backend koala marshaling/unmarshaling codegen
+
+Shihan
+- TCP backend + RpcAdapterTcp
+    - two RPs, the first only add this RpcAdapterTcp and leave other
+      code untouched, the second reorganize the tree structure
+    - enable #[deny(missing_doc)] for module while developing
+- live upgrade, implement that feature in a particular engine
+
+Yechen
+- more koala_examples
+    - allreduce and alltoall examples
+    - write some code with mRPC
+- scheduling layer
+
+Jingrong
+- dynamic binding
+
+Other major tasks
+- performance deep dive
+	- engine overhead
+	- explicit mr registration
+
+Prost codegen
+- encoding (update this)
+-[x] writing the correct codegen, this file should be out-of-tree, give
+  it correct visibility
+- write mrpc-build, generate the above code
+- generate marshal/unmarshal
+- dynamic loading
+- remove redundant language features and dependencies
+
 RPC
 - Prost codegen
 -[x] zero-copy RPC interface
 -[x] RPC Trait
 -[x] Heap allocator
+- RPC scalability: How much more memory is needed for RPC as a service
+  this architecture?
+
+API
+- the return value of a rpc call at the service side should be a Future
+- mrpc::Status should contains specific error, and be renamed
+- return value should not be a &mut RpcMessage
+- moving RpcMessage from stub to root
+- adding prelude (ShmView, RpcMessage)
+- service handler should not take &mut self
 
 Benchmark Suite
-- build then run
+-[x] build then run
 - worker starting order
-- auto kill on clean up
+-[x] auto kill on clean up
 - collect and print result
 -[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - <s>Build a CI pipeline with all kinds of tests and benchmarks</s>
 - simplify rpc_hello, add more complex rpc_hello
-- also test latency
+-[x] also test latency
 
 Engine Framework
 - suspend the runtime to save CPUs based on indicator
@@ -40,6 +84,7 @@ Engine Framework
 Misc
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
 - *UDP socket send/recv fd must be nonblocking*
+- visibility of mods in koala backend code
 -[x] add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>
@@ -73,6 +118,7 @@ Misc
   the number of engines to build.
 
 Shared memory heap
+- need some tests for memory reclamation
 - *check if a read only shm file descriptor can be open with write
   permission and really written*
 - shared heap dealloc
