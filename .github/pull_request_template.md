@@ -12,11 +12,8 @@
 
 ## Checks
 
-- [ ] I've run `scripts/format.sh` to lint the changes in this PR.
 - [ ] I've run `scripts/clippy.sh` to lint the changes in this PR.
 - [ ] I've included any doc changes.
-- [ ] I've made sure the tests are passing.
 - Testing Strategy
-   - [ ] Unit tests
    - [ ] Release tests
    - [ ] This PR is not tested :(
