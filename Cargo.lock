@@ -1040,6 +1040,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "chrono",
+ "crc32fast",
  "crossbeam",
  "dashmap",
  "fnv",
@@ -1047,8 +1048,10 @@ dependencies = [
  "interface",
  "ipc",
  "json",
+ "itertools",
  "lazy_static",
  "libc",
+ "md5",
  "memfd",
  "memmap-fixed",
  "memmap2 0.5.4",
@@ -1058,6 +1061,9 @@ dependencies = [
  "mrpc-derive",
  "nix 0.23.1",
  "num_cpus",
+ "proc-macro2",
+ "prost-build",
+ "quote",
  "rdma",
  "scheduler",
  "serde",
@@ -1066,6 +1072,7 @@ dependencies = [
  "spin",
  "static_assertions",
  "structopt",
+ "syn",
  "thiserror",
  "tokio",
  "toml",
@@ -1165,6 +1172,12 @@ name = "maybe-uninit"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
+
+[[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
@@ -1661,9 +1674,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.39"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c54b25569025b7fc9651de43004ae593a75ad88543b17178aa5e1b9c4f15f56f"
+checksum = "dd96a1e8ed2596c337f8eae5f24924ec83f5ad5ab21ea8e455d3566c69fbcaf7"
 dependencies = [
  "unicode-ident",
 ]
@@ -1718,9 +1731,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.18"
+version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1feb54ed693b93a84e14094943b84b7c4eae204c512b7ccb95ab0c66d278ad1"
+checksum = "3bcdf212e9776fbcb2d23ab029360416bb1706b1aea2d1a5ba002727cbcab804"
 dependencies = [
  "proc-macro2",
 ]

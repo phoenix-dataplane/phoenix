@@ -10,6 +10,7 @@ pub mod meta_pool;
 pub mod module;
 pub(crate) mod shadow;
 pub mod state;
+pub(crate) mod builder;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
