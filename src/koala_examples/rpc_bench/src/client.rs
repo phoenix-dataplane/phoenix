@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -31,45 +31,91 @@ pub struct Args {
     #[structopt(short = "b", long)]
     pub blocking: bool,
 
+    /// Log level for tracing.
     #[structopt(short = "l", long, default_value = "error")]
     pub log_level: String,
 
+    /// Log directory.
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
 
+    /// Request size.
     #[structopt(short, long, default_value = "1000000")]
     pub req_size: usize,
 
+    /// The maximal number of concurrenty outstanding requests.
     #[structopt(long, default_value = "32")]
     pub concurrency: usize,
 
+    /// Total number of iterations.
     #[structopt(short, long, default_value = "16384")]
     pub total_iters: usize,
 
+    /// The number of messages to provision. Must be a positive number. The test will repeatedly
+    /// sending the provisioned message.
     #[structopt(long, default_value = "128")]
     pub provision_count: usize,
+}
+
+async fn run_bench(
+    args: &Args,
+    client: &GreeterClient,
+    reqs: &[RpcMessage<HelloRequest>],
+    warmup: bool,
+) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
+    let mut response_count = 0;
+    let mut reply_futures = FuturesUnordered::new();
+    let mut starts = Vec::with_capacity(args.total_iters);
+    let mut latencies = Vec::with_capacity(args.total_iters);
+
+    // start sending
+    for i in 0..args.total_iters {
+        starts.push(Instant::now());
+        let fut = client.say_hello(&reqs[i % args.provision_count]);
+        reply_futures.push(fut);
+        if reply_futures.len() >= args.concurrency {
+            let _resp = reply_futures.next().await.unwrap()?;
+            if warmup {
+                eprintln!("warmup: resp {} received", response_count);
+                response_count += 1;
+            }
+            latencies.push(starts[latencies.len()].elapsed());
+        }
+    }
+
+    // draining the remaining futures
+    while !reply_futures.is_empty() {
+        let _response = reply_futures.next().await.unwrap()?;
+        latencies.push(starts[latencies.len()].elapsed());
+        if warmup {
+            eprintln!("warmup: resp {} received", response_count);
+            response_count += 1;
+        }
+    }
+
+    Ok(std::iter::zip(starts, latencies).collect())
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let args = Args::from_args();
     let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-    let client = GreeterClient::connect((args.ip, args.port))?;
+    let client = GreeterClient::connect((args.ip.as_str(), args.port))?;
     eprintln!("connection setup");
 
     if args.blocking {
         smol::block_on(async {
-            let mut name = Vec::with_capacity(1000000);
-            name.resize(1000000, 42);
+            let mut name = Vec::with_capacity(args.req_size);
+            name.resize(args.req_size, 42);
             let mut req = RpcMessage::new(HelloRequest { name });
 
-            for i in 0..16384 {
+            for i in 0..args.total_iters {
                 let _resp = client.say_hello(&mut req).await.unwrap();
                 eprintln!("resp {} received", i);
             }
 
             let start = Instant::now();
-            for _i in 0..16384 {
+            for _i in 0..args.total_iters {
                 let _resp = client.say_hello(&mut req).await.unwrap();
             }
 
@@ -77,7 +123,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             eprintln!(
                 "dura: {:?}, speed: {:?}",
                 dura,
-                8e-9 * 16384.0 * 1e6 / dura.as_secs_f64()
+                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
             );
         });
     } else {
@@ -91,51 +137,18 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
                 reqs.push(req);
             }
 
-            let mut reply_futures = FuturesUnordered::new();
+            let _ = run_bench(&args, &client, &reqs, true).await?;
 
-            let mut response_count = 0;
-
-            // warmup
-            for i in 0..args.total_iters {
-                // let resp = client.say_hello(&mut req).await.unwrap();
-                let resp = client.say_hello(&reqs[i % args.provision_count]);
-                if reply_futures.len() >= args.concurrency {
-                    let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                    eprintln!("warmup: resp {} received", response_count);
-                    response_count += 1;
-                }
-                reply_futures.push(resp);
-            }
-
-            // warmup: receive the remaining messages
-            while !reply_futures.is_empty() {
-                let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                eprintln!("warmup: resp {} received", response_count);
-                response_count += 1;
-            }
-
-            let mut starts = Vec::with_capacity(args.total_iters);
-            let mut latencies = Vec::with_capacity(args.total_iters);
             let start = Instant::now();
-            for i in 0..args.total_iters {
-                starts.push(Instant::now());
-                let resp = client.say_hello(&reqs[i % args.provision_count]);
-                if reply_futures.len() >= args.concurrency {
-                    let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                    latencies.push(starts[latencies.len()].elapsed());
-                }
-                reply_futures.push(resp);
-            }
-            while !reply_futures.is_empty() {
-                let _response: Result<_, _> = reply_futures.next().await.unwrap();
-                latencies.push(starts[latencies.len()].elapsed());
-            }
-
+            let stats = run_bench(&args, &client, &reqs, false).await?;
             let dura = start.elapsed();
+            let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
+
+            // print stats
             println!(
                 "dura: {:?}, speed: {:?}",
                 dura,
-                8e-9 * args.total_iters as f64 * args.req_size as f64 / dura.as_secs_f64()
+                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
             );
 
             // print latencies
@@ -151,7 +164,9 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
                 latencies[(cnt as f64 * 0.99) as usize],
                 latencies[cnt - 1]
             );
-        });
+
+            Result::<(), mrpc::Status>::Ok(())
+        }).unwrap();
     }
     Ok(())
 }

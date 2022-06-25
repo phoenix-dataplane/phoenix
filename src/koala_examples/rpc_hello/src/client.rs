@@ -10,9 +10,8 @@ use mrpc::stub::RpcMessage;
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let client = GreeterClient::connect("rdma0.danyang-06:5000")?;
-    let name = "mRPC".into();
-    let req = RpcMessage::new(HelloRequest { name });
+    let req = RpcMessage::new(HelloRequest { name: "mRPC".into() });
     let reply = smol::block_on(client.say_hello(&req))?;
-    println!("reply: {:?}", reply);
+    println!("reply: {:?}", String::from_utf8_lossy(&reply.message));
     Ok(())
 }
