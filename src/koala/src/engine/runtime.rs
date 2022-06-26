@@ -3,6 +3,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 use spin::Mutex;
 use thiserror::Error;
@@ -86,6 +87,11 @@ pub(crate) struct Runtime {
 
     pub(crate) new_pending: AtomicBool,
     pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
+
+    // dynamic profiling
+    // new_profiling: AtomicBool,
+    // profile_until: Mutex<Instant>,
+    // profiler: Mutex<Option<Profiler>>,
 }
 
 impl Runtime {
@@ -95,15 +101,20 @@ impl Runtime {
             running: RefCell::new(Vec::new()),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
+            // new_profiling: AtomicBool::new(false),
+            // profile_until: Mutex::new(Instant::now()),
+            // profiler: Mutex::new(None),
         }
     }
 
     /// Returns true if there is no runnable engine or pending engine.
+    #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.is_spinning() && self.pending.lock().is_empty()
     }
 
     /// Returns true if there is no runnable engine.
+    #[inline]
     pub(crate) fn is_spinning(&self) -> bool {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
@@ -113,8 +124,14 @@ impl Runtime {
         self.new_pending.store(true, Ordering::Release);
     }
 
+    // pub(crate) fn start_profiling(&self, dura: Duration) {
+    //     let until = Instant::now() + dura;
+    //     *self.profile_until.lock() = until;
+    //     self.new_profiling.store(true, Ordering::Release);
+    // }
+
     /// A spinning future executor.
-    pub(crate) fn mainloop(&self) -> std::result::Result<(), Error> {
+    pub(crate) fn mainloop(&self) -> Result<(), Error> {
         let waker = futures::task::noop_waker();
         let mut cx = Context::from_waker(&waker);
 
@@ -168,10 +185,57 @@ impl Runtime {
             }
 
             // move newly added runtime to the scheduling queue
-            if self.new_pending.load(Ordering::Acquire) {
-                self.new_pending.store(false, Ordering::Relaxed);
+            // if self.new_pending.load(Ordering::Acquire) {
+            if Ok(true)
+                == self.new_pending.compare_exchange(
+                    true,
+                    false,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
                 self.running.borrow_mut().append(&mut self.pending.lock());
             }
+
+            // // profiling
+            // if Ok(true)
+            //     == self.new_profiling.compare_exchange(
+            //         true,
+            //         false,
+            //         Ordering::Acquire,
+            //         Ordering::Relaxed,
+            //     )
+            // {
+            //     let until = *self.profile_until.lock();
+            //     *self.profiler.lock() = Some(Profiler::new(until));
+            // }
         }
     }
 }
+
+// use minitrace::local::GuardGeneric;
+// use minitrace::prelude::{Collector, Span};
+// struct Profiler {
+//     until: Instant,
+//     root_span: Span,
+//     collector: Collector,
+//     root_span_guard: Option<GuardGeneric>,
+// }
+// 
+// // SAFETY: We ensure profiler is only used within mainloop, it never go across
+// // thread boundary.
+// unsafe impl Send for Profiler {}
+// 
+// impl Profiler {
+//     fn new(until: Instant) -> Self {
+//         let (root_span, collector) = Span::root("Runtime");
+//         let guard = root_span.set_local_parent();
+//         let root_span_guard = guard.map(|g| g.into_generic());
+//         Profiler {
+//             until,
+//             root_span,
+//             collector,
+//             root_span_guard,
+//         }
+//     }
+// }

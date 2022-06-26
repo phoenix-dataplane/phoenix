@@ -10,6 +10,7 @@ use interface::engine::SchedulingMode;
 
 use super::container::EngineContainer;
 use super::runtime::{self, Runtime};
+use crate::config::Config;
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
@@ -47,11 +48,11 @@ impl Inner {
 }
 
 impl RuntimeManager {
-    pub fn new(n: usize) -> Self {
+    pub fn new(_config: &Config) -> Self {
         let inner = Inner {
             next_core: 0,
-            runtimes: Vec::with_capacity(n),
-            handles: Vec::with_capacity(n),
+            runtimes: Vec::with_capacity(1),
+            handles: Vec::with_capacity(1),
         };
         RuntimeManager {
             inner: Mutex::new(inner),

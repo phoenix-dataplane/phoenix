@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let _guards = logging::init_log(&config);
 
     // create runtime manager
-    let runtime_manager = Arc::new(RuntimeManager::new(1));
+    let runtime_manager = Arc::new(RuntimeManager::new(&config));
 
     // the Control now takes over
     let mut control = Control::new(runtime_manager, config);

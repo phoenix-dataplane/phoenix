@@ -16,6 +16,15 @@ span_level = "info"
 # overwrite with env KOALA_TRACING_DIR
 output_dir = "/tmp/koala-trace"
 
+[profiling]
+# overwrite with env KOALA_PROFILING_ENABLE_ON_NEW_CLIENT
+enable_on_new_client = true
+# overwrite with env KOALA_PROFILING_DURATION_MS
+duration_ms = 1000
+
+# [runtime]
+# max_dedicate = 10
+
 [control]
 prefix = "/tmp/koala"
 path = "koala-control.sock"

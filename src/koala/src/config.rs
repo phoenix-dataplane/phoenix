@@ -76,10 +76,18 @@ pub struct TracingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ProfilingConfig {
+    pub enable_on_new_client: bool,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub log_level: String,
     pub log_file: Option<String>,
     pub tracing: TracingConfig,
+    pub profiling: ProfilingConfig,
     pub modules: Vec<String>,
     pub control: Control,
     #[serde(alias = "transport-rdma")]

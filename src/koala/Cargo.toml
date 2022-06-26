@@ -6,6 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+interface = { path = "../interface" }
+ipc = { path = "../ipc" }
+rdma = { path = "../rdma", features = ["koala"] }
+memmap-fixed = { path = "../memmap-fixed" }
+mrpc-derive = { path = "../mrpc-derive" }
+minitrace = { path = "../../../minitrace-rust/minitrace" }
+
 chrono = "0.4.19"
 ansi_term = "0.12.1"
 tracing = "0.1"
@@ -21,10 +28,6 @@ nix = "0.23.0"
 libc = "0.2.103"
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
-interface = { path = "../interface" }
-ipc = { path = "../ipc" }
-rdma = { path = "../rdma", features = ["koala"] }
-memmap-fixed = { path = "../memmap-fixed" }
 fnv = "1.0.7"
 mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 lazy_static = "1.4.0"
@@ -38,7 +41,7 @@ memfd = "0.4.1"
 memmap2 = "0.5.0"
 futures = "0.3.21"
 tokio = { version = "1.18.2", features = ["sync"] }
-tracing-core = "0.1.26"
 dashmap = "5.3.4"
 smallvec = "1.8.0"
-mrpc-derive = { path = "../mrpc-derive" }
+smallstr = "0.3.0"
+json = "0.12.4"
