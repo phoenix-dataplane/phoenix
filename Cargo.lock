@@ -1053,7 +1053,7 @@ dependencies = [
  "memmap-fixed",
  "memmap2 0.5.4",
  "memoffset",
- "minitrace",
+ "minstant",
  "mio 0.7.14",
  "mrpc-derive",
  "nix 0.23.1",
@@ -1219,33 +1219,6 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
-name = "minitrace"
-version = "0.4.0"
-dependencies = [
- "futures",
- "lazy_static",
- "libc",
- "minitrace-macro",
- "minstant",
- "once_cell",
- "parking_lot 0.11.2",
- "pin-project",
- "retain_mut",
- "smallstr",
- "smallvec 1.8.0",
-]
-
-[[package]]
-name = "minitrace-macro"
-version = "0.4.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "minstant"
@@ -1937,12 +1910,6 @@ checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
 dependencies = [
  "winapi 0.3.9",
 ]
-
-[[package]]
-name = "retain_mut"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4389f1d5789befaf6029ebd9f7dac4af7f7e3d61b69d4f30e2ac02b57e7712b0"
 
 [[package]]
 name = "ringbuf"

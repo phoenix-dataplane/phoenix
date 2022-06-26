@@ -11,7 +11,7 @@ ipc = { path = "../ipc" }
 rdma = { path = "../rdma", features = ["koala"] }
 memmap-fixed = { path = "../memmap-fixed" }
 mrpc-derive = { path = "../mrpc-derive" }
-minitrace = { path = "../../../minitrace-rust/minitrace" }
+# minitrace = { path = "../../../minitrace-rust/minitrace" }
 
 chrono = "0.4.19"
 ansi_term = "0.12.1"
@@ -45,3 +45,4 @@ dashmap = "5.3.4"
 smallvec = "1.8.0"
 smallstr = "0.3.0"
 json = "0.12.4"
+minstant = "0.1.1"

@@ -199,8 +199,8 @@ impl MrpcEngine {
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use dp::WorkRequest;
 
-        let span = info_span!("MrpcEngine process_dp");
-        let _enter = span.enter();
+        // let span = info_span!("MrpcEngine process_dp");
+        // let _enter = span.enter();
 
         match req {
             WorkRequest::Call(erased) => {

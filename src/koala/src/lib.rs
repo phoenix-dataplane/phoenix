@@ -24,7 +24,8 @@ pub(crate) mod rpc_adapter;
 pub(crate) mod salloc;
 pub(crate) mod state_mgr;
 pub(crate) mod transport;
-pub(crate) mod profiler;
+// pub(crate) mod profiler;
+pub(crate) mod timer;
 
 #[macro_export]
 macro_rules! unimplemented_ungradable {

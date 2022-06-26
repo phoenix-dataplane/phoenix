@@ -26,6 +26,7 @@ use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
+use crate::timer::Timer;
 
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
@@ -161,9 +162,10 @@ impl RpcAdapterEngine {
         use ulib::uverbs::SendFlags;
 
         while let Some(msg) = self.local_buffer.pop_front() {
+
             // get cmid from conn_id
-            let span = info_span!("RpcAdapter check_input_queue: send_msg");
-            let _enter = span.enter();
+            // let span = info_span!("RpcAdapter check_input_queue: send_msg");
+            // let _enter = span.enter();
 
             let meta_ref = unsafe { msg.meta.as_ref() };
             let cmid_handle = meta_ref.conn_id;
@@ -180,6 +182,7 @@ impl RpcAdapterEngine {
                 self.local_buffer.push_front(msg);
                 break;
             }
+            let mut timer = Timer::new();
 
             let cmid = &conn_ctx.cmid;
 
@@ -204,6 +207,7 @@ impl RpcAdapterEngine {
                     _ => unimplemented!(),
                 },
             };
+            timer.tick();
 
             // Sender marshals the data (gets an SgList)
             // Sender posts send requests from the SgList
@@ -224,6 +228,8 @@ impl RpcAdapterEngine {
 
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
+            timer.tick();
+
             {
                 // post send message meta
                 unsafe {
@@ -261,6 +267,10 @@ impl RpcAdapterEngine {
                     }
                 }
             }
+
+            timer.tick();
+            // log::info!("check_input_queue: {}", timer);
+
             // Sender posts an extra SendWithImm
             return Ok(Progress(1));
         }
@@ -295,14 +305,15 @@ impl RpcAdapterEngine {
         use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
-        let span = info_span!("unmarshal_and_deliver_up");
-        let _enter = span.enter();
+        // let span = info_span!("unmarshal_and_deliver_up");
+        // let _enter = span.enter();
 
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = conn_ctx.cmid.as_handle();
 
         let recv_id = WrIdentifier(meta.conn_id, meta.call_id);
+
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
             // let span = info_span!("replenish the credits");
@@ -319,6 +330,10 @@ impl RpcAdapterEngine {
             sgl: sgl.0[1..].iter(),
             salloc: &self.salloc.shared,
         };
+
+        let mut timer = Timer::new();
+        timer.tick();
+
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
                 3687134534u32 => {
@@ -338,15 +353,23 @@ impl RpcAdapterEngine {
                 _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
             },
         };
+        timer.tick();
 
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
             addr_app,
         };
+        timer.tick();
+
         self.rx_outputs()[0]
             .send(EngineRxMessage::RpcMessage(msg))
             .unwrap();
+
+        timer.tick();
+        // log::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
+        // log::info!("unmarshal_and_deliver_up {}", timer);
+
         Ok(recv_id)
     }
 
@@ -361,8 +384,8 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    let span = info_span!("RpcAdapter check_transport_service: wc polled");
-                    let _enter = span.enter();
+                    // let span = info_span!("RpcAdapter check_transport_service: wc polled");
+                    // let _enter = span.enter();
 
                     match wc.opcode {
                         WcOpcode::Send => {
