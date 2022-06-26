@@ -1,11 +1,18 @@
-mod dispatch;
-mod prost;
-mod cache;
+use std::path::PathBuf;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+use serde::{Serialize, Deserialize};
+
+pub mod dispatch;
+pub mod prost;
+pub mod cache;
+
+const PROTO_DIR: &'static str = "proto";
+
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MethodIdentifier(u32, u32);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RpcMethodInfo {
     pub service_id: u32,
     pub func_id: u32,
@@ -19,6 +26,13 @@ pub struct RpcMethodInfo {
     pub output_type: String    
 } 
 
-pub fn build_dispatch_library() {
+pub fn build_dispatch_library(
+    protos: Vec<String>,
+    cache_dir: PathBuf
+) {
+    let (identifier, cached) = cache::check_cache(&protos, cache_dir, PROTO_DIR);
+    if !cached {
+        cache::write_protos_to_cache(identifier, &protos, cache_dir, PROTO_DIR);
+    }
     
 }

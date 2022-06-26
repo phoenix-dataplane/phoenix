@@ -3,14 +3,12 @@ use thiserror::Error;
 use crate::resource::Error as ResourceError;
 
 pub mod codegen;
-pub(crate) mod emplacement;
 pub mod engine;
-pub(crate) mod marshal;
 pub mod meta_pool;
 pub mod module;
-pub(crate) mod shadow;
 pub mod state;
 pub(crate) mod builder;
+pub(crate) mod meta_unpack;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {

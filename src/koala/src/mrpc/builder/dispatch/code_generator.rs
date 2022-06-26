@@ -5,10 +5,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use crate::mrpc::builder::{MethodIdentifier, RpcMethodInfo};
 
-pub fn marshal_request(method_id: MethodIdentifier, mut input_type: String) -> TokenStream {
+pub fn generate_marshal(method_id: MethodIdentifier, mut ty: String) -> TokenStream {
     let func_id = method_id.1;
-    input_type = format!("codegen::{}", input_type);
-    let input_type = syn::parse_str::<syn::Path>(&input_type).unwrap();
+    ty = format!("codegen::{}", ty);
+    let input_type = syn::parse_str::<syn::Path>(&ty).unwrap();
     quote! {
         #func_id => {
             let ptr_backend = msg.addr_backend as *mut #input_type
@@ -19,21 +19,25 @@ pub fn marshal_request(method_id: MethodIdentifier, mut input_type: String) -> T
 }
 
 
+
 pub fn generate(
     include_file: PathBuf, 
-    method_type_mapping: HashMap<MethodIdentifier, RpcMethodInfo>
+    method_type_mapping: &HashMap<MethodIdentifier, RpcMethodInfo>
 ) -> TokenStream {
+    let include_file = include_file.to_str().unwrap();
+
     quote! {
         use ipc::ptr::ShmPtr;
-        use koala::mrpc::marshal::{MessageMeta, SgList, ExcavateContext};
-        use koala::mrpc::marshal::{MarshalError, UnmarshalError};
+        use interface::ipc::MessageMeta;
+        use mrpc-marshal::mrpc::marshal::{SgList, ExcavateContext};
+        use mrpc-marshal::marshal::{MarshalError, UnmarshalError};
 
         mod codegen {
-            include!();
+            include!(#include_file);
         }
 
         pub extern "Rust" fn marshal(messate_meta: &MessageMeta) -> Result<SgList, MarshalError> {
-
+            todo!()
         }
 
         pub unsafe extern "Rust" fn unmarshal(ctx: &mut ExcavateContext) -> Result<ShmPtr<Self>, UnmarshalError> {

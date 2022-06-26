@@ -10,10 +10,11 @@ use std::sync::Arc;
 use fnv::FnvHashMap;
 
 use ipc::mrpc;
-
+use ipc::mrpc::dp::WrIdentifier;
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
+use mrpc_marshal::{ExcavateContext, RpcMessage, SgE, SgList};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
@@ -22,8 +23,7 @@ use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
-use crate::mrpc::marshal::{ExcavateContext, MetaUnpacking, RpcMessage, SgE, SgList};
-use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
+use crate::mrpc::meta_unpack::MetaUnpacking;
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -442,7 +442,7 @@ impl RpcAdapterEngine {
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
-            salloc: &self.salloc.shared,
+            salloc: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
         // let mut timer = crate::timer::Timer::new();

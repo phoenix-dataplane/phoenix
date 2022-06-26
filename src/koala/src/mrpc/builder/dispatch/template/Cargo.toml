@@ -1,0 +1,13 @@
+[package]
+name = "dispatch"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+mrpc-derive = {{ path = {mrpc_derive} }}
+mrpc-marshal = {{ path = {mrpc_marshal} }}
+ipc = {{ path = {ipc} }}
+interface = {{ path = {interface} }}

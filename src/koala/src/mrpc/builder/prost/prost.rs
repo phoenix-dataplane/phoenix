@@ -15,11 +15,39 @@ pub struct Builder {
     field_attributes: Vec<(String, String)>,
     compile_well_known_types: bool,
     extern_paths: Vec<(String, String)>,
-    default_package_filename: String,
+    default_package_filename: Option<String>,
     protoc_args: Vec<OsString>,
     include_file: Option<PathBuf>,
     out_dir: Option<PathBuf>,
-    out_method_info_path: Option<PathBuf>
+    method_info_out_path: Option<PathBuf>
+}
+
+pub fn configure() -> Builder {
+    Builder {
+        file_descriptor_set_path: None, 
+        type_attributes: Vec::new(),
+        field_attributes: Vec::new(),
+        compile_well_known_types: false,
+        extern_paths: Vec::new(),
+        default_package_filename: None,
+        protoc_args: Vec::new(),
+        include_file: None,
+        out_dir: None,
+        method_info_out_path: None,
+    }
+}
+
+pub fn compile_protos(proto: impl AsRef<Path>) -> io::Result<()> {
+    let proto_path: &Path = proto.as_ref();
+
+    // directory the main .proto file resides in
+    let proto_dir = proto_path
+        .parent()
+        .expect("proto file should reside in a directory");
+
+    self::configure().compile(&[proto_path], &[proto_dir])?;
+
+    Ok(())
 }
 
 impl Builder {
@@ -90,6 +118,8 @@ impl Builder {
         self
     }
 
+    /// Configure the optional 
+
     /// Compile the .proto files and execute code generation using a
     /// custom `prost_build::Config`.
     /// Returns (service_id, func_id) -> method info mapping
@@ -138,7 +168,13 @@ impl Builder {
 
         config.compile_protos(protos, includes)?;
 
+        let method_info = Rc::try_unwrap(method_info).unwrap().into_inner();
 
-        todo!()
+        if let Some(out_method_info_path) = self.method_info_out_path {
+            let json = serde_json::to_string_pretty(&method_info).unwrap();
+            std::fs::write(out_method_info_path, json.as_bytes());
+        }
+        
+        Ok(method_info)
     }
 }

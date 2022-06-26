@@ -11,7 +11,7 @@ use crate::node::Node;
 use crate::resource::Error as ResourceError;
 
 use super::region::SharedRegion;
-use crate::salloc::state::{ShmMr, State as SallocState};
+use crate::salloc::state::{State as SallocState};
 
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
@@ -122,7 +122,7 @@ impl SallocEngine {
                     let mr = self.state.resource().recv_mr_table.get(mr_handle)?;
                     ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
                     let mr_local_addr = mr.as_ptr().expose_addr();
-                    let mr_remote_mapped = ShmMr {
+                    let mr_remote_mapped = mrpc_marshal::ShmRecvMr {
                         ptr: *app_vaddr,
                         len: mr.len(),
                         // TODO(cjr): update this

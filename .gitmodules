@@ -1,4 +1,4 @@
 [submodule "src/3rdparty/prost"]
 	path = src/3rdparty/prost
 	url = git@github.com:koalanet-project/prost.git
-	branch = mrpc
+	branch = mrpc-backend
