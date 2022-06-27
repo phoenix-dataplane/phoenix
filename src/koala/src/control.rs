@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
+use crate::engine::graph::create_channel;
 use crate::{
     mrpc, rpc_adapter, salloc,
     transport::{rdma, tcp},
@@ -110,7 +111,7 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (sender, receiver) = create_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -126,7 +127,7 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (sender, receiver) = create_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])

@@ -89,7 +89,7 @@ impl MrpcEngine {
     // we need to wait for RpcAdapter engine to finish outstanding send requests
     // (whether successful or not), to release message meta pool and shutdown mRPC engine
     async fn wait_meta_pool_free(&mut self) -> Result<(), DatapathError> {
-        use tokio::sync::mpsc::error::TryRecvError;
+        use crossbeam::channel::TryRecvError;
         while self.meta_pool.freelist.len() < META_POOL_CAP {
             match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => {
@@ -199,8 +199,7 @@ impl MrpcEngine {
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use dp::WorkRequest;
 
-        // let span = info_span!("MrpcEngine process_dp");
-        // let _enter = span.enter();
+        // let mut timer = crate::timer::Timer::new();
 
         match req {
             WorkRequest::Call(erased) => {
@@ -267,17 +266,20 @@ impl MrpcEngine {
                     .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
             }
         }
+
+        // timer.tick();
+        // log::info!("process_dp: {}", timer);
         Ok(())
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use tokio::sync::mpsc::error::TryRecvError;
+        use crate::engine::graph::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::RpcMessage(msg) => {
-                        let span = info_span!("MrpcEngine check_input_queue: recv_msg");
-                        let _enter = span.enter();
+                        // let span = info_span!("MrpcEngine check_input_queue: recv_msg");
+                        // let _enter = span.enter();
 
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
@@ -291,6 +293,7 @@ impl MrpcEngine {
                             shm_addr_backend: msg.addr_backend,
                         };
 
+                        // the following operation takes around 100ns
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {

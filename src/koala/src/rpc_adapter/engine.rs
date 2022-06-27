@@ -157,8 +157,8 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        use crate::engine::graph::TryRecvError;
         use crate::mrpc::codegen;
-        use tokio::sync::mpsc::error::TryRecvError;
         use ulib::uverbs::SendFlags;
 
         while let Some(msg) = self.local_buffer.pop_front() {
@@ -182,7 +182,7 @@ impl RpcAdapterEngine {
                 self.local_buffer.push_front(msg);
                 break;
             }
-            let mut timer = Timer::new();
+            // let mut timer = Timer::new();
 
             let cmid = &conn_ctx.cmid;
 
@@ -207,7 +207,7 @@ impl RpcAdapterEngine {
                     _ => unimplemented!(),
                 },
             };
-            timer.tick();
+            // timer.tick();
 
             // Sender marshals the data (gets an SgList)
             // Sender posts send requests from the SgList
@@ -228,7 +228,7 @@ impl RpcAdapterEngine {
 
             // TODO(cjr): credit handle logic for response
             let odp_mr = self.get_or_init_odp_mr();
-            timer.tick();
+            // timer.tick();
 
             {
                 // post send message meta
@@ -268,7 +268,7 @@ impl RpcAdapterEngine {
                 }
             }
 
-            timer.tick();
+            // timer.tick();
             // log::info!("check_input_queue: {}", timer);
 
             // Sender posts an extra SendWithImm
