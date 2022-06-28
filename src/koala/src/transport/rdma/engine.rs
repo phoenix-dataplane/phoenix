@@ -120,7 +120,8 @@ impl TransportEngine {
                 debug_assert!(max_count <= buffer_cap);
                 count = max_count.min(read_count);
                 for i in 0..count {
-                    self.wr_read_buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                    self.wr_read_buffer
+                        .push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 count
             })

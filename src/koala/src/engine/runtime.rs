@@ -87,7 +87,6 @@ pub(crate) struct Runtime {
 
     pub(crate) new_pending: AtomicBool,
     pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
-
     // dynamic profiling
     // new_profiling: AtomicBool,
     // profile_until: Mutex<Instant>,
@@ -221,11 +220,11 @@ impl Runtime {
 //     collector: Collector,
 //     root_span_guard: Option<GuardGeneric>,
 // }
-// 
+//
 // // SAFETY: We ensure profiler is only used within mainloop, it never go across
 // // thread boundary.
 // unsafe impl Send for Profiler {}
-// 
+//
 // impl Profiler {
 //     fn new(until: Instant) -> Self {
 //         let (root_span, collector) = Span::root("Runtime");

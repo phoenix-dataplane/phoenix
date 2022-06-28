@@ -24,7 +24,6 @@ pub struct MrpcEngine {
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
     // mRPC private buffer pools
-
     /// Buffer pool for meta and eager message
     pub(crate) meta_buf_pool: MetaBufferPool,
 
@@ -205,7 +204,8 @@ impl MrpcEngine {
                 // TODO(cjr): max_count <= read_count always holds
                 count = max_count.min(read_count);
                 for i in 0..count {
-                    self.wr_read_buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                    self.wr_read_buffer
+                        .push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 count
             })

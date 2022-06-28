@@ -1,5 +1,5 @@
-use std::time::Duration;
 use std::fmt;
+use std::time::Duration;
 
 use minstant::Instant;
 use smallvec::SmallVec;
@@ -34,7 +34,7 @@ impl Default for Timer {
 impl fmt::Display for Timer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Timer")
-         .field("duras", &self.durations)
-         .finish()
+            .field("duras", &self.durations)
+            .finish()
     }
 }

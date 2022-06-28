@@ -60,7 +60,9 @@ impl<'a, 'b, 'c, T> Future for BenchApp<'a, 'b, 'c, T> {
             // send request
             if self.scnt < self.args.total_iters {
                 self.starts.push(Instant::now());
-                let fut = self.client.say_hello(&self.reqs[self.scnt % self.args.provision_count]);
+                let fut = self
+                    .client
+                    .say_hello(&self.reqs[self.scnt % self.args.provision_count]);
                 self.reply_futures.push(Box::pin(fut));
                 self.scnt += 1;
             }
@@ -70,11 +72,14 @@ impl<'a, 'b, 'c, T> Future for BenchApp<'a, 'b, 'c, T> {
                 // We are good to unwrap because rcnt < scnt
                 // let _resp = self.reply_futures.next().await.unwrap()?;
                 match Pin::new(&mut self.reply_futures).poll_next(cx) {
-                    Poll::Ready(Some(_reply)) => {},
-                    Poll::Ready(None) => { panic!("impossible") }
+                    Poll::Ready(Some(_reply)) => {}
+                    Poll::Ready(None) => {
+                        panic!("impossible")
+                    }
                     Poll::Pending => continue,
                 };
-                self.latencies.push(self.starts[self.latencies.len()].elapsed());
+                self.latencies
+                    .push(self.starts[self.latencies.len()].elapsed());
                 self.rcnt += 1;
                 if self.warmup {
                     eprintln!("warmup: resp {} received", self.response_count);

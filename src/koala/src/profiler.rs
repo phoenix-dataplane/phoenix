@@ -35,11 +35,13 @@ macro_rules! enter_with_local_parent {
             // local_span_guard.add_property(|| ("[file]", String::from(file!())));
             // local_span_guard.add_property_static(("cat", module_path!()));
             // local_span_guard.add_property_static(("[file]", file!()));
-            local_span_guard.add_properties_static(|| [
-                ("cat", module_path!()),
-                ("[file]", file!()),
-                ("[line]", concat!(line!())),
-            ]);
+            local_span_guard.add_properties_static(|| {
+                [
+                    ("cat", module_path!()),
+                    ("[file]", file!()),
+                    ("[line]", concat!(line!())),
+                ]
+            });
             // local_span_guard.add_property(|| ("[line]", line!().to_string().into()));
             Some(local_span_guard)
         };

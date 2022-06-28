@@ -15,9 +15,9 @@ use ipc::unix::DomainSocket;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
+use crate::engine::graph::create_channel;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
-use crate::engine::graph::create_channel;
 use crate::{
     mrpc, rpc_adapter, salloc,
     transport::{rdma, tcp},
