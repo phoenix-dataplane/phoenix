@@ -28,3 +28,12 @@ pub struct MessageErased {
     pub shm_addr_app: usize,
     pub shm_addr_backend: usize,
 }
+
+mod sa {
+    use super::*;
+    use static_assertions::const_assert_eq;
+    use std::mem::size_of;
+
+    const_assert_eq!(size_of::<MessageMeta>(), 32);
+    const_assert_eq!(size_of::<MessageErased>(), 48);
+}

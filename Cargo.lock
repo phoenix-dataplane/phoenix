@@ -1064,6 +1064,7 @@ dependencies = [
  "smallstr",
  "smallvec 1.8.0",
  "spin",
+ "static_assertions",
  "structopt",
  "thiserror",
  "tokio",

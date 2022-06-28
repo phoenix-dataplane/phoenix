@@ -1,7 +1,7 @@
 name = "benchmark/rpc_bench_tput_2mb"
 description = "Run rpc_bench benchmark"
 group = "rpc_bench_tput"
-timeout_secs = 10
+timeout_secs = 15
 
 [[worker]]
 host = "danyang-06"

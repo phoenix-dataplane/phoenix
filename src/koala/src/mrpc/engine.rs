@@ -7,15 +7,13 @@ use interface::engine::SchedulingMode;
 use ipc::mrpc::dp::WrIdentifier;
 use ipc::mrpc::{cmd, control_plane, dp};
 
-use super::meta_pool::MessageMetaPool;
+use super::meta_pool::MetaBufferPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
 use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::node::Node;
-
-pub(crate) const META_POOL_CAP: usize = 128;
 
 pub struct MrpcEngine {
     pub(crate) _state: State,
@@ -25,7 +23,10 @@ pub struct MrpcEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
-    pub(crate) meta_pool: MessageMetaPool<META_POOL_CAP>,
+    // mRPC private buffer pools
+
+    /// Buffer pool for meta and eager message
+    pub(crate) meta_buf_pool: MetaBufferPool,
 
     pub(crate) _mode: SchedulingMode,
 
@@ -85,7 +86,7 @@ impl MrpcEngine {
 
             // 80-100ns, sometimes 200ns
             if let Status::Disconnected = self.check_cmd().await? {
-                self.wait_meta_pool_free().await?;
+                self.wait_outstanding_complete().await?;
                 return Ok(());
             }
             // timer.tick();
@@ -104,13 +105,13 @@ impl MrpcEngine {
 impl MrpcEngine {
     // we need to wait for RpcAdapter engine to finish outstanding send requests
     // (whether successful or not), to release message meta pool and shutdown mRPC engine
-    async fn wait_meta_pool_free(&mut self) -> Result<(), DatapathError> {
+    async fn wait_outstanding_complete(&mut self) -> Result<(), DatapathError> {
         use crossbeam::channel::TryRecvError;
-        while self.meta_pool.freelist.len() < META_POOL_CAP {
+        while !self.meta_buf_pool.is_full() {
             match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => {
                     if let EngineRxMessage::SendCompletion(wr_id) = msg {
-                        self.meta_pool.put(wr_id)?;
+                        self.meta_buf_pool.release(wr_id)?;
                     }
                 }
                 Err(TryRecvError::Disconnected) => return Ok(()),
@@ -255,16 +256,16 @@ impl MrpcEngine {
 
                         // construct message meta on heap
                         let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self
-                            .meta_pool
-                            .get(wr_identifier)
+                        let meta_buf_ptr = self
+                            .meta_buf_pool
+                            .obtain(wr_identifier)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
-                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                         }
 
                         let msg = RpcMessageTx {
-                            meta: meta_buf,
+                            meta_buf_ptr,
                             addr_backend: erased.shm_addr_backend,
                         };
                         // if access to message's data fields are desired,
@@ -284,16 +285,16 @@ impl MrpcEngine {
                         );
 
                         let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self
-                            .meta_pool
-                            .get(wr_identifier)
+                        let meta_buf_ptr = self
+                            .meta_buf_pool
+                            .obtain(wr_identifier)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
-                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                         }
 
                         let msg = RpcMessageTx {
-                            meta: meta_buf,
+                            meta_buf_ptr,
                             addr_backend: erased.shm_addr_backend,
                         };
                         // if access to message's data
@@ -344,7 +345,7 @@ impl MrpcEngine {
                     }
                     EngineRxMessage::SendCompletion(wr_id) => {
                         // release message meta buffer
-                        self.meta_pool.put(wr_id)?;
+                        self.meta_buf_pool.release(wr_id)?;
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {

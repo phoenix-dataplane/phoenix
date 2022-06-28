@@ -8,13 +8,16 @@ use interface::rpc::MessageMeta;
 use interface::Handle;
 use ipc::mrpc::dp::{WrIdentifier, RECV_RECLAIM_BS};
 
+use crate::mrpc::meta_pool::MetaBufferPtr;
+
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
 
 #[derive(Debug)]
 pub(crate) struct RpcMessageTx {
-    pub(crate) meta: Unique<MessageMeta>,
+    // Each RPC message is assigned an eager buffer
+    pub(crate) meta_buf_ptr: MetaBufferPtr,
     pub(crate) addr_backend: usize,
 }
 
