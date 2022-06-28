@@ -25,8 +25,8 @@ use crate::mrpc::marshal::{ExcavateContext, MetaUnpacking, RpcMessage, SgE, SgLi
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
-use crate::transport::rdma::ops::Ops;
 use crate::timer::Timer;
+use crate::transport::rdma::ops::Ops;
 
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
@@ -165,20 +165,12 @@ impl RpcAdapterEngine {
         use ulib::uverbs::SendFlags;
 
         while let Some(msg) = self.local_buffer.pop_front() {
-
             // get cmid from conn_id
-            // let span = info_span!("RpcAdapter check_input_queue: send_msg");
-            // let _enter = span.enter();
-
             let meta_ref = unsafe { msg.meta.as_ref() };
             let cmid_handle = meta_ref.conn_id;
             let call_id = meta_ref.call_id;
 
-            let conn_ctx = {
-                // let span = info_span!("get conn context");
-                // let _enter = span.enter();
-                self.state.resource().cmid_table.get(&cmid_handle)?
-            };
+            let conn_ctx = self.state.resource().cmid_table.get(&cmid_handle)?;
 
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
                 // some random number for now TODO(cjr): update this
@@ -233,40 +225,34 @@ impl RpcAdapterEngine {
             let odp_mr = self.get_or_init_odp_mr();
             // timer.tick();
 
-            {
-                // post send message meta
-                unsafe {
-                    cmid.post_send(
-                        odp_mr,
-                        meta_sge.ptr..meta_sge.ptr + meta_sge.len,
-                        0,
-                        SendFlags::SIGNALED,
-                    )?;
-                }
+            // post send message meta
+            unsafe {
+                cmid.post_send(
+                    odp_mr,
+                    meta_sge.ptr..meta_sge.ptr + meta_sge.len,
+                    0,
+                    SendFlags::SIGNALED,
+                )?;
+            }
 
-                for (i, &sge) in sglist.0.iter().enumerate() {
-                    let off = sge.ptr;
-                    if i + 1 < sglist.0.len() {
-                        // post send
-                        unsafe {
-                            // let span = info_span!("post_send");
-                            // let _enter = span.enter();
-                            cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
-                        }
-                    } else {
-                        // post send with imm
-                        tracing::trace!("post_send_imm, len={}", sge.len);
-                        unsafe {
-                            // let span = info_span!("post_send_with_imm");
-                            // let _enter = span.enter();
-                            cmid.post_send_with_imm(
-                                odp_mr,
-                                off..off + sge.len,
-                                ctx,
-                                SendFlags::SIGNALED,
-                                0,
-                            )?;
-                        }
+            for (i, &sge) in sglist.0.iter().enumerate() {
+                let off = sge.ptr;
+                if i + 1 < sglist.0.len() {
+                    // post send
+                    unsafe {
+                        cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                    }
+                } else {
+                    // post send with imm
+                    tracing::trace!("post_send_imm, len={}", sge.len);
+                    unsafe {
+                        cmid.post_send_with_imm(
+                            odp_mr,
+                            off..off + sge.len,
+                            ctx,
+                            SendFlags::SIGNALED,
+                            0,
+                        )?;
                     }
                 }
             }
@@ -282,8 +268,10 @@ impl RpcAdapterEngine {
             Ok(msg) => match msg {
                 EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
                 EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                    let mut timer = Timer::new();
                     let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
                     let cmid = &conn_ctx.cmid;
+                    timer.tick();
 
                     for call_id in call_ids {
                         let recv_mrs = self
@@ -292,6 +280,8 @@ impl RpcAdapterEngine {
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
                     }
+                    timer.tick();
+                    log::info!("ReclaimRecvBuf: {}", timer);
                 }
             },
             Err(TryRecvError::Empty) => {}
@@ -308,9 +298,6 @@ impl RpcAdapterEngine {
         use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
-        // let span = info_span!("unmarshal_and_deliver_up");
-        // let _enter = span.enter();
-
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = conn_ctx.cmid.as_handle();
@@ -319,8 +306,6 @@ impl RpcAdapterEngine {
 
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
-            // let span = info_span!("replenish the credits");
-            // let _enter = span.enter();
             let call_id = meta.call_id;
             let mut outstanding_req = conn_ctx.outstanding_req.lock();
             let req_ctx = outstanding_req.pop_front().unwrap();
@@ -334,8 +319,8 @@ impl RpcAdapterEngine {
             salloc: &self.salloc.shared,
         };
 
-        let mut timer = Timer::new();
-        timer.tick();
+        // let mut timer = Timer::new();
+        // timer.tick();
 
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
@@ -356,20 +341,20 @@ impl RpcAdapterEngine {
                 _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
             },
         };
-        timer.tick();
+        // timer.tick();
 
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
             addr_app,
         };
-        timer.tick();
+        // timer.tick();
 
         self.rx_outputs()[0]
             .send(EngineRxMessage::RpcMessage(msg))
             .unwrap();
 
-        timer.tick();
+        // timer.tick();
         // log::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
         // log::info!("unmarshal_and_deliver_up {}", timer);
 
@@ -387,9 +372,6 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    // let span = info_span!("RpcAdapter check_transport_service: wc polled");
-                    // let _enter = span.enter();
-
                     match wc.opcode {
                         WcOpcode::Send => {
                             // send completed,  do nothing
@@ -405,8 +387,6 @@ impl RpcAdapterEngine {
                         }
                         WcOpcode::Recv => {
                             let conn_ctx = {
-                                // let span = info_span!("push receiving_sgl");
-                                // let _enter = span.enter();
                                 let wr_ctx = self.state.resource().wr_contexts.get(&wc.wr_id)?;
                                 let cmid_handle = wr_ctx.conn_id;
                                 let conn_ctx =
