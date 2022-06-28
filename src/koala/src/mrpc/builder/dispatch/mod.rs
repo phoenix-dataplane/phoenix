@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{collections::HashMap, process::ExitStatus};
 
 use thiserror::Error;
 
@@ -20,7 +20,14 @@ pub enum Error {
     IO(#[from] std::io::Error),
     #[error("Syn Parse Error: {0}")]
     SynParse(#[from] syn::Error),
+    #[error("Cargo build failed")]
+    Cargo,
 }
+
+#[cfg(target_os = "macos")]
+pub const DYLIB_FILENAME: &'static str = "libdispatch.dylib";
+#[cfg(target_os = "linux")]
+pub const DYLIB_FILENAME: &'static str = "libdispatch.so";
 
 pub struct Builder {
     /// directory to emit the dispatch dylib crate
@@ -79,7 +86,16 @@ impl Builder {
         cmd.arg("build").arg("--release");
         cmd.current_dir(&self.emit_crate_dir);
 
-        let dylib_path = self.emit_crate_dir.join("target/dispatch.so");
+        let status = cmd.status()?;
+        if !status.success() {
+            // failed to run cargo build
+            return Err(Error::Cargo);
+        }
+
+        let dylib_path = self
+            .emit_crate_dir
+            .join(format!("target/release/{}", DYLIB_FILENAME));
+
         Ok(dylib_path)
     }
 }

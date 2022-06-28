@@ -113,40 +113,46 @@ pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result
     let (identifier, cached) = cache::check_cache(&protos, &cache_dir, PROTO_DIR)?;
     if !cached {
         cache::write_protos_to_cache(&identifier, &protos, &cache_dir, PROTO_DIR)?;
+        let prost_out_dir = cache_dir.join(&identifier).join(PROST_DIR);
+        if !prost_out_dir.is_dir() {
+            std::fs::create_dir(&prost_out_dir)?;
+        }
+
+        let method_info_out_path = cache_dir.join(&identifier).join("method_info.json");
+
+        let prost_builder = prost::configure()
+            .include_file(PROST_INCLUDE_FILE)
+            .out_dir(&prost_out_dir)
+            .method_info_out_path(&method_info_out_path);
+
+        let proto_paths = protos
+            .iter()
+            .enumerate()
+            .map(|(idx, _)| {
+                cache_dir
+                    .join(&identifier)
+                    .join(format!("{}/{}.proto", PROTO_DIR, idx))
+            })
+            .collect::<Vec<_>>();
+        let proto_include_path = cache_dir.join(&identifier).join(PROTO_DIR);
+        // run prost-build to generate Rust structs for messages in proto files
+        let method_info = prost_builder.compile(proto_paths.as_slice(), &[&proto_include_path])?;
+
+        // generate dispatch library
+        let emit_crate_dir = cache_dir.join(&identifier).join(DISPATCH_DIR);
+        let builder = dispatch::Builder {
+            emit_crate_dir,
+            prost_out_dir: Some(prost_out_dir),
+            include_filename: Some(PROST_INCLUDE_FILE.to_string()),
+            method_type_mapping: method_info,
+        };
+        let dylib_path = builder.compile()?;
+        Ok(dylib_path)
+    } else {
+        let dylib_path = cache_dir
+            .join(&identifier)
+            .join(DISPATCH_DIR)
+            .join(format!("target/release/{}", dispatch::DYLIB_FILENAME));
+        Ok(dylib_path)
     }
-
-    let prost_out_dir = cache_dir.join(&identifier).join(PROST_DIR);
-    if !prost_out_dir.is_dir() {
-        std::fs::create_dir(&prost_out_dir)?;
-    }
-    let method_info_out_path = cache_dir.join(&identifier).join("method_info.json");
-
-    let prost_builder = prost::configure()
-        .include_file(PROST_INCLUDE_FILE)
-        .out_dir(&prost_out_dir)
-        .method_info_out_path(&method_info_out_path);
-
-    let proto_paths = protos
-        .iter()
-        .enumerate()
-        .map(|(idx, _)| {
-            cache_dir
-                .join(&identifier)
-                .join(format!("{}/{}.proto", PROTO_DIR, idx))
-        })
-        .collect::<Vec<_>>();
-
-    let proto_include_path = cache_dir.join(&identifier).join(PROTO_DIR);
-    let method_info = prost_builder.compile(proto_paths.as_slice(), &[&proto_include_path])?;
-
-    let emit_crate_dir = cache_dir.join(&identifier).join(DISPATCH_DIR);
-    let builder = dispatch::Builder {
-        emit_crate_dir,
-        prost_out_dir: Some(prost_out_dir),
-        include_filename: Some(PROST_INCLUDE_FILE.to_string()),
-        method_type_mapping: method_info,
-    };
-
-    let dylib_path = builder.compile()?;
-    Ok(dylib_path)
 }

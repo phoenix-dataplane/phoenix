@@ -1,11 +1,28 @@
 use std::path::PathBuf;
 
+use structopt::StructOpt;
+
 use koala::mrpc::builder::build_dispatch_library;
 
-const PROTO: &'static str = include_str!("../proto/rpc_hello.proto");
-const CACHE_DIR: &'static str = "/tmp/KOALA_DISPATCH";
+const HELLO_PROTO: &'static str = include_str!("../proto/rpc_hello.proto");
+const DEFAULT_CACHE_DIR: &'static str = "/tmp/koala_dispatch";
+
+#[derive(StructOpt)]
+struct Opt {
+    #[structopt(short = "p", parse(from_os_str))]
+    proto: Option<PathBuf>,
+    #[structopt(short = "c", long = "cache", parse(from_os_str))]
+    cache_dir: Option<PathBuf>,
+}
 
 fn main() {
-    let protos = vec![PROTO.to_string()];
-    build_dispatch_library(protos, PathBuf::from(CACHE_DIR)).unwrap();
+    let opt = Opt::from_args();
+    let proto = if let Some(path) = opt.proto {
+        std::fs::read_to_string(path).unwrap()
+    } else {
+        HELLO_PROTO.to_string()
+    };
+    let protos = vec![proto];
+    let cache_dir = opt.cache_dir.unwrap_or(DEFAULT_CACHE_DIR.into());
+    build_dispatch_library(protos, cache_dir).unwrap();
 }

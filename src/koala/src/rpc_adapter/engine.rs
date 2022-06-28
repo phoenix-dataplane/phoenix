@@ -415,7 +415,6 @@ impl RpcAdapterEngine {
         sgl: SgList,
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<RpcId, DatapathError> {
-        use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
@@ -445,26 +444,6 @@ impl RpcAdapterEngine {
             dispatch_func(meta, &mut excavate_ctx).unwrap()
         };
         // timer.tick();
-
-        // let (addr_app, addr_backend) = match meta.msg_type {
-        //     RpcMsgType::Request => match meta.func_id {
-        //         3687134534u32 => {
-        //             let msg =
-        //                 unsafe { codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap() };
-        //             let (ptr_app, ptr_backend) = msg.to_raw_parts();
-        //             (ptr_app.addr().get(), ptr_backend.addr().get())
-        //         }
-        //         _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-        //     },
-        //     RpcMsgType::Response => match meta.func_id {
-        //         3687134534u32 => {
-        //             let msg = unsafe { codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap() };
-        //             let (ptr_app, ptr_backend) = msg.to_raw_parts();
-        //             (ptr_app.addr().get(), ptr_backend.addr().get())
-        //         }
-        //         _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-        //     },
-        // };
 
         let msg = RpcMessageRx {
             meta: meta_ptr,
