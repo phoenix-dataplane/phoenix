@@ -26,6 +26,7 @@ pub enum UnmarshalError {
     QueryAppAddr(#[from] AddressNotFound),
 }
 
+#[derive(Debug)]
 pub struct ShmRecvMr {
     pub ptr: usize,
     pub len: usize,

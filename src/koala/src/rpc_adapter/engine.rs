@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
@@ -14,7 +14,8 @@ use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc;
 use ipc::mrpc::dp::WrIdentifier;
-use mrpc_marshal::{ExcavateContext, RpcMessage, SgE, SgList};
+use mrpc_marshal::{ExcavateContext, RpcMessage, SgE, SgList, ShmRecvMr};
+use mrpc_marshal::{MarshalError, UnmarshalError};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
@@ -45,6 +46,12 @@ unsafe impl EngineLocalStorage for TlStorage {
     }
 }
 
+pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalError>;
+pub(crate) type UnmarshalFn = fn(
+    &MessageMeta,
+    &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
+) -> Result<(usize, usize), UnmarshalError>;
+
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
@@ -62,6 +69,8 @@ pub(crate) struct RpcAdapterEngine {
     // if in the future recv mr's addr is directly used as wr_id in post_recv,
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
+
+    pub(crate) dispatch_dylib: libloading::Library,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -332,27 +341,12 @@ impl RpcAdapterEngine {
             }
             // let mut timer = crate::timer::Timer::new();
 
-            // Sender marshals the data (gets an SgList)
-            let sglist = match meta_ref.msg_type {
-                RpcMsgType::Request => {
-                    match meta_ref.func_id {
-                        3687134534u32 => {
-                            // TODO: double-check whether it is valid to just conjure up an object on shm
-                            let ptr_backend = msg.addr_backend as *mut codegen::HelloRequest;
-                            let msg_ref = unsafe { &*ptr_backend };
-                            msg_ref.marshal().unwrap()
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-                RpcMsgType::Response => match meta_ref.func_id {
-                    3687134534u32 => {
-                        let ptr_backend = msg.addr_backend as *mut codegen::HelloReply;
-                        let msg_ref = unsafe { &*ptr_backend };
-                        msg_ref.marshal().unwrap()
-                    }
-                    _ => unimplemented!(),
-                },
+            let cmid = &conn_ctx.cmid;
+
+            let sglist = unsafe {
+                let dispatch_func: libloading::Symbol<MarshalFn> =
+                    self.dispatch_dylib.get(b"marshal").unwrap();
+                dispatch_func(meta_ref, msg.addr_backend).unwrap()
             };
             // timer.tick();
 
@@ -445,29 +439,32 @@ impl RpcAdapterEngine {
             salloc: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
-        // let mut timer = crate::timer::Timer::new();
-        // timer.tick();
-
-        let (addr_app, addr_backend) = match meta.msg_type {
-            RpcMsgType::Request => match meta.func_id {
-                3687134534u32 => {
-                    let msg =
-                        unsafe { codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap() };
-                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
-                    (ptr_app.addr().get(), ptr_backend.addr().get())
-                }
-                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-            },
-            RpcMsgType::Response => match meta.func_id {
-                3687134534u32 => {
-                    let msg = unsafe { codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap() };
-                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
-                    (ptr_app.addr().get(), ptr_backend.addr().get())
-                }
-                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-            },
+        let (addr_app, addr_backend) = unsafe {
+            let dispatch_func: libloading::Symbol<UnmarshalFn> =
+                self.dispatch_dylib.get(b"unmarshal").unwrap();
+            dispatch_func(meta, &mut excavate_ctx).unwrap()
         };
         // timer.tick();
+
+        // let (addr_app, addr_backend) = match meta.msg_type {
+        //     RpcMsgType::Request => match meta.func_id {
+        //         3687134534u32 => {
+        //             let msg =
+        //                 unsafe { codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap() };
+        //             let (ptr_app, ptr_backend) = msg.to_raw_parts();
+        //             (ptr_app.addr().get(), ptr_backend.addr().get())
+        //         }
+        //         _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+        //     },
+        //     RpcMsgType::Response => match meta.func_id {
+        //         3687134534u32 => {
+        //             let msg = unsafe { codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap() };
+        //             let (ptr_app, ptr_backend) = msg.to_raw_parts();
+        //             (ptr_app.addr().get(), ptr_backend.addr().get())
+        //         }
+        //         _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
+        //     },
+        // };
 
         let msg = RpcMessageRx {
             meta: meta_ptr,

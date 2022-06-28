@@ -82,6 +82,11 @@ impl RpcAdapterEngineBuilder {
         let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
+        // TODO: temp code here
+        let dispatch_lib = unsafe {
+            libloading::Library::new("/tmp/KOALA_DISPATCH/78244871e1395384b7fb1067d7f0b9c1/dispatch/target/release/libdispatch.so").unwrap()
+        };
+
         Ok(RpcAdapterEngine {
             state,
             odp_mr: None,
@@ -94,6 +99,7 @@ impl RpcAdapterEngineBuilder {
             _mode: self.mode,
             indicator: None,
             recv_mr_usage: fnv::FnvHashMap::default(),
+            dispatch_dylib: dispatch_lib,
         })
     }
 }

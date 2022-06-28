@@ -1052,6 +1052,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "libc",
+ "libloading",
  "md5",
  "memfd",
  "memmap-fixed",

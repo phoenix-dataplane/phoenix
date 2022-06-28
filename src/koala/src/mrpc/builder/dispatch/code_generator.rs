@@ -72,6 +72,7 @@ pub fn generate(
             include!(#include_file);
         }
 
+        #[no_mangle]
         pub extern "Rust" fn marshal(
             meta: &MessageMeta,
             addr_backend: usize,
@@ -92,6 +93,7 @@ pub fn generate(
             }
         }
 
+        #[no_mangle]
         pub unsafe extern "Rust" fn unmarshal(
             meta: &MessageMeta,
             ctx: &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>

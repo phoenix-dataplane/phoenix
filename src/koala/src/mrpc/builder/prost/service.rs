@@ -28,8 +28,8 @@ impl prost_build::ServiceGenerator for ServiceRecorder {
             );
             let output_type_canonical = resolve_ident(
                 package,
-                &method.input_proto_type,
-                &method.input_type,
+                &method.output_proto_type,
+                &method.output_type,
                 self.compile_well_known_types,
             );
             let method_info = RpcMethodInfo {
