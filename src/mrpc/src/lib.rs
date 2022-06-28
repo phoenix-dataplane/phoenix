@@ -25,6 +25,9 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
 
+// with_borrow_mut
+#![feature(local_key_cell_methods)]
+
 use std::io;
 
 use thiserror::Error;

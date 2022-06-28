@@ -26,6 +26,7 @@ pub(crate) struct TransportEngine {
 
     pub(crate) ops: Ops,
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
+    pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
 crate::unimplemented_ungradable!(TransportEngine);
@@ -95,13 +96,13 @@ impl TransportEngine {
 
     fn check_dp(&mut self, flushing: bool) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
-        const BUF_LEN: usize = 32;
+        let buffer_cap = self.wr_read_buffer.capacity();
 
         // Fetch available work requests. Copy them into a buffer.
         let max_count = if !flushing {
-            BUF_LEN.min(self.customer.get_avail_wc_slots()?)
+            buffer_cap.min(self.customer.get_avail_wc_slots()?)
         } else {
-            BUF_LEN
+            buffer_cap
         };
         if max_count == 0 {
             return Ok(Progress(0));
@@ -110,22 +111,24 @@ impl TransportEngine {
         // TODO(cjr): flamegraph shows that a large portion of time is spent in this with_capacity
         // optimize this with smallvec or so.
         let mut count = 0;
-        let mut buffer = Vec::with_capacity(BUF_LEN);
+        self.wr_read_buffer.clear();
 
         self.customer
             .dequeue_wr_with(|ptr, read_count| unsafe {
                 // TODO(cjr): One optimization is to post all available send requests in one batch
                 // using doorbell
-                debug_assert!(max_count <= BUF_LEN);
+                debug_assert!(max_count <= buffer_cap);
                 count = max_count.min(read_count);
                 for i in 0..count {
-                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                    self.wr_read_buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 count
             })
             .unwrap_or_else(|e| panic!("check_dp: {}", e));
 
         // Process the work requests.
+        let buffer = mem::take(&mut self.wr_read_buffer);
+
         for wr in &buffer {
             let result = self.process_dp(wr, flushing);
             match result {
@@ -149,6 +152,8 @@ impl TransportEngine {
                 }
             }
         }
+
+        self.wr_read_buffer = buffer;
 
         self.try_flush_cq_err_buffer().unwrap();
 

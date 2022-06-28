@@ -138,53 +138,55 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
     }
 }
 
+thread_local! {
+    static COMP_READ_BUFFER: RefCell<Vec<dp::Completion>> = RefCell::new(Vec::with_capacity(32));
+}
+
 pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
-    const BUF_LEN: usize = 32;
-    let mut buffer = Vec::with_capacity(BUF_LEN);
     MRPC_CTX.with(|ctx| {
-        ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-            for i in 0..count {
-                let c = ptr.add(i).cast::<dp::Completion>().read();
-                buffer.push(c);
-            }
-            count
-        })?;
-        for c in buffer {
-            match c {
-                dp::Completion::Recv(msg) => {
-                    let conn_id = msg.meta.conn_id;
-                    let call_id = msg.meta.call_id;
-                    match msg.meta.msg_type {
-                        RpcMsgType::Request => {
-                            let stub_id = CONN_SERVER_STUB_MAP
-                                .with(|map| map.borrow().get(&conn_id).map(|x| *x));
-                            if let Some(stub_id) = stub_id {
-                                RECV_REQUEST_CACHE.with(|cache| {
-                                    if let Some(buffer) = cache.borrow_mut().get_mut(&stub_id) {
-                                        buffer.push(msg);
-                                    }
-                                })
+        COMP_READ_BUFFER.with_borrow_mut(|buffer| {
+            buffer.clear();
+
+            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
+                for i in 0..count {
+                    let c = ptr.add(i).cast::<dp::Completion>().read();
+                    buffer.push(c);
+                }
+                count
+            })?;
+
+            for c in buffer {
+                match c {
+                    dp::Completion::Recv(msg) => {
+                        let conn_id = msg.meta.conn_id;
+                        let call_id = msg.meta.call_id;
+                        match msg.meta.msg_type {
+                            RpcMsgType::Request => {
+                                let stub_id = CONN_SERVER_STUB_MAP
+                                    .with(|map| map.borrow().get(&conn_id).map(|x| *x));
+                                if let Some(stub_id) = stub_id {
+                                    RECV_REQUEST_CACHE.with_borrow_mut(|cache| {
+                                        cache.entry(stub_id).and_modify(|b| b.push(*msg));
+                                    })
+                                }
                             }
+                            RpcMsgType::Response => RECV_REPLY_CACHE.with_borrow_mut(|cache| {
+                                cache.insert(dp::WrIdentifier(conn_id, call_id), *msg);
+                            }),
                         }
-                        RpcMsgType::Response => RECV_REPLY_CACHE.with(|cache| {
-                            cache
-                                .borrow_mut()
-                                .insert(dp::WrIdentifier(conn_id, call_id), msg);
-                        }),
+                    }
+                    dp::Completion::SendCompletion(dp::WrIdentifier(conn_id, call_id)) => {
+                        let msg_id = OUTSTANDING_WR.with_borrow_mut(|outstanding| {
+                            outstanding
+                                .remove(&dp::WrIdentifier(*conn_id, *call_id))
+                                .expect("received unrecognized WR completion ACK")
+                        });
+                        OBJECT_RECLAIMER.register_wr_completion(msg_id, 1);
                     }
                 }
-                dp::Completion::SendCompletion(dp::WrIdentifier(conn_id, call_id)) => {
-                    let msg_id = OUTSTANDING_WR.with(|outstanding| {
-                        outstanding
-                            .borrow_mut()
-                            .remove(&dp::WrIdentifier(conn_id, call_id))
-                            .expect("received unrecognized WR completion ACK")
-                    });
-                    OBJECT_RECLAIMER.register_wr_completion(msg_id, 1);
-                }
             }
-        }
-        Ok(())
+            Ok(())
+        })
     })
 }
 
@@ -414,12 +416,13 @@ impl Server {
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
     pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+        let mut msg_buffer = Vec::with_capacity(32);
         loop {
             // check new incoming connections
             self.check_new_incoming_connection()?;
             // check new requests
-            let msgs = self.poll_requests()?;
-            self.post_replies(msgs)?;
+            self.poll_requests(&mut msg_buffer)?;
+            self.post_replies(&mut msg_buffer)?;
         }
     }
 
@@ -502,9 +505,10 @@ impl Server {
 
     fn post_replies(
         &mut self,
-        msgs: Vec<(MessageErased, u64)>,
+        msg_buffer: &mut Vec<(MessageErased, u64)>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-        for (reply, msg_id) in msgs {
+        let replies = msg_buffer.drain(..);
+        for (reply, msg_id) in replies {
             self.post_reply(reply, msg_id)?;
         }
         Ok(())
@@ -512,10 +516,10 @@ impl Server {
 
     fn poll_requests(
         &mut self,
-    ) -> Result<Vec<(MessageErased, u64)>, std::boxed::Box<dyn std::error::Error>> {
-        let mut msgs = Vec::with_capacity(32);
-
+        msg_buffer: &mut Vec<(MessageErased, u64)>,
+    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         check_completion_queue()?;
+
         RECV_REQUEST_CACHE.with(|cache| {
             let mut borrow = cache.borrow_mut();
 
@@ -526,7 +530,7 @@ impl Server {
                         let recv_buffer =
                             self.recv_reclaim_buffer.get(&request.meta.conn_id).unwrap();
                         let (reply_erased, msg_id) = s.call(request, recv_buffer);
-                        msgs.push((reply_erased, msg_id));
+                        msg_buffer.push((reply_erased, msg_id));
                     }
                     None => {
                         eprintln!("unrecognized request: {:?}", request);
@@ -535,7 +539,7 @@ impl Server {
             }
         });
 
-        Ok(msgs)
+        Ok(())
     }
 }
 

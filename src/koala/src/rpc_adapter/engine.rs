@@ -112,32 +112,35 @@ impl Drop for RpcAdapterEngine {
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+            // let mut timer = Timer::new();
             let mut work = 0;
-            // check input queue
+            // check input queue, ~100ns
             match self.check_input_queue()? {
                 Progress(n) => work += n,
                 Status::Disconnected => return Ok(()),
             }
+            // timer.tick();
 
-            // check service
+            // check service, ~350-600ns
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
             }
+            // timer.tick();
 
-            // check input command queue
+            // check input command queue, ~50ns
             match self.check_input_cmd_queue().await? {
                 Progress(n) => work += n,
                 Status::Disconnected => return Ok(()),
             }
+            // timer.tick();
 
-            // TODO(cjr): check incoming connect request
-            // the CmIdListener::get_request() is currently synchronous.
-            // need to make it asynchronous and low cost to check.
-            // TODO(cjr): move this to another engine and runtime
+            // TODO(cjr): check incoming connect request, ~200ns
             self.check_incoming_connection().await?;
+            // timer.tick();
 
             self.indicator.as_ref().unwrap().set_nwork(work);
 
+            // log::info!("RpcAdapter mainloop: {}", timer);
             future::yield_now().await;
         }
     }

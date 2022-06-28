@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::mem;
 
 use interface::rpc::MessageErased;
 
@@ -31,6 +32,7 @@ pub struct MrpcEngine {
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
 crate::unimplemented_ungradable!(MrpcEngine);
@@ -63,23 +65,37 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+            // let mut timer = crate::timer::Timer::new();
             let mut nwork = 0;
 
+            // 400-900ns ->
+            // no work: 40ns
+            // has work: 200-1000ns
             if let Progress(n) = self.check_customer()? {
                 nwork += n;
             }
+            // timer.tick();
 
+            // no work: 100-150ns
+            // has work: 300-600ns
             if let Progress(n) = self.check_input_queue()? {
                 nwork += n;
             }
+            // timer.tick();
 
+            // 80-100ns, sometimes 200ns
             if let Status::Disconnected = self.check_cmd().await? {
                 self.wait_meta_pool_free().await?;
                 return Ok(());
             }
+            // timer.tick();
 
+            // 50ns
             self.check_new_incoming_connection()?;
             self.indicator.as_ref().unwrap().set_nwork(nwork);
+            // timer.tick();
+            // log::info!("mrpc mainloop: {}", timer);
+
             future::yield_now().await;
         }
     }
@@ -165,33 +181,58 @@ impl MrpcEngine {
 
     fn check_customer(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
-        const BUF_LEN: usize = 32;
+        let buffer_cap = self.wr_read_buffer.capacity();
+        // let mut timer = crate::timer::Timer::new();
 
+        // 15ns
         // Fetch available work requests. Copy them into a buffer.
-        let max_count = BUF_LEN.min(self.customer.get_avail_wc_slots()?);
+        let max_count = buffer_cap.min(self.customer.get_avail_wc_slots()?);
         if max_count == 0 {
             return Ok(Progress(0));
         }
+        // timer.tick();
 
+        // 300-10us, mostly 300ns (Vec::with_capacity())
         let mut count = 0;
-        let mut buffer = Vec::with_capacity(BUF_LEN);
+        self.wr_read_buffer.clear();
 
+        // timer.tick();
+
+        // 60-150ns
         self.customer
             .dequeue_wr_with(|ptr, read_count| unsafe {
-                debug_assert!(max_count <= BUF_LEN);
+                // TODO(cjr): max_count <= read_count always holds
                 count = max_count.min(read_count);
                 for i in 0..count {
-                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                    self.wr_read_buffer.push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 count
             })
             .unwrap_or_else(|e| panic!("check_customer: {}", e));
 
         // Process the work requests.
+        // timer.tick();
+
+        // no work: 10ns
+        // has work: 100-400ns
+        let buffer = mem::take(&mut self.wr_read_buffer);
 
         for wr in &buffer {
-            self.process_dp(wr)?;
+            let ret = self.process_dp(wr);
+            match ret {
+                Ok(()) => {}
+                Err(e) => {
+                    self.wr_read_buffer = buffer;
+                    // TODO(cjr): error handling
+                    return Err(e);
+                }
+            }
         }
+
+        self.wr_read_buffer = buffer;
+
+        // timer.tick();
+        // log::info!("check_customer: {}", timer);
 
         Ok(Progress(count))
     }
@@ -278,9 +319,6 @@ impl MrpcEngine {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::RpcMessage(msg) => {
-                        // let span = info_span!("MrpcEngine check_input_queue: recv_msg");
-                        // let _enter = span.enter();
-
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
                             "mRPC engine send message to App, call_id={}",

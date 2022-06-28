@@ -58,6 +58,7 @@ impl MrpcEngineBuilder {
     }
 
     fn build(self) -> Result<MrpcEngine> {
+        const BUF_LEN: usize = 32;
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
@@ -71,6 +72,7 @@ impl MrpcEngineBuilder {
             _mode: self.mode,
             transport_type: None,
             indicator: None,
+            wr_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }
 }

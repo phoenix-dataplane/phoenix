@@ -75,6 +75,7 @@ impl TransportEngineBuilder {
     }
 
     fn build(self) -> Result<TransportEngine> {
+        const BUF_LEN: usize = 32;
         // create or get the state of the process
         let node = Node::new(EngineType::RdmaTransport);
 
@@ -85,6 +86,7 @@ impl TransportEngineBuilder {
             _mode: self.mode,
             ops: self.ops,
             cq_err_buffer: VecDeque::new(),
+            wr_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }
 }
