@@ -1,16 +1,89 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
+pub mod cache;
 pub mod dispatch;
 pub mod prost;
-pub mod cache;
 
 const PROTO_DIR: &'static str = "proto";
+const PROST_DIR: &'static str = "prost";
+const DISPATCH_DIR: &'static str = "dispatch";
+const PROST_INCLUDE_FILE: &'static str = "_include.rs";
 
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct MethodIdentifier(u32, u32);
+
+impl Serialize for MethodIdentifier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}_{}", self.0, self.1))
+    }
+}
+
+struct MethodIdentifierVisitor;
+
+impl<'de> serde::de::Visitor<'de> for MethodIdentifierVisitor {
+    type Value = MethodIdentifier;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a underscore seperate pair of service_id and func_id)")
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let mut iter = s.split('_');
+        let service_id = if let Some(service_id) = iter.next() {
+            if let Ok(id) = u32::from_str(service_id) {
+                id
+            } else {
+                return Err(serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(s),
+                    &self,
+                ));
+            }
+        } else {
+            return Err(serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(s),
+                &self,
+            ));
+        };
+
+        let func_id = if let Some(func_id) = iter.next() {
+            if let Ok(id) = u32::from_str(func_id) {
+                id
+            } else {
+                return Err(serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(s),
+                    &self,
+                ));
+            }
+        } else {
+            return Err(serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(s),
+                &self,
+            ));
+        };
+
+        let method_id = MethodIdentifier(service_id, func_id);
+        Ok(method_id)
+    }
+}
+
+impl<'de> Deserialize<'de> for MethodIdentifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(MethodIdentifierVisitor)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RpcMethodInfo {
@@ -23,16 +96,57 @@ pub struct RpcMethodInfo {
     // instead of starting with "::" qualifier
     pub input_type: String,
     // output type's path
-    pub output_type: String    
-} 
+    pub output_type: String,
+}
 
-pub fn build_dispatch_library(
-    protos: Vec<String>,
-    cache_dir: PathBuf
-) {
-    let (identifier, cached) = cache::check_cache(&protos, cache_dir, PROTO_DIR);
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("IO Error: {0}")]
+    IO(#[from] std::io::Error),
+    #[error("prost-build Error: {0}")]
+    ProstBuild(#[from] prost::Error),
+    #[error("Dispatch Compile Error: {0}")]
+    DispatchCompile(#[from] dispatch::Error),
+}
+
+pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result<PathBuf, Error> {
+    let (identifier, cached) = cache::check_cache(&protos, &cache_dir, PROTO_DIR)?;
     if !cached {
-        cache::write_protos_to_cache(identifier, &protos, cache_dir, PROTO_DIR);
+        cache::write_protos_to_cache(&identifier, &protos, &cache_dir, PROTO_DIR)?;
     }
-    
+
+    let prost_out_dir = cache_dir.join(&identifier).join(PROST_DIR);
+    if !prost_out_dir.is_dir() {
+        std::fs::create_dir(&prost_out_dir)?;
+    }
+    let method_info_out_path = cache_dir.join(&identifier).join("method_info.json");
+
+    let prost_builder = prost::configure()
+        .include_file(PROST_INCLUDE_FILE)
+        .out_dir(&prost_out_dir)
+        .method_info_out_path(&method_info_out_path);
+
+    let proto_paths = protos
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| {
+            cache_dir
+                .join(&identifier)
+                .join(format!("{}/{}.proto", PROTO_DIR, idx))
+        })
+        .collect::<Vec<_>>();
+
+    let proto_include_path = cache_dir.join(&identifier).join(PROTO_DIR);
+    let method_info = prost_builder.compile(proto_paths.as_slice(), &[&proto_include_path])?;
+
+    let emit_crate_dir = cache_dir.join(&identifier).join(DISPATCH_DIR);
+    let builder = dispatch::Builder {
+        emit_crate_dir,
+        prost_out_dir: Some(prost_out_dir),
+        include_filename: Some(PROST_INCLUDE_FILE.to_string()),
+        method_type_mapping: method_info,
+    };
+
+    let dylib_path = builder.compile()?;
+    Ok(dylib_path)
 }

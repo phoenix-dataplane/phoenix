@@ -49,7 +49,7 @@ minstant = "0.1.1"
 static_assertions = "1.1.0"
 mrpc-derive = { path = "../mrpc-derive" }
 mrpc-marshal = { path = "../mrpc-marshal" }
-prost-build = { path = "../3rdparty/prost/prost-build" }
+prost-build = { path = "../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
 itertools = "0.10.3"
 crc32fast = "1.3.2"
 syn = "1.0.98"

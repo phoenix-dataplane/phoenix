@@ -1,8 +1,7 @@
 use std::ptr::Unique;
 
-use interface::rpc::MessageMeta; 
+use interface::rpc::MessageMeta;
 use mrpc_marshal::{SgE, UnmarshalError};
-
 
 pub(crate) trait MetaUnpacking: Sized {
     unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, UnmarshalError>;

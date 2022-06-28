@@ -11,7 +11,7 @@ use crate::node::Node;
 use crate::resource::Error as ResourceError;
 
 use super::region::SharedRegion;
-use crate::salloc::state::{State as SallocState};
+use crate::salloc::state::State as SallocState;
 
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,

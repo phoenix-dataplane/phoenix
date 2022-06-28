@@ -640,6 +640,7 @@ dependencies = [
  "fnv",
  "interface",
  "ipc",
+ "koala",
  "lazy_static",
  "libc",
  "linked-hash-map",

@@ -8,8 +8,8 @@ use thiserror::Error;
 
 use ipc::ptr::ShmPtr;
 
-pub mod shadow;
 pub mod emplacement;
+pub mod shadow;
 
 #[derive(Error, Debug)]
 pub enum MarshalError {
@@ -80,13 +80,18 @@ pub struct SgList(pub Vec<SgE>);
 
 pub struct ExcavateContext<'a, A: AddressArbiter> {
     pub sgl: std::slice::Iter<'a, SgE>,
-    pub salloc: &'a A
+    pub salloc: &'a A,
 }
 
 pub trait RpcMessage: Sized {
     fn marshal(&self) -> Result<SgList, MarshalError>;
-    unsafe fn unmarshal<'a, A: AddressArbiter>(ctx: &mut ExcavateContext<'a, A>) -> Result<ShmPtr<Self>, UnmarshalError>;
+    unsafe fn unmarshal<'a, A: AddressArbiter>(
+        ctx: &mut ExcavateContext<'a, A>,
+    ) -> Result<ShmPtr<Self>, UnmarshalError>;
     fn emplace(&self, sgl: &mut SgList) -> Result<(), MarshalError>;
-    unsafe fn excavate<'a, A: AddressArbiter>(&mut self, ctx: &mut ExcavateContext<'a, A>) -> Result<(), UnmarshalError>;
+    unsafe fn excavate<'a, A: AddressArbiter>(
+        &mut self,
+        ctx: &mut ExcavateContext<'a, A>,
+    ) -> Result<(), UnmarshalError>;
     fn extent(&self) -> usize;
 }

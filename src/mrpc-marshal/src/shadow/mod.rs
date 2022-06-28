@@ -4,3 +4,5 @@
 
 pub mod raw_vec;
 pub mod vec;
+
+pub use vec::Vec;

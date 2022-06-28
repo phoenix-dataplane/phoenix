@@ -61,14 +61,14 @@ impl Field {
     pub fn emplace(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                mrpc_marshal::emplacement::message::emplace_optional(&#ident, sgl)?;
+                ::mrpc_marshal::emplacement::message::emplace_optional(&#ident, sgl)?;
             },
             Label::Required => quote! {
-                mrpc_marshal::emplacement::message::emplace(&#ident, sgl)?;
+                ::mrpc_marshal::emplacement::message::emplace(&#ident, sgl)?;
             },
             // #ident should be self.field, which is Vec<M>, M: RpcMessage
             Label::Repeated => quote! {
-                mrpc_marshal::emplacement::message::emplace_repeated(&#ident, sgl)?;
+                ::mrpc_marshal::emplacement::message::emplace_repeated(&#ident, sgl)?;
             },
         }
     }
@@ -76,13 +76,13 @@ impl Field {
     pub fn excavate(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                mrpc_marshal::emplacement::message::excavate_optional(&mut #ident, ctx)?;
+                ::mrpc_marshal::emplacement::message::excavate_optional(&mut #ident, ctx)?;
             },
             Label::Required => quote! {
-                mrpc_marshal::emplacement::message::excavate(&mut #ident, ctx)?;
+                ::mrpc_marshal::emplacement::message::excavate(&mut #ident, ctx)?;
             },
             Label::Repeated => quote! {
-                mrpc_marshal::emplacement::message::excavate_repeated(&mut #ident, ctx)?;
+                ::mrpc_marshal::emplacement::message::excavate_repeated(&mut #ident, ctx)?;
             },
         }
     }
@@ -90,13 +90,13 @@ impl Field {
     pub fn extent(&self, ident: TokenStream) -> TokenStream {
         match self.label {
             Label::Optional => quote! {
-                mrpc_marshal::emplacement::message::extent_optional(&#ident)
+                ::mrpc_marshal::emplacement::message::extent_optional(&#ident)
             },
             Label::Required => quote! {
-                mrpc_marshal::emplacement::message::extent(&#ident)
+                ::mrpc_marshal::emplacement::message::extent(&#ident)
             },
             Label::Repeated => quote! {
-                mrpc_marshal::emplacement::message::extent_repeated(&#ident)
+                ::mrpc_marshal::emplacement::message::extent_repeated(&#ident)
             },
         }
     }

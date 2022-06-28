@@ -1,5 +1,5 @@
-use crate::{ExcavateContext, MarshalError, SgE, SgList, UnmarshalError, AddressArbiter};
 use crate::shadow::vec::Vec;
+use crate::{AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
 use ipc::ptr::ShmPtr;
 
 #[inline(always)]

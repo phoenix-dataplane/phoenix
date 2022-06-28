@@ -1,8 +1,10 @@
 macro_rules! numeric {
     ($ty:ty, $proto_ty:ident) => {
         pub mod $proto_ty {
-            use crate::{ExcavateContext, MarshalError, SgE, SgList, UnmarshalError, AddressArbiter};
             use crate::shadow::vec::Vec;
+            use crate::{
+                AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError,
+            };
             use ipc::ptr::ShmPtr;
 
             #[inline(always)]

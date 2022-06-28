@@ -120,7 +120,7 @@ impl Builder {
 
         config.service_generator(self.service_generator());
 
-        config.compile_protos(protos, includes)?;
+        config.compile_protos_mrpc_frontend(protos, includes)?;
 
         Ok(())
     }

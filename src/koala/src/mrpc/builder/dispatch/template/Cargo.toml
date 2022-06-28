@@ -7,7 +7,8 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-mrpc-derive = {{ path = {mrpc_derive} }}
-mrpc-marshal = {{ path = {mrpc_marshal} }}
-ipc = {{ path = {ipc} }}
-interface = {{ path = {interface} }}
+mrpc-derive = {{ path = "{mrpc_derive}" }}
+mrpc-marshal = {{ path = "{mrpc_marshal}" }}
+ipc = {{ path = "{ipc}" }}
+interface = {{ path = "{interface}" }}
+spin = "0.9.3"

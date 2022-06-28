@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use fnv::FnvHashMap;
 
-use ipc::mrpc;
-use ipc::mrpc::dp::WrIdentifier;
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
+use ipc::mrpc;
+use ipc::mrpc::dp::WrIdentifier;
 use mrpc_marshal::{ExcavateContext, RpcMessage, SgE, SgList};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};

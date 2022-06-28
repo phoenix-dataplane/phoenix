@@ -119,23 +119,4 @@ impl Resource {
             .insert(local_addr, remote_buf)
             .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
     }
-
-    #[inline]
-    pub(crate) fn query_app_addr(&self, backend_addr: usize) -> Result<usize, ResourceError> {
-        // shortcut because we map app_addr to the same address as backend_addr
-        // Ok(backend_addr)
-
-        let addr_map = self.recv_mr_addr_map.lock();
-        match addr_map.range(0..=backend_addr).last() {
-            Some(kv) => {
-                if kv.0 + kv.1.len >= backend_addr {
-                    let offset = backend_addr & (kv.1.align - 1);
-                    Ok(kv.1.ptr + offset)
-                } else {
-                    Err(ResourceError::NotFound)
-                }
-            }
-            None => Err(ResourceError::NotFound),
-        }
-    }
 }

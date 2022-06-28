@@ -1,13 +1,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::mrpc::builder::{MethodIdentifier, RpcMethodInfo};
 
 use super::service::ServiceRecorder;
-
+use super::Error;
 
 pub struct Builder {
     file_descriptor_set_path: Option<PathBuf>,
@@ -19,12 +19,12 @@ pub struct Builder {
     protoc_args: Vec<OsString>,
     include_file: Option<PathBuf>,
     out_dir: Option<PathBuf>,
-    method_info_out_path: Option<PathBuf>
+    method_info_out_path: Option<PathBuf>,
 }
 
 pub fn configure() -> Builder {
     Builder {
-        file_descriptor_set_path: None, 
+        file_descriptor_set_path: None,
         type_attributes: Vec::new(),
         field_attributes: Vec::new(),
         compile_well_known_types: false,
@@ -37,7 +37,9 @@ pub fn configure() -> Builder {
     }
 }
 
-pub fn compile_protos(proto: impl AsRef<Path>) -> io::Result<()> {
+pub fn compile_protos(
+    proto: impl AsRef<Path>,
+) -> Result<HashMap<MethodIdentifier, RpcMethodInfo>, Error> {
     let proto_path: &Path = proto.as_ref();
 
     // directory the main .proto file resides in
@@ -45,12 +47,37 @@ pub fn compile_protos(proto: impl AsRef<Path>) -> io::Result<()> {
         .parent()
         .expect("proto file should reside in a directory");
 
-    self::configure().compile(&[proto_path], &[proto_dir])?;
+    let method_info = self::configure().compile(&[proto_path], &[proto_dir])?;
 
-    Ok(())
+    Ok(method_info)
 }
 
 impl Builder {
+    /// Set the output directory to generate code to.
+    ///
+    /// Defaults to the `OUT_DIR` environment variable.
+    pub fn out_dir(mut self, out_dir: impl AsRef<Path>) -> Self {
+        self.out_dir = Some(out_dir.as_ref().to_path_buf());
+        self
+    }
+
+    /// Configures for prost-build what filename protobufs with no package definition are written to
+    pub fn default_package_filename<S>(mut self, filename: S) -> Self
+    where
+        S: Into<String>,
+    {
+        self.default_package_filename = Some(filename.into());
+        self
+    }
+
+    /// Set the output path for the method info (method id to input/output types mapping).
+    ///
+    /// If not set, the method info will not be written to file.
+    pub fn method_info_out_path(mut self, out_path: impl AsRef<Path>) -> Self {
+        self.method_info_out_path = Some(out_path.as_ref().to_path_buf());
+        self
+    }
+
     /// Generate a file containing the encoded `prost_types::FileDescriptorSet` for protocol buffers
     /// modules. This is required for implementing gRPC Server Reflection.
     pub fn file_descriptor_set_path(mut self, path: impl AsRef<Path>) -> Self {
@@ -118,7 +145,16 @@ impl Builder {
         self
     }
 
-    /// Configure the optional 
+    /// Compile the .proto files and execute code generation.
+    pub fn compile(
+        self,
+        protos: &[impl AsRef<Path>],
+        includes: &[impl AsRef<Path>],
+    ) -> Result<HashMap<MethodIdentifier, RpcMethodInfo>, Error> {
+        self.compile_with_config(prost_build::Config::new(), protos, includes)
+    }
+
+    /// Configure the optional
 
     /// Compile the .proto files and execute code generation using a
     /// custom `prost_build::Config`.
@@ -128,7 +164,7 @@ impl Builder {
         mut config: prost_build::Config,
         protos: &[impl AsRef<Path>],
         includes: &[impl AsRef<Path>],
-    ) -> std::io::Result<HashMap<MethodIdentifier, RpcMethodInfo>> {
+    ) -> Result<HashMap<MethodIdentifier, RpcMethodInfo>, Error> {
         let out_dir = if let Some(out_dir) = self.out_dir.as_ref() {
             out_dir.clone()
         } else {
@@ -166,15 +202,17 @@ impl Builder {
         };
         config.service_generator(Box::new(recorder));
 
-        config.compile_protos(protos, includes)?;
+        config.compile_protos_mrpc_backend(protos, includes)?;
+
+        std::mem::drop(config);
 
         let method_info = Rc::try_unwrap(method_info).unwrap().into_inner();
 
         if let Some(out_method_info_path) = self.method_info_out_path {
-            let json = serde_json::to_string_pretty(&method_info).unwrap();
-            std::fs::write(out_method_info_path, json.as_bytes());
+            let json = serde_json::to_string_pretty(&method_info)?;
+            std::fs::write(out_method_info_path, json.as_bytes())?;
         }
-        
+
         Ok(method_info)
     }
 }

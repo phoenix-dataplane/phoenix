@@ -6,7 +6,6 @@ use itertools::Itertools;
 
 use crate::mrpc::builder::{MethodIdentifier, RpcMethodInfo};
 
-
 pub struct ServiceRecorder {
     pub mapping: Rc<RefCell<HashMap<MethodIdentifier, RpcMethodInfo>>>,
     pub compile_well_known_types: bool,
@@ -22,22 +21,22 @@ impl prost_build::ServiceGenerator for ServiceRecorder {
             let method_path = get_method_path(package, &service, &method);
             let func_id = get_mrpc_func_id(&method_path);
             let input_type_canonical = resolve_ident(
-                package, 
+                package,
                 &method.input_proto_type,
                 &method.input_type,
-                self.compile_well_known_types
+                self.compile_well_known_types,
             );
             let output_type_canonical = resolve_ident(
                 package,
                 &method.input_proto_type,
                 &method.input_type,
-                self.compile_well_known_types
+                self.compile_well_known_types,
             );
             let method_info = RpcMethodInfo {
                 service_id,
                 func_id,
                 input_type: input_type_canonical,
-                output_type: output_type_canonical
+                output_type: output_type_canonical,
             };
             let method_id = MethodIdentifier(service_id, func_id);
             mapping.insert(method_id, method_info);
@@ -52,10 +51,10 @@ fn is_google_type(ty: &str) -> bool {
 }
 
 fn resolve_ident(
-    local_path: &str, 
-    proto_type: &str, 
-    rust_type: &str, 
-    compile_well_known_types: bool
+    local_path: &str,
+    proto_type: &str,
+    rust_type: &str,
+    compile_well_known_types: bool,
 ) -> String {
     if (is_google_type(proto_type) && !compile_well_known_types)
         || rust_type.starts_with("::")
