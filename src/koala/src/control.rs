@@ -35,7 +35,11 @@ pub struct Control {
 
 impl Control {
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
-        let koala_path = config.control.prefix.join(&config.control.path);
+        let koala_prefix = &config.control.prefix;
+        fs::create_dir_all(koala_prefix)
+            .unwrap_or_else(|e| panic!("Failed to create directory for {:?}: {}", koala_prefix, e));
+
+        let koala_path = koala_prefix.join(&config.control.path);
         if koala_path.exists() {
             fs::remove_file(&koala_path).expect("remove_file");
         }
