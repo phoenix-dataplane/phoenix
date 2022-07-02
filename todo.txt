@@ -88,7 +88,7 @@ Misc
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
 - *UDP socket send/recv fd must be nonblocking*
 - visibility of mods in koala backend code
-- adding a falcon logo
+- adding a log
 -[x] add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>

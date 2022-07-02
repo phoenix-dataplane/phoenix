@@ -28,7 +28,6 @@ use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
-use crate::timer::Timer;
 use crate::transport::rdma::ops::Ops;
 
 pub(crate) struct TlStorage {
@@ -115,7 +114,7 @@ impl Drop for RpcAdapterEngine {
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-            // let mut timer = Timer::new();
+            // let mut timer = crate::timer::Timer::new();
             let mut work = 0;
             // check input queue, ~100ns
             match self.check_input_queue()? {
@@ -333,7 +332,7 @@ impl RpcAdapterEngine {
                 self.local_buffer.push_front(msg);
                 break;
             }
-            // let mut timer = Timer::new();
+            // let mut timer = crate::timer::Timer::new();
 
             // Sender marshals the data (gets an SgList)
             let sglist = match meta_ref.msg_type {
@@ -374,7 +373,7 @@ impl RpcAdapterEngine {
             Ok(msg) => match msg {
                 EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
                 EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
-                    // let mut timer = Timer::new();
+                    // let mut timer = crate::timer::Timer::new();
                     let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
                     let cmid = &conn_ctx.cmid;
                     // timer.tick();
@@ -396,7 +395,7 @@ impl RpcAdapterEngine {
         Ok(Progress(0))
     }
 
-    fn recover_sg_list_from_eager(sg_list: &mut SgList) {
+    fn reshape_fused_sg_list(sg_list: &mut SgList) {
         use std::ptr::Unique;
 
         assert_eq!(sg_list.0.len(), 1);
@@ -448,7 +447,7 @@ impl RpcAdapterEngine {
             salloc: &self.salloc.shared,
         };
 
-        // let mut timer = Timer::new();
+        // let mut timer = crate::timer::Timer::new();
         // timer.tick();
 
         let (addr_app, addr_backend) = match meta.msg_type {
@@ -546,7 +545,7 @@ impl RpcAdapterEngine {
                                 // check if it is an eager message
                                 if recv_ctx.sg_list.0.len() == 1 {
                                     // got an eager message
-                                    Self::recover_sg_list_from_eager(&mut recv_ctx.sg_list);
+                                    Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
                                 }
 
                                 let recv_id = self.unmarshal_and_deliver_up(

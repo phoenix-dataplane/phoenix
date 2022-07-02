@@ -196,6 +196,7 @@ pub struct ClientStub {
     stub_id: u64,
     // mRPC connection handle
     handle: Handle,
+    #[allow(unused)]
     reply_mrs: Vec<SharedRecvBuffer>,
     recv_reclaim_buffer: ReclaimBuffer,
 }
@@ -327,7 +328,7 @@ impl ClientStub {
                     Result::<(), Error>::Ok(())
                 })?;
 
-                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 Ok(Self {
                     stub_id,
                     handle: ret.0,
@@ -362,6 +363,7 @@ impl Drop for ClientStub {
 
 pub struct Server {
     stub_id: u64,
+    #[allow(unused)]
     listener_handle: Handle,
     handles: HashSet<Handle>,
     // NOTE(wyj): store recv mrs according to connection handle
@@ -384,7 +386,7 @@ impl Server {
         MRPC_CTX.with(|ctx| {
             ctx.service.send_cmd(req)?;
             rx_recv_impl!(ctx.service, CompletionKind::Bind, listener_handle, {
-                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 // setup recv cache
                 RECV_REQUEST_CACHE.with(|cache| {
                     cache

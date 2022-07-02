@@ -16,7 +16,7 @@ use crate::mrpc::meta_pool::MetaBufferPtr;
 
 #[derive(Debug)]
 pub(crate) struct RpcMessageTx {
-    // Each RPC message is assigned an eager buffer
+    // Each RPC message is assigned a buffer for meta and optionally for its data
     pub(crate) meta_buf_ptr: MetaBufferPtr,
     pub(crate) addr_backend: usize,
 }
