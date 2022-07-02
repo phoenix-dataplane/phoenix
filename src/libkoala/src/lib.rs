@@ -8,11 +8,11 @@ pub mod transport;
 pub use transport::{cm, verbs, Error};
 
 const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
-const DEFAULT_KOALA_CONTROL: &str = "koala-control.sock";
+const DEFAULT_KOALA_CONTROL: &str = "control.sock";
 
 lazy_static::lazy_static! {
     pub static ref KOALA_PREFIX: PathBuf = {
-        env::var("KOALA_PATH").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+        env::var("KOALA_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
             let path = PathBuf::from(p);
             assert!(path.is_dir(), "{path:?} is not a directly");
             path

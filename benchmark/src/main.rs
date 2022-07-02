@@ -313,7 +313,7 @@ fn run_benchmark_group(opt: &Opt, group: &str) -> anyhow::Result<()> {
     let mut suites = Vec::new();
     for entry in WalkDir::new(dir).follow_links(true) {
         let entry = entry.unwrap();
-        log::debug!("traversing {}", entry.path().display());
+        log::info!("traversing {}", entry.path().display());
         let path = path::PathBuf::from(entry.path());
         if path.is_dir() {
             continue;
@@ -456,7 +456,7 @@ mod cleanup {
 
 fn main() {
     let _guard = cleanup::SttySane::new();
-    init_env_log("RUST_LOG", "debug");
+    init_env_log("RUST_LOG", "info");
 
     let opt = Opt::from_args();
     log::info!("options: {:?}", opt);

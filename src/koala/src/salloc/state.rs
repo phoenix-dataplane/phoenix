@@ -129,8 +129,6 @@ impl Resource {
     #[inline]
     pub(crate) fn query_app_addr(&self, local_addr: usize) -> Result<usize, ResourceError> {
         // local_addr is the address on the backend side
-        // let span = info_span!("query_app_addr");
-        // let _enter = span.enter();
 
         let addr_map = self.recv_mr_addr_map.lock();
         match addr_map.range(0..=local_addr).last() {

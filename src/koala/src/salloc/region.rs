@@ -25,9 +25,6 @@ pub struct SharedRegion {
     align: usize,
 }
 
-unsafe impl Send for SharedRegion {}
-unsafe impl Sync for SharedRegion {}
-
 impl Deref for SharedRegion {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
