@@ -36,6 +36,11 @@ Prost codegen
 -[x] remove redundant language features and dependencies
 - add support for string
 
+Security
+- sanity check addresses passed by user
+- pass string rather FD to user, and let user to open the shared memory
+  only this way r/o permission can be enforced
+
 RPC
 - Prost codegen
 -[x] zero-copy RPC interface
@@ -55,7 +60,7 @@ API
 Benchmark Suite
 -[x] build then run
 - worker starting order
-- allow setting timeouts in concrete cases
+-[x] allow setting timeouts in concrete cases
 -[x] auto kill on clean up
 - collect and print result
 -[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
@@ -64,9 +69,11 @@ Benchmark Suite
 -[x] also test latency
 
 Engine Framework
-- suspend the runtime to save CPUs based on indicator
-- Implemented Shared scheduling policy
+- *Implement Packaged scheduling policy* and see if latency is improved
+  for small RPCs
+- Implement Shared scheduling policy
 - move CmEngine and AcceptorEngine to Shared
+-[x] suspend the runtime to save CPUs based on indicator
 - <s>new challenge: *fault isolation*</s> Updated: doen through careful
   engineering
 - futures::executor::block_on seems to start an extra engine, need an
@@ -184,6 +191,10 @@ Transport Trait
 - Implement a socket datapath
 
 Performance & CPU efficiency
+- *Packaged scheduling policy*
+- shortcut query_app_addr
+- *optimize userland latency*
+- dashmap access latency seems high (rpc_adapter::check_incoming_connections)
 - Change ResoruceTable to one of the implementations of a concurrent
   hashmap (e.g., dashmap).
 - GetSendComp() is currently busy spinning

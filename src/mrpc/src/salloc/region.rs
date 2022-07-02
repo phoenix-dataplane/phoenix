@@ -13,7 +13,7 @@ use super::{Error, SA_CTX};
 #[derive(Debug)]
 pub(crate) struct SharedRecvBuffer {
     mmap: MmapFixed,
-    remote_addr: usize,
+    _remote_addr: usize,
     _memfd: Memfd,
 }
 
@@ -37,7 +37,7 @@ impl SharedRecvBuffer {
         file_off: i64,
         memfd: Memfd,
     ) -> Result<Self, Error> {
-        tracing::debug!("SharedRecvBuffer::new, remote_addr: {:#0x?}", remote_addr);
+        tracing::trace!("SharedRecvBuffer::new, remote_addr: {:#0x?}", remote_addr);
 
         // Map to the same address as remote_addr, panic if it does not work
         let mmap = MmapFixed::new(remote_addr, nbytes, file_off as i64, memfd.as_file())?;
@@ -46,7 +46,7 @@ impl SharedRecvBuffer {
         // as we don't need to query backend addr for shared recv buffer
         Ok(SharedRecvBuffer {
             mmap,
-            remote_addr,
+            _remote_addr: remote_addr,
             _memfd: memfd,
         })
     }
