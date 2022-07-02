@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Once};
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use fnv::FnvBuildHasher;
@@ -111,9 +111,6 @@ impl ConnectionContext {
 }
 
 pub(crate) struct Resource {
-    default_pd_flag: Once,
-    default_pds: Vec<ulib::uverbs::ProtectionDomain>,
-    // TODO(cjr): we do not release any receive mr now. DO it in later version.
     // rpc_adapter_id -> Queue of pre_cmid
     pub(crate) pre_cmid_table: DashMap<usize, VecDeque<ulib::ucm::PreparedCmId>, FnvBuildHasher>,
     pub(crate) cmid_table: ResourceTable<ConnectionContext>,
@@ -131,8 +128,6 @@ pub(crate) struct Resource {
 impl Resource {
     fn new() -> Self {
         Self {
-            default_pd_flag: Once::new(),
-            default_pds: Vec::new(),
             pre_cmid_table: DashMap::default(),
             cmid_table: ResourceTable::default(),
             listener_table: ResourceTable::default(),
@@ -149,19 +144,6 @@ impl Resource {
     ) -> Result<(), ResourceError> {
         self.cmid_table
             .insert(cmid.as_handle(), ConnectionContext::new(cmid, credit))
-    }
-
-    pub(crate) fn default_pds(&self) -> &[ulib::uverbs::ProtectionDomain] {
-        // safety: it is actually safe to mutate default_pds here, because it is only initialized
-        // once in this call_once function.
-        unsafe {
-            self.default_pd_flag.call_once(|| {
-                let ptr = &self.default_pds as *const Vec<_> as *mut Vec<_>;
-                let default_pds = &mut *ptr;
-                *default_pds = ulib::uverbs::get_default_pds().expect("Failed to get default PDs");
-            });
-            &self.default_pds
-        }
     }
 }
 
