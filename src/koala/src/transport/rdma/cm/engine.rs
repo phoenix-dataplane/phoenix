@@ -35,7 +35,7 @@ impl Engine for CmEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("RDMA CmEngine")
+        format!("RDMA CmEngine, user: {:?}", self.state.shared.pid)
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {

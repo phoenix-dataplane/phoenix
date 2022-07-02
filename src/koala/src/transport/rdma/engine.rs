@@ -45,7 +45,7 @@ impl Engine for TransportEngine {
 
     fn description(&self) -> String {
         format!(
-            "RDMA TransportEngine, user pid: {:?}",
+            "RDMA TransportEngine, user: {:?}",
             self.ops.state.shared.pid
         )
     }

@@ -103,16 +103,18 @@ impl MrpcEngine {
 
 impl MrpcEngine {
     // we need to wait for RpcAdapter engine to finish outstanding send requests
-    // (whether successful or not), to release message meta pool and shutdown mRPC engine
+    // (whether successful or not), to release message meta pool and shutdown mRPC engine.
+    // However, we cannot indefinitely wait for it in case of wc errors.
     async fn wait_outstanding_complete(&mut self) -> Result<(), DatapathError> {
-        use crossbeam::channel::TryRecvError;
+        use crate::engine::graph::TryRecvError;
         while !self.meta_buf_pool.is_full() {
             match self.rx_inputs()[0].try_recv() {
-                Ok(msg) => {
-                    if let EngineRxMessage::SendCompletion(wr_id) = msg {
+                Ok(msg) => match msg {
+                    EngineRxMessage::SendCompletion(wr_id) => {
                         self.meta_buf_pool.release(wr_id)?;
                     }
-                }
+                    EngineRxMessage::RpcMessage(_) => {}
+                },
                 Err(TryRecvError::Disconnected) => return Ok(()),
                 Err(TryRecvError::Empty) => {}
             }

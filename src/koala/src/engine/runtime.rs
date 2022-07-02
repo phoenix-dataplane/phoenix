@@ -176,7 +176,6 @@ impl Runtime {
                 let ret = engine.borrow_mut().future().poll(&mut cx);
                 match ret {
                     Poll::Pending => {
-                        // where do I get the work you have done?
                         engine.borrow().with_indicator(|indicator| {
                             // whatever the number reads here does not affect correctness
                             let n = indicator.0.load(Ordering::Relaxed);

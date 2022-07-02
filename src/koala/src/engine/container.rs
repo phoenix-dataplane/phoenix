@@ -20,6 +20,8 @@ impl EngineContainer {
         engine.set_tracker(indicator.clone());
 
         let desc = engine.description();
+        // SAFETY: apparently EngineLocalStorage cannot be 'static,
+        // The caller must ensure that the els() is called within an engine.
         let els = unsafe { engine.els() };
 
         Self {

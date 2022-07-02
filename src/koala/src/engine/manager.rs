@@ -81,19 +81,22 @@ impl Inner {
         let runtime = Arc::new(Runtime::new(core));
         self.runtimes.push(Arc::clone(&runtime));
 
-        let handle = thread::spawn(move || {
-            // check core id
-            let num_cpus = num_cpus::get();
-            if core >= num_cpus {
-                return Err(runtime::Error::InvalidId(core));
-            }
-            // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
-            // does not run on the hyperthread core pair. Since we cannot expect that we always
-            // have hyperthread core pair available, not setting affinity turns out to be better.
-            // scheduler::set_self_affinity(scheduler::CpuSet::single(core))
-            //     .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
-            runtime.mainloop()
-        });
+        let handle = thread::Builder::new()
+            .name(format!("Runtime {}", core))
+            .spawn(move || {
+                // check core id
+                let num_cpus = num_cpus::get();
+                if core >= num_cpus {
+                    return Err(runtime::Error::InvalidId(core));
+                }
+                // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
+                // does not run on the hyperthread core pair. Since we cannot expect that we always
+                // have hyperthread core pair available, not setting affinity turns out to be better.
+                // scheduler::set_self_affinity(scheduler::CpuSet::single(core))
+                //     .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
+                runtime.mainloop()
+            })
+            .unwrap_or_else(|e| panic!("failed to spawn new threads: {}", e));
 
         self.handles.push(handle);
     }

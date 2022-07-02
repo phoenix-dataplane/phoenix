@@ -87,7 +87,7 @@ impl Engine for RpcAdapterEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("RcpAdapterEngine, user pid: {:?}", self.state.shared.pid)
+        format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -107,6 +107,8 @@ impl Engine for RpcAdapterEngine {
 
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
+        let desc = self.description().to_owned();
+        log::warn!("{} is being dropped", desc);
         self.state.stop_acceptor(true);
     }
 }
@@ -558,12 +560,21 @@ impl RpcAdapterEngine {
                             }
                             progress += 1;
                         }
+                        // The below two are probably errors in impl logic, so assert them
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
                         _ => panic!("Unhandled wc opcode: {:?}", wc),
                     }
                 }
                 WcStatus::Error(_) => {
-                    eprintln!("wc failed: {:?}", wc);
+                    log::warn!("wc failed: {:?}", wc);
+                    // TODO(cjr): bubble up the error, close the connection, and return an error
+                    // to the user.
+                    // let conn_id = Handle((wc.wr_id >> 32) as u32);
+                    // let call_id = wc.wr_id as u32;
+                    // let wr_identifier = WrIdentifier(conn_id, call_id);
+                    // self.rx_outputs()[0]
+                    //     .send(EngineRxMessage::SendCompletion(wr_identifier))
+                    //     .unwrap();
                 }
             }
         }
