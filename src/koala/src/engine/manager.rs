@@ -43,7 +43,12 @@ impl Inner {
                 rid
             }
         };
+
         self.runtimes[rid].add_engine(engine);
+
+        // a runtime will not be parked when having pending engines, so in theory, we can check
+        // whether the runtime and only unpark it when it's in parked state.
+        self.handles[rid].thread().unpark();
     }
 }
 

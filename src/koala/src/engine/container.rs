@@ -36,8 +36,10 @@ impl EngineContainer {
     }
 
     #[inline]
-    pub(crate) fn check_progress(&self) -> Indicator {
-        Indicator::new(self.indicator.0.swap(0, Ordering::AcqRel))
+    pub(crate) fn with_indicator<T, F: FnOnce(&Indicator) -> T>(&self, f: F) -> T {
+        let ret = f(&self.indicator);
+        self.indicator.0.store(0, Ordering::Release);
+        ret
     }
 
     #[inline]
