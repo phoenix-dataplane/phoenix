@@ -10,10 +10,9 @@ use std::sync::Arc;
 use fnv::FnvHashMap;
 
 use ipc::mrpc;
-use ipc::mrpc::dp::WrIdentifier;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcMsgType};
+use interface::rpc::{MessageMeta, RpcMsgType, TransportStatus, RpcId};
 use interface::{AsHandle, Handle};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -62,7 +61,7 @@ pub(crate) struct RpcAdapterEngine {
     // then we only needs to maintain an additional reference counter for each recv mr, i.e., HashMap<Handle, u64>;
     // if in the future recv mr's addr is directly used as wr_id in post_recv,
     // just change Handle here to usize
-    pub(crate) recv_mr_usage: FnvHashMap<WrIdentifier, Vec<Handle>>,
+    pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -383,7 +382,7 @@ impl RpcAdapterEngine {
                     for call_id in call_ids {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&WrIdentifier(conn_id, call_id))
+                            .remove(&RpcId(conn_id, call_id))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
                     }
@@ -424,7 +423,7 @@ impl RpcAdapterEngine {
         &mut self,
         sgl: SgList,
         conn_ctx: Arc<ConnectionContext>,
-    ) -> Result<WrIdentifier, DatapathError> {
+    ) -> Result<RpcId, DatapathError> {
         use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
@@ -432,7 +431,7 @@ impl RpcAdapterEngine {
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = conn_ctx.cmid.as_handle();
 
-        let recv_id = WrIdentifier(meta.conn_id, meta.call_id);
+        let recv_id = RpcId(meta.conn_id, meta.call_id);
 
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
@@ -509,9 +508,9 @@ impl RpcAdapterEngine {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                                 let conn_id = Handle((wc.wr_id >> 32) as u32);
                                 let call_id = wc.wr_id as u32;
-                                let wr_identifier = WrIdentifier(conn_id, call_id);
+                                let rpc_id = RpcId(conn_id, call_id);
                                 self.rx_outputs()[0]
-                                    .send(EngineRxMessage::SendCompletion(wr_identifier))
+                                    .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                     .unwrap();
                             }
                         }
@@ -565,16 +564,16 @@ impl RpcAdapterEngine {
                         _ => panic!("Unhandled wc opcode: {:?}", wc),
                     }
                 }
-                WcStatus::Error(_) => {
+                WcStatus::Error(code) => {
                     log::warn!("wc failed: {:?}", wc);
                     // TODO(cjr): bubble up the error, close the connection, and return an error
                     // to the user.
-                    // let conn_id = Handle((wc.wr_id >> 32) as u32);
-                    // let call_id = wc.wr_id as u32;
-                    // let wr_identifier = WrIdentifier(conn_id, call_id);
-                    // self.rx_outputs()[0]
-                    //     .send(EngineRxMessage::SendCompletion(wr_identifier))
-                    //     .unwrap();
+                    let conn_id = Handle((wc.wr_id >> 32) as u32);
+                    let call_id = wc.wr_id as u32;
+                    let rpc_id = RpcId(conn_id, call_id);
+                    self.rx_outputs()[0]
+                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code)))
+                        .unwrap();
                 }
             }
         }

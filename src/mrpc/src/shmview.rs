@@ -4,8 +4,8 @@ use std::hash::{Hash, Hasher};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
 
-use interface::rpc::MessageErased;
-use ipc::mrpc::dp::{WorkRequest, WrIdentifier, RECV_RECLAIM_BS};
+use interface::rpc::{MessageErased, RpcId};
+use ipc::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 
 use crate::alloc::Box;
 use crate::stub::ReclaimBuffer;
@@ -13,7 +13,7 @@ use crate::MRPC_CTX;
 
 pub struct ShmView<'a, T> {
     inner: ManuallyDrop<Box<T>>,
-    wr_id: WrIdentifier,
+    rpc_id: RpcId,
     reclamation_buffer: &'a ReclaimBuffer,
 }
 
@@ -26,14 +26,14 @@ impl<'a, T> Drop for ShmView<'a, T> {
         // only reclaim recv mr when the buffer is full
         // it is fine that there are some leftover messages in the buffer,
         // as all the recv mrs will be deallocated when the connection is closed
-        borrow.push(self.wr_id.1);
+        borrow.push(self.rpc_id.1);
         if borrow.is_full() {
             let msgs: [MaybeUninit<u32>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();
             let mut msgs = unsafe { MaybeUninit::array_assume_init(msgs) };
             msgs.copy_from_slice(borrow.as_slice());
             borrow.clear();
 
-            let conn_id = self.wr_id.0;
+            let conn_id = self.rpc_id.0;
             let reclaim_wr = WorkRequest::ReclaimRecvBuf(conn_id, msgs);
             MRPC_CTX.with(move |ctx| {
                 let mut sent = false;
@@ -56,10 +56,10 @@ impl<'a, T> ShmView<'a, T> {
         // SAFETY: The box is created directly from a shared memory.
         // We must ensure its drop function is never called by wrapping it in ShmView.
         let backend_owned = unsafe { Box::from_raw(ptr_app, ptr_backend) };
-        let wr_id = WrIdentifier(msg.meta.conn_id, msg.meta.call_id);
+        let rpc_id = RpcId(msg.meta.conn_id, msg.meta.call_id);
         ShmView {
             inner: ManuallyDrop::new(backend_owned),
-            wr_id,
+            rpc_id,
             reclamation_buffer,
         }
     }

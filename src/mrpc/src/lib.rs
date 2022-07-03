@@ -72,6 +72,9 @@ pub use interface::rpc::MessageErased;
 
 pub mod shmview;
 
+pub mod status;
+pub use status::Status;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Service error: {0}")]
@@ -85,7 +88,3 @@ pub enum Error {
     #[error("Connect failed: {0}")]
     Connect(interface::Error),
 }
-
-#[derive(Debug, Clone, Copy, Error)]
-#[error("mRPC Status")]
-pub struct Status;

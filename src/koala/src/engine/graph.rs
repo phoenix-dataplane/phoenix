@@ -4,9 +4,9 @@ use std::ptr::Unique;
 use crossbeam::channel::{Receiver, Sender};
 
 use interface::engine::EngineType;
-use interface::rpc::MessageMeta;
+use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
-use ipc::mrpc::dp::{WrIdentifier, RECV_RECLAIM_BS};
+use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
 use crate::mrpc::meta_pool::MetaBufferPtr;
 
@@ -37,7 +37,7 @@ pub(crate) struct RpcMessageRx {
 #[derive(Debug)]
 pub(crate) enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
-    SendCompletion(WrIdentifier),
+    Ack(RpcId, TransportStatus),
 }
 
 pub(crate) trait Vertex {

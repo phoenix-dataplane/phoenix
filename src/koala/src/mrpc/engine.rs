@@ -1,10 +1,9 @@
 use std::future::Future;
 use std::mem;
 
-use interface::rpc::MessageErased;
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
 
 use interface::engine::SchedulingMode;
-use ipc::mrpc::dp::WrIdentifier;
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::meta_pool::MetaBufferPool;
@@ -110,8 +109,9 @@ impl MrpcEngine {
         while !self.meta_buf_pool.is_full() {
             match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => match msg {
-                    EngineRxMessage::SendCompletion(wr_id) => {
-                        self.meta_buf_pool.release(wr_id)?;
+                    EngineRxMessage::Ack(rpc_id, _status) => {
+                        // release the buffer whatever the status is.
+                        self.meta_buf_pool.release(rpc_id)?;
                     }
                     EngineRxMessage::RpcMessage(_) => {}
                 },
@@ -257,10 +257,10 @@ impl MrpcEngine {
                         );
 
                         // construct message meta on heap
-                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
+                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
                         let meta_buf_ptr = self
                             .meta_buf_pool
-                            .obtain(wr_identifier)
+                            .obtain(rpc_id)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
                             std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
@@ -286,10 +286,10 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
+                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
                         let meta_buf_ptr = self
                             .meta_buf_pool
-                            .obtain(wr_identifier)
+                            .obtain(rpc_id)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
                             std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
@@ -339,21 +339,23 @@ impl MrpcEngine {
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
-                                ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::Recv(erased));
+                                ptr.cast::<dp::Completion>().write(dp::Completion::Incoming(
+                                    erased,
+                                    TransportStatus::Success,
+                                ));
                                 1
                             })?;
                         }
                     }
-                    EngineRxMessage::SendCompletion(wr_id) => {
+                    EngineRxMessage::Ack(rpc_id, status) => {
                         // release message meta buffer
-                        self.meta_buf_pool.release(wr_id)?;
+                        self.meta_buf_pool.release(rpc_id)?;
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::SendCompletion(wr_id));
+                                    .write(dp::Completion::Outgoing(rpc_id, status));
                                 1
                             })?;
                         }

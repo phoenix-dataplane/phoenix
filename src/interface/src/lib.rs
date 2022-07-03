@@ -170,6 +170,14 @@ pub enum WcStatus {
 
 impl WcStatus {
     pub const AGAIN: WcStatus = WcStatus::Error(unsafe { NonZeroU32::new_unchecked(1024) });
+
+    #[inline]
+    pub fn code(self) -> u32 {
+        match self {
+            Self::Success => 0,
+            Self::Error(code) => code.get(),
+        }
+    }
 }
 
 #[repr(u32)]

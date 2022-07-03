@@ -3,8 +3,7 @@ use std::ptr::Unique;
 
 use fnv::FnvHashMap as HashMap;
 
-use interface::rpc::MessageMeta;
-use ipc::mrpc::dp::WrIdentifier;
+use interface::rpc::{MessageMeta, RpcId};
 
 use crate::resource::Error as ResourceError;
 
@@ -67,7 +66,7 @@ pub(crate) struct MetaBufferPool {
     #[allow(unused_variables)]
     buffer: Vec<MetaBuffer>,
     free: Vec<MetaBufferPtr>,
-    used: HashMap<WrIdentifier, MetaBufferPtr>,
+    used: HashMap<RpcId, MetaBufferPtr>,
 }
 
 impl MetaBufferPool {
@@ -95,16 +94,16 @@ impl MetaBufferPool {
     }
 
     #[inline]
-    pub(crate) fn obtain(&mut self, wr_id: WrIdentifier) -> Option<MetaBufferPtr> {
+    pub(crate) fn obtain(&mut self, rpc_id: RpcId) -> Option<MetaBufferPtr> {
         self.free.pop().map(|buf| {
-            self.used.insert(wr_id, buf);
+            self.used.insert(rpc_id, buf);
             buf
         })
     }
 
     #[inline]
-    pub(crate) fn release(&mut self, wr_id: WrIdentifier) -> Result<(), ResourceError> {
-        let buf = self.used.remove(&wr_id).ok_or(ResourceError::NotFound)?;
+    pub(crate) fn release(&mut self, rpc_id: RpcId) -> Result<(), ResourceError> {
+        let buf = self.used.remove(&rpc_id).ok_or(ResourceError::NotFound)?;
         self.free.push(buf);
         Ok(())
     }
