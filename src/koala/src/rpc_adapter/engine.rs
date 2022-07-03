@@ -12,7 +12,7 @@ use fnv::FnvHashMap;
 use ipc::mrpc;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcMsgType, TransportStatus, RpcId};
+use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -196,7 +196,7 @@ impl RpcAdapterEngine {
         let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
         let msg_type = unsafe { &*meta_buf_ptr.as_meta_ptr() }.msg_type;
         let cmid = &conn_ctx.cmid;
-        let ctx = ((cmid.as_handle().0 as u64) << 32) | (call_id as u64);
+        let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
 
         // TODO(cjr): XXX, this credit implementation has big flaws
         if msg_type == RpcMsgType::Request {
@@ -270,7 +270,7 @@ impl RpcAdapterEngine {
         }
 
         // Sender posts send requests from the SgList
-        let ctx = ((cmid.as_handle().0 as u64) << 32) | (call_id as u64);
+        let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
         let meta_sge = SgE {
             ptr: (meta_ref as *const MessageMeta).addr(),
             len: mem::size_of::<MessageMeta>(),
@@ -506,9 +506,7 @@ impl RpcAdapterEngine {
                             // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                let conn_id = Handle((wc.wr_id >> 32) as u32);
-                                let call_id = wc.wr_id as u32;
-                                let rpc_id = RpcId(conn_id, call_id);
+                                let rpc_id = RpcId::decode_u64(wc.wr_id);
                                 self.rx_outputs()[0]
                                     .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                     .unwrap();
@@ -568,9 +566,7 @@ impl RpcAdapterEngine {
                     log::warn!("wc failed: {:?}", wc);
                     // TODO(cjr): bubble up the error, close the connection, and return an error
                     // to the user.
-                    let conn_id = Handle((wc.wr_id >> 32) as u32);
-                    let call_id = wc.wr_id as u32;
-                    let rpc_id = RpcId(conn_id, call_id);
+                    let rpc_id = RpcId::decode_u64(wc.wr_id);
                     self.rx_outputs()[0]
                         .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code)))
                         .unwrap();

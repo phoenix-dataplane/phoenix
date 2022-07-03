@@ -77,15 +77,15 @@ impl MrpcEngine {
 
             // no work: 100-150ns
             // has work: 300-600ns
-            if let Progress(n) = self.check_input_queue()? {
-                nwork += n;
+            match self.check_input_queue()? {
+                Progress(n) => nwork += n,
+                Status::Disconnected => break,
             }
             // timer.tick();
 
             // 80-100ns, sometimes 200ns
             if let Status::Disconnected = self.check_cmd().await? {
-                self.wait_outstanding_complete().await?;
-                return Ok(());
+                break;
             }
             // timer.tick();
 
@@ -97,6 +97,9 @@ impl MrpcEngine {
 
             future::yield_now().await;
         }
+
+        self.wait_outstanding_complete().await?;
+        return Ok(());
     }
 }
 

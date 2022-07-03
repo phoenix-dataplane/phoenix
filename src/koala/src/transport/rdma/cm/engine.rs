@@ -57,6 +57,7 @@ impl CmEngine {
                 // cm_engine is the last active engine
                 return Ok(());
             }
+
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }

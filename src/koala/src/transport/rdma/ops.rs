@@ -260,6 +260,21 @@ impl Ops {
         }
     }
 
+    pub(crate) async fn create_id_with_event_channel(
+        &self,
+        port_space: interface::addrinfo::PortSpace,
+    ) -> Result<(returned::CmId, returned::EventChannel)> {
+        let returned_cmid = self.create_id(port_space).await?;
+        let cmid = self.resource().cmid_table.get(&returned_cmid.handle.0)?;
+        let ec_handle = cmid.event_channel().as_handle();
+        Ok((
+            returned_cmid,
+            returned::EventChannel {
+                handle: interface::EventChannel(ec_handle),
+            },
+        ))
+    }
+
     pub(crate) async fn create_id(
         &self,
         port_space: interface::addrinfo::PortSpace,
@@ -593,6 +608,9 @@ impl Ops {
         Ok(())
     }
 
+    // NOTE(cjr): We should not wait for RDMA_CM_EVENT_DISCONNECTED because in a client/server
+    // architecture, the server won't actively call disconnect. This causes the client
+    // to stuck at waiting for the disconnected event to happen.
     pub(crate) async fn disconnect(&self, cmid: &interface::CmId) -> Result<()> {
         log::debug!("Disconnect, cmid: {:?}", cmid);
 
@@ -604,12 +622,14 @@ impl Ops {
         let ec_handle = cmid.event_channel().as_handle();
         let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
+        log::warn!("Disconnect returned, cmid: {:?}", cmid);
         Ok(())
     }
 
     pub(crate) fn destroy_id(&self, cmid: &interface::CmId) -> Result<()> {
         log::debug!("DestroyId, cmid: {:?}", cmid);
         self.resource().cmid_table.close_resource(&cmid.0)?;
+        log::warn!("DestroyId returned, cmid: {:?}", cmid);
         Ok(())
     }
 
@@ -661,7 +681,7 @@ impl Ops {
         &self,
         pd_handle: &interface::ProtectionDomain,
     ) -> Result<rdmacm::MemoryRegion<'static>> {
-        log::debug!("CreateMrOnDemandPaging");
+        log::debug!("CreateMrOnDemandPaging: pd_handle: {:?}", pd_handle);
         let pd = self.resource().pd_table.get(&pd_handle.0)?;
         Ok(rdmacm::MemoryRegion::new_on_demand_paging(pd.pd()).map_err(ApiError::Ibv)?)
     }
@@ -762,7 +782,7 @@ impl Ops {
             .and_then(|mut manager| manager.first_error())
     }
 
-    fn try_get_cm_event(
+    pub(crate) fn try_get_cm_event(
         &self,
         event_channel_handle: &Handle,
         event_type: rdma::ffi::rdma_cm_event_type::Type,

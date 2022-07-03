@@ -39,7 +39,10 @@ impl Engine for AcceptorEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("rpc_adapter::acceptor::AcceptorEngine")
+        format!(
+            "rpc_adapter::acceptor::AcceptorEngine, user: {}",
+            self.state.shared.pid
+        )
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -63,9 +66,14 @@ impl AcceptorEngine {
             let mut nwork = 0;
             let Progress(n) = self.check_new_incoming_connection().await?;
             nwork += n;
+            // let Progress(n) = self.check_disconnected_events().await?;
+            // nwork += n;
             if self.state.acceptor_should_stop() {
                 return Ok(());
             }
+            // if self.state.alive_engines() == 1 && self.num_alive_connections() == 0 {
+            //     return Ok(());
+            // }
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }
@@ -99,4 +107,43 @@ impl AcceptorEngine {
         }
         Ok(Status::Progress(1))
     }
+
+    // fn num_alive_connections(&self) -> usize {
+    //     self.state.resource().cmid_table.inner().lock().len()
+    // }
+
+    // should have a loop to get whatever event and process them
+    // async fn check_disconnected_events(&mut self) -> Result<Status, ControlPathError> {
+    //     use interface::AsHandle;
+
+    //     log::warn!("check_disconnected_events: {}", self.num_alive_connections());
+    //     let table = self.state.resource().cmid_table.inner().lock();
+    //     let mut closing = Vec::new();
+    //     for entry in table.values() {
+    //         let conn_ctx = entry.data();
+    //         let cmid = &conn_ctx.cmid;
+    //         let ec = cmid.event_channel();
+    //         let res =
+    //             ec.try_get_cm_event(rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED);
+    //         if res.is_none() {
+    //             continue;
+    //         }
+    //         log::warn!("check_disconnected_events: {:?}", cmid);
+    //         if res.as_ref().unwrap().is_err() {
+    //             log::warn!("try_get_cm_event: cmid: {:?}, ec: {:?}", cmid, ec);
+    //         }
+    //         let event = res.unwrap()?;
+    //         drop(event);
+    //         cmid.disconnect().await?;
+    //         closing.push(cmid.as_handle());
+    //     }
+    //     for cmid_handle in closing {
+    //         log::debug!("closing cmid_handle: {:?}", cmid_handle);
+    //         self.state
+    //             .resource()
+    //             .cmid_table
+    //             .close_resource(&cmid_handle)?;
+    //     }
+    //     Ok(Status::Progress(1))
+    // }
 }

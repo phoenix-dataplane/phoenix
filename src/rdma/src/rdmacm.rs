@@ -532,7 +532,9 @@ unsafe impl<'res> Sync for CmId<'res> {}
 
 impl<'res> Drop for CmId<'res> {
     fn drop(&mut self) {
+        log::warn!("dropping CmId in rdmacm");
         let rc = unsafe { ffi::rdma_destroy_id(self.0) };
+        log::warn!("dropped CmId in rdmacm, rc: {}", rc);
         if rc != 0 {
             warn!(
                 "error occured when destroying cm_id: {:?}",

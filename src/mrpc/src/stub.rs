@@ -452,7 +452,6 @@ impl Server {
         &mut self,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         MRPC_CTX.with(|ctx| {
-            // TODO(cjr): the implementation of this function is super slow
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
                     let mut vaddrs = Vec::new();

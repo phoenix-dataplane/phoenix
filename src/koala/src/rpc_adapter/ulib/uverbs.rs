@@ -241,9 +241,11 @@ impl QueuePair {
 
 impl Drop for QueuePair {
     fn drop(&mut self) {
+        log::warn!("dropping QueuePair");
         get_ops()
             .destroy_qp(&self.inner)
             .unwrap_or_else(|e| eprintln!("Dropping QueuePair: {}", e));
+        log::warn!("dropped QueuePair");
     }
 }
 

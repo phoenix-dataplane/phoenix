@@ -94,6 +94,11 @@ pub mod returned {
         pub qp: Option<QueuePair>,
     }
 
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct EventChannel {
+        pub handle: super::EventChannel,
+    }
+
     // TODO(cjr): remove redundant fields
     #[derive(Debug, Serialize, Deserialize)]
     pub struct MemoryRegion {

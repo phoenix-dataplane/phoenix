@@ -17,13 +17,42 @@ pub enum RpcMsgType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct RpcId(pub Handle, pub u32);
 
+impl RpcId {
+    #[inline]
+    pub fn new(conn_id: Handle, call_id: u32) -> Self {
+        RpcId(conn_id, call_id)
+    }
+
+    #[inline]
+    pub fn encode_u64(self) -> u64 {
+        (self.0.0 as u64) << 32 | self.1 as u64
+    }
+
+    #[inline]
+    pub fn decode_u64(val: u64) -> Self {
+        Self::new(Handle((val >> 32) as u32), val as u32)
+    }
+}
+
+impl From<u64> for RpcId {
+    fn from(val: u64) -> Self {
+        Self::decode_u64(val)
+    }
+}
+
+impl From<RpcId> for u64 {
+    fn from(val: RpcId) -> Self {
+        RpcId::encode_u64(val)
+    }
+}
+
 /// Transport layer status.
 ///
 /// This transport error will be translated to mrpc::Status::internal("") on local send failure,
 /// or mrpc::Status::data_loss("") on local receive failure.
 //
-// NOTE(cjr): do not annotate this structure with any repr, use repr(Rust)
-// and static assert.
+// NOTE(cjr): Do not annotate this structure with any repr. Use repr(Rust)
+// and static assertions.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum TransportStatus {
     Success,
