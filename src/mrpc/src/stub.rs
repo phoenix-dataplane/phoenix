@@ -25,6 +25,11 @@ use crate::salloc::SA_CTX;
 use crate::wref::{WRef, WRefOpaque};
 use crate::{Error, MRPC_CTX};
 
+// pub trait IntoRequest {
+//     /// Wrap the input message `T` in a `mrpc::Request`
+//     fn into_request(self) -> Request<T>;
+// }
+
 #[derive(Debug, Default)]
 struct PendingWRef {
     pool: DashMap<RpcId, WRefOpaque, fnv::FnvBuildHasher>,
@@ -308,7 +313,6 @@ impl ClientStub {
                     })
                     .collect();
                 // return the mapped addr back
-                // TODO(cjr): send to SA_CTX
                 SA_CTX.with(|sa_ctx| {
                     let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
                     sa_ctx.service.send_cmd(req)?;
@@ -434,7 +438,6 @@ impl Server {
                         Ok(())
                     })?;
                     // return the mapped addr back
-                    // TODO(cjr): send to SA_CTX
                     SA_CTX.with(|sa_ctx| {
                         let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
                         sa_ctx.service.send_cmd(req)?;

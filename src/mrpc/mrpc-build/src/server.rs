@@ -49,7 +49,7 @@ pub fn generate<T: Service>(
         /// Generated server implementations.
         #(#mod_attributes)*
         pub mod #server_mod {
-            use ::mrpc::stub::{NamedService, RpcMessage, Service};
+            use ::mrpc::stub::{NamedService, Service};
 
             #generated_trait
 
@@ -85,7 +85,7 @@ pub fn generate<T: Service>(
                     &self,
                     req: ::mrpc::MessageErased,
                     reclaim_buffer: &::mrpc::stub::ReclaimBuffer,
-                ) -> (::mrpc::MessageErased, u64) {
+                ) -> ::mrpc::MessageErased {
                     let conn_id = req.meta.conn_id;
                     let call_id = req.meta.call_id;
                     let func_id = req.meta.func_id;
@@ -138,7 +138,7 @@ fn generate_trait_methods<T: Service>(
             fn #name(
                 &self,
                 request: ::mrpc::shmview::ShmView<#req_type>
-            ) -> Result<&RpcMessage<#res_type>, ::mrpc::Status>;
+            ) -> Result<::mrpc::WRef<#res_type>, ::mrpc::Status>;
         };
 
         stream.extend(method);

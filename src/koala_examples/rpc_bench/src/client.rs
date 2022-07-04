@@ -10,8 +10,8 @@ use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    // mrpc::include_proto!("rpc_hello");
-    include!("../../../mrpc/src/codegen.rs");
+    mrpc::include_proto!("rpc_hello");
+    // include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
@@ -71,7 +71,7 @@ async fn run_bench(
     // start sending
     for i in 0..args.total_iters {
         starts.push(Instant::now());
-        let fut = client.say_hello(WRef::clone(&reqs[i % args.provision_count]));
+        let fut = client.say_hello(&reqs[i % args.provision_count]);
         reply_futures.push(fut);
         if reply_futures.len() >= args.concurrency {
             let _resp = reply_futures.next().await.unwrap()?;
@@ -110,14 +110,13 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             let req = WRef::new(HelloRequest { name });
 
             for i in 0..args.total_iters {
-                // TODO(cjr): IntoWRef/IntoRequest/IntoRpcMessage
-                let _resp = client.say_hello(WRef::clone(&req)).await.unwrap();
+                let _resp = client.say_hello(&req).await.unwrap();
                 eprintln!("resp {} received", i);
             }
 
             let start = Instant::now();
             for _i in 0..args.total_iters {
-                let _resp = client.say_hello(WRef::clone(&req)).await.unwrap();
+                let _resp = client.say_hello(&req).await.unwrap();
             }
 
             let dura = start.elapsed();

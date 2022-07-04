@@ -120,6 +120,36 @@ impl Drop for WRefOpaque {
     }
 }
 
+// sealed trait pattern
+mod sealed {
+    pub trait Sealed {}
+}
+
+impl<T> sealed::Sealed for T {}
+
+pub trait IntoWRef<T: RpcData>: sealed::Sealed {
+    /// Wrap the input message `T` in a `WRef<T>`
+    fn into_wref(self) -> WRef<T>;
+}
+
+impl<T: RpcData> IntoWRef<T> for T {
+    fn into_wref(self) -> WRef<Self> {
+        WRef::new(self)
+    }
+}
+
+impl<T: RpcData> IntoWRef<T> for WRef<T> {
+    fn into_wref(self) -> WRef<T> {
+        self
+    }
+}
+
+impl<T: RpcData> IntoWRef<T> for &WRef<T> {
+    fn into_wref(self) -> WRef<T> {
+        WRef::clone(self)
+    }
+}
+
 // TODO(cjr): consider moving refcnt to ShmBox.
 #[derive(Debug)]
 pub struct WRef<T: RpcData>(Arc<ShmBox<T>>);

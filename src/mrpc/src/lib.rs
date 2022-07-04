@@ -93,7 +93,7 @@ pub use interface::rpc::MessageErased;
 pub mod shmview;
 
 pub mod wref;
-pub use wref::WRef;
+pub use wref::{IntoWRef, WRef};
 
 pub mod status;
 pub use status::{Code, Status};

@@ -23,7 +23,6 @@ pub struct HelloReply {
 pub mod greeter_client {
     use super::*;
     use mrpc::stub::{ClientStub, NamedService};
-    use mrpc::WRef;
 
     #[derive(Debug)]
     pub struct GreeterClient {
@@ -37,7 +36,6 @@ pub mod greeter_client {
             // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
             // cmid communicates directly to the transport engine. you need to pass your raw rpc
             // request/response to/from the rpc engine rather than the transport engine.
-            // let stub = libkoala::mrpc::cm::MrpcStub::set_transport(libkoala::mrpc::cm::TransportType::Rdma)?;
             let stub = ClientStub::connect(dst).unwrap();
             Ok(Self {
                 stub,
@@ -47,7 +45,7 @@ pub mod greeter_client {
 
         pub fn say_hello(
             &self,
-            req: WRef<HelloRequest>,
+            req: impl mrpc::IntoWRef<HelloRequest>,
         ) -> impl std::future::Future<
             Output = Result<::mrpc::shmview::ShmView<HelloReply>, ::mrpc::Status>,
         > + '_ {
@@ -56,7 +54,8 @@ pub mod greeter_client {
             // TODO(cjr): fill this with the right func_id
             let func_id = 3687134534u32;
 
-            self.stub.unary(Self::SERVICE_ID, func_id, call_id, req)
+            self.stub
+                .unary(Self::SERVICE_ID, func_id, call_id, req.into_wref())
         }
     }
 
@@ -69,14 +68,13 @@ pub mod greeter_client {
 pub mod greeter_server {
     use super::*;
     use mrpc::stub::{NamedService, Service};
-    use mrpc::WRef;
 
     // #[async_trait]
     pub trait Greeter: Send + Sync + 'static {
         fn say_hello(
             &self,
             request: ::mrpc::shmview::ShmView<HelloRequest>,
-        ) -> Result<WRef<HelloReply>, mrpc::Status>;
+        ) -> Result<mrpc::WRef<HelloReply>, mrpc::Status>;
     }
 
     /// Translate erased message to concrete type, and call the inner callback function.

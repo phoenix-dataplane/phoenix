@@ -40,7 +40,7 @@ pub fn generate<T: Service>(
         /// Generate client implementations.
         #(#mod_attributes)*
         pub mod #client_mod {
-            use ::mrpc::stub::{ClientStub, NamedService, RpcMessage};
+            use ::mrpc::stub::{ClientStub, NamedService};
 
             #service_doc
             #(#struct_attributes)*
@@ -108,14 +108,14 @@ fn generate_methods<T: Service>(
         let method = quote::quote! {
             pub fn #ident(
                 &self,
-                msg: &RpcMessage<#request>
+                req: impl ::mrpc::IntoWRef<#request>
             ) -> impl std::future::Future<
                 Output = Result<::mrpc::shmview::ShmView<#response>, ::mrpc::Status>
             > + '_ {
                 let call_id = self.call_counter.get();
                 self.call_counter.set(call_id + 1);
 
-                self.stub.unary(#service_id, #func_id, call_id, msg)
+                self.stub.unary(#service_id, #func_id, call_id, req.into_wref())
             }
         };
 

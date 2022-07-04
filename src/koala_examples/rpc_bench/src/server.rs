@@ -9,8 +9,8 @@ use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    // mrpc::include_proto!("rpc_hello");
-    include!("../../../mrpc/src/codegen.rs");
+    mrpc::include_proto!("rpc_hello");
+    // include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};
@@ -47,14 +47,13 @@ struct MyGreeter {
 }
 
 impl Greeter for MyGreeter {
-    fn say_hello(
-        &self,
-        _request: ShmView<HelloRequest>,
-    ) -> Result<WRef<HelloReply>, mrpc::Status> {
+    fn say_hello(&self, _request: ShmView<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
-        let ret = Ok(WRef::clone(&self.replies[my_count % self.args.provision_count]));
+        let ret = Ok(WRef::clone(
+            &self.replies[my_count % self.args.provision_count],
+        ));
         return ret;
     }
 }
@@ -65,10 +64,7 @@ struct MyGreeterBlocking {
 }
 
 impl Greeter for MyGreeterBlocking {
-    fn say_hello(
-        &self,
-        _request: ShmView<HelloRequest>,
-    ) -> Result<WRef<HelloReply>, mrpc::Status> {
+    fn say_hello(&self, _request: ShmView<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
         Ok(WRef::clone(&self.reply))
     }
 }
