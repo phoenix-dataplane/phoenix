@@ -6,12 +6,12 @@ use futures::stream::StreamExt;
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
-use mrpc::stub::RpcMessage;
+use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
+    // mrpc::include_proto!("rpc_hello");
+    include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
@@ -60,7 +60,7 @@ pub struct Args {
 async fn run_bench(
     args: &Args,
     client: &GreeterClient,
-    reqs: &[RpcMessage<HelloRequest>],
+    reqs: &[WRef<HelloRequest>],
     warmup: bool,
 ) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
     let mut response_count = 0;
@@ -71,7 +71,7 @@ async fn run_bench(
     // start sending
     for i in 0..args.total_iters {
         starts.push(Instant::now());
-        let fut = client.say_hello(&reqs[i % args.provision_count]);
+        let fut = client.say_hello(WRef::clone(&reqs[i % args.provision_count]));
         reply_futures.push(fut);
         if reply_futures.len() >= args.concurrency {
             let _resp = reply_futures.next().await.unwrap()?;
@@ -107,16 +107,17 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         smol::block_on(async {
             let mut name = Vec::with_capacity(args.req_size);
             name.resize(args.req_size, 42);
-            let mut req = RpcMessage::new(HelloRequest { name });
+            let req = WRef::new(HelloRequest { name });
 
             for i in 0..args.total_iters {
-                let _resp = client.say_hello(&mut req).await.unwrap();
+                // TODO(cjr): IntoWRef/IntoRequest/IntoRpcMessage
+                let _resp = client.say_hello(WRef::clone(&req)).await.unwrap();
                 eprintln!("resp {} received", i);
             }
 
             let start = Instant::now();
             for _i in 0..args.total_iters {
-                let _resp = client.say_hello(&mut req).await.unwrap();
+                let _resp = client.say_hello(WRef::clone(&req)).await.unwrap();
             }
 
             let dura = start.elapsed();
@@ -133,7 +134,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             for _ in 0..args.provision_count {
                 let mut name = Vec::with_capacity(args.req_size);
                 name.resize(args.req_size, 42);
-                let req = RpcMessage::new(HelloRequest { name });
+                let req = WRef::new(HelloRequest { name });
                 reqs.push(req);
             }
 

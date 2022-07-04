@@ -22,7 +22,8 @@ pub struct HelloReply {
 
 pub mod greeter_client {
     use super::*;
-    use mrpc::stub::{ClientStub, NamedService, RpcMessage};
+    use mrpc::stub::{ClientStub, NamedService};
+    use mrpc::WRef;
 
     #[derive(Debug)]
     pub struct GreeterClient {
@@ -46,7 +47,7 @@ pub mod greeter_client {
 
         pub fn say_hello(
             &self,
-            msg: &RpcMessage<HelloRequest>,
+            req: WRef<HelloRequest>,
         ) -> impl std::future::Future<
             Output = Result<::mrpc::shmview::ShmView<HelloReply>, ::mrpc::Status>,
         > + '_ {
@@ -55,7 +56,7 @@ pub mod greeter_client {
             // TODO(cjr): fill this with the right func_id
             let func_id = 3687134534u32;
 
-            self.stub.unary(Self::SERVICE_ID, func_id, call_id, msg)
+            self.stub.unary(Self::SERVICE_ID, func_id, call_id, req)
         }
     }
 
@@ -67,14 +68,15 @@ pub mod greeter_client {
 
 pub mod greeter_server {
     use super::*;
-    use mrpc::stub::{NamedService, RpcMessage, Service};
+    use mrpc::stub::{NamedService, Service};
+    use mrpc::WRef;
 
     // #[async_trait]
     pub trait Greeter: Send + Sync + 'static {
         fn say_hello(
             &self,
             request: ::mrpc::shmview::ShmView<HelloRequest>,
-        ) -> Result<&RpcMessage<HelloReply>, mrpc::Status>;
+        ) -> Result<WRef<HelloReply>, mrpc::Status>;
     }
 
     /// Translate erased message to concrete type, and call the inner callback function.
@@ -100,7 +102,7 @@ pub mod greeter_server {
             &self,
             req: mrpc::MessageErased,
             reclaim_buffer: &mrpc::stub::ReclaimBuffer,
-        ) -> (::mrpc::MessageErased, u64) {
+        ) -> mrpc::MessageErased {
             let conn_id = req.meta.conn_id;
             let call_id = req.meta.call_id;
             let func_id = req.meta.func_id;

@@ -1,12 +1,11 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::mem::ManuallyDrop;
 use std::net::ToSocketAddrs;
-use std::ops::Deref;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 
 use arrayvec::ArrayVec;
+use dashmap::DashMap;
 use fnv::FnvHashMap;
 
 use interface::rpc::{RpcId, TransportStatus};
@@ -20,13 +19,47 @@ use libkoala::_rx_recv_impl as rx_recv_impl;
 pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
-use crate::alloc::Box;
-use crate::salloc::gc::{
-    CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OBJECT_RECLAIMER, OUTSTANDING_RPC,
-};
+use crate::salloc::gc::CS_STUB_ID_COUNTER;
 use crate::salloc::region::SharedRecvBuffer;
 use crate::salloc::SA_CTX;
+use crate::wref::{WRef, WRefOpaque};
 use crate::{Error, MRPC_CTX};
+
+#[derive(Debug, Default)]
+struct PendingWRef {
+    pool: DashMap<RpcId, WRefOpaque, fnv::FnvBuildHasher>,
+}
+
+impl PendingWRef {
+    #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    fn insert<T: RpcData>(&self, rpc_id: RpcId, wref: WRef<T>) {
+        self.pool.insert(rpc_id, wref.into_opaque());
+    }
+
+    #[inline]
+    fn remove(&self, rpc_id: &RpcId) {
+        self.pool.remove(rpc_id);
+    }
+
+    /// Erase all the pending messages from a given connection.
+    #[inline]
+    fn erase_by_connection(&self, conn: Handle) {
+        self.pool.retain(|rpc_id, _| rpc_id.0 != conn);
+    }
+
+    fn erase_by(&self, f: impl FnMut(&RpcId, &mut WRefOpaque) -> bool) {
+        self.pool.retain(f);
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref PENDING_WREF: PendingWRef = PendingWRef::new();
+}
 
 /// ReclaimBuffer
 #[derive(Debug)]
@@ -48,63 +81,10 @@ thread_local! {
     pub(crate) static CONN_SERVER_STUB_MAP: RefCell<FnvHashMap<Handle, u64>> = RefCell::new(FnvHashMap::default());
 }
 
+// We can make RpcData a private trait, and only mark it for compiler generated types.
+// This seems impossible.
 pub trait RpcData: Send + Sync + 'static {}
 impl<T: Send + Sync + 'static> RpcData for T {}
-
-// TODO(cjr): Move RpcMessage out of stub. It's a little weird for user to use
-// mrpc::stub::something.
-
-// NOTE(wyj): if T is not an app owned request/reply
-// then RpcMessage<T> cannot be sent via public APIs
-// it will automatically be deallocated when it is dropped,
-// since send_count is 0
-#[derive(Debug)]
-pub struct RpcMessage<T: RpcData> {
-    pub(crate) inner: ManuallyDrop<Box<T>>,
-    // ID of this RpcMessage
-    pub(crate) identifier: u64,
-    // How many times the message is sent
-    pub(crate) send_count: AtomicU64,
-}
-
-impl<T: RpcData> RpcMessage<T> {
-    pub fn new(msg: T) -> Self {
-        let msg = Box::new(msg);
-        let message_id = MESSAGE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-        RpcMessage {
-            inner: ManuallyDrop::new(msg),
-            identifier: message_id,
-            send_count: AtomicU64::new(0),
-        }
-    }
-}
-
-// Make RpcMessage type as transparent as possible to user.
-impl<T: RpcData> From<T> for RpcMessage<T> {
-    fn from(val: T) -> Self {
-        RpcMessage::new(val)
-    }
-}
-
-// Make RpcMessage type as transparent as possible to user.
-impl<T: RpcData> Deref for RpcMessage<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        self.inner.as_ref()
-    }
-}
-
-impl<T: RpcData> Drop for RpcMessage<T> {
-    fn drop(&mut self) {
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        OBJECT_RECLAIMER.collect(
-            inner,
-            self.identifier,
-            self.send_count.load(Ordering::Acquire),
-        )
-    }
-}
 
 use std::future::Future;
 use std::marker::PhantomData;
@@ -169,6 +149,7 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                         let call_id = msg.meta.call_id;
                         match msg.meta.msg_type {
                             RpcMsgType::Request => {
+                                // server receives requests
                                 let stub_id = CONN_SERVER_STUB_MAP
                                     .with(|map| map.borrow().get(&conn_id).map(|x| *x));
                                 if let Some(stub_id) = stub_id {
@@ -178,6 +159,7 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                                 }
                             }
                             RpcMsgType::Response => {
+                                // client receives responses
                                 RECV_REPLY_CACHE.with_borrow_mut(|cache| match *status {
                                     TransportStatus::Success => {
                                         cache.insert(RpcId(conn_id, call_id), Ok(*msg));
@@ -190,14 +172,10 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                         }
                     }
                     dp::Completion::Outgoing(rpc_id, status) => {
-                        let msg_id = OUTSTANDING_RPC.with_borrow_mut(|outstanding| {
-                            outstanding
-                                .remove(rpc_id)
-                                .expect("received unrecognized WR completion ACK")
-                        });
-                        OBJECT_RECLAIMER.register_rpc_completion(msg_id, 1);
+                        PENDING_WREF.remove(rpc_id);
 
                         // bubble the error up to the user for RpcRequest
+                        // TODO(cjr): fix the problem here
                         if let TransportStatus::Error(_) = *status {
                             RECV_REPLY_CACHE
                                 .with_borrow_mut(|cache| cache.insert(*rpc_id, Err(*status)));
@@ -212,8 +190,6 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
 
 #[derive(Debug)]
 pub struct ClientStub {
-    // identifier for the stub
-    stub_id: u64,
     // mRPC connection handle
     handle: Handle,
     #[allow(unused)]
@@ -227,13 +203,14 @@ impl ClientStub {
         service_id: u32,
         func_id: u32,
         call_id: u32,
-        msg: &RpcMessage<Req>,
+        req: WRef<Req>,
     ) -> impl Future<Output = Result<ShmView<Res>, crate::Status>> + '_
     where
         Req: RpcData,
         Res: Unpin + RpcData,
     {
         let conn_id = self.get_handle();
+
         // construct meta
         let meta = MessageMeta {
             conn_id,
@@ -244,9 +221,7 @@ impl ClientStub {
             msg_type: RpcMsgType::Request,
         };
 
-        // increase send count for RpcMessage
-        msg.send_count.fetch_add(1, Ordering::AcqRel);
-        self.post_request(msg, meta).unwrap();
+        self.post_request(req, meta).unwrap();
 
         ReqFuture {
             rpc_id: RpcId(conn_id, call_id),
@@ -273,7 +248,7 @@ impl ClientStub {
 
     pub(crate) fn post_request<T: RpcData>(
         &self,
-        msg: &RpcMessage<T>,
+        msg: WRef<T>,
         meta: MessageMeta,
     ) -> Result<(), Error> {
         tracing::trace!(
@@ -281,20 +256,17 @@ impl ClientStub {
             meta.call_id
         );
 
-        let (ptr_app, ptr_backend) = Box::to_raw_parts(&msg.inner);
+        // track the msg as pending
+        PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg));
+
+        let (ptr_app, ptr_backend) = msg.into_shmptr().to_raw_parts();
         let erased = MessageErased {
             meta,
             shm_addr_app: ptr_app.addr().get(),
             shm_addr_backend: ptr_backend.addr().get(),
         };
-        let req = dp::WorkRequest::Call(erased);
 
-        // codegen should increase send_count for RpcMessage
-        OUTSTANDING_RPC.with(|outstanding| {
-            outstanding
-                .borrow_mut()
-                .insert(RpcId(meta.conn_id, meta.call_id), msg.identifier);
-        });
+        let req = dp::WorkRequest::Call(erased);
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
@@ -348,9 +320,7 @@ impl ClientStub {
                     Result::<(), Error>::Ok(())
                 })?;
 
-                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 Ok(Self {
-                    stub_id,
                     handle: ret.0,
                     reply_mrs,
                     recv_reclaim_buffer: ReclaimBuffer::new(),
@@ -365,19 +335,7 @@ impl !Sync for ClientStub {}
 
 impl Drop for ClientStub {
     fn drop(&mut self) {
-        OUTSTANDING_RPC.with(|outstanding| {
-            let mut borrow = outstanding.borrow_mut();
-            let rpcs = borrow.drain_filter(|rpc_id, _| self.handle == rpc_id.0);
-
-            let msg_cnt = rpcs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
-                *acc.entry(msg_id).or_insert(0u64) += 1;
-                acc
-            });
-
-            for (msg_id, cnt) in msg_cnt {
-                OBJECT_RECLAIMER.register_rpc_completion(msg_id, cnt);
-            }
-        });
+        PENDING_WREF.erase_by_connection(self.handle);
     }
 }
 
@@ -495,22 +453,13 @@ impl Server {
         })
     }
 
-    pub(crate) fn post_reply(&self, erased: MessageErased, msg_id: u64) -> Result<(), Error> {
+    pub(crate) fn post_reply(&self, erased: MessageErased) -> Result<(), Error> {
         tracing::trace!(
             "client post reply to mRPC engine, call_id={}",
             erased.meta.call_id
         );
 
         let wr = dp::WorkRequest::Reply(erased);
-
-        // codegen should increase send_count for RpcMessage
-        let meta = erased.meta;
-        OUTSTANDING_RPC.with(|outstanding| {
-            outstanding
-                .borrow_mut()
-                .insert(RpcId(meta.conn_id, meta.call_id), msg_id);
-        });
-
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
             while !sent {
@@ -526,18 +475,18 @@ impl Server {
 
     fn post_replies(
         &mut self,
-        msg_buffer: &mut Vec<(MessageErased, u64)>,
+        msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let replies = msg_buffer.drain(..);
-        for (reply, msg_id) in replies {
-            self.post_reply(reply, msg_id)?;
+        for reply in replies {
+            self.post_reply(reply)?;
         }
         Ok(())
     }
 
     fn poll_requests(
         &mut self,
-        msg_buffer: &mut Vec<(MessageErased, u64)>,
+        msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         check_completion_queue()?;
 
@@ -550,8 +499,8 @@ impl Server {
                     Some(s) => {
                         let recv_buffer =
                             self.recv_reclaim_buffer.get(&request.meta.conn_id).unwrap();
-                        let (reply_erased, msg_id) = s.call(request, recv_buffer);
-                        msg_buffer.push((reply_erased, msg_id));
+                        let reply_erased = s.call(request, recv_buffer);
+                        msg_buffer.push(reply_erased);
                     }
                     None => {
                         eprintln!("unrecognized request: {:?}", request);
@@ -579,19 +528,7 @@ impl Drop for Server {
         RECV_REQUEST_CACHE.with(|cache| cache.borrow_mut().remove(&self.stub_id));
 
         // remove all outstanding RPC releated to this client/server stub
-        OUTSTANDING_RPC.with(|outstanding| {
-            let mut borrow = outstanding.borrow_mut();
-            let wrs = borrow.drain_filter(|rpc_id, _| self.handles.contains(&rpc_id.0));
-
-            let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
-                *acc.entry(msg_id).or_insert(0u64) += 1;
-                acc
-            });
-
-            for (msg_id, cnt) in msg_cnt {
-                OBJECT_RECLAIMER.register_rpc_completion(msg_id, cnt);
-            }
-        });
+        PENDING_WREF.erase_by(|rpc_id, _| self.handles.contains(&rpc_id.0));
     }
 }
 
@@ -602,7 +539,7 @@ pub trait NamedService {
 
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    fn call(&self, req: MessageErased, reclaim_buffer: &ReclaimBuffer) -> (MessageErased, u64);
+    fn call(&self, req: MessageErased, reclaim_buffer: &ReclaimBuffer) -> MessageErased;
 }
 
 pub fn service_pre_handler<'a, T: Unpin>(
@@ -615,12 +552,12 @@ pub fn service_pre_handler<'a, T: Unpin>(
 }
 
 pub fn service_post_handler<T: RpcData>(
-    reply: &RpcMessage<T>,
+    reply: WRef<T>,
     conn_id: Handle,
     service_id: u32,
     func_id: u32,
     call_id: u32,
-) -> (MessageErased, u64) {
+) -> MessageErased {
     // construct meta
     let meta = MessageMeta {
         conn_id,
@@ -631,16 +568,17 @@ pub fn service_post_handler<T: RpcData>(
         msg_type: RpcMsgType::Response,
     };
 
-    // increase send count of RpcMessage
-    reply.send_count.fetch_add(1, Ordering::AcqRel);
+    // track the msg as pending
+    PENDING_WREF.insert(RpcId::new(conn_id, func_id), WRef::clone(&reply));
 
-    let (ptr_app, ptr_backend) = Box::to_raw_parts(&reply.inner);
+    let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {
         meta,
         shm_addr_app: ptr_app.addr().get(),
         shm_addr_backend: ptr_backend.addr().get(),
     };
-    (erased, reply.identifier)
+
+    erased
 }
 
 pub fn update_protos(protos: &[&str]) -> Result<(), Error> {

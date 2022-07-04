@@ -5,12 +5,12 @@ use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
 use mrpc::shmview::ShmView;
-use mrpc::stub::RpcMessage;
+use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
+    // mrpc::include_proto!("rpc_hello");
+    include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};
@@ -41,7 +41,7 @@ pub struct Args {
 
 #[derive(Debug)]
 struct MyGreeter {
-    replies: Vec<RpcMessage<HelloReply>>,
+    replies: Vec<WRef<HelloReply>>,
     count: AtomicUsize,
     args: Args,
 }
@@ -50,26 +50,26 @@ impl Greeter for MyGreeter {
     fn say_hello(
         &self,
         _request: ShmView<HelloRequest>,
-    ) -> Result<&RpcMessage<HelloReply>, mrpc::Status> {
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
-        let ret = Ok(&self.replies[my_count % self.args.provision_count]);
+        let ret = Ok(WRef::clone(&self.replies[my_count % self.args.provision_count]));
         return ret;
     }
 }
 
 #[derive(Debug)]
 struct MyGreeterBlocking {
-    reply: RpcMessage<HelloReply>,
+    reply: WRef<HelloReply>,
 }
 
 impl Greeter for MyGreeterBlocking {
     fn say_hello(
         &self,
         _request: ShmView<HelloRequest>,
-    ) -> Result<&RpcMessage<HelloReply>, mrpc::Status> {
-        Ok(&self.reply)
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
+        Ok(WRef::clone(&self.reply))
     }
 }
 
@@ -79,7 +79,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
 
     if args.blocking {
         let message = Vec::new();
-        let msg = RpcMessage::new(HelloReply { message });
+        let msg = WRef::new(HelloReply { message });
         let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
             .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
             .serve()?;
@@ -88,7 +88,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         for _ in 0..args.provision_count {
             let mut message = Vec::new();
             message.resize(args.reply_size, 43);
-            let msg = RpcMessage::new(HelloReply { message });
+            let msg = WRef::new(HelloReply { message });
             replies.push(msg);
         }
         let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?

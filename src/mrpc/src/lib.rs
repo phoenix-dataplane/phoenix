@@ -26,6 +26,8 @@
 #![feature(maybe_uninit_array_assume_init)]
 // with_borrow_mut
 #![feature(local_key_cell_methods)]
+// WRef
+#![feature(get_mut_unchecked)]
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -89,6 +91,9 @@ pub mod macros;
 pub use interface::rpc::MessageErased;
 
 pub mod shmview;
+
+pub mod wref;
+pub use wref::WRef;
 
 pub mod status;
 pub use status::{Code, Status};
