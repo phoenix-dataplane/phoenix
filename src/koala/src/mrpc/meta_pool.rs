@@ -1,3 +1,4 @@
+use std::fmt;
 use std::mem;
 use std::ptr::Unique;
 
@@ -15,7 +16,7 @@ pub(crate) const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 /// | meta | num_sge | value_len | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
 /// |  32  |    4    |     4     |                 EAGER_BUFFER_SIZE - 40              |
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct MetaBuffer {
     pub(crate) meta: MessageMeta,
     pub(crate) num_sge: u32,
@@ -32,17 +33,60 @@ mod sa {
     const_assert_eq!(size_of::<Option<MetaBufferPtr>>(), 8);
 }
 
+impl fmt::Debug for MetaBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let print_count = self.value_buffer().len().min(64);
+        f.debug_struct("MetaBuffer")
+            .field("meta", &self.meta)
+            .field("num_sge", &self.num_sge)
+            .field("value_len", &self.value_len)
+            .field("lens", &self.lens_buffer())
+            .field("value", &(&self.value_buffer()[..print_count]))
+            .finish()
+    }
+}
+
 impl MetaBuffer {
     #[inline]
     pub(crate) fn len(&self) -> usize {
         mem::size_of::<MessageMeta>()
-            + self.num_sge as usize * mem::size_of::<u32>()
+            + mem::size_of_val(&self.num_sge)
+            + mem::size_of_val(&self.value_len)
+            + self.value_start()
             + self.value_len as usize
     }
 
     #[inline]
     pub(crate) const fn lens_and_value_capacity() -> usize {
         META_BUFFER_SIZE - 40
+    }
+
+    #[inline]
+    pub(crate) const fn value_start(&self) -> usize {
+        let start = self.num_sge as usize * mem::size_of::<u32>();
+        assert!(start <= Self::lens_and_value_capacity());
+        start
+    }
+
+    #[inline]
+    pub(crate) fn lens_buffer(&self) -> &[u8] {
+        &self.lens_and_value[..self.value_start()]
+    }
+
+    #[inline]
+    pub(crate) fn value_buffer(&self) -> &[u8] {
+        let base = self.value_start();
+        let len = self.value_len as usize;
+
+        assert!(
+            base + len <= self.lens_and_value.len(),
+            "{} + {} <= {}",
+            base,
+            len,
+            self.lens_and_value.len()
+        );
+
+        &self.lens_and_value[base..base + len]
     }
 }
 

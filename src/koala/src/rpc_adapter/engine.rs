@@ -3,7 +3,6 @@ use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::ptr;
-use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -209,7 +208,7 @@ impl RpcAdapterEngine {
                 .push_back(ReqContext { call_id, sg_len: 1 });
         }
 
-        let off = meta_buf_ptr.0.as_ptr().addr();
+        let off = meta_buf_ptr.0.as_ptr().expose_addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
 
         // write the lens to MetaBuffer
@@ -234,7 +233,7 @@ impl RpcAdapterEngine {
         let odp_mr = self.get_or_init_odp_mr();
 
         // post send with imm
-        tracing::trace!("post_send_imm, len={}", meta_buf.len());
+        // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
         unsafe {
             cmid.post_send_with_imm(
                 odp_mr,
@@ -274,7 +273,7 @@ impl RpcAdapterEngine {
         // Sender posts send requests from the SgList
         let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
         let meta_sge = SgE {
-            ptr: (meta_ref as *const MessageMeta).addr(),
+            ptr: (meta_ref as *const MessageMeta).expose_addr(),
             len: mem::size_of::<MessageMeta>(),
         };
 
@@ -384,23 +383,31 @@ impl RpcAdapterEngine {
         use std::ptr::Unique;
 
         assert_eq!(sg_list.0.len(), 1);
-        // modify the first sge in place
-        sg_list.0[0].len = mem::size_of::<MessageMeta>();
 
         let meta_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MetaBuffer).unwrap();
         let meta_buf = unsafe { meta_buf_ptr.as_ref() };
+        // tracing::trace!("reshape_fused_sg_list: meta_buf: {:?}", meta_buf);
+
+        // modify the first sge in place
+        sg_list.0[0].len = mem::size_of::<MessageMeta>();
 
         let num_sge = meta_buf.num_sge as usize;
-        let lens_buf = unsafe {
-            slice::from_raw_parts(meta_buf.lens_and_value.as_ptr().cast::<u32>(), num_sge)
-        };
-        let value_buf_offset = num_sge * mem::size_of::<u32>();
+        let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
+        debug_assert!(_prefix.is_empty() && _suffix.is_empty());
+
+        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
+        let mut value_offset = 0;
+
         for i in 0..num_sge {
             sg_list.0.push(SgE {
-                ptr: value_buf_offset + meta_buf.lens_and_value.as_ptr().addr(),
-                len: lens_buf[i] as usize,
+                ptr: value_buf_base + value_offset,
+                len: lens[i] as usize,
             });
+
+            value_offset += lens[i] as usize;
         }
+
+        // tracing::trace!("reshape_fused_sg_list: sg_list: {:?}", sg_list);
     }
 
     fn unmarshal_and_deliver_up(
