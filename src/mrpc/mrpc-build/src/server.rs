@@ -84,7 +84,7 @@ pub fn generate<T: Service>(
                 fn call(
                     &self,
                     req: ::mrpc::MessageErased,
-                    reclaim_buffer: &::mrpc::stub::ReclaimBuffer,
+                    read_heap: &::mrpc::salloc::ReadHeap,
                 ) -> ::mrpc::MessageErased {
                     let conn_id = req.meta.conn_id;
                     let call_id = req.meta.call_id;
@@ -137,7 +137,7 @@ fn generate_trait_methods<T: Service>(
             #method_doc
             fn #name(
                 &self,
-                request: ::mrpc::shmview::ShmView<#req_type>
+                request: ::mrpc::RRef<#req_type>
             ) -> Result<::mrpc::WRef<#res_type>, ::mrpc::Status>;
         };
 
@@ -166,9 +166,9 @@ fn generate_methods<T: Service>(
         // TODO
         let match_branch = quote::quote! {
             #func_id => {
-                // let req_view: mrpc::shmview::ShmView<'_, #req_type> = mrpc::stub::service_pre_handler(&req, &());
-                let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                match self.inner.#func_ident(req_view) {
+                // let req_view = mrpc::stub::service_pre_handler(&req, reclaim_buffer);
+                let req = ::mrpc::RRef::new(&req, read_heap);
+                match self.inner.#func_ident(req) {
                     Ok(reply) => {
                         ::mrpc::stub::service_post_handler(reply, conn_id, #service_id, #func_id, call_id)
                     }

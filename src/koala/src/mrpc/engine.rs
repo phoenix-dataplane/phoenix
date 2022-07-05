@@ -168,9 +168,9 @@ impl MrpcEngine {
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 match self.cmd_rx.recv().await.unwrap().0 {
-                    Ok(CompletionKind::ConnectInternal(handle, recv_mrs, fds)) => {
+                    Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
                         self.customer.send_fd(&fds).unwrap();
-                        Ok(CompletionKind::Connect((handle, recv_mrs)))
+                        Ok(CompletionKind::Connect(conn_resp))
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
@@ -398,10 +398,10 @@ impl MrpcEngine {
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {
-                    Ok(CompletionKind::NewConnectionInternal(handle, recv_mrs, fds)) => {
+                    Ok(CompletionKind::NewConnectionInternal(conn_resp, fds)) => {
                         // TODO(cjr): check if this send_fd will block indefinitely.
                         self.customer.send_fd(&fds).unwrap();
-                        let comp_kind = CompletionKind::NewConnection((handle, recv_mrs));
+                        let comp_kind = CompletionKind::NewConnection(conn_resp);
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))
                     }

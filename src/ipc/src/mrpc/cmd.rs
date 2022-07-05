@@ -17,18 +17,32 @@ pub enum Command {
     UpdateProtosInner(PathBuf),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadHeapRegion {
+    pub handle: Handle,
+    pub addr: usize,
+    pub len: usize,
+    pub file_off: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectResponse {
+    pub conn_handle: Handle,
+    pub read_regions: Vec<ReadHeapRegion>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompletionKind {
     SetTransport,
     // connection handle, receive mrs
-    ConnectInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
-    Connect((Handle, Vec<(Handle, usize, usize, i64)>)),
+    ConnectInternal(ConnectResponse, Vec<RawFd>),
+    Connect(ConnectResponse),
     Bind(Handle),
     // These are actually commands which go by a reverse direction.
     // conn_handle, (mr_handle, kaddr, len, file_off)
     // TODO(wyj): pass align
-    NewConnectionInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
-    NewConnection((Handle, Vec<(Handle, usize, usize, i64)>)),
+    NewConnectionInternal(ConnectResponse, Vec<RawFd>),
+    NewConnection(ConnectResponse),
     UpdateProtos,
 }
 

@@ -1,18 +1,15 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
 
-use arrayvec::ArrayVec;
 use dashmap::DashMap;
 use fnv::FnvHashMap;
 
 use interface::rpc::{RpcId, TransportStatus};
-use interface::Handle;
+use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
-use ipc::mrpc::dp::RECV_RECLAIM_BS;
 use libkoala::_rx_recv_impl as rx_recv_impl;
 
 /// Re-exports
@@ -20,15 +17,11 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::salloc::gc::CS_STUB_ID_COUNTER;
-use crate::salloc::region::SharedRecvBuffer;
+use crate::salloc::ReadHeap;
 use crate::salloc::SA_CTX;
+use crate::rref::RRef;
 use crate::wref::{WRef, WRefOpaque};
-use crate::{Error, MRPC_CTX};
-
-// pub trait IntoRequest {
-//     /// Wrap the input message `T` in a `mrpc::Request`
-//     fn into_request(self) -> Request<T>;
-// }
+use crate::{Error, Status, MRPC_CTX};
 
 #[derive(Debug, Default)]
 struct PendingWRef {
@@ -66,17 +59,6 @@ lazy_static::lazy_static! {
     static ref PENDING_WREF: PendingWRef = PendingWRef::new();
 }
 
-/// ReclaimBuffer
-#[derive(Debug)]
-pub struct ReclaimBuffer(pub(crate) RefCell<ArrayVec<u32, RECV_RECLAIM_BS>>);
-
-impl ReclaimBuffer {
-    #[inline]
-    fn new() -> Self {
-        ReclaimBuffer(RefCell::new(ArrayVec::new()))
-    }
-}
-
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
     pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<RpcId, Result<MessageErased, TransportStatus>>> = RefCell::new(FnvHashMap::default());
@@ -96,16 +78,14 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::shmview::ShmView;
-
 pub struct ReqFuture<'a, T> {
     rpc_id: RpcId,
-    reclaim_buffer: &'a ReclaimBuffer,
+    read_heap: &'a ReadHeap,
     _marker: PhantomData<T>,
 }
 
 impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
-    type Output = Result<ShmView<'a, T>, crate::Status>;
+    type Output = Result<RRef<'a, T>, Status>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -122,10 +102,10 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
                 Poll::Pending
             }
             Some(Ok(erased)) => {
-                let reply = ShmView::new(&erased, &this.reclaim_buffer);
+                let reply = RRef::new(&erased, this.read_heap);
                 Poll::Ready(Ok(reply))
             }
-            Some(Err(status)) => Poll::Ready(Err(crate::Status::from_incoming_transport(status))),
+            Some(Err(status)) => Poll::Ready(Err(Status::from_incoming_transport(status))),
         }
     }
 }
@@ -198,18 +178,17 @@ pub struct ClientStub {
     // mRPC connection handle
     handle: Handle,
     #[allow(unused)]
-    reply_mrs: Vec<SharedRecvBuffer>,
-    recv_reclaim_buffer: ReclaimBuffer,
+    read_heap: ReadHeap,
 }
 
 impl ClientStub {
     pub fn unary<'a, Req, Res>(
-        &self,
+        &'a self,
         service_id: u32,
         func_id: u32,
         call_id: u32,
         req: WRef<Req>,
-    ) -> impl Future<Output = Result<ShmView<Res>, crate::Status>> + '_
+    ) -> impl Future<Output = Result<RRef<'a, Res>, Status>> + '_
     where
         Req: RpcData,
         Res: Unpin + RpcData,
@@ -230,7 +209,7 @@ impl ClientStub {
 
         ReqFuture {
             rpc_id: RpcId(conn_id, call_id),
-            reclaim_buffer: &self.recv_reclaim_buffer,
+            read_heap: &self.read_heap,
             _marker: PhantomData,
         }
     }
@@ -295,23 +274,19 @@ impl ClientStub {
         MRPC_CTX.with(|ctx| {
             ctx.service.send_cmd(req)?;
             let fds = ctx.service.recv_fd()?;
-            rx_recv_impl!(ctx.service, CompletionKind::Connect, ret, {
-                use memfd::Memfd;
-                assert_eq!(fds.len(), ret.1.len());
-                let mut vaddrs = Vec::new();
-                let reply_mrs = ret
-                    .1
-                    .into_iter()
-                    .zip(&fds)
-                    .map(|(mr, &fd)| {
-                        let memfd = Memfd::try_from_fd(fd)
-                            .map_err(|_| io::Error::last_os_error())
-                            .unwrap();
-                        let m = SharedRecvBuffer::new(mr.1, mr.2, mr.3, memfd).unwrap();
-                        vaddrs.push((mr.0, m.as_ptr().expose_addr()));
-                        m
-                    })
+            rx_recv_impl!(ctx.service, CompletionKind::Connect, conn_resp, {
+                // use memfd::Memfd;
+                assert_eq!(fds.len(), conn_resp.read_regions.len());
+
+                let conn_handle = conn_resp.conn_handle;
+
+                let read_heap = ReadHeap::new(&conn_resp, &fds);
+                let vaddrs = read_heap
+                    .rbufs
+                    .iter()
+                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
                     .collect();
+
                 // return the mapped addr back
                 SA_CTX.with(|sa_ctx| {
                     let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
@@ -325,9 +300,8 @@ impl ClientStub {
                 })?;
 
                 Ok(Self {
-                    handle: ret.0,
-                    reply_mrs,
-                    recv_reclaim_buffer: ReclaimBuffer::new(),
+                    handle: conn_handle,
+                    read_heap,
                 })
             })
         })
@@ -348,12 +322,10 @@ pub struct Server {
     #[allow(unused)]
     listener_handle: Handle,
     handles: HashSet<Handle>,
-    // NOTE(wyj): store recv mrs according to connection handle
-    // instead of MR handle
-    mrs: HashMap<Handle, Vec<SharedRecvBuffer>>,
+    // conn -> ReadHeap
+    read_heaps: HashMap<Handle, ReadHeap>,
     // service_id -> Service
     routes: HashMap<u32, std::boxed::Box<dyn Service>>,
-    recv_reclaim_buffer: FnvHashMap<Handle, ReclaimBuffer>,
 }
 
 impl Server {
@@ -379,9 +351,8 @@ impl Server {
                     stub_id,
                     listener_handle,
                     handles: HashSet::default(),
-                    mrs: Default::default(),
+                    read_heaps: Default::default(),
                     routes: HashMap::default(),
-                    recv_reclaim_buffer: FnvHashMap::default(),
                 })
             })
         })
@@ -417,24 +388,21 @@ impl Server {
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
                     let mut vaddrs = Vec::new();
-                    let mut recv_mrs = Vec::new();
-                    rx_recv_impl!(ctx.service, CompletionKind::NewConnection, ret, {
-                        use memfd::Memfd;
-                        assert_eq!(fds.len(), ret.1.len());
-                        assert!(self.handles.insert(ret.0));
-                        // setup recv cache and recv reclaim buffer
+                    rx_recv_impl!(ctx.service, CompletionKind::NewConnection, conn_resp, {
+                        let conn_handle = conn_resp.conn_handle;
+                        assert_eq!(fds.len(), conn_resp.read_regions.len());
+                        assert!(self.handles.insert(conn_handle));
+                        // setup recv cache
                         CONN_SERVER_STUB_MAP
-                            .with(|map| map.borrow_mut().insert(ret.0, self.stub_id));
-                        self.recv_reclaim_buffer.insert(ret.0, ReclaimBuffer::new());
-                        for (mr, &fd) in ret.1.into_iter().zip(&fds) {
-                            let memfd = Memfd::try_from_fd(fd)
-                                .map_err(|_| io::Error::last_os_error())
-                                .unwrap();
-                            let m = SharedRecvBuffer::new(mr.1, mr.2, mr.3, memfd).unwrap();
-                            vaddrs.push((mr.0, m.as_ptr().expose_addr()));
-                            recv_mrs.push(m);
-                        }
-                        self.mrs.insert(ret.0, recv_mrs);
+                            .with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
+
+                        let read_heap = ReadHeap::new(&conn_resp, &fds);
+                        vaddrs = read_heap
+                            .rbufs
+                            .iter()
+                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                            .collect();
+                        self.read_heaps.insert(conn_handle, read_heap);
                         Ok(())
                     })?;
                     // return the mapped addr back
@@ -498,11 +466,10 @@ impl Server {
 
             for request in borrow.get_mut(&self.stub_id).unwrap().drain(..) {
                 let service_id = request.meta.service_id;
+                let read_heap = &self.read_heaps[&request.meta.conn_id];
                 match self.routes.get_mut(&service_id) {
                     Some(s) => {
-                        let recv_buffer =
-                            self.recv_reclaim_buffer.get(&request.meta.conn_id).unwrap();
-                        let reply_erased = s.call(request, recv_buffer);
+                        let reply_erased = s.call(request, read_heap);
                         msg_buffer.push(reply_erased);
                     }
                     None => {
@@ -542,16 +509,11 @@ pub trait NamedService {
 
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    fn call(&self, req: MessageErased, reclaim_buffer: &ReclaimBuffer) -> MessageErased;
+    fn call(&self, req: MessageErased, read_heap: &ReadHeap) -> MessageErased;
 }
 
-pub fn service_pre_handler<'a, T: Unpin>(
-    req: &MessageErased,
-    reclaim_buffer: &'a ReclaimBuffer,
-) -> ShmView<'a, T> {
-    // TODO(wyj): lifetime bound for ShmView
-    // ShmView should be !Send and !Sync
-    ShmView::new(&req, reclaim_buffer)
+pub fn service_pre_handler<'a, T: Unpin>(req: &MessageErased, read_heap: &'a ReadHeap) -> RRef<'a, T> {
+    RRef::new(&req, read_heap)
 }
 
 pub fn service_post_handler<T: RpcData>(

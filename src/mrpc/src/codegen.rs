@@ -46,9 +46,8 @@ pub mod greeter_client {
         pub fn say_hello(
             &self,
             req: impl mrpc::IntoWRef<HelloRequest>,
-        ) -> impl std::future::Future<
-            Output = Result<::mrpc::shmview::ShmView<HelloReply>, ::mrpc::Status>,
-        > + '_ {
+        ) -> impl std::future::Future<Output = Result<mrpc::RRef<HelloReply>, ::mrpc::Status>> + '_
+        {
             let call_id = self.call_counter.get();
             self.call_counter.set(call_id + 1);
             // TODO(cjr): fill this with the right func_id
@@ -73,7 +72,7 @@ pub mod greeter_server {
     pub trait Greeter: Send + Sync + 'static {
         fn say_hello(
             &self,
-            request: ::mrpc::shmview::ShmView<HelloRequest>,
+            request: mrpc::RRef<HelloRequest>,
         ) -> Result<mrpc::WRef<HelloReply>, mrpc::Status>;
     }
 
@@ -99,7 +98,7 @@ pub mod greeter_server {
         fn call(
             &self,
             req: mrpc::MessageErased,
-            reclaim_buffer: &mrpc::stub::ReclaimBuffer,
+            read_heap: &mrpc::salloc::ReadHeap,
         ) -> mrpc::MessageErased {
             let conn_id = req.meta.conn_id;
             let call_id = req.meta.call_id;
@@ -107,8 +106,8 @@ pub mod greeter_server {
             match func_id {
                 // TODO(cjr): fill this with the right func_id
                 3687134534u32 => {
-                    let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                    match self.inner.say_hello(req_view) {
+                    let req = mrpc::RRef::new(&req, read_heap);
+                    match self.inner.say_hello(req) {
                         Ok(reply) => ::mrpc::stub::service_post_handler(
                             reply,
                             conn_id,

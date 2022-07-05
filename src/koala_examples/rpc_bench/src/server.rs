@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
-use mrpc::shmview::ShmView;
-use mrpc::WRef;
+use mrpc::{WRef, RRef};
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
@@ -47,7 +46,7 @@ struct MyGreeter {
 }
 
 impl Greeter for MyGreeter {
-    fn say_hello(&self, _request: ShmView<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
+    fn say_hello(&self, _request: RRef<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
@@ -64,7 +63,7 @@ struct MyGreeterBlocking {
 }
 
 impl Greeter for MyGreeterBlocking {
-    fn say_hello(&self, _request: ShmView<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
+    fn say_hello(&self, _request: RRef<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
         Ok(WRef::clone(&self.reply))
     }
 }

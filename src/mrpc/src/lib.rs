@@ -21,7 +21,7 @@
 #![feature(drain_filter)]
 // stub
 #![feature(hash_drain_filter)]
-// shmview
+// rref
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
 // with_borrow_mut
@@ -77,9 +77,10 @@ impl Context {
     }
 }
 
-// mRPC library
+// mRPC collections
 pub mod alloc;
 // pub mod codegen;  // use include! macro
+
 pub mod stub;
 
 // TODO(wyj): change to pub(crate)
@@ -90,7 +91,8 @@ pub mod macros;
 
 pub use interface::rpc::MessageErased;
 
-pub mod shmview;
+pub mod rref;
+pub use rref::RRef;
 
 pub mod wref;
 pub use wref::{IntoWRef, WRef};

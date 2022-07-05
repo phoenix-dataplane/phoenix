@@ -12,7 +12,7 @@ use std::collections::TryReserveErrorKind::*;
 
 use ipc::ptr::{ShmNonNull, ShmPtr};
 
-use crate::salloc::heap::SharedHeapAllocator;
+use crate::salloc::SharedHeapAllocator;
 
 use super::boxed::Box;
 

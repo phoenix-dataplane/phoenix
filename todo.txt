@@ -4,6 +4,7 @@ Yongji
 - codegen for RpcAdapter's dyanmic dispatch
 - builder of shared library of generated code
   for dyanmic binding
+- live upgrade
 
 Shihan
 - TCP backend + RpcAdapterTcp
@@ -20,6 +21,8 @@ Yechen
 
 Jingrong
 - dynamic binding
+- API
+- real apps
 
 Other major tasks
 - performance deep dive
@@ -207,7 +210,9 @@ Performance & CPU efficiency
       multiple CQs</s>
 
 Testing
--[x] Test various threading models for koala
+- *write a multi-thread RPC test*
+- *Crash consistency test*
+-[x] test various threading models for koala
 - One thread post_send/recv, another thread poll_cq
 - Multiple threads operate on their own QPs, and poll the CQs associated
   with those QPs
@@ -255,3 +260,6 @@ libkoala interface
     -[x] CmIdListener::accept()
 
 Multi-NIC
+
+Cloud native
+- Let koala run on Azure or AWS

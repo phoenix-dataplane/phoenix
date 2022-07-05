@@ -110,7 +110,7 @@ fn generate_methods<T: Service>(
                 &self,
                 req: impl ::mrpc::IntoWRef<#request>
             ) -> impl std::future::Future<
-                Output = Result<::mrpc::shmview::ShmView<#response>, ::mrpc::Status>
+                Output = Result<::mrpc::RRef<#response>, ::mrpc::Status>
             > + '_ {
                 let call_id = self.call_counter.get();
                 self.call_counter.set(call_id + 1);

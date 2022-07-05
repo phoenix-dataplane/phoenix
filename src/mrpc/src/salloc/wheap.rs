@@ -15,33 +15,33 @@ use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, Zon
 use ipc::ptr::ShmNonNull;
 use ipc::salloc::cmd;
 
-use super::region::SharedHeapRegion;
+use region::WriteRegion;
 use super::{Error, SA_CTX};
 
 thread_local! {
     /// thread-local shared heap
-    static TL_SHARED_HEAP: RefCell<SharedHeap> = RefCell::new(SharedHeap::new());
+    static TL_SHARED_HEAP: RefCell<WriteHeap> = RefCell::new(WriteHeap::new());
 }
 
 lazy_static! {
-    pub(crate) static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, SharedHeapRegion>> = {
+    pub(crate) static ref SHARED_HEAP_REGIONS: spin::Mutex<BTreeMap<usize, WriteRegion>> = {
         lazy_static::initialize(&super::gc::PAGE_RECLAIMER_CTX);
         spin::Mutex::new(BTreeMap::new())
     };
 }
 
-struct SharedHeap {
+struct WriteHeap {
     zone_allocator: ZoneAllocator,
 }
 
-impl SharedHeap {
+impl WriteHeap {
     fn new() -> Self {
-        SharedHeap {
+        WriteHeap {
             zone_allocator: ZoneAllocator::new(),
         }
     }
 
-    fn allocate_shm(&self, len: usize) -> Result<SharedHeapRegion, Error> {
+    fn allocate_shm(&self, len: usize) -> Result<WriteRegion, Error> {
         assert!(len > 0);
         SA_CTX.with(|ctx| {
             // TODO(cjr): use a correct align
@@ -58,7 +58,7 @@ impl SharedHeap {
 
             match ctx.service.recv_comp().unwrap().0 {
                 Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => {
-                    Ok(SharedHeapRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
+                    Ok(WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
                 }
                 Err(e) => Err(Error::Interface("AllocShm", e)),
                 otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
@@ -146,9 +146,9 @@ impl SharedHeap {
     }
 }
 
-impl Default for SharedHeap {
+impl Default for WriteHeap {
     fn default() -> Self {
-        SharedHeap::new()
+        WriteHeap::new()
     }
 }
 
@@ -437,5 +437,91 @@ impl SharedHeapAllocator {
         self.deallocate(ptr, old_layout);
 
         Ok(new_ptr)
+    }
+}
+
+mod region {
+    use std::ops::{Deref, DerefMut};
+    use std::slice;
+
+    use memfd::Memfd;
+    use memmap_fixed::MmapFixed;
+
+    use ipc::salloc::cmd::{Command, CompletionKind};
+    use libkoala::_rx_recv_impl as rx_recv_impl;
+
+    use super::{Error, SA_CTX};
+
+    // Shared region on sender heap
+    #[derive(Debug)]
+    pub(crate) struct WriteRegion {
+        mmap: MmapFixed,
+        remote_addr: usize,
+        pub(crate) align: usize,
+        _memfd: Memfd,
+    }
+
+    impl Deref for WriteRegion {
+        type Target = [u8];
+        fn deref(&self) -> &Self::Target {
+            unsafe { slice::from_raw_parts(self.mmap.as_ptr().cast(), self.mmap.len()) }
+        }
+    }
+
+    impl DerefMut for WriteRegion {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            unsafe { slice::from_raw_parts_mut(self.mmap.as_mut_ptr().cast(), self.mmap.len()) }
+        }
+    }
+
+    impl Drop for WriteRegion {
+        fn drop(&mut self) {
+            (|| {
+                SA_CTX.with(|ctx| {
+                    let req = Command::DeallocShm(self.remote_addr);
+                    ctx.service.send_cmd(req)?;
+                    // TODO(wyj): do we really need to wait for completion here?
+                    rx_recv_impl!(ctx.service, CompletionKind::DeallocShm)
+                })
+            })()
+            .unwrap_or_else(|e| eprintln!("Dropping WriteRegion: {}", e));
+        }
+    }
+
+    impl WriteRegion {
+        pub(crate) fn new(
+            remote_addr: usize,
+            nbytes: usize,
+            align: usize,
+            file_off: i64,
+            memfd: Memfd,
+        ) -> Result<Self, Error> {
+            tracing::debug!("WriteRegion::new, remote_addr: {:#0x?}", remote_addr);
+
+            // Map to the same address as remote_addr, panic if it does not work
+            let mmap = MmapFixed::new(remote_addr, nbytes, file_off as i64, memfd.as_file())?;
+
+            Ok(WriteRegion {
+                mmap,
+                remote_addr,
+                align,
+                _memfd: memfd,
+            })
+        }
+
+        #[inline]
+        pub(crate) fn as_ptr(&self) -> *const u8 {
+            self.mmap.as_ptr()
+        }
+
+        #[inline]
+        pub(crate) fn as_mut_ptr(&self) -> *mut u8 {
+            self.mmap.as_mut_ptr()
+        }
+
+        #[inline]
+        pub(crate) fn remote_addr(&self) -> usize {
+            self.remote_addr
+        }
     }
 }

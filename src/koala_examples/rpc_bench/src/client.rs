@@ -57,6 +57,10 @@ pub struct Args {
     pub provision_count: usize,
 }
 
+// mod bench_app;
+// include!("./bench_app.rs");
+
+#[allow(unused)]
 async fn run_bench(
     args: &Args,
     client: &GreeterClient,
@@ -137,10 +141,13 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
                 reqs.push(req);
             }
 
+            // warm up
             let _ = run_bench(&args, &client, &reqs, true).await?;
+            // let _ = BenchApp::new(&args, &client, &reqs, true).await?;
 
             let start = Instant::now();
             let stats = run_bench(&args, &client, &reqs, false).await?;
+            // let stats = BenchApp::new(&args, &client, &reqs, false).await?;
             let dura = start.elapsed();
             let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
 

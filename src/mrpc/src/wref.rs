@@ -108,14 +108,14 @@ impl WRefOpaque {
 
 impl Clone for WRefOpaque {
     fn clone(&self) -> Self {
-        // SAFETY: TODO(cjr)
+        // SAFETY: TODO(cjr) write doc
         unsafe { (self.vtable.clone)(self.data) }
     }
 }
 
 impl Drop for WRefOpaque {
     fn drop(&mut self) {
-        // SAFETY: TODO(cjr)
+        // SAFETY: TODO(cjr) write doc
         unsafe { (self.vtable.drop)(self.data) }
     }
 }
@@ -228,7 +228,10 @@ impl<T: RpcData> WRef<T> {
 // use std::sync::atomic::{AtomicUsize, Ordering};
 // use std::ptr::NonNull;
 // use std::marker::PhantomData;
-// #[derive(Debug)] #[repr(C)] struct WRefInner<T: ?Sized> { // reference counting.
+// #[derive(Debug)]
+// #[repr(C)]
+// struct WRefInner<T: ?Sized> {
+//     // reference counting.
 //     // In addition to the cloning and dropping the object, there is another case to modify the
 //     // refcnt: When we notify the backend service to fetch the object (on the shared heap), the
 //     // refcnt is incremented and when the backend notifies that they have finished with the object,

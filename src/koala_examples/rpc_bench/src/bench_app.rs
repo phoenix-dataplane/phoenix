@@ -1,37 +1,41 @@
-use std::time::{Duration, Instant};
+// use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use futures::stream::Stream;
 
-struct BenchApp<'a, 'b, 'c, T> {
+use mrpc::RRef;
+
+use rpc_hello::HelloReply;
+
+pub(crate) struct BenchApp<'a, 'b, 'c> {
     // input of the future
     args: &'a Args,
     client: &'b GreeterClient,
-    reqs: &'c [RpcMessage<HelloRequest>],
+    reqs: &'c [WRef<HelloRequest>],
     warmup: bool,
     // states of the future
     response_count: usize,
-    reply_futures: FuturesUnordered<BoxFuture<'static, T>>,
+    reply_futures: FuturesUnordered<BoxFuture<'b, Result<RRef<'b, HelloReply>, mrpc::Status>>>,
     starts: Vec<Instant>,
     latencies: Vec<Duration>,
     scnt: usize,
     rcnt: usize,
 }
 
-impl<'a, 'b, 'c, F> BenchApp<'a, 'b, 'c, F> {
-    fn new(
+impl<'a, 'b, 'c> BenchApp<'a, 'b, 'c> {
+    pub(crate) fn new(
         args: &'a Args,
         client: &'b GreeterClient,
-        reqs: &'c [RpcMessage<HelloRequest>],
+        reqs: &'c [WRef<HelloRequest>],
         warmup: bool,
     ) -> Self {
-        let mut response_count = 0;
-        let mut reply_futures = FuturesUnordered::new();
-        let mut starts = Vec::with_capacity(args.total_iters);
-        let mut latencies = Vec::with_capacity(args.total_iters);
+        let response_count = 0;
+        let reply_futures = FuturesUnordered::new();
+        let starts = Vec::with_capacity(args.total_iters);
+        let latencies = Vec::with_capacity(args.total_iters);
 
-        let mut scnt = 0;
-        let mut rcnt = 0;
+        let scnt = 0;
+        let rcnt = 0;
         BenchApp {
             args,
             client,
@@ -52,42 +56,59 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-impl<'a, 'b, 'c, T> Future for BenchApp<'a, 'b, 'c, T> {
+impl<'a, 'b, 'c> Future for BenchApp<'a, 'b, 'c>
+where
+    'b: 'a,
+    'b: 'c,
+    'c: 'b,
+{
     type Output = Result<Vec<(Instant, Duration)>, mrpc::Status>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        while self.rcnt < self.args.total_iters {
-            // send request
-            if self.scnt < self.args.total_iters {
-                self.starts.push(Instant::now());
-                let fut = self
+        let this = self.get_mut();
+
+        if this.rcnt < this.args.total_iters {
+            // issue a request
+            if this.scnt < this.args.total_iters && this.scnt < this.rcnt + this.args.concurrency {
+                this.starts.push(Instant::now());
+                let fut = this
                     .client
-                    .say_hello(&self.reqs[self.scnt % self.args.provision_count]);
-                self.reply_futures.push(Box::pin(fut));
-                self.scnt += 1;
+                    .say_hello(&this.reqs[this.scnt % this.args.provision_count]);
+                this.reply_futures.push(Box::pin(fut));
+                this.scnt += 1;
             }
 
-            // waitany
-            if self.rcnt + self.args.provision_count <= self.scnt {
-                // We are good to unwrap because rcnt < scnt
-                // let _resp = self.reply_futures.next().await.unwrap()?;
-                match Pin::new(&mut self.reply_futures).poll_next(cx) {
-                    Poll::Ready(Some(_reply)) => {}
-                    Poll::Ready(None) => {
-                        panic!("impossible")
-                    }
-                    Poll::Pending => continue,
-                };
-                self.latencies
-                    .push(self.starts[self.latencies.len()].elapsed());
-                self.rcnt += 1;
-                if self.warmup {
-                    eprintln!("warmup: resp {} received", self.response_count);
-                    self.response_count += 1;
+            // try_waitany
+            // We are good to unwrap because rcnt < scnt (this.args.concurrency > 0)
+            // let _resp = this.reply_futures.next().await.unwrap()?;
+            match Pin::new(&mut this.reply_futures).poll_next(cx) {
+                Poll::Ready(Some(_reply)) => {}
+                Poll::Ready(None) => {
+                    panic!("impossible")
                 }
-            }
-        }
+                Poll::Pending => {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+            };
 
-        Poll::Pending
+            // received a response
+            this.latencies
+                .push(this.starts[this.latencies.len()].elapsed());
+            this.rcnt += 1;
+            if this.warmup {
+                eprintln!("warmup: resp {} received", this.response_count);
+                this.response_count += 1;
+            }
+
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        } else {
+            Poll::Ready(Ok(std::iter::zip(
+                this.starts.clone(),
+                this.latencies.clone(),
+            )
+            .collect()))
+        }
     }
 }
