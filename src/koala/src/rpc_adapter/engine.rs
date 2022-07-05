@@ -14,9 +14,9 @@ use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc;
 use ipc::mrpc::dp::WrIdentifier;
-use mrpc_marshal::{ExcavateContext, RpcMessage, SgE, SgList, ShmRecvMr};
-use mrpc_marshal::{MarshalError, UnmarshalError};
+use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
+use super::dispatch::DispatchModule;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
@@ -45,13 +45,6 @@ unsafe impl EngineLocalStorage for TlStorage {
         self
     }
 }
-
-pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalError>;
-pub(crate) type UnmarshalFn = fn(
-    &MessageMeta,
-    &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
-) -> Result<(usize, usize), UnmarshalError>;
-
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
@@ -70,7 +63,7 @@ pub(crate) struct RpcAdapterEngine {
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
-    pub(crate) dispatch_dylib: libloading::Library,
+    pub(crate) dispatch_module: Option<DispatchModule>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -343,10 +336,11 @@ impl RpcAdapterEngine {
 
             let cmid = &conn_ctx.cmid;
 
-            let sglist = unsafe {
-                let dispatch_func: libloading::Symbol<MarshalFn> =
-                    self.dispatch_dylib.get(b"marshal").unwrap();
-                dispatch_func(meta_ref, msg.addr_backend).unwrap()
+            let sglist = if let Some(ref module) = self.dispatch_module {
+                module.marshal(meta_ref, msg.addr_backend).unwrap()
+            }
+            else {
+                panic!("dispatch module not loaded");
             };
             // timer.tick();
 
@@ -438,10 +432,11 @@ impl RpcAdapterEngine {
             salloc: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
-        let (addr_app, addr_backend) = unsafe {
-            let dispatch_func: libloading::Symbol<UnmarshalFn> =
-                self.dispatch_dylib.get(b"unmarshal").unwrap();
-            dispatch_func(meta, &mut excavate_ctx).unwrap()
+        let (addr_app, addr_backend) = if let Some(ref module) = self.dispatch_module {
+            module.unmarshal(meta, &mut excavate_ctx).unwrap()
+        }
+        else {
+            panic!("dispatch module not loaded");
         };
         // timer.tick();
 
@@ -706,6 +701,15 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
+            },
+            mrpc::cmd::Command::UpdateProtosInner(dylib) => {
+                log::debug!("Loading dispatch library: {:?}", dylib);
+                let module = DispatchModule::new(dylib)?;
+                self.dispatch_module = Some(module);
+                Ok(mrpc::cmd::CompletionKind::UpdateProtos)
+            },
+            mrpc::cmd::Command::UpdateProtos(_) => {
+                unreachable!();
             }
         }
     }

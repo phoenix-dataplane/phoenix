@@ -23,6 +23,8 @@ pub(crate) enum Error {
     IpcTryRecv,
     #[error("Customer error: {0}")]
     Customer(#[from] ipc::Error),
+    #[error("Build dispatch library failed: {0}")]
+    DispatchBuilder(#[from] builder::Error),
 }
 
 impl From<Error> for interface::Error {

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use proc_macro2::TokenStream;
 use prost_build::Config;
+use quote::quote;
 
 use crate::attribute::Attributes;
 use crate::{client, server};
@@ -341,6 +342,24 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             self.servers = TokenStream::default();
         }
     }
+
+    fn finalize_package(&mut self, package: prost_build::Package, buf: &mut String) {
+        let package_mod = quote::format_ident!("proto");
+        let mut proto_srcs = Vec::with_capacity(package.source_code_files.len());
+        for src_file in package.source_code_files.iter() {
+            let src = std::fs::read_to_string(src_file).unwrap();
+            proto_srcs.push(src);
+        }
+
+        let tokens = quote! {
+            pub mod #package_mod {
+                pub const PROTO_SRCS: &'static [&'static str] = &[#(#proto_srcs),*]; 
+            }
+        };
+        let ast: syn::File = syn::parse2(tokens).expect("not a valid tokenstream");
+        let code = prettyplease::unparse(&ast);
+        buf.push_str(&code);
+    }
 }
 
 impl crate::Service for prost_build::Service {
@@ -413,6 +432,16 @@ impl crate::Method for prost_build::Method {
         let request = convert_type(&self.input_proto_type, &self.input_type);
         let response = convert_type(&self.output_proto_type, &self.output_type);
         (request, response)
+    }
+
+    // TODO: figure out whether we need to specially handle compile_well_known_types
+    fn request_response_package(
+        &self,
+        proto_path: &str,
+    ) -> (Option<String>, Option<String>) {
+        let input_package = self.input_package.as_ref().map(|pkg| format!("{}{}{}", proto_path, if pkg.is_empty() { "" } else { "::" }, pkg));
+        let output_package = self.output_package.as_ref().map(|pkg| format!("{}{}{}", proto_path, if pkg.is_empty() { "" } else { "::" }, pkg));
+        (input_package, output_package)
     }
 }
 

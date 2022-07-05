@@ -27,6 +27,8 @@
 // with_borrow_mut
 #![feature(local_key_cell_methods)]
 
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::io;
 
 use thiserror::Error;
@@ -35,6 +37,7 @@ use interface::engine::EngineType;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
 use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libkoala::_rx_recv_impl as rx_recv_impl;
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
@@ -47,13 +50,29 @@ thread_local! {
 }
 
 pub(crate) struct Context {
+    protos: RefCell<BTreeSet<String>>,
     service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
 impl Context {
     fn register() -> Result<Context, Error> {
+        let protos = RefCell::new(BTreeSet::new());
         let service = ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, EngineType::Mrpc)?;
-        Ok(Self { service })
+        Ok(Self { protos, service })
+
+    }
+
+    fn update_protos(&self, protos: &[&str]) -> Result<(), Error> {
+        let mut used_protos = self.protos.borrow_mut();
+        let orig = used_protos.len();
+        used_protos.extend(protos.iter().copied().map(String::from));
+        if used_protos.len() > orig {
+            let protos = used_protos.iter().cloned().collect::<Vec<_>>();
+            let req = cmd::Command::UpdateProtos(protos);
+            self.service.send_cmd(req)?;
+            rx_recv_impl!(self.service, cmd::CompletionKind::UpdateProtos)?;
+        }
+        Ok(())
     }
 }
 

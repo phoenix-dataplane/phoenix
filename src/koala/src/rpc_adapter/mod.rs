@@ -9,6 +9,7 @@ pub(crate) mod engine;
 pub(crate) mod module;
 pub(crate) mod state;
 pub(crate) mod ulib;
+pub(crate) mod dispatch;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]
@@ -26,6 +27,8 @@ pub(crate) enum ControlPathError {
     SendCommand,
     #[error("Service error: {0}")]
     Service(#[from] ipc::Error),
+    #[error("Loading dispatch library: {0}")]
+    LibLoading(#[from] libloading::Error),
 }
 
 impl From<ControlPathError> for interface::Error {

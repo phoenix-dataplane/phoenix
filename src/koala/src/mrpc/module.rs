@@ -1,5 +1,5 @@
 use std::os::unix::net::{SocketAddr, UCred};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -36,6 +36,7 @@ pub(crate) struct MrpcEngineBuilder {
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
+    dispatch_build_cache: PathBuf
 }
 
 impl MrpcEngineBuilder {
@@ -46,6 +47,7 @@ impl MrpcEngineBuilder {
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
+        dispatch_build_cache: PathBuf,
     ) -> Self {
         MrpcEngineBuilder {
             customer,
@@ -54,6 +56,7 @@ impl MrpcEngineBuilder {
             node,
             client_pid,
             mode,
+            dispatch_build_cache
         }
     }
 
@@ -71,6 +74,7 @@ impl MrpcEngineBuilder {
             cmd_rx: self.cmd_rx,
             meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             _mode: self.mode,
+            dispatch_build_cache: self.dispatch_build_cache,
             transport_type: None,
             indicator: None,
             wr_read_buffer: Vec::with_capacity(BUF_LEN),
@@ -85,6 +89,9 @@ pub struct MrpcModule {
 
 impl MrpcModule {
     pub fn new(config: MrpcConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+        if !config.dispatch_build_cache.is_dir() {
+            std::fs::create_dir(&config.dispatch_build_cache).unwrap();
+        }
         MrpcModule {
             config,
             runtime_manager,
@@ -130,7 +137,8 @@ impl MrpcModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 4. create the engine
-        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode, cmd_tx, cmd_rx);
+        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode, cmd_tx, cmd_rx, self.config.dispatch_build_cache.clone());
+        
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime

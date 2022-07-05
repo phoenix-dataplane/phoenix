@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream;
 
 use crate::attribute::Attributes;
@@ -39,11 +41,29 @@ pub fn generate<T: Service>(
     let mod_attributes = attributes.for_mod(package);
     let struct_attributes = attributes.for_struct(&path);
 
+    let mut proto_packages = BTreeSet::new();
+    for method in service.methods() {
+        let (input_package, output_package) = method.request_response_package(proto_path);
+        if let Some(pkg) = input_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+        if let Some(pkg) = output_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+    }
+
+    let proto_srcs = proto_packages
+        .into_iter()
+        .map(|x| syn::parse_str::<syn::Path>(&x).unwrap());
+
+
     quote::quote! {
         /// Generated server implementations.
         #(#mod_attributes)*
         pub mod #server_mod {
-            use mrpc::stub::{NamedService, RpcMessage, Service};
+            use ::mrpc::stub::{NamedService, RpcMessage, Service};
 
             #generated_trait
 
@@ -57,7 +77,14 @@ pub fn generate<T: Service>(
             }
 
             impl<T: #server_trait> #server_service<T> {
+                fn update_protos() -> Result<(), ::mrpc::Error> {
+                    let srcs = [#(#proto_srcs),*].concat();
+                    ::mrpc::stub::update_protos(srcs.as_slice())
+                }             
+
                 pub fn new(inner: T) -> Self {
+                    // TODO: handle error here
+                    Self::update_protos().unwrap();;
                     Self { inner }
                 }
             }
@@ -70,8 +97,8 @@ pub fn generate<T: Service>(
             impl<T: #server_trait> Service for #server_service<T> {
                 fn call(
                     &self,
-                    req: mrpc::MessageErased,
-                    reclaim_buffer: &mrpc::stub::ReclaimBuffer,
+                    req: ::mrpc::MessageErased,
+                    reclaim_buffer: &::mrpc::stub::ReclaimBuffer,
                 ) -> (::mrpc::MessageErased, u64) {
                     let conn_id = req.meta.conn_id;
                     let call_id = req.meta.call_id;
@@ -124,8 +151,8 @@ fn generate_trait_methods<T: Service>(
             #method_doc
             fn #name(
                 &self,
-                request: mrpc::shmview::ShmView<#req_type>
-            ) -> Result<&RpcMessage<#res_type>, mrpc::Status>;
+                request: ::mrpc::shmview::ShmView<#req_type>
+            ) -> Result<&RpcMessage<#res_type>, ::mrpc::Status>;
         };
 
         stream.extend(method);
@@ -154,10 +181,10 @@ fn generate_methods<T: Service>(
         let match_branch = quote::quote! {
             #func_id => {
                 // let req_view: mrpc::shmview::ShmView<'_, #req_type> = mrpc::stub::service_pre_handler(&req, &());
-                let req_view = mrpc::stub::service_pre_handler(&req, reclaim_buffer);
+                let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
                 match self.inner.#func_ident(req_view) {
                     Ok(reply) => {
-                        mrpc::stub::service_post_handler(reply, conn_id, #service_id, #func_id, call_id)
+                        ::mrpc::stub::service_post_handler(reply, conn_id, #service_id, #func_id, call_id)
                     }
                     Err(_status) => {
                         todo!();

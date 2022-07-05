@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream;
 
 use crate::attribute::Attributes;
@@ -30,11 +32,28 @@ pub fn generate<T: Service>(
     let mod_attributes = attributes.for_mod(package);
     let struct_attributes = attributes.for_struct(&path);
 
+    let mut proto_packages = BTreeSet::new();
+    for method in service.methods() {
+        let (input_package, output_package) = method.request_response_package(proto_path);
+        if let Some(pkg) = input_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+        if let Some(pkg) = output_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+    }
+
+    let proto_srcs = proto_packages
+        .into_iter()
+        .map(|x| syn::parse_str::<syn::Path>(&x).unwrap());
+
     quote::quote! {
         /// Generate client implementations.
         #(#mod_attributes)*
         pub mod #client_mod {
-            use mrpc::stub::{ClientStub, NamedService, RpcMessage};
+            use ::mrpc::stub::{ClientStub, NamedService, RpcMessage};
 
             #service_doc
             #(#struct_attributes)*
@@ -45,12 +64,18 @@ pub fn generate<T: Service>(
             }
 
             impl #service_ident {
+                fn update_protos() -> Result<(), ::mrpc::Error> {
+                    let srcs = [#(#proto_srcs),*].concat();
+                    ::mrpc::stub::update_protos(srcs.as_slice())
+                }
+
                 pub fn connect<A: std::net::ToSocketAddrs>(dst: A) -> Result<Self, ::mrpc::Error> {
                     // use the cmid builder to create a CmId.
                     // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
                     // cmid communicates directly to the transport engine. you need to pass your raw rpc
                     // request/response to/from the rpc engine rather than the transport engine.
                     // let stub = libkoala::mrpc::cm::MrpcStub::set_transport(libkoala::mrpc::cm::TransportType::Rdma)?;
+                    Self::update_protos()?;
                     let stub = ClientStub::connect(dst).unwrap();
                     Ok(Self {
                         stub,
@@ -98,7 +123,7 @@ fn generate_methods<T: Service>(
                 &self,
                 msg: &RpcMessage<#request>
             ) -> impl std::future::Future<
-                Output = Result<mrpc::shmview::ShmView<#response>, ::mrpc::Status>
+                Output = Result<::mrpc::shmview::ShmView<#response>, ::mrpc::Status>
             > + '_ {
                 let call_id = self.call_counter.get();
                 self.call_counter.set(call_id + 1);
