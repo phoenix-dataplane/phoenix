@@ -36,14 +36,14 @@ impl ReadHeap {
             let memfd = Memfd::try_from_fd(fd)
                 .map_err(|_| io::Error::last_os_error())
                 .unwrap();
-            let m = ReadRegion::new(rbuf.handle, rbuf.addr, rbuf.len, rbuf.file_off, memfd)
-                .unwrap();
+            let m =
+                ReadRegion::new(rbuf.handle, rbuf.addr, rbuf.len, rbuf.file_off, memfd).unwrap();
             // vaddrs.push((mr.0, m.as_ptr().expose_addr()));
             rbufs.push(m);
         }
         ReadHeap {
             rref_cnt: AtomicUsize::new(0),
-            rbufs
+            rbufs,
         }
     }
 

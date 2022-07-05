@@ -15,8 +15,8 @@ use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, Zon
 use ipc::ptr::ShmNonNull;
 use ipc::salloc::cmd;
 
-use region::WriteRegion;
 use super::{Error, SA_CTX};
+use region::WriteRegion;
 
 thread_local! {
     /// thread-local shared heap

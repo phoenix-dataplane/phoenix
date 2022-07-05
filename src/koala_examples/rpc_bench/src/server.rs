@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
-use mrpc::{WRef, RRef};
+use mrpc::{RRef, WRef};
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name

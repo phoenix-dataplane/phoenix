@@ -16,10 +16,10 @@ use libkoala::_rx_recv_impl as rx_recv_impl;
 pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
+use crate::rref::RRef;
 use crate::salloc::gc::CS_STUB_ID_COUNTER;
 use crate::salloc::ReadHeap;
 use crate::salloc::SA_CTX;
-use crate::rref::RRef;
 use crate::wref::{WRef, WRefOpaque};
 use crate::{Error, Status, MRPC_CTX};
 
@@ -512,7 +512,10 @@ pub trait Service {
     fn call(&self, req: MessageErased, read_heap: &ReadHeap) -> MessageErased;
 }
 
-pub fn service_pre_handler<'a, T: Unpin>(req: &MessageErased, read_heap: &'a ReadHeap) -> RRef<'a, T> {
+pub fn service_pre_handler<'a, T: Unpin>(
+    req: &MessageErased,
+    read_heap: &'a ReadHeap,
+) -> RRef<'a, T> {
     RRef::new(&req, read_heap)
 }
 
