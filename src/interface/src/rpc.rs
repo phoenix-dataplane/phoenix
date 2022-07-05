@@ -25,7 +25,7 @@ impl RpcId {
 
     #[inline]
     pub fn encode_u64(self) -> u64 {
-        (self.0.0 as u64) << 32 | self.1 as u64
+        (self.0 .0 as u64) << 32 | self.1 as u64
     }
 
     #[inline]

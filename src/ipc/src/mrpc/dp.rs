@@ -1,7 +1,7 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::rpc::{MessageErased, TransportStatus, RpcId};
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use interface::Handle;
 
 pub type WorkRequestSlot = [u8; 64];
