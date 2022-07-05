@@ -297,6 +297,11 @@ impl Status {
             Err(err) => err,
         };
 
+        if let Some(mut status) = find_status_in_source_chain(&*err) {
+            status.source = Some(err);
+            return Ok(status);
+        }
+
         Err(err)
     }
 
@@ -336,6 +341,26 @@ impl Status {
     pub fn message(&self) -> &str {
         &self.message
     }
+}
+
+fn find_status_in_source_chain(err: &(dyn Error + 'static)) -> Option<Status> {
+    let mut source = Some(err);
+
+    while let Some(err) = source {
+        if let Some(status) = err.downcast_ref::<Status>() {
+            return Some(Status {
+                code: status.code,
+                message: status.message.clone(),
+                // Since `Status` is not `Clone`, any `source` on the original Status
+                // cannot be cloned so must remain with the original `Status`.
+                source: None,
+            });
+        }
+
+        source = err.source();
+    }
+
+    None
 }
 
 impl fmt::Debug for Status {

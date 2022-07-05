@@ -73,7 +73,7 @@ pub use interface::rpc::MessageErased;
 pub mod shmview;
 
 pub mod status;
-pub use status::Status;
+pub use status::{Status, Code};
 
 #[derive(Error, Debug)]
 pub enum Error {
