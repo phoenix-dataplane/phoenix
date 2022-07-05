@@ -5,11 +5,11 @@ use crate::resource::Error as ResourceError;
 use crate::salloc::ControlPathError as SallocError;
 
 pub(crate) mod acceptor;
+pub(crate) mod dispatch;
 pub(crate) mod engine;
 pub(crate) mod module;
 pub(crate) mod state;
 pub(crate) mod ulib;
-pub(crate) mod dispatch;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]

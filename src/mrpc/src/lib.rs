@@ -36,8 +36,8 @@ use thiserror::Error;
 use interface::engine::EngineType;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
-use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 use libkoala::_rx_recv_impl as rx_recv_impl;
+use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
@@ -59,7 +59,6 @@ impl Context {
         let protos = RefCell::new(BTreeSet::new());
         let service = ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, EngineType::Mrpc)?;
         Ok(Self { protos, service })
-
     }
 
     fn update_protos(&self, protos: &[&str]) -> Result<(), Error> {

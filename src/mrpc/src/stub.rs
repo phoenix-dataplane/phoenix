@@ -643,9 +643,6 @@ pub fn service_post_handler<T: RpcData>(
     (erased, reply.identifier)
 }
 
-
 pub fn update_protos(protos: &[&str]) -> Result<(), Error> {
-    MRPC_CTX.with(|ctx| {
-        ctx.update_protos(protos)
-    })
+    MRPC_CTX.with(|ctx| ctx.update_protos(protos))
 }

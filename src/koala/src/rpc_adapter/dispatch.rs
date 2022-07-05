@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsStr;
 
 use interface::rpc::MessageMeta;
-use mrpc_marshal::{SgList, ExcavateContext, ShmRecvMr};
+use mrpc_marshal::{ExcavateContext, SgList, ShmRecvMr};
 use mrpc_marshal::{MarshalError, UnmarshalError};
 
 pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalError>;
@@ -46,14 +46,18 @@ impl DispatchModule {
         Ok(module)
     }
 
-    pub(crate) fn marshal(&self, meta: &MessageMeta, addr_backend: usize) -> Result<SgList, MarshalError> {
+    pub(crate) fn marshal(
+        &self,
+        meta: &MessageMeta,
+        addr_backend: usize,
+    ) -> Result<SgList, MarshalError> {
         (self.marshal_fn)(meta, addr_backend)
     }
 
     pub(crate) fn unmarshal(
-        &self, 
-        meta: &MessageMeta, 
-        ctx: &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>
+        &self,
+        meta: &MessageMeta,
+        ctx: &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
     ) -> Result<(usize, usize), UnmarshalError> {
         (self.unmarshal_fn)(meta, ctx)
     }

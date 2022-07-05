@@ -29,7 +29,7 @@ pub enum CompletionKind {
     // TODO(wyj): pass align
     NewConnectionInternal(Handle, Vec<(Handle, usize, usize, i64)>, Vec<RawFd>),
     NewConnection((Handle, Vec<(Handle, usize, usize, i64)>)),
-    UpdateProtos
+    UpdateProtos,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -104,10 +104,7 @@ pub trait Method {
         compile_well_known_types: bool,
     ) -> (TokenStream, TokenStream);
     /// Proto pacakge name of request and response
-    fn request_response_package(
-        &self,
-        proto_path: &str,
-    ) -> (Option<String>, Option<String>);
+    fn request_response_package(&self, proto_path: &str) -> (Option<String>, Option<String>);
 }
 
 // Returns a full path of a service compatible to gRPC.

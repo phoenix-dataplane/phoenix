@@ -338,8 +338,7 @@ impl RpcAdapterEngine {
 
             let sglist = if let Some(ref module) = self.dispatch_module {
                 module.marshal(meta_ref, msg.addr_backend).unwrap()
-            }
-            else {
+            } else {
                 panic!("dispatch module not loaded");
             };
             // timer.tick();
@@ -434,8 +433,7 @@ impl RpcAdapterEngine {
 
         let (addr_app, addr_backend) = if let Some(ref module) = self.dispatch_module {
             module.unmarshal(meta, &mut excavate_ctx).unwrap()
-        }
-        else {
+        } else {
             panic!("dispatch module not loaded");
         };
         // timer.tick();
@@ -701,13 +699,13 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
-            },
+            }
             mrpc::cmd::Command::UpdateProtosInner(dylib) => {
                 log::debug!("Loading dispatch library: {:?}", dylib);
                 let module = DispatchModule::new(dylib)?;
                 self.dispatch_module = Some(module);
                 Ok(mrpc::cmd::CompletionKind::UpdateProtos)
-            },
+            }
             mrpc::cmd::Command::UpdateProtos(_) => {
                 unreachable!();
             }

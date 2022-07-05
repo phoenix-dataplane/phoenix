@@ -36,7 +36,7 @@ pub(crate) struct MrpcEngineBuilder {
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-    dispatch_build_cache: PathBuf
+    dispatch_build_cache: PathBuf,
 }
 
 impl MrpcEngineBuilder {
@@ -56,7 +56,7 @@ impl MrpcEngineBuilder {
             node,
             client_pid,
             mode,
-            dispatch_build_cache
+            dispatch_build_cache,
         }
     }
 
@@ -137,8 +137,16 @@ impl MrpcModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 4. create the engine
-        let builder = MrpcEngineBuilder::new(customer, node, client_pid, mode, cmd_tx, cmd_rx, self.config.dispatch_build_cache.clone());
-        
+        let builder = MrpcEngineBuilder::new(
+            customer,
+            node,
+            client_pid,
+            mode,
+            cmd_tx,
+            cmd_rx,
+            self.config.dispatch_build_cache.clone(),
+        );
+
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime

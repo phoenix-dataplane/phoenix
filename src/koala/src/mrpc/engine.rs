@@ -184,10 +184,13 @@ impl MrpcEngine {
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
-            },
+            }
             Command::UpdateProtos(protos) => {
-                let dylib_path = build_dispatch_library(protos.clone(), self.dispatch_build_cache.clone())?;
-                self.cmd_tx.send(Command::UpdateProtosInner(dylib_path)).unwrap();
+                let dylib_path =
+                    build_dispatch_library(protos.clone(), self.dispatch_build_cache.clone())?;
+                self.cmd_tx
+                    .send(Command::UpdateProtosInner(dylib_path))
+                    .unwrap();
                 match self.cmd_rx.recv().await.unwrap().0 {
                     Ok(CompletionKind::UpdateProtos) => {
                         // just forward it
@@ -195,7 +198,7 @@ impl MrpcEngine {
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
-            },
+            }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
             }

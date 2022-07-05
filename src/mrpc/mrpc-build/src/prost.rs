@@ -353,7 +353,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
         let tokens = quote! {
             pub mod #package_mod {
-                pub const PROTO_SRCS: &'static [&'static str] = &[#(#proto_srcs),*]; 
+                pub const PROTO_SRCS: &'static [&'static str] = &[#(#proto_srcs),*];
             }
         };
         let ast: syn::File = syn::parse2(tokens).expect("not a valid tokenstream");
@@ -435,12 +435,23 @@ impl crate::Method for prost_build::Method {
     }
 
     // TODO: figure out whether we need to specially handle compile_well_known_types
-    fn request_response_package(
-        &self,
-        proto_path: &str,
-    ) -> (Option<String>, Option<String>) {
-        let input_package = self.input_package.as_ref().map(|pkg| format!("{}{}{}", proto_path, if pkg.is_empty() { "" } else { "::" }, pkg));
-        let output_package = self.output_package.as_ref().map(|pkg| format!("{}{}{}", proto_path, if pkg.is_empty() { "" } else { "::" }, pkg));
+    fn request_response_package(&self, proto_path: &str) -> (Option<String>, Option<String>) {
+        let input_package = self.input_package.as_ref().map(|pkg| {
+            format!(
+                "{}{}{}",
+                proto_path,
+                if pkg.is_empty() { "" } else { "::" },
+                pkg
+            )
+        });
+        let output_package = self.output_package.as_ref().map(|pkg| {
+            format!(
+                "{}{}{}",
+                proto_path,
+                if pkg.is_empty() { "" } else { "::" },
+                pkg
+            )
+        });
         (input_package, output_package)
     }
 }

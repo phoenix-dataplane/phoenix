@@ -58,7 +58,6 @@ pub fn generate<T: Service>(
         .into_iter()
         .map(|x| syn::parse_str::<syn::Path>(&x).unwrap());
 
-
     quote::quote! {
         /// Generated server implementations.
         #(#mod_attributes)*
@@ -80,7 +79,7 @@ pub fn generate<T: Service>(
                 fn update_protos() -> Result<(), ::mrpc::Error> {
                     let srcs = [#(#proto_srcs),*].concat();
                     ::mrpc::stub::update_protos(srcs.as_slice())
-                }             
+                }
 
                 pub fn new(inner: T) -> Self {
                     // TODO: handle error here
