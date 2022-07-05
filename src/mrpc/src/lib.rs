@@ -100,6 +100,9 @@ pub use wref::{IntoWRef, WRef};
 pub mod status;
 pub use status::{Code, Status};
 
+/// A re-export of [`async-trait`](https://docs.rs/async-trait) for use with codegen.
+pub use async_trait::async_trait;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Service error: {0}")]

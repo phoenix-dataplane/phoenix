@@ -57,13 +57,14 @@ impl PendingWRef {
 
 lazy_static::lazy_static! {
     static ref PENDING_WREF: PendingWRef = PendingWRef::new();
+
+    // maintain a per server stub recv buffer
+    pub(crate) static ref RECV_REQUEST_CACHE: DashMap<u64, Vec<MessageErased>, fnv::FnvBuildHasher> = DashMap::default();
 }
 
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
     pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<RpcId, Result<MessageErased, TransportStatus>>> = RefCell::new(FnvHashMap::default());
-    // maintain a per server stub recv buffer
-    pub(crate) static RECV_REQUEST_CACHE: RefCell<FnvHashMap<u64, Vec<MessageErased>>> = RefCell::new(FnvHashMap::default());
     // map conn_id to server stub
     pub(crate) static CONN_SERVER_STUB_MAP: RefCell<FnvHashMap<Handle, u64>> = RefCell::new(FnvHashMap::default());
 }
@@ -138,9 +139,9 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                                 let stub_id = CONN_SERVER_STUB_MAP
                                     .with(|map| map.borrow().get(&conn_id).map(|x| *x));
                                 if let Some(stub_id) = stub_id {
-                                    RECV_REQUEST_CACHE.with_borrow_mut(|cache| {
-                                        cache.entry(stub_id).and_modify(|b| b.push(*msg));
-                                    })
+                                    RECV_REQUEST_CACHE
+                                        .entry(stub_id)
+                                        .and_modify(|b| b.push(*msg));
                                 }
                             }
                             RpcMsgType::Response => {
@@ -342,11 +343,7 @@ impl Server {
             rx_recv_impl!(ctx.service, CompletionKind::Bind, listener_handle, {
                 let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 // setup recv cache
-                RECV_REQUEST_CACHE.with(|cache| {
-                    cache
-                        .borrow_mut()
-                        .insert(stub_id, Vec::with_capacity(RECV_BUF_SIZE))
-                });
+                RECV_REQUEST_CACHE.insert(stub_id, Vec::with_capacity(RECV_BUF_SIZE));
                 Ok(Self {
                     stub_id,
                     listener_handle,
@@ -370,13 +367,13 @@ impl Server {
     }
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
-    pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    pub async fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let mut msg_buffer = Vec::with_capacity(32);
         loop {
             // check new incoming connections
             self.check_new_incoming_connection()?;
             // check new requests
-            self.poll_requests(&mut msg_buffer)?;
+            self.poll_requests(&mut msg_buffer).await?;
             self.post_replies(&mut msg_buffer)?;
         }
     }
@@ -455,29 +452,25 @@ impl Server {
         Ok(())
     }
 
-    fn poll_requests(
+    async fn poll_requests(
         &mut self,
         msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         check_completion_queue()?;
 
-        RECV_REQUEST_CACHE.with(|cache| {
-            let mut borrow = cache.borrow_mut();
-
-            for request in borrow.get_mut(&self.stub_id).unwrap().drain(..) {
-                let service_id = request.meta.service_id;
-                let read_heap = &self.read_heaps[&request.meta.conn_id];
-                match self.routes.get_mut(&service_id) {
-                    Some(s) => {
-                        let reply_erased = s.call(request, read_heap);
-                        msg_buffer.push(reply_erased);
-                    }
-                    None => {
-                        eprintln!("unrecognized request: {:?}", request);
-                    }
+        for request in RECV_REQUEST_CACHE.get_mut(&self.stub_id).unwrap().drain(..) {
+            let service_id = request.meta.service_id;
+            let read_heap = &self.read_heaps[&request.meta.conn_id];
+            match self.routes.get_mut(&service_id) {
+                Some(s) => {
+                    let reply_erased = s.call(request, read_heap).await;
+                    msg_buffer.push(reply_erased);
+                }
+                None => {
+                    eprintln!("unrecognized request: {:?}", request);
                 }
             }
-        });
+        }
 
         Ok(())
     }
@@ -495,7 +488,8 @@ impl Drop for Server {
                 borrow.remove(conn_id);
             }
         });
-        RECV_REQUEST_CACHE.with(|cache| cache.borrow_mut().remove(&self.stub_id));
+
+        RECV_REQUEST_CACHE.remove(&self.stub_id);
 
         // remove all outstanding RPC releated to this client/server stub
         PENDING_WREF.erase_by(|rpc_id, _| self.handles.contains(&rpc_id.0));
@@ -507,9 +501,10 @@ pub trait NamedService {
     const NAME: &'static str = "";
 }
 
+#[crate::async_trait]
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    fn call(&self, req: MessageErased, read_heap: &ReadHeap) -> MessageErased;
+    async fn call(&self, req: MessageErased, read_heap: &ReadHeap) -> MessageErased;
 }
 
 pub fn service_pre_handler<'a, T: Unpin>(

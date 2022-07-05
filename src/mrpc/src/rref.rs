@@ -25,7 +25,6 @@ pub struct RRef<'a, T>(Arc<RRefInner<'a, T>>);
 
 // TODO(cjr): double-check this: on dropping, the inner type should not call its deallocator
 // but the shared memory should be properly recycled by the backend
-// impl<'a, T> Drop for ShmView<'a, T> {
 impl<'a, T> Drop for RRefInner<'a, T> {
     fn drop(&mut self) {
         let msgs: [MaybeUninit<u32>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();

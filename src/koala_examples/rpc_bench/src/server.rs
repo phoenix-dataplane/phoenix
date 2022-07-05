@@ -45,8 +45,12 @@ struct MyGreeter {
     args: Args,
 }
 
+#[mrpc::async_trait]
 impl Greeter for MyGreeter {
-    fn say_hello(&self, _request: RRef<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
+    async fn say_hello<'s>(
+        &self,
+        _request: RRef<'s, HelloRequest>,
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
@@ -62,40 +66,48 @@ struct MyGreeterBlocking {
     reply: WRef<HelloReply>,
 }
 
+#[mrpc::async_trait]
 impl Greeter for MyGreeterBlocking {
-    fn say_hello(&self, _request: RRef<HelloRequest>) -> Result<WRef<HelloReply>, mrpc::Status> {
+    async fn say_hello<'s>(
+        &self,
+        _request: RRef<'s, HelloRequest>,
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
         Ok(WRef::clone(&self.reply))
     }
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-    let args = Args::from_args();
-    let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
+    smol::block_on(async {
+        let args = Args::from_args();
+        let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-    if args.blocking {
-        let message = Vec::new();
-        let msg = WRef::new(HelloReply { message });
-        let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
-            .serve()?;
-    } else {
-        let mut replies = Vec::new();
-        for _ in 0..args.provision_count {
-            let mut message = Vec::new();
-            message.resize(args.reply_size, 43);
+        if args.blocking {
+            let message = Vec::new();
             let msg = WRef::new(HelloReply { message });
-            replies.push(msg);
+            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+                .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
+                .serve()
+                .await?;
+        } else {
+            let mut replies = Vec::new();
+            for _ in 0..args.provision_count {
+                let mut message = Vec::new();
+                message.resize(args.reply_size, 43);
+                let msg = WRef::new(HelloReply { message });
+                replies.push(msg);
+            }
+            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+                .add_service(GreeterServer::new(MyGreeter {
+                    replies,
+                    count: AtomicUsize::new(0),
+                    args,
+                }))
+                .serve()
+                .await?;
         }
-        let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(GreeterServer::new(MyGreeter {
-                replies,
-                count: AtomicUsize::new(0),
-                args,
-            }))
-            .serve()?;
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 fn init_tokio_tracing(

@@ -68,11 +68,11 @@ pub mod greeter_server {
     use super::*;
     use mrpc::stub::{NamedService, Service};
 
-    // #[async_trait]
+    #[mrpc::async_trait]
     pub trait Greeter: Send + Sync + 'static {
-        fn say_hello(
+        async fn say_hello<'s>(
             &self,
-            request: mrpc::RRef<HelloRequest>,
+            request: mrpc::RRef<'s, HelloRequest>,
         ) -> Result<mrpc::WRef<HelloReply>, mrpc::Status>;
     }
 
@@ -94,8 +94,9 @@ pub mod greeter_server {
         const NAME: &'static str = "rpc_hello.Greeter";
     }
 
+    #[mrpc::async_trait]
     impl<T: Greeter> Service for GreeterServer<T> {
-        fn call(
+        async fn call(
             &self,
             req: mrpc::MessageErased,
             read_heap: &mrpc::salloc::ReadHeap,
@@ -107,7 +108,8 @@ pub mod greeter_server {
                 // TODO(cjr): fill this with the right func_id
                 3687134534u32 => {
                     let req = mrpc::RRef::new(&req, read_heap);
-                    match self.inner.say_hello(req) {
+                    let res = self.inner.say_hello(req).await;
+                    match res {
                         Ok(reply) => ::mrpc::stub::service_post_handler(
                             reply,
                             conn_id,
