@@ -12,15 +12,14 @@ pub(crate) const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 /// A buffer holds the room for MessageMeta and optionally an entire message.
 ///
 /// Format:
-/// | meta | num_sge | value_len | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
-/// |  32  |    4    |     4     |                 EAGER_BUFFER_SIZE - 40              |
+/// | meta | num_sge | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
+/// |  32  |    4    |                 EAGER_BUFFER_SIZE - 36              |
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub(crate) struct MetaBuffer {
     pub(crate) meta: MessageMeta,
     pub(crate) num_sge: u32,
-    pub(crate) value_len: u32,
-    pub(crate) lens_and_value: [u8; META_BUFFER_SIZE - 40],
+    pub(crate) length_delimited: [u8; META_BUFFER_SIZE - 36],
 }
 
 mod sa {
@@ -29,20 +28,18 @@ mod sa {
     use std::mem::size_of;
 
     const_assert_eq!(size_of::<MetaBuffer>(), META_BUFFER_SIZE);
-    const_assert_eq!(size_of::<Option<MetaBufferPtr>>(), 8);
+    const_assert_eq!(size_of::<Option<MetaBufferPtr>>(), size_of::<usize>());
 }
 
 impl MetaBuffer {
     #[inline]
-    pub(crate) fn len(&self) -> usize {
-        mem::size_of::<MessageMeta>()
-            + self.num_sge as usize * mem::size_of::<u32>()
-            + self.value_len as usize
+    pub(crate) fn header_len(&self) -> usize {
+        mem::size_of::<MessageMeta>() + self.num_sge as usize * mem::size_of::<u32>()
     }
 
     #[inline]
-    pub(crate) const fn lens_and_value_capacity() -> usize {
-        META_BUFFER_SIZE - 40
+    pub(crate) const fn capacity() -> usize {
+        META_BUFFER_SIZE - 36
     }
 }
 
