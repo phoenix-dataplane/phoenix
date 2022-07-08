@@ -59,6 +59,7 @@ lazy_static::lazy_static! {
     static ref PENDING_WREF: PendingWRef = PendingWRef::new();
 
     // maintain a per server stub recv buffer
+    // stub_id -> queue of incoming Messages
     pub(crate) static ref RECV_REQUEST_CACHE: DashMap<u64, Vec<MessageErased>, fnv::FnvBuildHasher> = DashMap::default();
 }
 
@@ -265,6 +266,7 @@ impl ClientStub {
         })
     }
 
+    // TODO(cjr): Change this to async too
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let connect_addr = addr
             .to_socket_addrs()?
@@ -326,7 +328,7 @@ pub struct Server {
     // conn -> ReadHeap
     read_heaps: HashMap<Handle, ReadHeap>,
     // service_id -> Service
-    routes: HashMap<u32, std::boxed::Box<dyn Service>>,
+    routes: HashMap<u32, Box<dyn Service>>,
 }
 
 impl Server {
@@ -356,9 +358,9 @@ impl Server {
     }
 
     pub fn add_service<S: Service + NamedService + 'static>(&mut self, svc: S) -> &mut Self {
-        match self.routes.insert(S::SERVICE_ID, std::boxed::Box::new(svc)) {
+        match self.routes.insert(S::SERVICE_ID, Box::new(svc)) {
             Some(_) => panic!(
-                "A func_id can only have 1 handler, func_id: {}",
+                "Hash collisions in func_id: {}",
                 S::SERVICE_ID
             ),
             None => {}
@@ -367,7 +369,7 @@ impl Server {
     }
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
-    pub async fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut msg_buffer = Vec::with_capacity(32);
         loop {
             // check new incoming connections
@@ -380,7 +382,7 @@ impl Server {
 
     fn check_new_incoming_connection(
         &mut self,
-    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         MRPC_CTX.with(|ctx| {
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
@@ -444,7 +446,7 @@ impl Server {
     fn post_replies(
         &mut self,
         msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let replies = msg_buffer.drain(..);
         for reply in replies {
             self.post_reply(reply)?;
@@ -455,7 +457,7 @@ impl Server {
     async fn poll_requests(
         &mut self,
         msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         check_completion_queue()?;
 
         for request in RECV_REQUEST_CACHE.get_mut(&self.stub_id).unwrap().drain(..) {
