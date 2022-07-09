@@ -5,18 +5,18 @@ use std::sync::atomic::AtomicU64;
 
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
+use interface::rpc::RpcId;
 use lazy_static::lazy_static;
 
-use ipc::mrpc::dp::WrIdentifier;
 use slabmalloc::GLOBAL_PAGE_POOL;
 
 thread_local! {
-    // thread-local oustanding work request
-    // maps from WR identifier (conn_id + call_id) to the message (RpcMessage) ID
-    // insert when WR is posted, remove when corresponding WC is polled
+    // thread-local oustanding RPCs
+    // maps from RPC identifier (conn_id + call_id) to the message (RpcMessage) ID
+    // insert when RPC is posted, remove when corresponding ACK is polled
     // each user app thread corresponds to a set of mRPC + RpcAdapter + SAlloc engines
-    // the thread which posts the WR must also polls the corresponding work request completion
-    pub(crate) static OUTSTANDING_WR: RefCell<HashMap<WrIdentifier, u64>> = RefCell::new(HashMap::new());
+    // the thread which posts the RPC must also polls the corresponding ACK
+    pub(crate) static OUTSTANDING_RPC: RefCell<HashMap<RpcId, u64>> = RefCell::new(HashMap::new());
 }
 
 lazy_static! {
@@ -68,15 +68,15 @@ impl PageReclaimerContext {
 }
 
 pub struct ObjectReclaimer {
-    // completed WR count for each RpcMessage
-    wr_completion_count: DashMap<u64, u64>,
+    // completed RPC count for each RpcMessage
+    rpc_completion_count: DashMap<u64, u64>,
     storage: DashMap<u64, (std::boxed::Box<dyn Any + Send + Sync>, u64)>,
 }
 
 impl ObjectReclaimer {
     fn new() -> Self {
         ObjectReclaimer {
-            wr_completion_count: DashMap::new(),
+            rpc_completion_count: DashMap::new(),
             storage: DashMap::new(),
         }
     }
@@ -89,7 +89,7 @@ impl ObjectReclaimer {
     ) {
         // we put the boxed MessageTemplate into GC by wrapping it as a trait object inside a std Box
         // as CoerceUnsized cannot be implemented for ShmNonNull
-        let comp_cnt = match self.wr_completion_count.get(&message_id) {
+        let comp_cnt = match self.rpc_completion_count.get(&message_id) {
             Some(entry) => *entry.value(),
             None => 0,
         };
@@ -99,8 +99,8 @@ impl ObjectReclaimer {
         }
     }
 
-    pub(crate) fn register_wr_completion(&self, message_id: u64, cnt: u64) {
-        let comp_cnt = match self.wr_completion_count.entry(message_id) {
+    pub(crate) fn register_rpc_completion(&self, message_id: u64, cnt: u64) {
+        let comp_cnt = match self.rpc_completion_count.entry(message_id) {
             Entry::Occupied(mut entry) => {
                 let val = entry.get_mut();
                 *val += cnt;
@@ -116,7 +116,7 @@ impl ObjectReclaimer {
             let send_cnt = entry.value().1;
             if send_cnt == comp_cnt {
                 self.storage.remove(&message_id);
-                self.wr_completion_count.remove(&message_id);
+                self.rpc_completion_count.remove(&message_id);
             }
         }
     }

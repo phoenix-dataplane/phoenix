@@ -1,7 +1,7 @@
 use std::fmt;
 
 use ansi_term::Colour;
-use tracing_core::{Event, Level, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::{self, FormatEvent, FormatFields};
 use tracing_subscriber::fmt::FmtContext;

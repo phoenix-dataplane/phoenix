@@ -1,20 +1,18 @@
 use std::future::Future;
+use std::mem;
 
-use interface::rpc::MessageErased;
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
 
 use interface::engine::SchedulingMode;
-use ipc::mrpc::dp::WrIdentifier;
 use ipc::mrpc::{cmd, control_plane, dp};
 
-use super::meta_pool::MessageMetaPool;
+use super::meta_pool::MetaBufferPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
 use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::node::Node;
-
-pub(crate) const META_POOL_CAP: usize = 128;
 
 pub struct MrpcEngine {
     pub(crate) _state: State,
@@ -24,13 +22,16 @@ pub struct MrpcEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
-    pub(crate) meta_pool: MessageMetaPool<META_POOL_CAP>,
+    // mRPC private buffer pools
+    /// Buffer pool for meta and eager message
+    pub(crate) meta_buf_pool: MetaBufferPool,
 
     pub(crate) _mode: SchedulingMode,
 
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
 crate::unimplemented_ungradable!(MrpcEngine);
@@ -63,40 +64,60 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+            // let mut timer = crate::timer::Timer::new();
             let mut nwork = 0;
 
+            // 400-900ns ->
+            // no work: 40ns
+            // has work: 200-1000ns
             if let Progress(n) = self.check_customer()? {
                 nwork += n;
             }
+            // timer.tick();
 
-            if let Progress(n) = self.check_input_queue()? {
-                nwork += n;
+            // no work: 100-150ns
+            // has work: 300-600ns
+            match self.check_input_queue()? {
+                Progress(n) => nwork += n,
+                Status::Disconnected => break,
             }
+            // timer.tick();
 
+            // 80-100ns, sometimes 200ns
             if let Status::Disconnected = self.check_cmd().await? {
-                self.wait_meta_pool_free().await?;
-                return Ok(());
+                break;
             }
+            // timer.tick();
 
+            // 50ns
             self.check_new_incoming_connection()?;
             self.indicator.as_ref().unwrap().set_nwork(nwork);
+            // timer.tick();
+            // log::info!("mrpc mainloop: {}", timer);
+
             future::yield_now().await;
         }
+
+        self.wait_outstanding_complete().await?;
+        return Ok(());
     }
 }
 
 impl MrpcEngine {
     // we need to wait for RpcAdapter engine to finish outstanding send requests
-    // (whether successful or not), to release message meta pool and shutdown mRPC engine
-    async fn wait_meta_pool_free(&mut self) -> Result<(), DatapathError> {
-        use tokio::sync::mpsc::error::TryRecvError;
-        while self.meta_pool.freelist.len() < META_POOL_CAP {
+    // (whether successful or not), to release message meta pool and shutdown mRPC engine.
+    // However, we cannot indefinitely wait for it in case of wc errors.
+    async fn wait_outstanding_complete(&mut self) -> Result<(), DatapathError> {
+        use crate::engine::graph::TryRecvError;
+        while !self.meta_buf_pool.is_full() {
             match self.rx_inputs()[0].try_recv() {
-                Ok(msg) => {
-                    if let EngineRxMessage::SendCompletion(wr_id) = msg {
-                        self.meta_pool.put(wr_id)?;
+                Ok(msg) => match msg {
+                    EngineRxMessage::Ack(rpc_id, _status) => {
+                        // release the buffer whatever the status is.
+                        self.meta_buf_pool.release(rpc_id)?;
                     }
-                }
+                    EngineRxMessage::RpcMessage(_) => {}
+                },
                 Err(TryRecvError::Disconnected) => return Ok(()),
                 Err(TryRecvError::Empty) => {}
             }
@@ -165,33 +186,59 @@ impl MrpcEngine {
 
     fn check_customer(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
-        const BUF_LEN: usize = 32;
+        let buffer_cap = self.wr_read_buffer.capacity();
+        // let mut timer = crate::timer::Timer::new();
 
+        // 15ns
         // Fetch available work requests. Copy them into a buffer.
-        let max_count = BUF_LEN.min(self.customer.get_avail_wc_slots()?);
+        let max_count = buffer_cap.min(self.customer.get_avail_wc_slots()?);
         if max_count == 0 {
             return Ok(Progress(0));
         }
+        // timer.tick();
 
+        // 300-10us, mostly 300ns (Vec::with_capacity())
         let mut count = 0;
-        let mut buffer = Vec::with_capacity(BUF_LEN);
+        self.wr_read_buffer.clear();
 
+        // timer.tick();
+
+        // 60-150ns
         self.customer
             .dequeue_wr_with(|ptr, read_count| unsafe {
-                debug_assert!(max_count <= BUF_LEN);
+                // TODO(cjr): max_count <= read_count always holds
                 count = max_count.min(read_count);
                 for i in 0..count {
-                    buffer.push(ptr.add(i).cast::<WorkRequest>().read());
+                    self.wr_read_buffer
+                        .push(ptr.add(i).cast::<WorkRequest>().read());
                 }
                 count
             })
             .unwrap_or_else(|e| panic!("check_customer: {}", e));
 
         // Process the work requests.
+        // timer.tick();
+
+        // no work: 10ns
+        // has work: 100-400ns
+        let buffer = mem::take(&mut self.wr_read_buffer);
 
         for wr in &buffer {
-            self.process_dp(wr)?;
+            let ret = self.process_dp(wr);
+            match ret {
+                Ok(()) => {}
+                Err(e) => {
+                    self.wr_read_buffer = buffer;
+                    // TODO(cjr): error handling
+                    return Err(e);
+                }
+            }
         }
+
+        self.wr_read_buffer = buffer;
+
+        // timer.tick();
+        // log::info!("check_customer: {}", timer);
 
         Ok(Progress(count))
     }
@@ -199,8 +246,7 @@ impl MrpcEngine {
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use dp::WorkRequest;
 
-        let span = info_span!("MrpcEngine process_dp");
-        let _enter = span.enter();
+        // let mut timer = crate::timer::Timer::new();
 
         match req {
             WorkRequest::Call(erased) => {
@@ -214,17 +260,17 @@ impl MrpcEngine {
                         );
 
                         // construct message meta on heap
-                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self
-                            .meta_pool
-                            .get(wr_identifier)
+                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
+                        let meta_buf_ptr = self
+                            .meta_buf_pool
+                            .obtain(rpc_id)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
-                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                         }
 
                         let msg = RpcMessageTx {
-                            meta: meta_buf,
+                            meta_buf_ptr,
                             addr_backend: erased.shm_addr_backend,
                         };
                         // if access to message's data fields are desired,
@@ -243,17 +289,17 @@ impl MrpcEngine {
                             erased.meta.call_id
                         );
 
-                        let wr_identifier = WrIdentifier(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf = self
-                            .meta_pool
-                            .get(wr_identifier)
+                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
+                        let meta_buf_ptr = self
+                            .meta_buf_pool
+                            .obtain(rpc_id)
                             .expect("MessageMeta pool exhausted");
                         unsafe {
-                            std::ptr::write(meta_buf.as_ptr(), erased.meta);
+                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                         }
 
                         let msg = RpcMessageTx {
-                            meta: meta_buf,
+                            meta_buf_ptr,
                             addr_backend: erased.shm_addr_backend,
                         };
                         // if access to message's data
@@ -267,18 +313,18 @@ impl MrpcEngine {
                     .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
             }
         }
+
+        // timer.tick();
+        // log::info!("process_dp: {}", timer);
         Ok(())
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use tokio::sync::mpsc::error::TryRecvError;
+        use crate::engine::graph::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::RpcMessage(msg) => {
-                        let span = info_span!("MrpcEngine check_input_queue: recv_msg");
-                        let _enter = span.enter();
-
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
                             "mRPC engine send message to App, call_id={}",
@@ -291,25 +337,28 @@ impl MrpcEngine {
                             shm_addr_backend: msg.addr_backend,
                         };
 
+                        // the following operation takes around 100ns
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
-                                ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::Recv(erased));
+                                ptr.cast::<dp::Completion>().write(dp::Completion::Incoming(
+                                    erased,
+                                    TransportStatus::Success,
+                                ));
                                 1
                             })?;
                         }
                     }
-                    EngineRxMessage::SendCompletion(wr_id) => {
+                    EngineRxMessage::Ack(rpc_id, status) => {
                         // release message meta buffer
-                        self.meta_pool.put(wr_id)?;
+                        self.meta_buf_pool.release(rpc_id)?;
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::SendCompletion(wr_id));
+                                    .write(dp::Completion::Outgoing(rpc_id, status));
                                 1
                             })?;
                         }

@@ -3,7 +3,10 @@ use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::thread;
+use std::time::Duration;
 
+use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
@@ -30,6 +33,7 @@ impl Default for Indicator {
     }
 }
 
+#[allow(unused)]
 impl Indicator {
     pub(crate) const BUSY: usize = usize::MAX;
 
@@ -99,11 +103,13 @@ impl Runtime {
     }
 
     /// Returns true if there is no runnable engine or pending engine.
+    #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.is_spinning() && self.pending.lock().is_empty()
     }
 
     /// Returns true if there is no runnable engine.
+    #[inline]
     pub(crate) fn is_spinning(&self) -> bool {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
@@ -113,17 +119,44 @@ impl Runtime {
         self.new_pending.store(true, Ordering::Release);
     }
 
+    #[inline]
+    fn save_energy_or_shutdown(&self, last_event_ts: Instant) {
+        // goes into sleep mode after 100 us
+        const SLEEP_THRESHOLD: Duration = Duration::from_micros(100);
+        const SLEEP_DURATION: Duration = Duration::from_micros(5);
+        // goes into deep sleep after 1 ms
+        const DEEP_SLEEP_THRESHOLD: Duration = Duration::from_millis(1);
+        const DEEP_SLEEP_DURATION: Duration = Duration::from_micros(50);
+        // shutdown after idle for 1 second
+        const SHUTDOWN_THRESHOLD: Duration = Duration::from_secs(1);
+
+        let dura = Instant::now() - last_event_ts;
+
+        // park the engine only then it's empty
+        if dura > SHUTDOWN_THRESHOLD && self.is_empty() {
+            thread::park();
+        } else if dura > DEEP_SLEEP_THRESHOLD {
+            thread::park_timeout(DEEP_SLEEP_DURATION);
+        } else if dura > SLEEP_THRESHOLD {
+            thread::park_timeout(SLEEP_DURATION);
+        }
+    }
+
     /// A spinning future executor.
-    pub(crate) fn mainloop(&self) -> std::result::Result<(), Error> {
+    pub(crate) fn mainloop(&self) -> Result<(), Error> {
         let waker = futures::task::noop_waker();
         let mut cx = Context::from_waker(&waker);
 
         let mut shutdown = Vec::new();
 
+        // TODO(cjr): use jiffy
+        let mut last_event_ts = Instant::now();
+
         loop {
             // TODO(cjr): if there's no active engine on this runtime, call `mwait` to put the CPU
             // into an optimized state. (the wakeup latency and whether it can be used in user mode
             // are two concerns)
+            self.save_energy_or_shutdown(last_event_ts);
 
             // drive each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
@@ -143,7 +176,13 @@ impl Runtime {
                 let ret = engine.borrow_mut().future().poll(&mut cx);
                 match ret {
                     Poll::Pending => {
-                        // where do I get the work you have done?
+                        engine.borrow().with_indicator(|indicator| {
+                            // whatever the number reads here does not affect correctness
+                            let n = indicator.0.load(Ordering::Relaxed);
+                            if n > 0 {
+                                last_event_ts = Instant::now();
+                            }
+                        });
                     }
                     Poll::Ready(EngineResult::Ok(())) => {
                         log::info!(
@@ -168,8 +207,14 @@ impl Runtime {
             }
 
             // move newly added runtime to the scheduling queue
-            if self.new_pending.load(Ordering::Acquire) {
-                self.new_pending.store(false, Ordering::Relaxed);
+            if Ok(true)
+                == self.new_pending.compare_exchange(
+                    true,
+                    false,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
                 self.running.borrow_mut().append(&mut self.pending.lock());
             }
         }

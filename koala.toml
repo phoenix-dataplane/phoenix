@@ -16,25 +16,36 @@ span_level = "info"
 # overwrite with env KOALA_TRACING_DIR
 output_dir = "/tmp/koala-trace"
 
+[profiling]
+# overwrite with env KOALA_PROFILING_ENABLE_ON_NEW_CLIENT
+enable_on_new_client = true
+# overwrite with env KOALA_PROFILING_DURATION_MS
+duration_ms = 1000
+
+# [runtime]
+# max_dedicate = 10
+
 [control]
+# overwrite with KOALA_PREFIX
 prefix = "/tmp/koala"
-path = "koala-control.sock"
+# overwrite with KOALA_CONTROL
+path = "control.sock"
 
 [mrpc]
 prefix = "/tmp/koala"
-engine_basename = "koala-mrpc-engine"
+engine_basename = "mrpc-engine"
 
 [salloc]
 prefix = "/tmp/koala"
-engine_basename = "koala-salloc"
+engine_basename = "salloc"
 
 [transport-tcp]
 prefix = "/tmp/koala"
-engine_basename = "koala-transport-engine-tcp"
+engine_basename = "transport-engine-tcp"
 
 [transport-rdma]
 prefix = "/tmp/koala"
-engine_basename = "koala-transport-engine-rdma"
+engine_basename = "transport-engine-rdma"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
 command_max_interval_ms = 1000

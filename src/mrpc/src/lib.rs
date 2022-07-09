@@ -24,6 +24,8 @@
 // shmview
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
+// with_borrow_mut
+#![feature(local_key_cell_methods)]
 
 use std::io;
 
@@ -70,6 +72,9 @@ pub use interface::rpc::MessageErased;
 
 pub mod shmview;
 
+pub mod status;
+pub use status::{Code, Status};
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Service error: {0}")]
@@ -83,7 +88,3 @@ pub enum Error {
     #[error("Connect failed: {0}")]
     Connect(interface::Error),
 }
-
-#[derive(Debug, Clone, Copy, Error)]
-#[error("mRPC Status")]
-pub struct Status;

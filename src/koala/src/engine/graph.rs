@@ -1,11 +1,14 @@
 use std::ptr::Unique;
 
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+// use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use crossbeam::channel::{Receiver, Sender};
 
 use interface::engine::EngineType;
-use interface::rpc::MessageMeta;
+use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
-use ipc::mrpc::dp::{WrIdentifier, RECV_RECLAIM_BS};
+use ipc::mrpc::dp::RECV_RECLAIM_BS;
+
+use crate::mrpc::meta_pool::MetaBufferPtr;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
 // pub(crate) type OQueue = Sender<Box<dyn RpcMessage>>;
@@ -13,7 +16,8 @@ use ipc::mrpc::dp::{WrIdentifier, RECV_RECLAIM_BS};
 
 #[derive(Debug)]
 pub(crate) struct RpcMessageTx {
-    pub(crate) meta: Unique<MessageMeta>,
+    // Each RPC message is assigned a buffer for meta and optionally for its data
+    pub(crate) meta_buf_ptr: MetaBufferPtr,
     pub(crate) addr_backend: usize,
 }
 
@@ -22,9 +26,6 @@ pub(crate) enum EngineTxMessage {
     RpcMessage(RpcMessageTx),
     ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
 }
-
-pub(crate) type TxIQueue = UnboundedReceiver<EngineTxMessage>;
-pub(crate) type TxOQueue = UnboundedSender<EngineTxMessage>;
 
 #[derive(Debug)]
 pub(crate) struct RpcMessageRx {
@@ -36,11 +37,8 @@ pub(crate) struct RpcMessageRx {
 #[derive(Debug)]
 pub(crate) enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
-    SendCompletion(WrIdentifier),
+    Ack(RpcId, TransportStatus),
 }
-
-pub(crate) type RxIQueue = UnboundedReceiver<EngineRxMessage>;
-pub(crate) type RxOQueue = UnboundedSender<EngineRxMessage>;
 
 pub(crate) trait Vertex {
     fn id(&self) -> &str;
@@ -50,3 +48,17 @@ pub(crate) trait Vertex {
     fn rx_inputs(&mut self) -> &mut Vec<RxIQueue>;
     fn rx_outputs(&self) -> &Vec<RxOQueue>;
 }
+
+pub(crate) type TxIQueue = Receiver<EngineTxMessage>;
+pub(crate) type TxOQueue = Sender<EngineTxMessage>;
+
+pub(crate) type RxIQueue = Receiver<EngineRxMessage>;
+pub(crate) type RxOQueue = Sender<EngineRxMessage>;
+
+pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
+    // tokio::sync::mpsc::unbounded_channel();
+    crossbeam::channel::unbounded()
+}
+
+pub(crate) type SendError<T> = crossbeam::channel::SendError<T>;
+pub(crate) type TryRecvError = crossbeam::channel::TryRecvError;

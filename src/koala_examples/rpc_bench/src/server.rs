@@ -31,12 +31,19 @@ pub struct Args {
 
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
+
+    #[structopt(long, default_value = "0")]
+    pub reply_size: usize,
+
+    #[structopt(long, default_value = "128")]
+    pub provision_count: usize,
 }
 
 #[derive(Debug)]
 struct MyGreeter {
     replies: Vec<RpcMessage<HelloReply>>,
     count: AtomicUsize,
+    args: Args,
 }
 
 impl Greeter for MyGreeter {
@@ -47,7 +54,7 @@ impl Greeter for MyGreeter {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
-        let ret = Ok(&self.replies[my_count % 128]);
+        let ret = Ok(&self.replies[my_count % self.args.provision_count]);
         return ret;
     }
 }
@@ -78,8 +85,9 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             .serve()?;
     } else {
         let mut replies = Vec::new();
-        for _ in 0..128 {
-            let message = Vec::new();
+        for _ in 0..args.provision_count {
+            let mut message = Vec::new();
+            message.resize(args.reply_size, 43);
             let msg = RpcMessage::new(HelloReply { message });
             replies.push(msg);
         }
@@ -87,6 +95,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             .add_service(GreeterServer::new(MyGreeter {
                 replies,
                 count: AtomicUsize::new(0),
+                args,
             }))
             .serve()?;
     }

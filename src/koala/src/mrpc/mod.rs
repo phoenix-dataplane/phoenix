@@ -54,8 +54,9 @@ impl From<ipc::Error> for DatapathError {
     }
 }
 
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for DatapathError {
-    fn from(_other: tokio::sync::mpsc::error::SendError<T>) -> Self {
+use crate::engine::graph::SendError;
+impl<T> From<SendError<T>> for DatapathError {
+    fn from(_other: SendError<T>) -> Self {
         DatapathError::InternalQueueSend
     }
 }

@@ -511,6 +511,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "0.1.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f877be4f7c9f246b183111634f75baa039715e3f46ce860677d3b19a69fb229c"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "dashmap"
 version = "5.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1036,12 +1046,14 @@ dependencies = [
  "futures",
  "interface",
  "ipc",
+ "json",
  "lazy_static",
  "libc",
  "memfd",
  "memmap-fixed",
  "memmap2 0.5.4",
  "memoffset",
+ "minstant",
  "mio 0.7.14",
  "mrpc-derive",
  "nix 0.23.1",
@@ -1049,8 +1061,10 @@ dependencies = [
  "rdma",
  "scheduler",
  "serde",
+ "smallstr",
  "smallvec 1.8.0",
  "spin",
+ "static_assertions",
  "structopt",
  "thiserror",
  "tokio",
@@ -1058,7 +1072,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-chrome",
- "tracing-core",
  "tracing-subscriber",
  "uuid",
  "version",
@@ -1207,6 +1220,17 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
+name = "minstant"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cb320648b7883b43ce5dfbc5c6f4a84038194c3f67b4fcb7d05c994e6006557"
+dependencies = [
+ "ctor",
+ "libc",
+ "wasi 0.7.0",
+]
 
 [[package]]
 name = "mio"
@@ -2094,6 +2118,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "smallstr"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63b1aefdf380735ff8ded0b15f31aab05daf1f70216c01c02a12926badd1df9d"
+dependencies = [
+ "smallvec 1.8.0",
+]
+
+[[package]]
 name = "smallvec"
 version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2501,6 +2534,12 @@ dependencies = [
  "winapi 0.3.9",
  "winapi-util",
 ]
+
+[[package]]
+name = "wasi"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b89c3ce4ce14bdc6fb6beaf9ec7928ca331de5df7e5ea278375642a2f478570d"
 
 [[package]]
 name = "wasi"

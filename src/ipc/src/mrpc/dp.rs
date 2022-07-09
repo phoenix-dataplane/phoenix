@@ -1,11 +1,8 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::{rpc::MessageErased, Handle};
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct WrIdentifier(pub Handle, pub u32);
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
+use interface::Handle;
 
 pub type WorkRequestSlot = [u8; 64];
 
@@ -23,11 +20,12 @@ pub enum WorkRequest {
 
 pub type CompletionSlot = [u8; 64];
 
+// Avoid using too much `Send`/`Recv` in the code.
 #[repr(C, align(64))]
 #[derive(Debug)]
 pub enum Completion {
-    Recv(MessageErased),
-    SendCompletion(WrIdentifier),
+    Incoming(MessageErased, TransportStatus),
+    Outgoing(RpcId, TransportStatus),
 }
 
 mod sa {

@@ -127,16 +127,15 @@ impl Resource {
     }
 
     #[inline]
-    pub(crate) fn query_app_addr(&self, local_addr: usize) -> Result<usize, ResourceError> {
-        // local_addr is the address on the backend side
-        // let span = info_span!("query_app_addr");
-        // let _enter = span.enter();
+    pub(crate) fn query_app_addr(&self, backend_addr: usize) -> Result<usize, ResourceError> {
+        // shortcut because we map app_addr to the same address as backend_addr
+        // Ok(backend_addr)
 
         let addr_map = self.recv_mr_addr_map.lock();
-        match addr_map.range(0..=local_addr).last() {
+        match addr_map.range(0..=backend_addr).last() {
             Some(kv) => {
-                if kv.0 + kv.1.len >= local_addr {
-                    let offset = local_addr & (kv.1.align - 1);
+                if kv.0 + kv.1.len >= backend_addr {
+                    let offset = backend_addr & (kv.1.align - 1);
                     Ok(kv.1.ptr + offset)
                 } else {
                     Err(ResourceError::NotFound)

@@ -35,7 +35,7 @@ impl Engine for CmEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("RDMA CmEngine")
+        format!("RDMA CmEngine, user: {:?}", self.state.shared.pid)
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -57,6 +57,7 @@ impl CmEngine {
                 // cm_engine is the last active engine
                 return Ok(());
             }
+
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }

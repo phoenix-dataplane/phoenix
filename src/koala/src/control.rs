@@ -15,6 +15,7 @@ use ipc::unix::DomainSocket;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
+use crate::engine::graph::create_channel;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
@@ -34,7 +35,11 @@ pub struct Control {
 
 impl Control {
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
-        let koala_path = config.control.prefix.join(&config.control.path);
+        let koala_prefix = &config.control.prefix;
+        fs::create_dir_all(koala_prefix)
+            .unwrap_or_else(|e| panic!("Failed to create directory for {:?}: {}", koala_prefix, e));
+
+        let koala_path = koala_prefix.join(&config.control.path);
         if koala_path.exists() {
             fs::remove_file(&koala_path).expect("remove_file");
         }
@@ -110,7 +115,7 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (sender, receiver) = create_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -126,7 +131,7 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (sender, receiver) = create_channel();
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])

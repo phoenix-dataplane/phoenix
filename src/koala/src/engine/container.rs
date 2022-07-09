@@ -20,6 +20,11 @@ impl EngineContainer {
         engine.set_tracker(indicator.clone());
 
         let desc = engine.description();
+        // SAFETY: apparently EngineLocalStorage cannot be 'static,
+        // The caller must ensure that the els() is called within an engine.
+        // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
+        // It points to some states attatched to the engine
+        // hence in reality its lifetime is bound by engine (future) s lifetime
         let els = unsafe { engine.els() };
 
         Self {
@@ -36,8 +41,10 @@ impl EngineContainer {
     }
 
     #[inline]
-    pub(crate) fn check_progress(&self) -> Indicator {
-        Indicator::new(self.indicator.0.swap(0, Ordering::AcqRel))
+    pub(crate) fn with_indicator<T, F: FnOnce(&Indicator) -> T>(&self, f: F) -> T {
+        let ret = f(&self.indicator);
+        self.indicator.0.store(0, Ordering::Release);
+        ret
     }
 
     #[inline]

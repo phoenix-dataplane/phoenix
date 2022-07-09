@@ -34,6 +34,7 @@ impl From<ControlPathError> for interface::Error {
     }
 }
 
+// use crate::engine::graph::SendError;
 use tokio::sync::mpsc::error::SendError;
 impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {

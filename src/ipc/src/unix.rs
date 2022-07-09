@@ -59,6 +59,21 @@ impl Deref for DomainSocket {
     }
 }
 
+impl Drop for DomainSocket {
+    fn drop(&mut self) {
+        match self.sock.local_addr() {
+            Ok(local_addr) => {
+                if let Some(path) = local_addr.as_pathname() {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+            Err(_) => {
+                // sliently ignore the error in drop
+            }
+        }
+    }
+}
+
 // send_to, recv_from, set_read_timeout, set_write_timeout
 impl DomainSocket {
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<DomainSocket> {

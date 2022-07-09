@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use arrayvec::ArrayVec;
 use fnv::FnvHashMap;
 
+use interface::rpc::{RpcId, TransportStatus};
 use interface::Handle;
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
@@ -20,7 +21,9 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::alloc::Box;
-use crate::salloc::gc::{CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OBJECT_RECLAIMER, OUTSTANDING_WR};
+use crate::salloc::gc::{
+    CS_STUB_ID_COUNTER, MESSAGE_ID_COUNTER, OBJECT_RECLAIMER, OUTSTANDING_RPC,
+};
 use crate::salloc::region::SharedRecvBuffer;
 use crate::salloc::SA_CTX;
 use crate::{Error, MRPC_CTX};
@@ -38,7 +41,7 @@ impl ReclaimBuffer {
 
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
-    pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<dp::WrIdentifier, MessageErased>> = RefCell::new(FnvHashMap::default());
+    pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<RpcId, Result<MessageErased, TransportStatus>>> = RefCell::new(FnvHashMap::default());
     // maintain a per server stub recv buffer
     pub(crate) static RECV_REQUEST_CACHE: RefCell<FnvHashMap<u64, Vec<MessageErased>>> = RefCell::new(FnvHashMap::default());
     // map conn_id to server stub
@@ -111,7 +114,7 @@ use std::task::{Context, Poll};
 use crate::shmview::ShmView;
 
 pub struct ReqFuture<'a, T> {
-    wr_id: dp::WrIdentifier,
+    rpc_id: RpcId,
     reclaim_buffer: &'a ReclaimBuffer,
     _marker: PhantomData<T>,
 }
@@ -123,68 +126,87 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
         let this = self.get_mut();
         // handle the warning here
         let _ = check_completion_queue();
-        if let Some(erased) = RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&this.wr_id))
-        {
-            tracing::trace!(
-                "ReqFuture receive reply from mRPC engine, call_id={}",
-                erased.meta.call_id
-            );
-            let reply = ShmView::new(&erased, &this.reclaim_buffer);
-            Poll::Ready(Ok(reply))
-        } else {
-            cx.waker().wake_by_ref();
-            Poll::Pending
+
+        tracing::trace!(
+            "ReqFuture receive reply from mRPC engine, rpc_id={:?}",
+            this.rpc_id
+        );
+        match RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&this.rpc_id)) {
+            None => {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Some(Ok(erased)) => {
+                let reply = ShmView::new(&erased, &this.reclaim_buffer);
+                Poll::Ready(Ok(reply))
+            }
+            Some(Err(status)) => Poll::Ready(Err(crate::Status::from_incoming_transport(status))),
         }
     }
 }
 
+thread_local! {
+    static COMP_READ_BUFFER: RefCell<Vec<dp::Completion>> = RefCell::new(Vec::with_capacity(32));
+}
+
 pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
-    const BUF_LEN: usize = 32;
-    let mut buffer = Vec::with_capacity(BUF_LEN);
     MRPC_CTX.with(|ctx| {
-        ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-            for i in 0..count {
-                let c = ptr.add(i).cast::<dp::Completion>().read();
-                buffer.push(c);
-            }
-            count
-        })?;
-        for c in buffer {
-            match c {
-                dp::Completion::Recv(msg) => {
-                    let conn_id = msg.meta.conn_id;
-                    let call_id = msg.meta.call_id;
-                    match msg.meta.msg_type {
-                        RpcMsgType::Request => {
-                            let stub_id = CONN_SERVER_STUB_MAP
-                                .with(|map| map.borrow().get(&conn_id).map(|x| *x));
-                            if let Some(stub_id) = stub_id {
-                                RECV_REQUEST_CACHE.with(|cache| {
-                                    if let Some(buffer) = cache.borrow_mut().get_mut(&stub_id) {
-                                        buffer.push(msg);
+        COMP_READ_BUFFER.with_borrow_mut(|buffer| {
+            buffer.clear();
+
+            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
+                for i in 0..count {
+                    let c = ptr.add(i).cast::<dp::Completion>().read();
+                    buffer.push(c);
+                }
+                count
+            })?;
+
+            for c in buffer {
+                match c {
+                    dp::Completion::Incoming(msg, status) => {
+                        let conn_id = msg.meta.conn_id;
+                        let call_id = msg.meta.call_id;
+                        match msg.meta.msg_type {
+                            RpcMsgType::Request => {
+                                let stub_id = CONN_SERVER_STUB_MAP
+                                    .with(|map| map.borrow().get(&conn_id).map(|x| *x));
+                                if let Some(stub_id) = stub_id {
+                                    RECV_REQUEST_CACHE.with_borrow_mut(|cache| {
+                                        cache.entry(stub_id).and_modify(|b| b.push(*msg));
+                                    })
+                                }
+                            }
+                            RpcMsgType::Response => {
+                                RECV_REPLY_CACHE.with_borrow_mut(|cache| match *status {
+                                    TransportStatus::Success => {
+                                        cache.insert(RpcId(conn_id, call_id), Ok(*msg));
+                                    }
+                                    TransportStatus::Error(_e) => {
+                                        cache.insert(RpcId(conn_id, call_id), Err(*status));
                                     }
                                 })
                             }
                         }
-                        RpcMsgType::Response => RECV_REPLY_CACHE.with(|cache| {
-                            cache
-                                .borrow_mut()
-                                .insert(dp::WrIdentifier(conn_id, call_id), msg);
-                        }),
+                    }
+                    dp::Completion::Outgoing(rpc_id, status) => {
+                        let msg_id = OUTSTANDING_RPC.with_borrow_mut(|outstanding| {
+                            outstanding
+                                .remove(rpc_id)
+                                .expect("received unrecognized WR completion ACK")
+                        });
+                        OBJECT_RECLAIMER.register_rpc_completion(msg_id, 1);
+
+                        // bubble the error up to the user for RpcRequest
+                        if let TransportStatus::Error(_) = *status {
+                            RECV_REPLY_CACHE
+                                .with_borrow_mut(|cache| cache.insert(*rpc_id, Err(*status)));
+                        }
                     }
                 }
-                dp::Completion::SendCompletion(dp::WrIdentifier(conn_id, call_id)) => {
-                    let msg_id = OUTSTANDING_WR.with(|outstanding| {
-                        outstanding
-                            .borrow_mut()
-                            .remove(&dp::WrIdentifier(conn_id, call_id))
-                            .expect("received unrecognized WR completion ACK")
-                    });
-                    OBJECT_RECLAIMER.register_wr_completion(msg_id, 1);
-                }
             }
-        }
-        Ok(())
+            Ok(())
+        })
     })
 }
 
@@ -194,6 +216,7 @@ pub struct ClientStub {
     stub_id: u64,
     // mRPC connection handle
     handle: Handle,
+    #[allow(unused)]
     reply_mrs: Vec<SharedRecvBuffer>,
     recv_reclaim_buffer: ReclaimBuffer,
 }
@@ -226,7 +249,7 @@ impl ClientStub {
         self.post_request(msg, meta).unwrap();
 
         ReqFuture {
-            wr_id: dp::WrIdentifier(conn_id, call_id),
+            rpc_id: RpcId(conn_id, call_id),
             reclaim_buffer: &self.recv_reclaim_buffer,
             _marker: PhantomData,
         }
@@ -267,10 +290,10 @@ impl ClientStub {
         let req = dp::WorkRequest::Call(erased);
 
         // codegen should increase send_count for RpcMessage
-        OUTSTANDING_WR.with(|outstanding| {
+        OUTSTANDING_RPC.with(|outstanding| {
             outstanding
                 .borrow_mut()
-                .insert(dp::WrIdentifier(meta.conn_id, meta.call_id), msg.identifier);
+                .insert(RpcId(meta.conn_id, meta.call_id), msg.identifier);
         });
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
@@ -325,7 +348,7 @@ impl ClientStub {
                     Result::<(), Error>::Ok(())
                 })?;
 
-                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 Ok(Self {
                     stub_id,
                     handle: ret.0,
@@ -342,17 +365,17 @@ impl !Sync for ClientStub {}
 
 impl Drop for ClientStub {
     fn drop(&mut self) {
-        OUTSTANDING_WR.with(|outstanding| {
+        OUTSTANDING_RPC.with(|outstanding| {
             let mut borrow = outstanding.borrow_mut();
-            let wrs = borrow.drain_filter(|wr_id, _| self.handle == wr_id.0);
+            let rpcs = borrow.drain_filter(|rpc_id, _| self.handle == rpc_id.0);
 
-            let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
+            let msg_cnt = rpcs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
                 *acc.entry(msg_id).or_insert(0u64) += 1;
                 acc
             });
 
             for (msg_id, cnt) in msg_cnt {
-                OBJECT_RECLAIMER.register_wr_completion(msg_id, cnt);
+                OBJECT_RECLAIMER.register_rpc_completion(msg_id, cnt);
             }
         });
     }
@@ -360,6 +383,7 @@ impl Drop for ClientStub {
 
 pub struct Server {
     stub_id: u64,
+    #[allow(unused)]
     listener_handle: Handle,
     handles: HashSet<Handle>,
     // NOTE(wyj): store recv mrs according to connection handle
@@ -382,7 +406,7 @@ impl Server {
         MRPC_CTX.with(|ctx| {
             ctx.service.send_cmd(req)?;
             rx_recv_impl!(ctx.service, CompletionKind::Bind, listener_handle, {
-                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 // setup recv cache
                 RECV_REQUEST_CACHE.with(|cache| {
                     cache
@@ -414,12 +438,13 @@ impl Server {
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
     pub fn serve(&mut self) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+        let mut msg_buffer = Vec::with_capacity(32);
         loop {
             // check new incoming connections
             self.check_new_incoming_connection()?;
             // check new requests
-            let msgs = self.poll_requests()?;
-            self.post_replies(msgs)?;
+            self.poll_requests(&mut msg_buffer)?;
+            self.post_replies(&mut msg_buffer)?;
         }
     }
 
@@ -427,7 +452,6 @@ impl Server {
         &mut self,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         MRPC_CTX.with(|ctx| {
-            // TODO(cjr): the implementation of this function is super slow
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
                     let mut vaddrs = Vec::new();
@@ -481,10 +505,10 @@ impl Server {
 
         // codegen should increase send_count for RpcMessage
         let meta = erased.meta;
-        OUTSTANDING_WR.with(|outstanding| {
+        OUTSTANDING_RPC.with(|outstanding| {
             outstanding
                 .borrow_mut()
-                .insert(dp::WrIdentifier(meta.conn_id, meta.call_id), msg_id);
+                .insert(RpcId(meta.conn_id, meta.call_id), msg_id);
         });
 
         MRPC_CTX.with(|ctx| {
@@ -502,9 +526,10 @@ impl Server {
 
     fn post_replies(
         &mut self,
-        msgs: Vec<(MessageErased, u64)>,
+        msg_buffer: &mut Vec<(MessageErased, u64)>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-        for (reply, msg_id) in msgs {
+        let replies = msg_buffer.drain(..);
+        for (reply, msg_id) in replies {
             self.post_reply(reply, msg_id)?;
         }
         Ok(())
@@ -512,10 +537,10 @@ impl Server {
 
     fn poll_requests(
         &mut self,
-    ) -> Result<Vec<(MessageErased, u64)>, std::boxed::Box<dyn std::error::Error>> {
-        let mut msgs = Vec::with_capacity(32);
-
+        msg_buffer: &mut Vec<(MessageErased, u64)>,
+    ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         check_completion_queue()?;
+
         RECV_REQUEST_CACHE.with(|cache| {
             let mut borrow = cache.borrow_mut();
 
@@ -526,7 +551,7 @@ impl Server {
                         let recv_buffer =
                             self.recv_reclaim_buffer.get(&request.meta.conn_id).unwrap();
                         let (reply_erased, msg_id) = s.call(request, recv_buffer);
-                        msgs.push((reply_erased, msg_id));
+                        msg_buffer.push((reply_erased, msg_id));
                     }
                     None => {
                         eprintln!("unrecognized request: {:?}", request);
@@ -535,7 +560,7 @@ impl Server {
             }
         });
 
-        Ok(msgs)
+        Ok(())
     }
 }
 
@@ -553,10 +578,10 @@ impl Drop for Server {
         });
         RECV_REQUEST_CACHE.with(|cache| cache.borrow_mut().remove(&self.stub_id));
 
-        // remove all outstanding WR releated to this client/server stub
-        OUTSTANDING_WR.with(|outstanding| {
+        // remove all outstanding RPC releated to this client/server stub
+        OUTSTANDING_RPC.with(|outstanding| {
             let mut borrow = outstanding.borrow_mut();
-            let wrs = borrow.drain_filter(|wr_id, _| self.handles.contains(&wr_id.0));
+            let wrs = borrow.drain_filter(|rpc_id, _| self.handles.contains(&rpc_id.0));
 
             let msg_cnt = wrs.fold(HashMap::new(), |mut acc, (_, msg_id)| {
                 *acc.entry(msg_id).or_insert(0u64) += 1;
@@ -564,7 +589,7 @@ impl Drop for Server {
             });
 
             for (msg_id, cnt) in msg_cnt {
-                OBJECT_RECLAIMER.register_wr_completion(msg_id, cnt);
+                OBJECT_RECLAIMER.register_rpc_completion(msg_id, cnt);
             }
         });
     }

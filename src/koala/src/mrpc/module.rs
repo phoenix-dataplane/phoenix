@@ -18,7 +18,7 @@ use super::state::State;
 use crate::config::MrpcConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
-use crate::mrpc::meta_pool::MessageMetaPool;
+use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
 use crate::state_mgr::StateManager;
 
@@ -58,6 +58,8 @@ impl MrpcEngineBuilder {
     }
 
     fn build(self) -> Result<MrpcEngine> {
+        const META_BUFFER_POOL_CAP: usize = 128;
+        const BUF_LEN: usize = 32;
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
@@ -67,10 +69,11 @@ impl MrpcEngineBuilder {
             node: self.node,
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
-            meta_pool: MessageMetaPool::new(),
+            meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             _mode: self.mode,
             transport_type: None,
             indicator: None,
+            wr_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }
 }

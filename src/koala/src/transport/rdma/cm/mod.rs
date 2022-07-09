@@ -46,7 +46,7 @@ impl CmEventManager {
         Ok(())
     }
 
-    /// Get an event that matchs the event type.
+    /// Get an event that matches the event type.
     ///
     /// If there's any event matches, return the first one matched. Otherwise, returns None.
     pub(crate) fn get_one_cm_event(
@@ -85,6 +85,9 @@ impl CmEventManager {
 
             // read one event
             let cm_event = event_channel.get_cm_event().map_err(ApiError::RdmaCm)?;
+            if cm_event.event() == rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED {
+                log::warn!("poll_cm_event_once get a disonnected event");
+            }
 
             // reregister everytime to simulate level-trigger
             self.poll

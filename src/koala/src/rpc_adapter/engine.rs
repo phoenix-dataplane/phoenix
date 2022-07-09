@@ -2,16 +2,17 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::ptr;
+use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
 
 use ipc::mrpc;
-use ipc::mrpc::dp::WrIdentifier;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcMsgType};
+use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -22,6 +23,7 @@ use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
 use crate::mrpc::marshal::{ExcavateContext, MetaUnpacking, RpcMessage, SgE, SgList};
+use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -59,7 +61,7 @@ pub(crate) struct RpcAdapterEngine {
     // then we only needs to maintain an additional reference counter for each recv mr, i.e., HashMap<Handle, u64>;
     // if in the future recv mr's addr is directly used as wr_id in post_recv,
     // just change Handle here to usize
-    pub(crate) recv_mr_usage: FnvHashMap<WrIdentifier, Vec<Handle>>,
+    pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -84,7 +86,7 @@ impl Engine for RpcAdapterEngine {
     type Future = impl Future<Output = EngineResult>;
 
     fn description(&self) -> String {
-        format!("RcpAdapterEngine, user pid: {:?}", self.state.shared.pid)
+        format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
     }
 
     fn set_tracker(&mut self, indicator: Indicator) {
@@ -104,6 +106,8 @@ impl Engine for RpcAdapterEngine {
 
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
+        let desc = self.description().to_owned();
+        log::warn!("{} is being dropped", desc);
         self.state.stop_acceptor(true);
     }
 }
@@ -111,35 +115,46 @@ impl Drop for RpcAdapterEngine {
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+            // let mut timer = crate::timer::Timer::new();
             let mut work = 0;
-            // check input queue
+            // check input queue, ~100ns
             match self.check_input_queue()? {
                 Progress(n) => work += n,
                 Status::Disconnected => return Ok(()),
             }
+            // timer.tick();
 
-            // check service
+            // check service, ~350-600ns
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
             }
+            // timer.tick();
 
-            // check input command queue
+            // check input command queue, ~50ns
             match self.check_input_cmd_queue().await? {
                 Progress(n) => work += n,
                 Status::Disconnected => return Ok(()),
             }
+            // timer.tick();
 
-            // TODO(cjr): check incoming connect request
-            // the CmIdListener::get_request() is currently synchronous.
-            // need to make it asynchronous and low cost to check.
-            // TODO(cjr): move this to another engine and runtime
+            // TODO(cjr): check incoming connect request, ~200ns
             self.check_incoming_connection().await?;
+            // timer.tick();
 
             self.indicator.as_ref().unwrap().set_nwork(work);
 
+            // log::info!("RpcAdapter mainloop: {}", timer);
             future::yield_now().await;
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RpcStrategy {
+    /// The entire message is encapuslated into one message, transmitted with one send/recv
+    Fused,
+    /// The message is marshaled into an SgList, and transmitted with multiple send/recv operations.
+    Standard,
 }
 
 impl RpcAdapterEngine {
@@ -155,34 +170,169 @@ impl RpcAdapterEngine {
         self.odp_mr.as_mut().unwrap()
     }
 
-    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use crate::mrpc::codegen;
-        use tokio::sync::mpsc::error::TryRecvError;
+    #[inline]
+    fn choose_strategy(sglist: &SgList) -> RpcStrategy {
+        // See if the total length can fit into a meta buffer
+        let nbytes_lens_and_value: usize = sglist
+            .0
+            .iter()
+            .map(|sge| mem::size_of::<u32>() + sge.len)
+            .sum();
+        if nbytes_lens_and_value < MetaBuffer::capacity() {
+            RpcStrategy::Fused
+        } else {
+            RpcStrategy::Standard
+        }
+    }
+
+    fn send_fused(
+        &mut self,
+        conn_ctx: &ConnectionContext,
+        mut meta_buf_ptr: MetaBufferPtr,
+        sglist: &SgList,
+    ) -> Result<Status, DatapathError> {
         use ulib::uverbs::SendFlags;
 
+        let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
+        let msg_type = unsafe { &*meta_buf_ptr.as_meta_ptr() }.msg_type;
+        let cmid = &conn_ctx.cmid;
+        let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
+
+        // TODO(cjr): XXX, this credit implementation has big flaws
+        if msg_type == RpcMsgType::Request {
+            conn_ctx.credit.fetch_sub(1, Ordering::AcqRel);
+            conn_ctx
+                .outstanding_req
+                .lock()
+                .push_back(ReqContext { call_id, sg_len: 1 });
+        }
+
+        let off = meta_buf_ptr.0.as_ptr().addr();
+        let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
+
+        // write the lens to MetaBuffer
+        meta_buf.num_sge = sglist.0.len() as u32;
+
+        let mut value_len = 0;
+        let lens_buf = meta_buf.length_delimited.as_mut_ptr().cast::<u32>();
+        let value_buf = unsafe { lens_buf.add(sglist.0.len()).cast::<u8>() };
+
+        for (i, sge) in sglist.0.iter().enumerate() {
+            // SAFETY: we have done sanity check before in choose_strategy
+            unsafe { lens_buf.add(i).write(sge.len as u32) };
+            unsafe {
+                ptr::copy_nonoverlapping(sge.ptr as *mut u8, value_buf.add(value_len), sge.len);
+            }
+            value_len += sge.len;
+        }
+
+        let odp_mr = self.get_or_init_odp_mr();
+
+        // post send with imm
+        tracing::trace!("post_send_imm, len={}", meta_buf.header_len() + value_len);
+        unsafe {
+            cmid.post_send_with_imm(
+                odp_mr,
+                off..off + meta_buf.header_len() + value_len,
+                ctx,
+                SendFlags::SIGNALED,
+                0,
+            )?;
+        }
+
+        Ok(Progress(1))
+    }
+
+    fn send_standard(
+        &mut self,
+        conn_ctx: &ConnectionContext,
+        meta_ref: &MessageMeta,
+        sglist: &SgList,
+    ) -> Result<Status, DatapathError> {
+        use ulib::uverbs::SendFlags;
+
+        let call_id = meta_ref.call_id;
+        let cmid = &conn_ctx.cmid;
+
+        // TODO(cjr): XXX, this credit implementation has some issues
+        log::debug!("check_input_queue, sglist: {:0x?}", sglist);
+        if meta_ref.msg_type == RpcMsgType::Request {
+            conn_ctx
+                .credit
+                .fetch_sub(sglist.0.len() + 1, Ordering::AcqRel);
+            conn_ctx.outstanding_req.lock().push_back(ReqContext {
+                call_id,
+                sg_len: sglist.0.len() + 1,
+            });
+        }
+
+        // Sender posts send requests from the SgList
+        let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
+        let meta_sge = SgE {
+            ptr: (meta_ref as *const MessageMeta).addr(),
+            len: mem::size_of::<MessageMeta>(),
+        };
+
+        // TODO(cjr): credit handle logic for response
+        let odp_mr = self.get_or_init_odp_mr();
+        // timer.tick();
+
+        // post send message meta
+        unsafe {
+            cmid.post_send(
+                odp_mr,
+                meta_sge.ptr..meta_sge.ptr + meta_sge.len,
+                0,
+                SendFlags::SIGNALED,
+            )?;
+        }
+
+        // post the remaining data
+        for (i, &sge) in sglist.0.iter().enumerate() {
+            let off = sge.ptr;
+            if i + 1 < sglist.0.len() {
+                // post send
+                unsafe {
+                    cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                }
+            } else {
+                // post send with imm
+                tracing::trace!("post_send_imm, len={}", sge.len);
+                unsafe {
+                    cmid.post_send_with_imm(
+                        odp_mr,
+                        off..off + sge.len,
+                        ctx,
+                        SendFlags::SIGNALED,
+                        0,
+                    )?;
+                }
+            }
+        }
+
+        Ok(Progress(1))
+    }
+
+    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        use crate::engine::graph::TryRecvError;
+        use crate::mrpc::codegen;
+
         while let Some(msg) = self.local_buffer.pop_front() {
-            // get cmid from conn_id
-            let span = info_span!("RpcAdapter check_input_queue: send_msg");
-            let _enter = span.enter();
-
-            let meta_ref = unsafe { msg.meta.as_ref() };
+            // SAFETY: don't know what kind of UB can be triggered
+            let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
             let cmid_handle = meta_ref.conn_id;
-            let call_id = meta_ref.call_id;
 
-            let conn_ctx = {
-                // let span = info_span!("get conn context");
-                // let _enter = span.enter();
-                self.state.resource().cmid_table.get(&cmid_handle)?
-            };
+            // get cmid from conn_id
+            let conn_ctx = self.state.resource().cmid_table.get(&cmid_handle)?;
 
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
                 // some random number for now TODO(cjr): update this
                 self.local_buffer.push_front(msg);
                 break;
             }
+            // let mut timer = crate::timer::Timer::new();
 
-            let cmid = &conn_ctx.cmid;
-
+            // Sender marshals the data (gets an SgList)
             let sglist = match meta_ref.msg_type {
                 RpcMsgType::Request => {
                     match meta_ref.func_id {
@@ -204,81 +354,37 @@ impl RpcAdapterEngine {
                     _ => unimplemented!(),
                 },
             };
+            // timer.tick();
 
-            // Sender marshals the data (gets an SgList)
-            // Sender posts send requests from the SgList
-            log::debug!("check_input_queue, sglist: {:0x?}", sglist);
-            if meta_ref.msg_type == RpcMsgType::Request {
-                conn_ctx.credit.fetch_sub(sglist.0.len(), Ordering::AcqRel);
-                conn_ctx.outstanding_req.lock().push_back(ReqContext {
-                    call_id: meta_ref.call_id,
-                    sg_len: sglist.0.len(),
-                });
-            }
-
-            let ctx = ((cmid_handle.0 as u64) << 32) | (call_id as u64);
-            let meta_sge = SgE {
-                ptr: msg.meta.as_ptr().addr(),
-                len: mem::size_of::<MessageMeta>(),
+            // TODO(cjr): Examine the SgList and optimize for small messages
+            let status = match Self::choose_strategy(&sglist) {
+                RpcStrategy::Fused => self.send_fused(&conn_ctx, msg.meta_buf_ptr, &sglist)?,
+                RpcStrategy::Standard => self.send_standard(&conn_ctx, meta_ref, &sglist)?,
             };
 
-            // TODO(cjr): credit handle logic for response
-            let odp_mr = self.get_or_init_odp_mr();
-            {
-                // post send message meta
-                unsafe {
-                    cmid.post_send(
-                        odp_mr,
-                        meta_sge.ptr..meta_sge.ptr + meta_sge.len,
-                        0,
-                        SendFlags::SIGNALED,
-                    )?;
-                }
-
-                for (i, &sge) in sglist.0.iter().enumerate() {
-                    let off = sge.ptr;
-                    if i + 1 < sglist.0.len() {
-                        // post send
-                        unsafe {
-                            // let span = info_span!("post_send");
-                            // let _enter = span.enter();
-                            cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
-                        }
-                    } else {
-                        // post send with imm
-                        tracing::trace!("post_send_imm, len={}", sge.len);
-                        unsafe {
-                            // let span = info_span!("post_send_with_imm");
-                            // let _enter = span.enter();
-                            cmid.post_send_with_imm(
-                                odp_mr,
-                                off..off + sge.len,
-                                ctx,
-                                SendFlags::SIGNALED,
-                                0,
-                            )?;
-                        }
-                    }
-                }
-            }
-            // Sender posts an extra SendWithImm
-            return Ok(Progress(1));
+            // timer.tick();
+            // log::info!("check_input_queue: {}", timer);
+            return Ok(status);
         }
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => match msg {
                 EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
                 EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                    // let mut timer = crate::timer::Timer::new();
                     let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
                     let cmid = &conn_ctx.cmid;
+                    // timer.tick();
 
                     for call_id in call_ids {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&WrIdentifier(conn_id, call_id))
+                            .remove(&RpcId(conn_id, call_id))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
                     }
+                    // timer.tick();
+                    // log::info!("ReclaimRecvBuf: {}", timer);
                 }
             },
             Err(TryRecvError::Empty) => {}
@@ -287,26 +393,45 @@ impl RpcAdapterEngine {
         Ok(Progress(0))
     }
 
+    fn reshape_fused_sg_list(sg_list: &mut SgList) {
+        use std::ptr::Unique;
+
+        assert_eq!(sg_list.0.len(), 1);
+        // modify the first sge in place
+        sg_list.0[0].len = mem::size_of::<MessageMeta>();
+
+        let meta_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MetaBuffer).unwrap();
+        let meta_buf = unsafe { meta_buf_ptr.as_ref() };
+
+        let num_sge = meta_buf.num_sge as usize;
+        let lens_buf = unsafe {
+            slice::from_raw_parts(meta_buf.length_delimited.as_ptr().cast::<u32>(), num_sge)
+        };
+        let value_buf_offset = num_sge * mem::size_of::<u32>();
+        for i in 0..num_sge {
+            sg_list.0.push(SgE {
+                ptr: value_buf_offset + meta_buf.length_delimited.as_ptr().addr(),
+                len: lens_buf[i] as usize,
+            });
+        }
+    }
+
     fn unmarshal_and_deliver_up(
         &mut self,
         sgl: SgList,
         conn_ctx: Arc<ConnectionContext>,
-    ) -> Result<WrIdentifier, DatapathError> {
+    ) -> Result<RpcId, DatapathError> {
         use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
-
-        let span = info_span!("unmarshal_and_deliver_up");
-        let _enter = span.enter();
 
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = conn_ctx.cmid.as_handle();
 
-        let recv_id = WrIdentifier(meta.conn_id, meta.call_id);
+        let recv_id = RpcId(meta.conn_id, meta.call_id);
+
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
-            // let span = info_span!("replenish the credits");
-            // let _enter = span.enter();
             let call_id = meta.call_id;
             let mut outstanding_req = conn_ctx.outstanding_req.lock();
             let req_ctx = outstanding_req.pop_front().unwrap();
@@ -319,6 +444,10 @@ impl RpcAdapterEngine {
             sgl: sgl.0[1..].iter(),
             salloc: &self.salloc.shared,
         };
+
+        // let mut timer = crate::timer::Timer::new();
+        // timer.tick();
+
         let (addr_app, addr_backend) = match meta.msg_type {
             RpcMsgType::Request => match meta.func_id {
                 3687134534u32 => {
@@ -338,15 +467,23 @@ impl RpcAdapterEngine {
                 _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
             },
         };
+        // timer.tick();
 
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
             addr_app,
         };
+        // timer.tick();
+
         self.rx_outputs()[0]
             .send(EngineRxMessage::RpcMessage(msg))
             .unwrap();
+
+        // timer.tick();
+        // log::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
+        // log::info!("unmarshal_and_deliver_up {}", timer);
+
         Ok(recv_id)
     }
 
@@ -361,26 +498,19 @@ impl RpcAdapterEngine {
         for wc in comps {
             match wc.status {
                 WcStatus::Success => {
-                    let span = info_span!("RpcAdapter check_transport_service: wc polled");
-                    let _enter = span.enter();
-
                     match wc.opcode {
                         WcOpcode::Send => {
                             // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                let conn_id = Handle((wc.wr_id >> 32) as u32);
-                                let call_id = wc.wr_id as u32;
-                                let wr_identifier = WrIdentifier(conn_id, call_id);
+                                let rpc_id = RpcId::decode_u64(wc.wr_id);
                                 self.rx_outputs()[0]
-                                    .send(EngineRxMessage::SendCompletion(wr_identifier))
+                                    .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                     .unwrap();
                             }
                         }
                         WcOpcode::Recv => {
                             let conn_ctx = {
-                                // let span = info_span!("push receiving_sgl");
-                                // let _enter = span.enter();
                                 let wr_ctx = self.state.resource().wr_contexts.get(&wc.wr_id)?;
                                 let cmid_handle = wr_ctx.conn_id;
                                 let conn_ctx =
@@ -391,11 +521,10 @@ impl RpcAdapterEngine {
                                     len: wc.byte_len as _, // note this byte_len is only valid for
                                                            // recv request
                                 };
-                                {
-                                    let mut recv_ctx = conn_ctx.receiving_ctx.lock();
-                                    recv_ctx.sg_list.0.push(sge);
-                                    recv_ctx.recv_mrs.push(Handle(wc.wr_id as u32));
-                                }
+                                let mut recv_ctx = conn_ctx.receiving_ctx.lock();
+                                recv_ctx.sg_list.0.push(sge);
+                                recv_ctx.recv_mrs.push(Handle(wc.wr_id as u32));
+                                drop(recv_ctx);
                                 conn_ctx
                             };
 
@@ -406,7 +535,15 @@ impl RpcAdapterEngine {
                                     wc.wr_id
                                 );
                                 use std::ops::DerefMut;
-                                let recv_ctx = mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
+                                let mut recv_ctx =
+                                    mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
+
+                                // check if it is an eager message
+                                if recv_ctx.sg_list.0.len() == 1 {
+                                    // got an eager message
+                                    Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
+                                }
+
                                 let recv_id = self.unmarshal_and_deliver_up(
                                     recv_ctx.sg_list,
                                     Arc::clone(&conn_ctx),
@@ -417,12 +554,19 @@ impl RpcAdapterEngine {
                             }
                             progress += 1;
                         }
+                        // The below two are probably errors in impl logic, so assert them
                         WcOpcode::Invalid => panic!("invalid wc: {:?}", wc),
                         _ => panic!("Unhandled wc opcode: {:?}", wc),
                     }
                 }
-                WcStatus::Error(_) => {
-                    eprintln!("wc failed: {:?}", wc);
+                WcStatus::Error(code) => {
+                    log::warn!("wc failed: {:?}", wc);
+                    // TODO(cjr): bubble up the error, close the connection, and return an error
+                    // to the user.
+                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                    self.rx_outputs()[0]
+                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code)))
+                        .unwrap();
                 }
             }
         }

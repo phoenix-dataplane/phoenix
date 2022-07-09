@@ -9,7 +9,6 @@
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(core_intrinsics)]
 
-#[macro_use]
 extern crate tracing;
 // alias
 extern crate tracing as log;
@@ -17,13 +16,16 @@ extern crate tracing as log;
 pub mod config;
 pub mod control;
 pub mod engine;
-pub mod mrpc;
-pub mod node;
-pub mod resource;
-pub mod rpc_adapter;
-pub mod salloc;
-pub mod state_mgr;
-pub mod transport;
+pub(crate) mod mrpc;
+pub(crate) mod node;
+pub(crate) mod resource;
+pub(crate) mod rpc_adapter;
+pub(crate) mod salloc;
+pub(crate) mod state_mgr;
+pub(crate) mod transport;
+
+#[allow(unused)]
+pub(crate) mod timer;
 
 #[macro_export]
 macro_rules! unimplemented_ungradable {

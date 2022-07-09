@@ -3,6 +3,7 @@ use std::mem;
 use std::net::ToSocketAddrs;
 
 use interface::{AsHandle, Handle};
+use rdma::rdmacm;
 
 use super::get_ops;
 use super::{uverbs, Error, FromBorrow};
@@ -15,6 +16,7 @@ pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints
 #[derive(Clone)]
 pub(crate) struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     handle: interface::CmId,
+    ec_handle: interface::EventChannel,
     pd: Option<&'pd ProtectionDomain>,
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
     tos: Option<u8>,
@@ -29,7 +31,8 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq,
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub(crate) fn new() -> Self {
         CmIdBuilder {
-            handle: interface::CmId(interface::Handle::INVALID),
+            handle: interface::CmId(Handle::INVALID),
+            ec_handle: interface::EventChannel(Handle::INVALID),
             pd: None,
             qp_init_attr: Default::default(),
             tos: None,
@@ -114,7 +117,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             .ok_or(Error::NoAddrResolved)?;
         let ops = get_ops();
         // create_id
-        let cmid = ops.create_id(PortSpace::TCP).await?;
+        let (cmid, event_channel) = ops.create_id_with_event_channel(PortSpace::TCP).await?;
         assert!(cmid.qp.is_none());
         // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
@@ -129,6 +132,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         mem::forget(drop_cmid);
         Ok(CmIdListener {
             handle: cmid.handle,
+            ec_handle: event_channel.handle,
         })
     }
 
@@ -142,7 +146,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             .ok_or(Error::NoAddrResolved)?;
         let ops = get_ops();
         // create_id
-        let cmid = ops.create_id(PortSpace::TCP).await?;
+        let (cmid, event_channel) = ops.create_id_with_event_channel(PortSpace::TCP).await?;
         assert!(cmid.qp.is_none());
         // drop guard, automatically drop if any of the following step fails
         let drop_cmid = DropCmId(cmid.handle);
@@ -157,6 +161,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         assert!(cmid.qp.is_none());
         let mut builder = self.clone();
         builder.handle = cmid.handle;
+        builder.ec_handle = event_channel.handle;
         mem::forget(drop_cmid);
         Ok(builder)
     }
@@ -172,10 +177,40 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
 
         Ok(PreparedCmId {
             inner: Inner {
+                event_channel: EventChannel::new(self.ec_handle),
                 handle: self.handle,
                 qp: uverbs::QueuePair::open(qp)?,
             },
         })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct EventChannel {
+    pub(crate) handle: interface::EventChannel,
+}
+
+impl AsHandle for EventChannel {
+    fn as_handle(&self) -> Handle {
+        self.handle.0
+    }
+}
+
+impl EventChannel {
+    #[inline]
+    fn new(handle: interface::EventChannel) -> Self {
+        Self { handle }
+    }
+
+    pub(crate) fn try_get_cm_event(
+        &self,
+        event_type: rdma::ffi::rdma_cm_event_type::Type,
+    ) -> Option<Result<rdmacm::CmEvent, Error>> {
+        match get_ops().try_get_cm_event(&self.as_handle(), event_type) {
+            Some(Ok(res)) => Some(Ok(res)),
+            Some(Err(e)) => Some(Err(e.into())),
+            None => None,
+        }
     }
 }
 
@@ -193,6 +228,7 @@ impl Drop for DropCmId {
 // the 5 lifetime generices does not need to propagate.
 pub(crate) struct CmIdListener {
     pub(crate) handle: interface::CmId,
+    pub(crate) ec_handle: interface::EventChannel,
 }
 
 impl AsHandle for CmIdListener {
@@ -289,11 +325,17 @@ impl AsHandle for CmId {
     }
 }
 
+impl CmId {
+    pub(crate) async fn disconnect(&self) -> Result<(), Error> {
+        get_ops().disconnect(&self.inner.handle).await?;
+        Ok(())
+    }
+}
+
 impl Drop for CmId {
     fn drop(&mut self) {
         futures::executor::block_on(async {
-            get_ops()
-                .disconnect(&self.inner.handle)
+            self.disconnect()
                 .await
                 .unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
         });
@@ -313,6 +355,10 @@ macro_rules! impl_for_cmid {
         impl $type {
             pub(crate) fn qp(&self) -> &uverbs::QueuePair {
                 &self.$member.qp
+            }
+
+            pub(crate) fn event_channel(&self) -> &EventChannel {
+                &self.$member.event_channel
             }
 
             pub(crate) fn alloc_msgs<T: Sized + Copy>(
@@ -344,6 +390,7 @@ impl_for_cmid!(PreparedCmId, inner);
 
 #[derive(Debug)]
 pub(crate) struct Inner {
+    pub(crate) event_channel: EventChannel,
     pub(crate) handle: interface::CmId,
     pub(crate) qp: uverbs::QueuePair,
 }
@@ -353,7 +400,10 @@ unsafe impl Sync for Inner {}
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        let _drop_cmid = DropCmId(self.handle);
+        log::warn!("dropping CmId Inner");
+        // TODO(cjr): drop QP first
+        let _ = DropCmId(self.handle);
+        log::warn!("dropped CmId Inner");
     }
 }
 

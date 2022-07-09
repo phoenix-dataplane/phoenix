@@ -26,7 +26,7 @@ lazy_static! {
     pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
 }
 
-pub type CustomerType =
+pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct SallocEngineBuilder {
@@ -64,14 +64,15 @@ pub struct SallocModule {
 }
 
 impl SallocModule {
-    pub fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
+    pub(crate) fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
         SallocModule {
             config,
             runtime_manager,
         }
     }
 
-    pub fn handle_request(
+    #[allow(unused)]
+    pub(crate) fn handle_request(
         &mut self,
         req: &control_plane::Request,
         _sock: &DomainSocket,
@@ -86,7 +87,7 @@ impl SallocModule {
         }
     }
 
-    pub fn handle_new_client<P: AsRef<Path>>(
+    pub(crate) fn handle_new_client<P: AsRef<Path>>(
         &mut self,
         sock: &DomainSocket,
         client_path: P,
