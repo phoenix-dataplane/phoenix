@@ -23,6 +23,8 @@ pub(crate) mod rpc_adapter;
 pub(crate) mod salloc;
 pub(crate) mod state_mgr;
 pub(crate) mod transport;
+pub mod module;
+pub(crate) mod dependency;
 
 #[allow(unused)]
 pub(crate) mod timer;

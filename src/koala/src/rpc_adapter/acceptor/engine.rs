@@ -1,5 +1,7 @@
+use std::pin::Pin;
 use std::collections::VecDeque;
-use std::future::Future;
+
+use futures::future::BoxFuture;
 
 use super::super::engine::TlStorage;
 use super::super::state::State;
@@ -36,7 +38,9 @@ crate::unimplemented_ungradable!(AcceptorEngine);
 crate::impl_vertex_for_engine!(AcceptorEngine, node);
 
 impl Engine for AcceptorEngine {
-    type Future = impl Future<Output = EngineResult>;
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        unsafe { Box::pin(self.get_unchecked_mut().mainloop()) }
+    }
 
     fn description(&self) -> String {
         format!(
@@ -47,10 +51,6 @@ impl Engine for AcceptorEngine {
 
     fn set_tracker(&mut self, indicator: Indicator) {
         self.indicator = Some(indicator);
-    }
-
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
     }
 
     #[inline]

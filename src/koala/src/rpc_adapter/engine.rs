@@ -1,5 +1,5 @@
+use std::pin::Pin;
 use std::collections::VecDeque;
-use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::ptr;
@@ -7,6 +7,7 @@ use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use futures::future::BoxFuture;
 use fnv::FnvHashMap;
 
 use interface::engine::SchedulingMode;
@@ -85,7 +86,9 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
-    type Future = impl Future<Output = EngineResult>;
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        unsafe { Box::pin(self.get_unchecked_mut().mainloop()) }
+    }
 
     fn description(&self) -> String {
         format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
@@ -93,10 +96,6 @@ impl Engine for RpcAdapterEngine {
 
     fn set_tracker(&mut self, indicator: Indicator) {
         self.indicator = Some(indicator);
-    }
-
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
     }
 
     #[inline]

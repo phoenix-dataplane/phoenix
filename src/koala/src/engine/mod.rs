@@ -1,9 +1,10 @@
-use std::future::Future;
+use std::pin::Pin;
 
 pub mod manager;
 
 pub(crate) mod lb;
 pub(crate) mod runtime;
+use futures::future::BoxFuture;
 pub(crate) use runtime::Indicator;
 
 pub(crate) mod graph;
@@ -17,12 +18,18 @@ pub(crate) use container::EngineContainer;
 
 pub(crate) mod future;
 
-pub(crate) trait Engine: Upgradable + Vertex + Send {
-    /// The type of value produced on completion.
-    type Future: Future<Output = EngineResult> + Send + 'static;
+pub mod envelop;
+pub mod shared;
 
-    /// Turn the Engine into an executable `Future`
-    fn entry(self) -> Self::Future;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EngineType(pub String);
+
+pub(crate) trait Engine: Upgradable + Vertex + Send + 'static {
+    /// Activate the engine, creates an executable `Future`
+    /// This method takes a pinned pointer to the engine and returns a boxed future.
+    /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,
+    /// (which can happend if the engine implements `Unpin`). 
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult>;
 
     /// Set the shared progress tracker.
     fn set_tracker(&mut self, indicator: Indicator);

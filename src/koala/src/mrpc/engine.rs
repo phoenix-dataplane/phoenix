@@ -1,9 +1,10 @@
-use std::future::Future;
 use std::mem;
+use std::pin::Pin;
 use std::path::PathBuf;
 
-use interface::rpc::{MessageErased, RpcId, TransportStatus};
+use futures::future::BoxFuture;
 
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
 
@@ -50,7 +51,9 @@ enum Status {
 use Status::Progress;
 
 impl Engine for MrpcEngine {
-    type Future = impl Future<Output = EngineResult>;
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        unsafe { Box::pin(self.get_unchecked_mut().mainloop()) }
+    }
 
     fn description(&self) -> String {
         format!("MrpcEngine, todo show more information")
@@ -58,10 +61,6 @@ impl Engine for MrpcEngine {
 
     fn set_tracker(&mut self, indicator: Indicator) {
         self.indicator = Some(indicator);
-    }
-
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
     }
 }
 
