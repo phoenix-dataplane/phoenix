@@ -5,6 +5,8 @@ use interface::rpc::MessageMeta;
 use mrpc_marshal::{ExcavateContext, SgList, ShmRecvMr};
 use mrpc_marshal::{MarshalError, UnmarshalError};
 
+pub(crate) type AddressMap = spin::Mutex<BTreeMap<usize, ShmRecvMr>>;
+
 pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalError>;
 pub(crate) type UnmarshalFn = fn(
     &MessageMeta,
@@ -57,7 +59,7 @@ impl SerializationEngine {
     pub(crate) fn unmarshal(
         &self,
         meta: &MessageMeta,
-        ctx: &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
+        ctx: &mut ExcavateContext<AddressMap>,
     ) -> Result<(usize, usize), UnmarshalError> {
         (self.unmarshal_fn)(meta, ctx)
     }

@@ -63,7 +63,7 @@ pub(crate) struct RpcAdapterEngine {
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
-    pub(crate) reflection_module: Option<SerializationEngine>,
+    pub(crate) serialization_engine: Option<SerializationEngine>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -333,7 +333,7 @@ impl RpcAdapterEngine {
             }
             // let mut timer = crate::timer::Timer::new();
 
-            let sglist = if let Some(ref module) = self.reflection_module {
+            let sglist = if let Some(ref module) = self.serialization_engine {
                 module.marshal(meta_ref, msg.addr_backend).unwrap()
             } else {
                 panic!("dispatch module not loaded");
@@ -428,7 +428,7 @@ impl RpcAdapterEngine {
             addr_arbiter: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
-        let (addr_app, addr_backend) = if let Some(ref module) = self.reflection_module {
+        let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
             module.unmarshal(meta, &mut excavate_ctx).unwrap()
         } else {
             panic!("dispatch module not loaded");
@@ -700,7 +700,7 @@ impl RpcAdapterEngine {
             mrpc::cmd::Command::UpdateProtosInner(dylib) => {
                 log::debug!("Loading dispatch library: {:?}", dylib);
                 let module = SerializationEngine::new(dylib)?;
-                self.reflection_module = Some(module);
+                self.serialization_engine = Some(module);
                 Ok(mrpc::cmd::CompletionKind::UpdateProtos)
             }
             mrpc::cmd::Command::UpdateProtos(_) => {
