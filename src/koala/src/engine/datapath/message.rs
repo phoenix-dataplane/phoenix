@@ -18,6 +18,8 @@ pub struct RpcMessageTx {
 pub enum EngineTxMessage {
     RpcMessage(RpcMessageTx),
     ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
+    SchedMessage(&'static Ops, Handle, RawRdmaMsgTx),
+    ReclaimSchedFusedBuffer(RpcId),
 }
 
 #[derive(Debug)]
