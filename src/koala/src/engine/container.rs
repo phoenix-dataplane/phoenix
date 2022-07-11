@@ -14,11 +14,11 @@ pub(crate) struct DetachedEngineContainer {
 
 pub(crate) struct EngineContainer {
     // SAFETY: the future's lifetime will be extended to static.
-    // We must ensure the engine is not moved / dropped 
+    // We must ensure the engine is not moved / dropped
     // before polling the future.
     future: BoxFuture<'static, EngineResult>,
-    // SAFETY: The engine itself can be `Unpin`. 
-    // But after the future is created from the the engine  
+    // SAFETY: The engine itself can be `Unpin`.
+    // But after the future is created from the the engine
     // it should not be moved. Otherwise, the mutable reference
     // hold in future is no longer valid.
     engine: Pin<Box<dyn Engine>>,
@@ -28,9 +28,11 @@ pub(crate) struct EngineContainer {
 }
 
 /// Extending the future's lifetime.
-/// SAFETY: Extremely unsafe!!! 
+/// SAFETY: Extremely unsafe!!!
 #[inline]
-unsafe fn extend_lifetime<'a>(fut: BoxFuture<'a, EngineResult>) -> BoxFuture<'static, EngineResult> {
+unsafe fn extend_lifetime<'a>(
+    fut: BoxFuture<'a, EngineResult>,
+) -> BoxFuture<'static, EngineResult> {
     std::mem::transmute::<BoxFuture<'a, EngineResult>, BoxFuture<'static, EngineResult>>(fut)
 }
 
@@ -49,7 +51,7 @@ impl EngineContainer {
         let mut pinned = Box::pin(engine);
         let future = {
             let engine_mut = pinned.as_mut();
-            // SAFETY: manaually extend 
+            // SAFETY: manaually extend
             let fut = engine_mut.activate();
             unsafe { extend_lifetime(fut) }
         };
@@ -79,9 +81,6 @@ impl EngineContainer {
     pub(crate) fn description(&self) -> &str {
         &self.desc
     }
-
-    #[inline]
-    pub(crate) fn suspend(self) -> Susp
 
     #[inline]
     pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {

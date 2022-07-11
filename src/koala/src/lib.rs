@@ -15,7 +15,9 @@ extern crate tracing as log;
 
 pub mod config;
 pub mod control;
+pub(crate) mod dependency;
 pub mod engine;
+pub mod module;
 pub mod mrpc;
 pub(crate) mod node;
 pub(crate) mod resource;
@@ -46,11 +48,7 @@ macro_rules! unimplemented_ungradable {
                 unimplemented!();
             }
 
-            fn dump(&self) {
-                unimplemented!();
-            }
-
-            fn restore(&mut self) {
+            fn unload(self) {
                 unimplemented!();
             }
         }

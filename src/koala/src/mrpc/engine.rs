@@ -1,6 +1,6 @@
 use std::mem;
-use std::pin::Pin;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 use futures::future::BoxFuture;
 

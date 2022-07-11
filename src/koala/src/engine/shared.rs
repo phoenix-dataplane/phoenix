@@ -1,3 +1,1 @@
-pub struct SharedStorage {
-    
-}
+pub struct SharedStorage {}

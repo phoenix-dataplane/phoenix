@@ -1,3 +1,1 @@
-pub trait KoalaModule {
-    
-}
+pub trait KoalaModule {}

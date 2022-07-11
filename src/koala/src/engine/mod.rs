@@ -28,7 +28,7 @@ pub(crate) trait Engine: Upgradable + Vertex + Send + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,
-    /// (which can happend if the engine implements `Unpin`). 
+    /// (which can happend if the engine implements `Unpin`).
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult>;
 
     /// Set the shared progress tracker.

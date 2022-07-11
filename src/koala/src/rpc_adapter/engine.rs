@@ -1,14 +1,14 @@
-use std::pin::Pin;
 use std::collections::VecDeque;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::ptr;
 use std::slice;
+use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use futures::future::BoxFuture;
 use fnv::FnvHashMap;
+use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};

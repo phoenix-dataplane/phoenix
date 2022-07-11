@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
-use std::pin::Pin;
 use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
+use std::pin::Pin;
 use std::slice;
 
 use futures::future::BoxFuture;

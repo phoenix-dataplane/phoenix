@@ -1,6 +1,6 @@
 use std::alloc::Layout;
-use std::pin::Pin;
 use std::os::unix::io::AsRawFd;
+use std::pin::Pin;
 
 use futures::future::BoxFuture;
 
