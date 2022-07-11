@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use proc_macro2::TokenStream;
 
 use crate::attribute::Attributes;

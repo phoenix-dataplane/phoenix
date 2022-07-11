@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
@@ -13,7 +13,6 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc;
-use ipc::mrpc::dp::WrIdentifier;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
 use super::reflection::ReflectionModule;
@@ -24,6 +23,7 @@ use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
+use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
@@ -317,7 +317,6 @@ impl RpcAdapterEngine {
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use crate::engine::graph::TryRecvError;
-        use crate::mrpc::codegen;
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
@@ -333,8 +332,6 @@ impl RpcAdapterEngine {
                 break;
             }
             // let mut timer = crate::timer::Timer::new();
-
-            let cmid = &conn_ctx.cmid;
 
             let sglist = if let Some(ref module) = self.reflection_module {
                 module.marshal(meta_ref, msg.addr_backend).unwrap()
