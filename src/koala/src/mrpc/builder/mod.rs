@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod cache;
+pub mod compiler;
 pub mod prost;
-pub mod reflection;
 
 const PROTO_DIR: &'static str = "proto";
 const PROST_DIR: &'static str = "prost";
-const REFLECTION_DIR: &'static str = "reflection";
+const LIBRARY_DIR: &'static str = "marshal";
 const PROST_INCLUDE_FILE: &'static str = "_include.rs";
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -105,8 +105,8 @@ pub enum Error {
     IO(#[from] std::io::Error),
     #[error("prost-build Error: {0}")]
     ProstBuild(#[from] prost::Error),
-    #[error("Reflection Compile Error: {0}")]
-    ReflectionCompile(#[from] reflection::Error),
+    #[error("Marshal Library Compile Error: {0}")]
+    LibraryCompile(#[from] compiler::Error),
 }
 
 pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result<PathBuf, Error> {
@@ -139,8 +139,8 @@ pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result
         let method_info = prost_builder.compile(proto_paths.as_slice(), &[&proto_include_path])?;
 
         // generate dispatch library
-        let emit_crate_dir = cache_dir.join(&identifier).join(REFLECTION_DIR);
-        let builder = reflection::Builder {
+        let emit_crate_dir = cache_dir.join(&identifier).join(LIBRARY_DIR);
+        let builder = compiler::Builder {
             emit_crate_dir,
             prost_out_dir: Some(prost_out_dir),
             include_filename: Some(PROST_INCLUDE_FILE.to_string()),
@@ -151,8 +151,8 @@ pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result
     } else {
         let dylib_path = cache_dir
             .join(&identifier)
-            .join(REFLECTION_DIR)
-            .join(format!("target/release/{}", reflection::DYLIB_FILENAME));
+            .join(LIBRARY_DIR)
+            .join(format!("target/release/{}", compiler::DYLIB_FILENAME));
         Ok(dylib_path)
     }
 }

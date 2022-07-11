@@ -16,7 +16,7 @@ extern crate tracing as log;
 pub mod config;
 pub mod control;
 pub mod engine;
-pub(crate) mod mrpc;
+pub mod mrpc;
 pub(crate) mod node;
 pub(crate) mod resource;
 pub(crate) mod rpc_adapter;

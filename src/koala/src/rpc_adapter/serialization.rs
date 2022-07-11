@@ -11,7 +11,7 @@ pub(crate) type UnmarshalFn = fn(
     &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
 ) -> Result<(usize, usize), UnmarshalError>;
 
-pub(crate) struct ReflectionModule {
+pub(crate) struct SerializationEngine {
     _library: libloading::Library,
     // NOTE: Symbol here shall not outlive library.
     #[cfg(unix)]
@@ -24,7 +24,7 @@ pub(crate) struct ReflectionModule {
     unmarshal_fn: libloading::os::windows::Symbol<UnmarshalFn>,
 }
 
-impl ReflectionModule {
+impl SerializationEngine {
     pub(crate) fn new<P: AsRef<OsStr>>(lib: P) -> Result<Self, libloading::Error> {
         let library = unsafe { libloading::Library::new(lib) }?;
 
@@ -38,7 +38,7 @@ impl ReflectionModule {
             symbol.into_raw()
         };
 
-        let module = ReflectionModule {
+        let module = SerializationEngine {
             _library: library,
             marshal_fn,
             unmarshal_fn,

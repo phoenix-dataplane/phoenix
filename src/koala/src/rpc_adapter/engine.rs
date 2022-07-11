@@ -15,7 +15,7 @@ use interface::{AsHandle, Handle};
 use ipc::mrpc;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use super::reflection::ReflectionModule;
+use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
@@ -63,7 +63,7 @@ pub(crate) struct RpcAdapterEngine {
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
-    pub(crate) reflection_module: Option<ReflectionModule>,
+    pub(crate) reflection_module: Option<SerializationEngine>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -699,7 +699,7 @@ impl RpcAdapterEngine {
             }
             mrpc::cmd::Command::UpdateProtosInner(dylib) => {
                 log::debug!("Loading dispatch library: {:?}", dylib);
-                let module = ReflectionModule::new(dylib)?;
+                let module = SerializationEngine::new(dylib)?;
                 self.reflection_module = Some(module);
                 Ok(mrpc::cmd::CompletionKind::UpdateProtos)
             }

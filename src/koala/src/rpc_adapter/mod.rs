@@ -7,7 +7,7 @@ use crate::salloc::ControlPathError as SallocError;
 pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod module;
-pub(crate) mod reflection;
+pub(crate) mod serialization;
 pub(crate) mod state;
 pub(crate) mod ulib;
 
