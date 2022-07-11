@@ -17,4 +17,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 # find_package(dpdk REQUIRED)
 
+# Compile experimental code
 add_subdirectory(src/experimental)
+
+# masstree_analytics
+add_subdirectory(src/koala_examples/masstree_analytics/libmt_index)
