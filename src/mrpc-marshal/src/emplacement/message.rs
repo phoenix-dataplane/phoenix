@@ -82,7 +82,7 @@ pub unsafe fn excavate_repeated<'a, M: RpcMessage, A: AddressArbiter>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut M, backend_addr as *mut M).unwrap();
     msgs.buf.ptr = buf_ptr;
     msgs.buf.cap = msgs.len;

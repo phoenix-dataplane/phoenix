@@ -3,11 +3,11 @@ use std::ptr::Unique;
 use interface::rpc::MessageMeta;
 use mrpc_marshal::{SgE, UnmarshalError};
 
-pub(crate) trait MetaUnpacking: Sized {
+pub(crate) trait UnpackFromSgE: Sized {
     unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, UnmarshalError>;
 }
 
-impl MetaUnpacking for MessageMeta {
+impl UnpackFromSgE for MessageMeta {
     unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, UnmarshalError> {
         if sge.len != std::mem::size_of::<Self>() {
             return Err(UnmarshalError::SgELengthMismatch {

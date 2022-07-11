@@ -21,10 +21,7 @@ pub fn check_cache<P: AsRef<Path>>(
     }
     for (idx, proto) in protos.iter().enumerate() {
         let filename = cached_proto_dir.join(format! {"{}.proto", idx});
-        let proto_from_file = match std::fs::read_to_string(filename) {
-            Ok(proto) => proto,
-            Err(_) => return Ok((app_identifier, false)),
-        };
+        let proto_from_file = std::fs::read_to_string(filename)?;
         // check if proto file matches
         if !proto.eq(&proto_from_file) {
             return Ok((app_identifier, false));

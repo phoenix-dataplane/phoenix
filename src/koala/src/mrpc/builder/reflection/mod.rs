@@ -1,6 +1,7 @@
+use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::{collections::HashMap, process::ExitStatus};
 
 use thiserror::Error;
 
@@ -12,7 +13,8 @@ const MRPC_DERIVE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../mrpc-
 const MRPC_MARSHAL: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../mrpc-marshal");
 const IPC: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ipc");
 const INTERFACE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../interface");
-const TOOLCHAIN: &'static str = include_str!("../../../../../../rust-toolchain");
+const TOOLCHAIN: &'static str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../rust-toolchain"));
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -44,12 +46,12 @@ pub struct Builder {
 impl Builder {
     pub fn compile(&self) -> Result<PathBuf, Error> {
         if self.emit_crate_dir.is_dir() {
-            std::fs::remove_dir_all(&self.emit_crate_dir).unwrap();
+            fs::remove_dir_all(&self.emit_crate_dir).unwrap();
         } else if self.emit_crate_dir.is_file() {
-            std::fs::remove_file(&self.emit_crate_dir).unwrap();
+            fs::remove_file(&self.emit_crate_dir).unwrap();
         }
-        std::fs::create_dir(&self.emit_crate_dir).unwrap();
-        std::fs::create_dir(&self.emit_crate_dir.join("src")).unwrap();
+        fs::create_dir(&self.emit_crate_dir).unwrap();
+        fs::create_dir(&self.emit_crate_dir.join("src")).unwrap();
 
         let prost_out_dir = self
             .prost_out_dir
@@ -69,7 +71,7 @@ impl Builder {
 
         let ast: syn::File = syn::parse2(tokens)?;
         let code = prettyplease::unparse(&ast);
-        std::fs::write(self.emit_crate_dir.join("src/lib.rs"), &code).unwrap();
+        fs::write(self.emit_crate_dir.join("src/lib.rs"), &code).unwrap();
 
         let manifest = format!(
             include_str!("template/Cargo.toml"),
@@ -78,9 +80,9 @@ impl Builder {
             ipc = IPC,
             interface = INTERFACE
         );
-        std::fs::write(self.emit_crate_dir.join("Cargo.toml"), manifest).unwrap();
+        fs::write(self.emit_crate_dir.join("Cargo.toml"), manifest).unwrap();
 
-        std::fs::write(self.emit_crate_dir.join("rust-toolchain"), TOOLCHAIN).unwrap();
+        fs::write(self.emit_crate_dir.join("rust-toolchain"), TOOLCHAIN).unwrap();
 
         let mut cmd = Command::new("cargo");
         cmd.arg("build").arg("--release");

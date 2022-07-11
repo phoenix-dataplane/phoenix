@@ -41,13 +41,7 @@ pub trait AddressArbiter {
     fn query_app_addr(&self, backend_addr: usize) -> Result<usize, AddressNotFound>;
 }
 
-impl<T: AddressArbiter> AddressArbiter for std::rc::Rc<T> {
-    fn query_app_addr(&self, backend_addr: usize) -> Result<usize, AddressNotFound> {
-        <T as AddressArbiter>::query_app_addr(self.as_ref(), backend_addr)
-    }
-}
-
-impl<T: AddressArbiter> AddressArbiter for std::sync::Arc<T> {
+impl<T: AddressArbiter> AddressArbiter for dyn AsRef<T> {
     fn query_app_addr(&self, backend_addr: usize) -> Result<usize, AddressNotFound> {
         <T as AddressArbiter>::query_app_addr(self.as_ref(), backend_addr)
     }
@@ -81,7 +75,7 @@ pub struct SgList(pub Vec<SgE>);
 
 pub struct ExcavateContext<'a, A: AddressArbiter> {
     pub sgl: std::slice::Iter<'a, SgE>,
-    pub salloc: &'a A,
+    pub addr_arbiter: &'a A,
 }
 
 pub trait RpcMessage: Sized {

@@ -89,8 +89,8 @@ pub struct MrpcModule {
 
 impl MrpcModule {
     pub fn new(config: MrpcConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        if !config.dispatch_build_cache.is_dir() {
-            std::fs::create_dir(&config.dispatch_build_cache).unwrap();
+        if !config.reflection_build_cache.is_dir() {
+            std::fs::create_dir(&config.reflection_build_cache).unwrap();
         }
         MrpcModule {
             config,
@@ -144,7 +144,7 @@ impl MrpcModule {
             mode,
             cmd_tx,
             cmd_rx,
-            self.config.dispatch_build_cache.clone(),
+            self.config.reflection_build_cache.clone(),
         );
 
         let engine = builder.build()?;

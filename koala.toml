@@ -34,7 +34,7 @@ path = "control.sock"
 [mrpc]
 prefix = "/tmp/koala"
 engine_basename = "mrpc-engine"
-dispatch_cache = "/tmp/koala-dispatch"
+reflection_cache = "/tmp/koala/reflection"
 
 [salloc]
 prefix = "/tmp/koala"

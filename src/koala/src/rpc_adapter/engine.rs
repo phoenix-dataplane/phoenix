@@ -16,7 +16,7 @@ use ipc::mrpc;
 use ipc::mrpc::dp::WrIdentifier;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use super::dispatch::DispatchModule;
+use super::reflection::ReflectionModule;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
@@ -24,7 +24,7 @@ use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
-use crate::mrpc::meta_unpack::MetaUnpacking;
+use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -63,7 +63,7 @@ pub(crate) struct RpcAdapterEngine {
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
-    pub(crate) dispatch_module: Option<DispatchModule>,
+    pub(crate) reflection_module: Option<ReflectionModule>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -336,7 +336,7 @@ impl RpcAdapterEngine {
 
             let cmid = &conn_ctx.cmid;
 
-            let sglist = if let Some(ref module) = self.dispatch_module {
+            let sglist = if let Some(ref module) = self.reflection_module {
                 module.marshal(meta_ref, msg.addr_backend).unwrap()
             } else {
                 panic!("dispatch module not loaded");
@@ -428,10 +428,10 @@ impl RpcAdapterEngine {
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
-            salloc: &self.salloc.shared.resource.recv_mr_addr_map,
+            addr_arbiter: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
-        let (addr_app, addr_backend) = if let Some(ref module) = self.dispatch_module {
+        let (addr_app, addr_backend) = if let Some(ref module) = self.reflection_module {
             module.unmarshal(meta, &mut excavate_ctx).unwrap()
         } else {
             panic!("dispatch module not loaded");
@@ -702,8 +702,8 @@ impl RpcAdapterEngine {
             }
             mrpc::cmd::Command::UpdateProtosInner(dylib) => {
                 log::debug!("Loading dispatch library: {:?}", dylib);
-                let module = DispatchModule::new(dylib)?;
-                self.dispatch_module = Some(module);
+                let module = ReflectionModule::new(dylib)?;
+                self.reflection_module = Some(module);
                 Ok(mrpc::cmd::CompletionKind::UpdateProtos)
             }
             mrpc::cmd::Command::UpdateProtos(_) => {

@@ -94,7 +94,7 @@ impl RpcAdapterEngineBuilder {
             _mode: self.mode,
             indicator: None,
             recv_mr_usage: fnv::FnvHashMap::default(),
-            dispatch_module: None,
+            reflection_module: None,
         })
     }
 }

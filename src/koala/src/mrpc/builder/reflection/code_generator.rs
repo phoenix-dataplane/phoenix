@@ -13,6 +13,7 @@ pub fn generate_marshal(method_id: &MethodIdentifier, ty: &str) -> Result<TokenS
     let marshal = quote! {
         #func_id => {
             let ptr_backend = addr_backend as *mut #rust_ty;
+            assert_eq!(ptr_backend.align_offset(std::mem::align_of::<#rust_ty>()), 0);
             let msg_ref = unsafe { &*ptr_backend };
             msg_ref.marshal()
         },

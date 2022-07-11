@@ -115,7 +115,7 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
                 }
 
                 let backend_addr = self_sge.ptr;
-                let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+                let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
 
                 let mut message = ::ipc::ptr::ShmPtr::new(app_addr as *mut Self, backend_addr as *mut Self).unwrap();
                 let this = message.as_mut_backend();

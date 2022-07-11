@@ -80,7 +80,7 @@ pub unsafe fn excavate<'a, A: AddressArbiter>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
     val.buf.ptr = buf_ptr;
     val.buf.cap = val.len;
@@ -108,7 +108,7 @@ pub unsafe fn excavate_optional<'a, A: AddressArbiter>(
             });
         }
         let backend_addr = buf_sge.ptr;
-        let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+        let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
         let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
         bytes.buf.ptr = buf_ptr;
         bytes.buf.cap = bytes.len;
@@ -137,7 +137,7 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut Vec<u8>, backend_addr as *mut Vec<u8>).unwrap();
     val.buf.ptr = buf_ptr;
     val.buf.cap = val.len;
@@ -156,7 +156,7 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
                 });
             };
             let backend_addr = buf_sge.ptr;
-            let app_addr = ctx.salloc.query_app_addr(backend_addr)?;
+            let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
             let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
             bytes.buf.ptr = buf_ptr;
             bytes.buf.cap = bytes.len;

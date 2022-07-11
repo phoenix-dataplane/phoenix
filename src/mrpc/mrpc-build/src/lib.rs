@@ -43,6 +43,8 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_debug_implementations)]
 
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream;
 
 mod prost;
@@ -186,6 +188,22 @@ fn naive_snake_case(name: &str) -> String {
     }
 
     s
+}
+
+fn get_proto_packages<T: Service>(service: &T, proto_path: &str) -> BTreeSet<String> {
+    let mut proto_packages = BTreeSet::new();
+    for method in service.methods() {
+        let (input_package, output_package) = method.request_response_package(proto_path);
+        if let Some(pkg) = input_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+        if let Some(pkg) = output_package {
+            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
+            proto_packages.insert(pkg_srcs);
+        }
+    }
+    proto_packages
 }
 
 #[cfg(test)]

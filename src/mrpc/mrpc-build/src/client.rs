@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 
 use crate::attribute::Attributes;
 use crate::{
-    generate_doc_comments, get_method_path, get_service_path, mrpc_get_func_id,
+    generate_doc_comments, get_method_path, get_proto_packages, get_service_path, mrpc_get_func_id,
     mrpc_get_service_id, naive_snake_case, Method, Service,
 };
 
@@ -32,18 +32,7 @@ pub fn generate<T: Service>(
     let mod_attributes = attributes.for_mod(package);
     let struct_attributes = attributes.for_struct(&path);
 
-    let mut proto_packages = BTreeSet::new();
-    for method in service.methods() {
-        let (input_package, output_package) = method.request_response_package(proto_path);
-        if let Some(pkg) = input_package {
-            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
-            proto_packages.insert(pkg_srcs);
-        }
-        if let Some(pkg) = output_package {
-            let pkg_srcs = format!("{}::proto::PROTO_SRCS", pkg);
-            proto_packages.insert(pkg_srcs);
-        }
-    }
+    let proto_packages = get_proto_packages(service, proto_path);
 
     let proto_srcs = proto_packages
         .into_iter()
