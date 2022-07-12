@@ -7,6 +7,17 @@ edition = "2021"
 
 [build-dependencies]
 cmake = "0.1.48"
+mrpc-build = { path = "../../mrpc/mrpc-build" }
 
 [dependencies]
+mrpc = { path = "../../mrpc" }
+prost = { path = "../../3rdparty/prost", features = ["mrpc"] }
+
+chrono = "0.4.19"
+env_logger = "0.9.0"
+fasthash = "0.4.0"
 link-cplusplus = "1.0"
+log = "0.4.17"
+nix = { version = "0.24.1", features = ["signal"], default-features = false }
+structopt = { version = "0.3.23", features = ["color", "suggestions", "doc"] }
+smol = "1.2.5"
