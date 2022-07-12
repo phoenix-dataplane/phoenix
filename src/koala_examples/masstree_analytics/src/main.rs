@@ -1,4 +1,4 @@
-use masstree_analytics::mt_index::{MtIndex, ThreadInfo, threadinfo_purpose};
+use masstree_analytics::mt_index::{threadinfo_purpose, MtIndex, ThreadInfo};
 
 fn main() {
     println!("masstree_analytics");

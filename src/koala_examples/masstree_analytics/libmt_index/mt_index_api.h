@@ -19,17 +19,17 @@ class MtIndex {
   MtIndex() {}
   ~MtIndex() {}
 
-  inline void setup(threadinfo_t *ti) {
+  inline void setup(threadinfo_t* ti) {
     table_ = new Masstree::default_table();
     table_->initialize(*ti);
   }
 
-  inline void swap_endian(uint64_t &x) { x = __bswap_64(x); }
+  inline void swap_endian(uint64_t& x) { x = __bswap_64(x); }
 
   // Upsert
-  inline void put(size_t key, size_t value, threadinfo_t *ti) {
+  inline void put(size_t key, size_t value, threadinfo_t* ti) {
     swap_endian(key);
-    Str key_str(reinterpret_cast<const char *>(&key), sizeof(size_t));
+    Str key_str(reinterpret_cast<const char*>(&key), sizeof(size_t));
 
     Masstree::default_table::cursor_type lp(table_->table(), key_str);
     bool found = lp.find_insert(*ti);
@@ -43,22 +43,22 @@ class MtIndex {
       lp.value()->deallocate_rcu(*ti);
     }
 
-    Str value_str(reinterpret_cast<const char *>(&value), sizeof(size_t));
+    Str value_str(reinterpret_cast<const char*>(&value), sizeof(size_t));
 
     lp.value() = row_type::create1(value_str, qtimes_.ts, *ti);
     lp.finish(1, *ti);
   }
 
   // Get (unique value)
-  inline bool get(size_t key, size_t &value, threadinfo_t *ti) {
+  inline bool get(size_t key, size_t& value, threadinfo_t* ti) {
     swap_endian(key);
-    Str key_str(reinterpret_cast<const char *>(&key), sizeof(size_t));
+    Str key_str(reinterpret_cast<const char*>(&key), sizeof(size_t));
 
     Masstree::default_table::unlocked_cursor_type lp(table_->table(), key_str);
     bool found = lp.find_unlocked(*ti);
 
     if (found) {
-      value = *reinterpret_cast<const size_t *>(lp.value()->col(0).s);
+      value = *reinterpret_cast<const size_t*>(lp.value()->col(0).s);
     }
 
     return found;
@@ -69,10 +69,10 @@ class MtIndex {
     scanner_t(size_t range) : range(range), range_sum(0) {}
 
     template <typename SS2, typename K2>
-    void visit_leaf(const SS2 &, const K2 &, threadinfo_t &) {}
+    void visit_leaf(const SS2&, const K2&, threadinfo_t&) {}
 
-    bool visit_value(Str, const row_type *row, threadinfo_t &) {
-      size_t value = *reinterpret_cast<const size_t *>(row->col(0).s);
+    bool visit_value(Str, const row_type* row, threadinfo_t&) {
+      size_t value = *reinterpret_cast<const size_t*>(row->col(0).s);
       range_sum += value;
       range--;
       return range > 0;
@@ -83,11 +83,11 @@ class MtIndex {
   };
 
   /// Return the sum of \p range keys including and after \p cur_key
-  size_t sum_in_range(size_t cur_key, size_t range, threadinfo_t *ti) {
+  size_t sum_in_range(size_t cur_key, size_t range, threadinfo_t* ti) {
     if (range == 0) return 0;
 
     swap_endian(cur_key);
-    Str cur_key_str(reinterpret_cast<const char *>(&cur_key), sizeof(size_t));
+    Str cur_key_str(reinterpret_cast<const char*>(&cur_key), sizeof(size_t));
 
     scanner_t scanner(range);
     table_->table().scan(cur_key_str, true, scanner, *ti);
@@ -95,7 +95,7 @@ class MtIndex {
   }
 
  private:
-  Masstree::default_table *table_;
+  Masstree::default_table* table_;
   query<row_type> q_[1];
   loginfo::query_times qtimes_;
 };

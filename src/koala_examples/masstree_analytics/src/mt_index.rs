@@ -78,7 +78,7 @@ mod tests {
             assert!(found && value == i);
         }
 
-        for i in 3456..3456+100 {
+        for i in 3456..3456 + 100 {
             let key = i;
             let mut value = 0;
             let found = mti.get(key, &mut value, ti);

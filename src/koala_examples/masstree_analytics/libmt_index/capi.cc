@@ -4,15 +4,11 @@
 extern "C" {
 #endif
 
-void* mt_index_create() {
-  return new MtIndex();
-}
+void* mt_index_create() { return new MtIndex(); }
 
-void mt_index_destroy(void* obj) {
-  delete static_cast<MtIndex*>(obj);
-}
+void mt_index_destroy(void* obj) { delete static_cast<MtIndex*>(obj); }
 
-void mt_index_setup(void* obj, void *ti) {
+void mt_index_setup(void* obj, void* ti) {
   static_cast<MtIndex*>(obj)->setup(static_cast<threadinfo_t*>(ti));
 }
 
