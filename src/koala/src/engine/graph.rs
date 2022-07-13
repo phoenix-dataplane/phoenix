@@ -15,32 +15,32 @@ use crate::mrpc::meta_pool::MetaBufferPtr;
 // TODO(cjr): change to non-blocking async-friendly SomeChannel<ShmPtr<dyn RpcMessage>>,
 
 #[derive(Debug)]
-pub(crate) struct RpcMessageTx {
+pub struct RpcMessageTx {
     // Each RPC message is assigned a buffer for meta and optionally for its data
     pub(crate) meta_buf_ptr: MetaBufferPtr,
     pub(crate) addr_backend: usize,
 }
 
 #[derive(Debug)]
-pub(crate) enum EngineTxMessage {
+pub enum EngineTxMessage {
     RpcMessage(RpcMessageTx),
     ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
 }
 
 #[derive(Debug)]
-pub(crate) struct RpcMessageRx {
+pub struct RpcMessageRx {
     pub(crate) meta: Unique<MessageMeta>,
     pub(crate) addr_app: usize,
     pub(crate) addr_backend: usize,
 }
 
 #[derive(Debug)]
-pub(crate) enum EngineRxMessage {
+pub enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
     Ack(RpcId, TransportStatus),
 }
 
-pub(crate) trait Vertex {
+pub trait Vertex {
     fn id(&self) -> &str;
     fn engine_type(&self) -> EngineType;
     fn tx_inputs(&mut self) -> &mut Vec<TxIQueue>;
@@ -49,11 +49,11 @@ pub(crate) trait Vertex {
     fn rx_outputs(&self) -> &Vec<RxOQueue>;
 }
 
-pub(crate) type TxIQueue = Receiver<EngineTxMessage>;
-pub(crate) type TxOQueue = Sender<EngineTxMessage>;
+pub type TxIQueue = Receiver<EngineTxMessage>;
+pub type TxOQueue = Sender<EngineTxMessage>;
 
-pub(crate) type RxIQueue = Receiver<EngineRxMessage>;
-pub(crate) type RxOQueue = Sender<EngineRxMessage>;
+pub type RxIQueue = Receiver<EngineRxMessage>;
+pub type RxOQueue = Sender<EngineRxMessage>;
 
 pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
     // tokio::sync::mpsc::unbounded_channel();

@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -18,36 +17,36 @@ use ipc::unix::DomainSocket;
 use super::cm::engine::CmEngine;
 use super::engine::TransportEngine;
 use super::ops::Ops;
-use super::state::State;
+use super::state::{State, Shared};
 use crate::config::RdmaTransportConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
-use crate::state_mgr::StateManager;
+use crate::state_mgr::SharedStateManager;
 
-lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
-}
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 /// Create API Operations.
-pub(crate) fn create_ops(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<Ops> {
+pub(crate) fn create_ops(runtime_manager: &RuntimeManager, state_mgr: &SharedStateManager<Shared>, client_pid: Pid) -> Result<Ops> {
     // first create cm engine
-    create_cm_engine(runtime_manager, client_pid)?;
+    create_cm_engine(runtime_manager, state_mgr, client_pid)?;
 
     // create or get the state of the process
-    let state = STATE_MGR.get_or_create_state(client_pid)?;
+    let shared = state_mgr.get_or_create(client_pid)?;
+    let state = State::new(shared);
 
     Ok(Ops::new(state))
 }
 
-fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result<()> {
-    let state = STATE_MGR.get_or_create_state(client_pid)?;
+fn create_cm_engine(runtime_manager: &RuntimeManager, state_mgr: &SharedStateManager<Shared>, client_pid: Pid) -> Result<()> {
+    let shared = state_mgr.get_or_create(client_pid)?;
+    let state = State::new(shared);
 
     // only create one cm_engine for a client process
-    if state.alive_engines() > 1 {
+    // if refcnt > 1, then there is already a CmEngine running0
+    if Arc::strong_count(&shared) > 1 {
         return Ok(());
     }
 
@@ -92,6 +91,7 @@ impl TransportEngineBuilder {
 }
 
 pub struct TransportModule {
+    state_mgr: SharedStateManager<Shared>,
     config: RdmaTransportConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
@@ -99,13 +99,14 @@ pub struct TransportModule {
 impl TransportModule {
     pub fn new(config: RdmaTransportConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
         TransportModule {
+            state_mgr: SharedStateManager::new(),
             config,
             runtime_manager,
         }
     }
 
     pub fn handle_request(
-        &mut self,
+        &self,
         req: &control_plane::Request,
         _sock: &DomainSocket,
         sender: &SocketAddr,
@@ -120,7 +121,7 @@ impl TransportModule {
     }
 
     pub fn handle_new_client<P: AsRef<Path>>(
-        &mut self,
+        &self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -141,7 +142,7 @@ impl TransportModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 3.1. create the ops and cm engine
-        let ops = create_ops(&self.runtime_manager, client_pid)?;
+        let ops = create_ops(&self.runtime_manager, &self.state_mgr, client_pid)?;
 
         // 4. create the engine
         let builder = TransportEngineBuilder::new(customer, mode, ops);

@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::pin::Pin;
 use std::ptr;
 use std::slice;
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 

@@ -15,18 +15,21 @@ extern crate tracing as log;
 
 pub mod config;
 pub mod control;
-pub(crate) mod dependency;
 pub mod engine;
+pub mod envelop;
 pub mod module;
+pub mod resource;
+pub mod state_mgr;
+pub mod storage;
+
 pub mod mrpc;
+
+pub(crate) mod dependency;
+
 pub(crate) mod node;
-pub(crate) mod resource;
 pub(crate) mod rpc_adapter;
 pub(crate) mod salloc;
-pub(crate) mod state_mgr;
 pub(crate) mod transport;
-pub mod module;
-pub(crate) mod dependency;
 
 #[allow(unused)]
 pub(crate) mod timer;

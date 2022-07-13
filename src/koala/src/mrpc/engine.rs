@@ -4,8 +4,8 @@ use std::pin::Pin;
 
 use futures::future::BoxFuture;
 
-use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use interface::engine::SchedulingMode;
+use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use super::meta_pool::MetaBufferPool;

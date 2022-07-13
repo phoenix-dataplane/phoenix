@@ -14,7 +14,6 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use super::engine::SallocEngine;
 use super::state::State;
 use crate::config::SallocConfig;
 use crate::engine::container::EngineContainer;
@@ -116,4 +115,3 @@ impl SallocModule {
         Ok(())
     }
 }
-

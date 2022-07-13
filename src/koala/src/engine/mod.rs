@@ -1,30 +1,42 @@
 use std::pin::Pin;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
+use futures::future::BoxFuture;
+
+pub mod future;
 pub mod manager;
-
+pub mod upgradable;
+pub use upgradable::{Upgradable, Version};
+pub(crate) mod graph;
 pub(crate) mod lb;
 pub(crate) mod runtime;
-use futures::future::BoxFuture;
-pub(crate) use runtime::Indicator;
-
-pub(crate) mod graph;
 pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
-
-pub(crate) mod upgradable;
-pub(crate) use upgradable::{Upgradable, Version};
-
 pub(crate) mod container;
 pub(crate) use container::EngineContainer;
-
-pub(crate) mod future;
-
-pub mod envelop;
-pub mod shared;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EngineType(pub String);
 
-pub(crate) trait Engine: Upgradable + Vertex + Send + 'static {
+pub type EnginePair = (EngineType, EngineType);
+
+/// This indicates the runtime of an engine's status.
+#[derive(Debug)]
+pub struct Indicator(pub(crate) Arc<AtomicUsize>);
+
+impl Clone for Indicator {
+    fn clone(&self) -> Self {
+        Indicator(Arc::clone(&self.0))
+    }
+}
+
+impl Default for Indicator {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+pub trait Engine: Upgradable + Vertex + Send + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,
@@ -43,7 +55,7 @@ pub(crate) trait Engine: Upgradable + Vertex + Send + 'static {
     }
 }
 
-pub(crate) type EngineResult = Result<(), Box<dyn std::error::Error>>;
+pub type EngineResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Safety: EngineLocalStorage is only accessed from a thread/runtime at a time. There should be no
 /// concurrent access to it. But since Engine can be moved between Runtimes, the local storage
@@ -56,25 +68,6 @@ pub(crate) type EngineResult = Result<(), Box<dyn std::error::Error>>;
 /// underlying data is not threadsafe, we are still good here.
 ///
 /// TODO(cjr): Consider remove this EngineLocalStorage when ShmPtr is ready.
-pub(crate) unsafe trait EngineLocalStorage: std::any::Any + Send + Sync {
+pub unsafe trait EngineLocalStorage: std::any::Any + Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 }
-
-// pub(crate) trait AnySend: std::any::Any + Send {}
-// pub(crate) struct EngineLocalStorage(pub(crate) &'static dyn AnySend);
-
-// pub(crate) trait Engine: Upgradable + Send + Vertex {
-//     /// `resume()` mush be non-blocking and short.
-//     fn resume(&mut self) -> Result<EngineStatus, Box<dyn std::error::Error>>;
-//     #[inline]
-//     unsafe fn tls(&self) -> Option<&'static dyn std::any::Any> {
-//         None
-//     }
-// }
-
-// NoProgress, MayDemandMoreCPU
-// pub(crate) enum EngineStatus {
-//     NoWork,
-//     Continue,
-//     Complete,
-// }

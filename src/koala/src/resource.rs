@@ -17,11 +17,11 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub(crate) struct ResourceTableGeneric<K, R> {
+pub struct ResourceTableGeneric<K, R> {
     table: spin::Mutex<HashMap<K, Entry<R>>>,
 }
 
-pub(crate) type ResourceTable<R> = ResourceTableGeneric<Handle, R>;
+pub type ResourceTable<R> = ResourceTableGeneric<Handle, R>;
 
 impl<K, R> Default for ResourceTableGeneric<K, R> {
     fn default() -> Self {
@@ -32,7 +32,7 @@ impl<K, R> Default for ResourceTableGeneric<K, R> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Entry<R> {
+pub struct Entry<R> {
     refcnt: AtomicUsize,
     // NOTE(cjr): either the data held here is Arc, or the resource table takes a closure to modify
     // operates on the resource.
@@ -48,36 +48,36 @@ impl<R> Entry<R> {
     }
 
     #[inline]
-    pub(crate) fn data(&self) -> Arc<R> {
+    pub fn data(&self) -> Arc<R> {
         Arc::clone(&self.data)
     }
 
     /// `Open` means to increment the reference count.
     #[inline]
-    pub(crate) fn open(&self) {
+    pub fn open(&self) {
         self.refcnt.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Returns true if the resource has no more references to it.
     #[inline]
-    pub(crate) fn close(&self) -> bool {
+    pub fn close(&self) -> bool {
         self.refcnt.fetch_sub(1, Ordering::AcqRel) == 1
     }
 }
 
 impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
-    pub(crate) fn inner(&self) -> &spin::Mutex<HashMap<K, Entry<R>>> {
+    pub fn inner(&self) -> &spin::Mutex<HashMap<K, Entry<R>>> {
         &self.table
     }
 
-    pub(crate) fn insert(&self, h: K, r: R) -> Result<(), Error> {
+    pub fn insert(&self, h: K, r: R) -> Result<(), Error> {
         match self.table.lock().insert(h, Entry::new(r, 1)) {
             Some(_) => Err(Error::Exists),
             None => Ok(()),
         }
     }
 
-    pub(crate) fn get(&self, h: &K) -> Result<Arc<R>, Error> {
+    pub fn get(&self, h: &K) -> Result<Arc<R>, Error> {
         self.table
             .lock()
             .get(h)
@@ -85,7 +85,7 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn get_dp(&self, h: &K) -> Result<Arc<R>, Error> {
+    pub fn get_dp(&self, h: &K) -> Result<Arc<R>, Error> {
         self.table
             .lock()
             .get(h)
@@ -94,7 +94,7 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
-    pub(crate) fn occupy_or_create_resource(&self, h: K, r: R) {
+    pub fn occupy_or_create_resource(&self, h: K, r: R) {
         match self.table.lock().entry(h) {
             hash_map::Entry::Occupied(_e) => {
                 // TODO(cjr): check if they have the same handle
@@ -106,7 +106,7 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
         }
     }
 
-    pub(crate) fn open_or_create_resource(&self, h: K, r: R) {
+    pub fn open_or_create_resource(&self, h: K, r: R) {
         match self.table.lock().entry(h) {
             hash_map::Entry::Occupied(mut e) => {
                 // TODO(cjr): check if they have the same handle
@@ -119,7 +119,7 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
         }
     }
 
-    pub(crate) fn open_resource(&self, h: &K) -> Result<(), Error> {
+    pub fn open_resource(&self, h: &K) -> Result<(), Error> {
         // increase the refcnt
         self.table
             .lock()
@@ -128,7 +128,7 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn close_resource(&self, h: &K) -> Result<(), Error> {
+    pub fn close_resource(&self, h: &K) -> Result<(), Error> {
         let mut table = self.table.lock();
         let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
         if close {

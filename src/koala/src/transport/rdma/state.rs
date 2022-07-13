@@ -3,7 +3,7 @@ use std::io;
 use std::marker::PhantomPinned;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use lazy_static::lazy_static;
@@ -18,46 +18,16 @@ use rdma::rdmacm::CmId;
 use super::cm::CmEventManager;
 use super::ApiError;
 use crate::resource::ResourceTable;
-use crate::state_mgr::{StateManager, StateTrait};
+use crate::state_mgr::ProcessShared;
 
 // TODO(cjr): Make this global lock more fine-grained.
 pub(crate) struct State {
-    sm: Arc<StateManager<Self>>,
     pub(crate) shared: Arc<Shared>,
 }
 
-impl Clone for State {
-    fn clone(&self) -> Self {
-        self.shared.alive_engines.fetch_add(1, Ordering::AcqRel);
-        State {
-            sm: Arc::clone(&self.sm),
-            shared: Arc::clone(&self.shared),
-        }
-    }
-}
-
-impl Drop for State {
-    fn drop(&mut self) {
-        let was_last = self.shared.alive_engines.fetch_sub(1, Ordering::AcqRel) == 1;
-        if was_last {
-            let _ = self.sm.states.lock().remove(&self.shared.pid);
-        }
-    }
-}
-
-impl StateTrait for State {
-    type Err = io::Error;
-    fn new(sm: Arc<StateManager<Self>>, pid: Pid) -> io::Result<Self> {
-        Ok(State {
-            sm,
-            shared: Arc::new(Shared {
-                cm_manager: tokio::sync::Mutex::new(CmEventManager::new()?),
-                pid,
-                alive_engines: AtomicUsize::new(0),
-                resource: Resource::new()?,
-                _other: spin::Mutex::new(()),
-            }),
-        })
+impl State {
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
+        State { shared }
     }
 }
 
@@ -65,11 +35,6 @@ impl State {
     #[inline]
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
-    }
-
-    #[inline]
-    pub(crate) fn alive_engines(&self) -> usize {
-        self.shared.alive_engines.load(Ordering::Relaxed)
     }
 }
 
@@ -79,15 +44,31 @@ pub(crate) struct Shared {
     pub(crate) cm_manager: tokio::sync::Mutex<CmEventManager>,
     // Pid as the identifier of this process
     pub(crate) pid: Pid,
-    // Reference counting
-    alive_engines: AtomicUsize,
     // Resources
     pub(crate) resource: Resource,
     // Other shared states include L4 policies, buffers, configurations, etc.
     _other: spin::Mutex<()>,
 }
 
+impl ProcessShared for Shared {
+    type Err = io::Error;
+
+    fn new(pid: Pid) -> io::Result<Self> { 
+        let resource = Resource::new()?;
+        let cm_manager = tokio::sync::Mutex::new(CmEventManager::new())?;
+        let shared = Shared {
+            cm_manager,
+            pid,
+            resource: Resource::new()?,
+            _other: spin::Mutex::new(()),
+        };
+        Ok(shared)
+    }
+}
+
 // TODO(cjr): move this to per-process state for better isolation
+// TODO(wyj): figure out whether this laay_static is going to be a issue
+// when we move the engine to a shared library
 lazy_static! {
     pub(crate) static ref DEFAULT_CTXS: Vec<DefaultContext> =
         open_default_verbs().expect("Open default RDMA context failed.");

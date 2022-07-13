@@ -9,4 +9,19 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+interface = { path = "../interface" }
+ipc = { path = "../ipc" }
 koala = { path = "../koala" }
+mrpc-marshal = { path = "../mrpc-marshal" } 
+memmap-fixed = { path = "../memmap-fixed" }
+
+
+anyhow = "1.0.58"
+lazy_static = "1.4.0"
+nix = "0.23.0"
+uuid = "0.8.2"
+memfd = "0.4.1"
+thiserror = "1.0.31"
+spin = "0.9.3"
+libc = "0.2.103"
+futures = "0.3.21"

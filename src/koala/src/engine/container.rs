@@ -4,8 +4,7 @@ use std::sync::atomic::Ordering;
 
 use futures::future::BoxFuture;
 
-use super::runtime::Indicator;
-use super::{Engine, EngineLocalStorage, EngineResult};
+use super::{Engine, EngineLocalStorage, EngineResult, Indicator};
 
 pub(crate) struct DetachedEngineContainer {
     engine: Box<dyn Engine>,
@@ -37,6 +36,7 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
+    /// Spin up a new engine
     pub(crate) fn new<E: Engine>(mut engine: E) -> Self {
         let indicator = Indicator::new(0);
         engine.set_tracker(indicator.clone());
@@ -65,6 +65,7 @@ impl EngineContainer {
         }
     }
 
+    ///
     #[inline]
     pub(crate) fn future(&mut self) -> Pin<&mut dyn Future<Output = EngineResult>> {
         self.future.as_mut()
@@ -85,5 +86,13 @@ impl EngineContainer {
     #[inline]
     pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         self.els
+    }
+
+    /// Suspend current engine in prepare for upgrade
+    /// Some preparatory work is done during this step
+    /// e.g., flush inter-engine shared queues
+    ///There is no need to call this function if only moves
+    pub(crate) fn suspend(self) -> DetachedEngineContainer {
+        todo!()
     }
 }

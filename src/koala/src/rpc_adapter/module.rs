@@ -14,24 +14,23 @@ use ipc::unix::DomainSocket;
 
 use super::acceptor::engine::AcceptorEngine;
 use super::engine::{RpcAdapterEngine, TlStorage};
-use super::state::State;
+use super::state::{State, Shared};
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
-use crate::state_mgr::StateManager;
+use crate::state_mgr::SharedStateManager;
 use crate::transport::rdma::ops::Ops;
 
-lazy_static! {
-    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
-}
 
 fn create_acceptor_engine(
     runtime_manager: &RuntimeManager,
+    state_mgr: &SharedStateManager<Shared>,
     client_pid: Pid,
     ops: Ops,
 ) -> Result<()> {
-    let state = STATE_MGR.get_or_create_state(client_pid)?;
+    let shared = state_mgr.get_or_create(client_pid)?;
 
+    
     // only create one cm_engine for a client process
     if state.alive_engines() > 1 {
         return Ok(());
@@ -55,6 +54,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ops: Ops,
+    shared: Shared,
 }
 
 impl RpcAdapterEngineBuilder {
@@ -99,12 +99,14 @@ impl RpcAdapterEngineBuilder {
     }
 }
 
-pub struct RpcAdapterModule;
+pub struct RpcAdapterModule {
+    state_mgr: SharedStateManager<Shared>
+}
 
 impl RpcAdapterModule {
     #[allow(dead_code)]
     pub fn handle_request(
-        &mut self,
+        &self,
         // NOTE(cjr): Why I am using rdma's control_plane request
         req: &control_plane::Request,
         _sock: &DomainSocket,
@@ -120,6 +122,7 @@ impl RpcAdapterModule {
     }
 
     pub(crate) fn create_engine(
+        &self,
         runtime_manager: &RuntimeManager,
         n: Node,
         mode: SchedulingMode,
@@ -127,9 +130,9 @@ impl RpcAdapterModule {
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ) -> Result<RpcAdapterEngine> {
-        let ops = crate::transport::rdma::module::create_ops(runtime_manager, client_pid)?;
+        let ops = crate::transport::rdma::module::create_ops(runtime_manager, &self.state_mgr, client_pid)?;
 
-        create_acceptor_engine(runtime_manager, client_pid, ops.clone())?;
+        create_acceptor_engine(runtime_manager, &self.state_mgr, client_pid, ops.clone())?;
 
         let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops);
         let engine = builder.build()?;

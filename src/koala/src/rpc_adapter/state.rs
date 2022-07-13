@@ -13,61 +13,48 @@ use mrpc_marshal::SgList;
 
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
-use crate::state_mgr::{StateManager, StateTrait};
+use crate::state_mgr::ProcessShared;
 
 pub(crate) struct State {
     // per engine state
     pub(crate) rpc_adapter_id: usize,
-    // shared among all engines of a user process
-    sm: Arc<StateManager<Self>>,
     pub(crate) shared: Arc<Shared>,
     // per engine state
     cq: Option<ulib::uverbs::CompletionQueue>,
 }
 
-impl StateTrait for State {
-    type Err = io::Error;
-    fn new(sm: Arc<StateManager<Self>>, pid: Pid) -> Result<Self, Self::Err> {
-        Ok(State {
-            rpc_adapter_id: 0,
-            sm,
-            shared: Arc::new(Shared {
-                pid,
-                alive_engines: AtomicUsize::new(0),
-                stop_acceptor: AtomicBool::new(false),
-                resource: Resource::new(),
-            }),
-            cq: None,
-        })
-    }
-}
-
-impl Clone for State {
-    fn clone(&self) -> Self {
-        let rpc_adapter_id = self.shared.alive_engines.fetch_add(1, Ordering::AcqRel);
+impl State {
+    fn new(shared: Arc<Shared>) -> Self {
+        // Arc's refcnt should be the number of RpcAdapter engines
+        // serving the user application process
+        // including the current one
+        // as State is only attached to RpcAdapter
+        let rpc_adapter_id = Arc::strong_count(&shared) - 1;
         State {
             rpc_adapter_id,
-            sm: Arc::clone(&self.sm),
-            shared: Arc::clone(&self.shared),
-            cq: None,
-        }
-    }
-}
-
-impl Drop for State {
-    fn drop(&mut self) {
-        let was_last = self.shared.alive_engines.fetch_sub(1, Ordering::AcqRel) == 1;
-        if was_last {
-            let _ = self.sm.states.lock().remove(&self.shared.pid);
+            shared,
+            cq: None
         }
     }
 }
 
 pub(crate) struct Shared {
     pub(crate) pid: Pid,
-    alive_engines: AtomicUsize,
     stop_acceptor: AtomicBool,
     resource: Resource,
+}
+
+impl ProcessShared for Shared {
+    type Err = ();
+
+    fn new(pid: Pid) -> Result<Self, Self::Err> {
+        let shared = Shared {
+            pid,
+            stop_acceptor: AtomicBool::new(false),
+            resource: Resource::new(),
+        };
+        Ok(shared)
+    }
 }
 
 #[derive(Debug)]
@@ -77,6 +64,7 @@ pub(crate) struct WrContext {
 }
 
 #[derive(Debug)]
+
 pub(crate) struct ReqContext {
     pub(crate) call_id: u32,
     pub(crate) sg_len: usize,
@@ -153,7 +141,6 @@ impl State {
         &self.shared.resource
     }
 
-    #[inline]
     pub(crate) fn alive_engines(&self) -> usize {
         self.shared.alive_engines.load(Ordering::Relaxed)
     }

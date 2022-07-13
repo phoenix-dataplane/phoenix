@@ -10,27 +10,11 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
-use super::{EngineContainer, EngineLocalStorage, EngineResult};
+use super::{EngineContainer, EngineLocalStorage, EngineResult, Indicator};
 
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
     pub(crate) static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
-}
-
-/// This indicates the runtime of an engine's status.
-#[derive(Debug)]
-pub(crate) struct Indicator(pub(crate) Arc<AtomicUsize>);
-
-impl Clone for Indicator {
-    fn clone(&self) -> Self {
-        Indicator(Arc::clone(&self.0))
-    }
-}
-
-impl Default for Indicator {
-    fn default() -> Self {
-        Self::new(0)
-    }
 }
 
 #[allow(unused)]

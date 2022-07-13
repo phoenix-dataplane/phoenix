@@ -2,6 +2,7 @@
 members = [
   "src/experimental",
   "src/koala",
+  "src/koala-salloc",
   "src/mrpc-derive",
   "src/mrpc-marshal",
   "src/ipc",
