@@ -21,7 +21,7 @@ On node `rdma0.danyang-06`, start a RPC server.
 cargo rr --bin rpc_hello_server --
 ```
 
-On another node, start the RPC client (assuming the server is on `rdma0.danyang-06`)
+On another node, start the RPC client (assuming the server is on `rdma0.danyang-06`, otherwise example code should be modified)
 ```bash
-cargo rr --bin rpc_hello_client -- -c rdma0.danyang-06
+cargo rr --bin rpc_hello_client -- 
 ```
