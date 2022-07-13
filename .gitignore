@@ -63,3 +63,7 @@ Icon
 
 # Thumbnails
 ._*
+
+# Jetbrains IDE
+.idea/
+cmake-build-*/
