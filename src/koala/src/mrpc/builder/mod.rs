@@ -109,7 +109,7 @@ pub enum Error {
     LibraryCompile(#[from] compiler::Error),
 }
 
-pub fn build_dispatch_library(protos: Vec<String>, cache_dir: PathBuf) -> Result<PathBuf, Error> {
+pub fn build_serializer_lib(protos: Vec<String>, cache_dir: PathBuf) -> Result<PathBuf, Error> {
     let (identifier, cached) = cache::check_cache(&protos, &cache_dir, PROTO_DIR)?;
     if !cached {
         cache::write_protos_to_cache(&identifier, &protos, &cache_dir, PROTO_DIR)?;

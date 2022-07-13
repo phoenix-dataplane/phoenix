@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use koala::mrpc::builder::build_dispatch_library;
+use koala::mrpc::builder::build_serializer_lib;
 
 const HELLO_PROTO: &'static str = include_str!("../proto/rpc_hello.proto");
 const DEFAULT_CACHE_DIR: &'static str = "/tmp/koala_dispatch";
@@ -24,5 +24,5 @@ fn main() {
     };
     let protos = vec![proto];
     let cache_dir = opt.cache_dir.unwrap_or(DEFAULT_CACHE_DIR.into());
-    build_dispatch_library(protos, cache_dir).unwrap();
+    build_serializer_lib(protos, cache_dir).unwrap();
 }

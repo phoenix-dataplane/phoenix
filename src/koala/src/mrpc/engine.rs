@@ -13,7 +13,7 @@ use super::state::State;
 use super::{DatapathError, Error};
 use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
-use crate::mrpc::builder::build_dispatch_library;
+use crate::mrpc::builder::build_serializer_lib;
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -187,7 +187,7 @@ impl MrpcEngine {
             }
             Command::UpdateProtos(protos) => {
                 let dylib_path =
-                    build_dispatch_library(protos.clone(), self.dispatch_build_cache.clone())?;
+                    build_serializer_lib(protos.clone(), self.dispatch_build_cache.clone())?;
                 self.cmd_tx
                     .send(Command::UpdateProtosInner(dylib_path))
                     .unwrap();

@@ -36,7 +36,7 @@ pub(crate) struct MrpcEngineBuilder {
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-    dispatch_build_cache: PathBuf,
+    serializer_build_cache: PathBuf,
 }
 
 impl MrpcEngineBuilder {
@@ -47,7 +47,7 @@ impl MrpcEngineBuilder {
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-        dispatch_build_cache: PathBuf,
+        serializer_build_cache: PathBuf,
     ) -> Self {
         MrpcEngineBuilder {
             customer,
@@ -56,7 +56,7 @@ impl MrpcEngineBuilder {
             node,
             client_pid,
             mode,
-            dispatch_build_cache,
+            serializer_build_cache,
         }
     }
 
@@ -74,7 +74,7 @@ impl MrpcEngineBuilder {
             cmd_rx: self.cmd_rx,
             meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             _mode: self.mode,
-            dispatch_build_cache: self.dispatch_build_cache,
+            dispatch_build_cache: self.serializer_build_cache,
             transport_type: None,
             indicator: None,
             wr_read_buffer: Vec::with_capacity(BUF_LEN),
