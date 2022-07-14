@@ -7,11 +7,13 @@ use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::anyhow;
 
 use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
+use nix::sys::signal;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
@@ -32,6 +34,16 @@ pub struct Control {
     mrpc: mrpc::module::MrpcModule,
     salloc: salloc::module::SallocModule,
 }
+
+lazy_static::lazy_static! {
+    static ref TERMINATE: AtomicBool = AtomicBool::new(false);
+}
+
+extern "C" fn handle_sigint(sig: i32) {
+    assert_eq!(sig, signal::SIGINT as i32);
+    TERMINATE.store(true, Ordering::Release);
+}
+
 
 impl Control {
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
@@ -81,6 +93,13 @@ impl Control {
 
     pub fn mainloop(&mut self) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65536];
+        let sig_action = signal::SigAction::new(
+            signal::SigHandler::Handler(handle_sigint),
+            signal::SaFlags::empty(),
+            signal::SigSet::empty(),
+        );
+        unsafe { signal::sigaction(signal::SIGINT, &sig_action) }
+            .expect("failed to register sighandler");
         loop {
             match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
                 Ok((size, sender, cred)) => {
@@ -99,7 +118,13 @@ impl Control {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => log::warn!("recv failed: {:?}", e),
+                Err(e) => {
+                    if TERMINATE.load(Ordering::Acquire) {
+                        log::info!("Received SIGINT, exiting...");
+                        return Ok(());
+                    }
+                    log::warn!("recv failed: {:?}", e)
+                }
             }
         }
     }
