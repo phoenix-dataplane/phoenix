@@ -5,13 +5,15 @@ use std::collections::HashMap;
 use interface::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
-use prost_build::Module;
 
 use crate::engine::{Engine, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::{SharedStorage, ResourceCollection};
 
-pub type ModuleCollection = HashMap<String, Arc<dyn KoalaModule>>; 
+pub struct ModuleCollection {
+    pub modules: HashMap<String, Arc<dyn KoalaModule>>,
+
+} 
 
 pub enum NewEngineRequest<'a> {
     Service {
@@ -62,6 +64,20 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
 
     /// Restore and upgrade an engine from dumped states
     /// * `local`: The engine's local states
+    /// The implementation should be responsible for correctly dumping and restoring the states/
+    /// Depending on previous engines' version, different actions may be taken.
+    /// For instance, if engine B uses engine A's shared state, 
+    /// then engine A and B must be jointly upgrade,
+    /// if the share state's type needs to be upgraded.
+    /// In this case, the last engine to shutdown will unwrap the Arc
+    /// and extract the wrapped shared state, dump it in into global resource.
+    /// If states are not upgraded, engine A can upgrade alone.
+    /// In this case, the new module must migrate the state_mgr from previous module,
+    /// as the Arc will still be hold by some engines.
+    /// The implementation must correctly interpret previous engine's dumped states
+    /// In case some of the states' types are changed in an upgrade,
+    /// engines should dumped their states to atomic components, 
+    /// so that the new state type can be reassembled from the components.
     fn restore_engine(
         &self,
         ty: &EngineType,
@@ -70,4 +86,9 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
         global: &mut ResourceCollection,
         plugged: &ModuleCollection 
     );
+}
+
+
+pub struct ModulePlugin {
+
 }

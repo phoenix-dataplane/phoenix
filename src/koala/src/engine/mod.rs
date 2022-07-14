@@ -8,6 +8,7 @@ pub mod future;
 pub mod manager;
 pub mod upgradable;
 pub use upgradable::{Upgradable, Version};
+pub mod upgrade;
 pub(crate) mod graph;
 pub(crate) mod lb;
 pub(crate) mod runtime;

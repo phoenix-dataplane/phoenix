@@ -42,7 +42,6 @@ impl Engine for SallocEngine {
     }
 }
 
-koala::unimplemented_ungradable!(SallocEngine);
 
 impl SallocEngine {
     async fn mainloop(&mut self) -> EngineResult {
