@@ -224,6 +224,7 @@ impl<T: RpcData> WRef<T> {
     }
 }
 
+// TODO(cjr): Based on Arc, implement WRef, but removing the weak pointer.
 // use std::mem::ManuallyDrop;
 // use std::sync::atomic::{AtomicUsize, Ordering};
 // use std::ptr::NonNull;
@@ -259,49 +260,5 @@ impl<T: RpcData> WRef<T> {
 //             data: ShmBox::new(msg),
 //         });
 //         unsafe { Self::from_inner(Box::leak(x).into()) }
-//     }
-// }
-//
-// impl<T: RpcData> WRef<T> {
-//     unsafe fn from_inner(ptr: NonNull<WRefInner<T>>) -> Self {
-//         Self { inner: ptr, _marker: PhantomData }
-//     }
-//
-//     unsafe fn from_ptr(ptr: *mut WRefInner<T>) -> Self {
-//         unsafe { Self::from_inner(NonNull::new_unchecked(ptr)) }
-//     }
-// }
-//
-//
-// impl<T: Default + RpcData> Default for WRef<T> {
-//     fn default() -> Self {
-//         WRef::new(T::default())
-//     }
-// }
-//
-// // Make WRef type as transparent as possible to user.
-// impl<T: RpcData> From<T> for WRef<T> {
-//     fn from(val: T) -> Self {
-//         WRef::new(val)
-//     }
-// }
-//
-// // Make WRef type as transparent as possible to user.
-// impl<T: RpcData> Deref for WRef<T> {
-//     type Target = T;
-//
-//     fn deref(&self) -> &T {
-//         self.inner.as_ref()
-//     }
-// }
-//
-// impl<T: RpcData> Drop for WRef<T> {
-//     fn drop(&mut self) {
-//         if self.refcnt.fetch_sub(1, Ordering::AcqRel) != 1 {
-//             return;
-//         }
-//
-//         // SAFETY: this is fine because refcnt == 1
-//         let _inner = unsafe { ManuallyDrop::take(&mut self.inner) };
 //     }
 // }
