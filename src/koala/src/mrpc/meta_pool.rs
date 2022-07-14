@@ -21,7 +21,7 @@ pub(crate) struct MetaBuffer {
     pub(crate) meta: MessageMeta,
     pub(crate) num_sge: u32,
     pub(crate) value_len: u32,
-    pub(crate) lens_and_value: [u8; META_BUFFER_SIZE - 40],
+    pub(crate) length_delimited: [u8; META_BUFFER_SIZE - 40],
 }
 
 mod sa {
@@ -30,7 +30,7 @@ mod sa {
     use std::mem::size_of;
 
     const_assert_eq!(size_of::<MetaBuffer>(), META_BUFFER_SIZE);
-    const_assert_eq!(size_of::<Option<MetaBufferPtr>>(), 8);
+    const_assert_eq!(size_of::<Option<MetaBufferPtr>>(), mem::size_of::<usize>());
 }
 
 impl fmt::Debug for MetaBuffer {
@@ -57,20 +57,20 @@ impl MetaBuffer {
     }
 
     #[inline]
-    pub(crate) const fn lens_and_value_capacity() -> usize {
+    pub(crate) const fn capacity() -> usize {
         META_BUFFER_SIZE - 40
     }
 
     #[inline]
     pub(crate) const fn value_start(&self) -> usize {
         let start = self.num_sge as usize * mem::size_of::<u32>();
-        assert!(start <= Self::lens_and_value_capacity());
+        assert!(start <= Self::capacity());
         start
     }
 
     #[inline]
     pub(crate) fn lens_buffer(&self) -> &[u8] {
-        &self.lens_and_value[..self.value_start()]
+        &self.length_delimited[..self.value_start()]
     }
 
     #[inline]
@@ -79,14 +79,14 @@ impl MetaBuffer {
         let len = self.value_len as usize;
 
         assert!(
-            base + len <= self.lens_and_value.len(),
+            base + len <= self.length_delimited.len(),
             "{} + {} <= {}",
             base,
             len,
-            self.lens_and_value.len()
+            self.length_delimited.len()
         );
 
-        &self.lens_and_value[base..base + len]
+        &self.length_delimited[base..base + len]
     }
 }
 

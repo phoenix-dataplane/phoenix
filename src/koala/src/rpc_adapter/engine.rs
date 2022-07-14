@@ -175,12 +175,12 @@ impl RpcAdapterEngine {
     #[inline]
     fn choose_strategy(sglist: &SgList) -> RpcStrategy {
         // See if the total length can fit into a meta buffer
-        let nbytes_lens_and_value: usize = sglist
+        let serialized_size: usize = sglist
             .0
             .iter()
             .map(|sge| mem::size_of::<u32>() + sge.len)
             .sum();
-        if nbytes_lens_and_value < MetaBuffer::lens_and_value_capacity() {
+        if serialized_size < MetaBuffer::capacity() {
             RpcStrategy::Fused
         } else {
             RpcStrategy::Standard
@@ -212,11 +212,13 @@ impl RpcAdapterEngine {
         let off = meta_buf_ptr.0.as_ptr().expose_addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
 
+        // TODO(cjr): impl Serialize for SgList
+        // Serialize the sglist
         // write the lens to MetaBuffer
         meta_buf.num_sge = sglist.0.len() as u32;
 
         let mut value_len = 0;
-        let lens_buf = meta_buf.lens_and_value.as_mut_ptr().cast::<u32>();
+        let lens_buf = meta_buf.length_delimited.as_mut_ptr().cast::<u32>();
         let value_buf = unsafe { lens_buf.add(sglist.0.len()).cast::<u8>() };
 
         for (i, sge) in sglist.0.iter().enumerate() {

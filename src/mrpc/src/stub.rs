@@ -359,10 +359,7 @@ impl Server {
 
     pub fn add_service<S: Service + NamedService + 'static>(&mut self, svc: S) -> &mut Self {
         match self.routes.insert(S::SERVICE_ID, Box::new(svc)) {
-            Some(_) => panic!(
-                "Hash collisions in func_id: {}",
-                S::SERVICE_ID
-            ),
+            Some(_) => panic!("Hash collisions in func_id: {}", S::SERVICE_ID),
             None => {}
         }
         self
@@ -380,9 +377,7 @@ impl Server {
         }
     }
 
-    fn check_new_incoming_connection(
-        &mut self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn check_new_incoming_connection(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         MRPC_CTX.with(|ctx| {
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
