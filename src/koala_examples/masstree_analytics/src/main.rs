@@ -99,7 +99,7 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         &self,
         req: RRef<'s, PointRequest>,
     ) -> Result<WRef<PointResponse>, mrpc::Status> {
-        eprintln!("point request: {:?}", req);
+        log::trace!("point request: {:?}", req);
 
         #[allow(unreachable_code)]
         if BYPASS_MASSTREE {
@@ -119,6 +119,7 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
             result: result.into(),
             value: value as _,
         });
+
         Ok(resp)
     }
 
@@ -126,7 +127,7 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         &self,
         req: RRef<'s, RangeRequest>,
     ) -> Result<WRef<RangeResponse>, mrpc::Status> {
-        eprintln!("range request: {:?}", req);
+        log::trace!("range request: {:?}", req);
         todo!();
 
         // Ok(res)
