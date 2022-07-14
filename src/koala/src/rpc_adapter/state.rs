@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
-use std::io;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::io;
 
 use dashmap::DashMap;
 use fnv::FnvBuildHasher;
@@ -24,7 +24,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    fn new(shared: Arc<Shared>) -> Self {
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
         // Arc's refcnt should be the number of RpcAdapter engines
         // serving the user application process
         // including the current one
@@ -45,9 +45,9 @@ pub(crate) struct Shared {
 }
 
 impl ProcessShared for Shared {
-    type Err = ();
+    type Err = io::Error;
 
-    fn new(pid: Pid) -> Result<Self, Self::Err> {
+    fn new(pid: Pid) -> io::Result<Self> {
         let shared = Shared {
             pid,
             stop_acceptor: AtomicBool::new(false),
@@ -139,10 +139,6 @@ impl State {
     #[inline]
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
-    }
-
-    pub(crate) fn alive_engines(&self) -> usize {
-        self.shared.alive_engines.load(Ordering::Relaxed)
     }
 
     #[inline]

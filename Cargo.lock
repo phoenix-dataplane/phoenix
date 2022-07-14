@@ -1064,6 +1064,7 @@ dependencies = [
  "mrpc-marshal",
  "nix 0.23.1",
  "num_cpus",
+ "petgraph",
  "prettyplease",
  "proc-macro2",
  "prost-build",

@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -15,16 +14,13 @@ use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::SallocEngine;
-use super::state::State;
+use super::state::{State, Shared};
 use crate::config::SallocConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
-use crate::state_mgr::StateManager;
+use crate::state_mgr::SharedStateManager;
 
-lazy_static! {
-    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
-}
 
 pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -33,20 +29,23 @@ pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
     client_pid: Pid,
     _mode: SchedulingMode,
+    shared: Arc<Shared>,
 }
 
 impl SallocEngineBuilder {
-    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode) -> Self {
+    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode, shared: Arc<Shared>) -> Self {
         SallocEngineBuilder {
             customer,
             client_pid,
             _mode: mode,
+            shared,
         }
     }
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let salloc_state = STATE_MGR.get_or_create_state(self.client_pid)?;
+        let salloc_state =  State::new(self.shared);
+
         let node = Node::new(EngineType::Salloc);
 
         Ok(SallocEngine {
@@ -59,6 +58,7 @@ impl SallocEngineBuilder {
 }
 
 pub struct SallocModule {
+    pub(crate) stage_mgr: SharedStateManager<Shared>,
     config: SallocConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
@@ -66,6 +66,7 @@ pub struct SallocModule {
 impl SallocModule {
     pub(crate) fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
         SallocModule {
+            stage_mgr: SharedStateManager::new(),
             config,
             runtime_manager,
         }
@@ -73,7 +74,7 @@ impl SallocModule {
 
     #[allow(unused)]
     pub(crate) fn handle_request(
-        &mut self,
+        &self,
         req: &control_plane::Request,
         _sock: &DomainSocket,
         sender: &SocketAddr,
@@ -88,7 +89,7 @@ impl SallocModule {
     }
 
     pub(crate) fn handle_new_client<P: AsRef<Path>>(
-        &mut self,
+        &self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -107,7 +108,8 @@ impl SallocModule {
         // the transport module is responsible for initializing and starting the transport engines
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
-        let builder = SallocEngineBuilder::new(customer, client_pid, mode);
+        let shared = self.stage_mgr.get_or_create(client_pid)?;
+        let builder = SallocEngineBuilder::new(customer, client_pid, mode, shared);
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime

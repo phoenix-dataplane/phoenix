@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
 use interface::engine::{EngineType, SchedulingMode};
@@ -18,7 +17,10 @@ use super::state::{State, Shared};
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
+use crate::salloc::module::SallocModule;
+use crate::salloc::state::{State as SallocState, Shared as SallocShared};
 use crate::state_mgr::SharedStateManager;
+use crate::transport::rdma::module::TransportModule;
 use crate::transport::rdma::ops::Ops;
 
 
@@ -29,13 +31,13 @@ fn create_acceptor_engine(
     ops: Ops,
 ) -> Result<()> {
     let shared = state_mgr.get_or_create(client_pid)?;
-
     
-    // only create one cm_engine for a client process
-    if state.alive_engines() > 1 {
+     // only create one RpcAcceptor engine for one client process
+    if Arc::strong_count(&shared) >  1 {
         return Ok(());
     }
 
+    let state = State::new(shared);
     let node = Node::new(EngineType::RpcAdapterAcceptor);
     let acceptor_engine = AcceptorEngine::new(node, state, Box::new(TlStorage { ops }));
 
@@ -54,7 +56,8 @@ pub(crate) struct RpcAdapterEngineBuilder {
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     ops: Ops,
-    shared: Shared,
+    shared: Arc<Shared>,
+    salloc_shared: Arc<SallocShared>,
 }
 
 impl RpcAdapterEngineBuilder {
@@ -65,6 +68,8 @@ impl RpcAdapterEngineBuilder {
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
         ops: Ops,
+        shared: Arc<Shared>,
+        salloc_shared: Arc<SallocShared>,
     ) -> Self {
         RpcAdapterEngineBuilder {
             node,
@@ -73,13 +78,15 @@ impl RpcAdapterEngineBuilder {
             cmd_rx,
             cmd_tx,
             ops,
+            shared,
+            salloc_shared
         }
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
-        // create or get the state of the process
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        let state = State::new(self.shared);
+        let salloc_state = SallocState::new(self.salloc_shared);
+
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         Ok(RpcAdapterEngine {
@@ -104,6 +111,12 @@ pub struct RpcAdapterModule {
 }
 
 impl RpcAdapterModule {
+    pub fn new() -> Self {
+        RpcAdapterModule {
+            state_mgr: SharedStateManager::new()
+        }
+    }
+
     #[allow(dead_code)]
     pub fn handle_request(
         &self,
@@ -129,12 +142,17 @@ impl RpcAdapterModule {
         client_pid: Pid,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
+        salloc: &SallocModule,
+        rdam_transport: &TransportModule,
     ) -> Result<RpcAdapterEngine> {
-        let ops = crate::transport::rdma::module::create_ops(runtime_manager, &self.state_mgr, client_pid)?;
+        let ops = crate::transport::rdma::module::create_ops(runtime_manager, &rdam_transport.state_mgr, client_pid)?;
 
         create_acceptor_engine(runtime_manager, &self.state_mgr, client_pid, ops.clone())?;
 
-        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops);
+        let shared = self.state_mgr.get_or_create(client_pid)?;
+        let salloc_shared = salloc.stage_mgr.get_or_create(client_pid)?;
+
+        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops, shared, salloc_shared);
         let engine = builder.build()?;
 
         Ok(engine)

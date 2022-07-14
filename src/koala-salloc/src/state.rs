@@ -9,7 +9,6 @@ use nix::unistd::Pid;
 use interface::AsHandle;
 use koala::engine::EngineLocalStorage;
 use koala::resource::ResourceTable;
-use koala::state_mgr::{StateManager, StateTrait};
 
 use super::region::SharedRegion;
 use super::{ControlPathError, ResourceError};

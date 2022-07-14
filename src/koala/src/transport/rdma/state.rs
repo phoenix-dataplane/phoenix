@@ -55,7 +55,7 @@ impl ProcessShared for Shared {
 
     fn new(pid: Pid) -> io::Result<Self> { 
         let resource = Resource::new()?;
-        let cm_manager = tokio::sync::Mutex::new(CmEventManager::new())?;
+        let cm_manager = tokio::sync::Mutex::new(CmEventManager::new()?);
         let shared = Shared {
             cm_manager,
             pid,

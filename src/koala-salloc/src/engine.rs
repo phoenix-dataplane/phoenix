@@ -83,7 +83,7 @@ impl SallocEngine {
         match req {
             Command::AllocShm(size, align) => {
                 // TODO(wyj): implement backend heap allocator to properly handle align
-                tracing::trace!("AllocShm, size: {}", size);
+                // tracing::trace!("AllocShm, size: {}", size);
                 let layout = Layout::from_size_align(size, align)?;
                 let region = SharedRegion::new(layout)?;
                 // mr's addr on backend side

@@ -31,6 +31,7 @@ pub struct Control {
     tcp_transport: tcp::module::TransportModule,
     mrpc: mrpc::module::MrpcModule,
     salloc: salloc::module::SallocModule,
+    rpc_adapter: rpc_adapter::module::RpcAdapterModule,
 }
 
 impl Control {
@@ -76,6 +77,7 @@ impl Control {
             ),
             mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
             salloc: salloc::module::SallocModule::new(salloc_config, Arc::clone(&runtime_manager)),
+            rpc_adapter: rpc_adapter::module::RpcAdapterModule::new(),
         }
     }
 
@@ -191,13 +193,15 @@ impl Control {
                 EngineType::RpcAdapter => {
                     // for now, we only implement the adapter for rdma
                     let client_pid = Pid::from_raw(cred.pid.unwrap());
-                    let e1 = rpc_adapter::module::RpcAdapterModule::create_engine(
+                    let e1 = self.rpc_adapter.create_engine(
                         &self.runtime_manager,
                         n,
                         mode,
                         client_pid,
                         rx.take().unwrap(),
                         tx2.take().unwrap(),
+                        &self.salloc,
+                        &self.rdma_transport
                     )?;
                     engines.push(EngineContainer::new(e1));
                 }

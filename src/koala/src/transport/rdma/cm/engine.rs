@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
@@ -53,7 +54,7 @@ impl CmEngine {
             let mut nwork = 0;
             let Progress(n) = self.check_cm_event()?;
             nwork += n;
-            if self.state.alive_engines() == 1 {
+            if Arc::strong_count(&self.state.shared) == 1 {
                 // cm_engine is the last active engine
                 return Ok(());
             }

@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -14,17 +13,14 @@ use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::MrpcEngine;
-use super::state::State;
+use super::state::{State, Shared};
 use crate::config::MrpcConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
-use crate::state_mgr::StateManager;
+use crate::state_mgr::SharedStateManager;
 
-lazy_static! {
-    static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
-}
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -37,6 +33,7 @@ pub(crate) struct MrpcEngineBuilder {
     cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
     serializer_build_cache: PathBuf,
+    shared: Arc<Shared>,
 }
 
 impl MrpcEngineBuilder {
@@ -48,6 +45,7 @@ impl MrpcEngineBuilder {
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
         serializer_build_cache: PathBuf,
+        shared: Arc<Shared>,
     ) -> Self {
         MrpcEngineBuilder {
             customer,
@@ -57,13 +55,16 @@ impl MrpcEngineBuilder {
             client_pid,
             mode,
             serializer_build_cache,
+            shared
         }
     }
 
     fn build(self) -> Result<MrpcEngine> {
         const META_BUFFER_POOL_CAP: usize = 128;
         const BUF_LEN: usize = 32;
-        let state = STATE_MGR.get_or_create_state(self.client_pid)?;
+
+        let state = State::new(self.shared);
+
         assert_eq!(self.node.engine_type, EngineType::Mrpc);
 
         Ok(MrpcEngine {
@@ -83,6 +84,7 @@ impl MrpcEngineBuilder {
 }
 
 pub struct MrpcModule {
+    stage_mgr: SharedStateManager<Shared>,
     config: MrpcConfig,
     runtime_manager: Arc<RuntimeManager>,
 }
@@ -93,13 +95,14 @@ impl MrpcModule {
             std::fs::create_dir(&config.build_cache).unwrap();
         }
         MrpcModule {
+            stage_mgr: SharedStateManager::new(),
             config,
             runtime_manager,
         }
     }
 
     pub fn handle_request(
-        &mut self,
+        &self,
         req: &control_plane::Request,
         _sock: &DomainSocket,
         sender: &SocketAddr,
@@ -114,7 +117,7 @@ impl MrpcModule {
     }
 
     pub fn handle_new_client<P: AsRef<Path>>(
-        &mut self,
+        &self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -136,6 +139,8 @@ impl MrpcModule {
         // the mrpc module is responsible for initializing and starting the mrpc engines
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
+        let shared = self.stage_mgr.get_or_create(client_pid)?;
+
         // 4. create the engine
         let builder = MrpcEngineBuilder::new(
             customer,
@@ -145,6 +150,7 @@ impl MrpcModule {
             cmd_tx,
             cmd_rx,
             self.config.build_cache.clone(),
+            shared,
         );
 
         let engine = builder.build()?;

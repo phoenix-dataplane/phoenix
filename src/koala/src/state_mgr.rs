@@ -4,7 +4,7 @@ use std::sync::{Weak, Arc};
 use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
 
-pub trait ProcessShared {
+pub trait ProcessShared: Sized {
     type Err;
 
     fn new(pid: Pid) -> Result<Self, Self::Err>;
@@ -20,14 +20,14 @@ pub struct SharedStateManager<S> {
 impl<S: ProcessShared> SharedStateManager<S> {
     pub fn new() -> Self {
         SharedStateManager {
-            states: HashMap::new()
+            states: spin::Mutex::new(HashMap::default()),
         }
     }
 
     pub fn get_or_create(&self, pid: Pid) -> Result<Arc<S>, <S as ProcessShared>::Err>  {
-        let states = self.states.lock();
-        match self.states.entry(pid) {
-            hash_map::Entry::Occupied(entry) => {
+        let mut states = self.states.lock();
+        match states.entry(pid) {
+            hash_map::Entry::Occupied(mut entry) => {
                 if let Some(state) = entry.get().upgrade() {
                     Ok(state)
                 }

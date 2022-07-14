@@ -42,14 +42,14 @@ pub(crate) fn create_ops(runtime_manager: &RuntimeManager, state_mgr: &SharedSta
 
 fn create_cm_engine(runtime_manager: &RuntimeManager, state_mgr: &SharedStateManager<Shared>, client_pid: Pid) -> Result<()> {
     let shared = state_mgr.get_or_create(client_pid)?;
-    let state = State::new(shared);
-
+    
     // only create one cm_engine for a client process
     // if refcnt > 1, then there is already a CmEngine running0
     if Arc::strong_count(&shared) > 1 {
         return Ok(());
     }
 
+    let state = State::new(shared);
     let node = Node::new(EngineType::RdmaConnMgmt);
     let cm_engine = CmEngine::new(node, state);
 
@@ -91,7 +91,7 @@ impl TransportEngineBuilder {
 }
 
 pub struct TransportModule {
-    state_mgr: SharedStateManager<Shared>,
+    pub(crate) state_mgr: SharedStateManager<Shared>,
     config: RdmaTransportConfig,
     runtime_manager: Arc<RuntimeManager>,
 }

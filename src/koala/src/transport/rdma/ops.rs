@@ -34,9 +34,16 @@ pub(crate) type Result<T> = std::result::Result<T, ApiError>;
 //     }
 // }
 
-#[derive(Clone)]
 pub(crate) struct Ops {
     pub(crate) state: State,
+}
+
+impl Clone for Ops {
+    fn clone(&self) -> Self {
+        let shared = Arc::clone(&self.state.shared); 
+        let state = State::new(shared);
+        Ops { state } 
+    }
 }
 
 impl Ops {
