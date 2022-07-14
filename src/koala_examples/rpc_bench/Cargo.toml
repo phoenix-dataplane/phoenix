@@ -10,7 +10,7 @@ mrpc-build = { path = "../../mrpc/mrpc-build" }
 
 [dependencies]
 mrpc = { path = "../../mrpc" }
-prost = { path = "../../3rdparty/prost", features = ["mrpc"] }
+prost = { path = "../../3rdparty/prost", features = ["mrpc-frontend"] }
 
 structopt = "0.3.23"
 tracing = "0.1"
