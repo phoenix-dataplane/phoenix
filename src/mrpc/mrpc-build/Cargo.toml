@@ -9,7 +9,7 @@ edition = "2021"
 all-features = true
 
 [dependencies]
-prost-build = { path = "../../3rdparty/prost/prost-build", features = ["mrpc"] }
+prost-build = { path = "../../3rdparty/prost/prost-build", features = ["mrpc-frontend"] }
 
 prettyplease = {version = "0.1"}
 proc-macro2 = "1.0"

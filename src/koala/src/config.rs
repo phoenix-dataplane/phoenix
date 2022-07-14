@@ -39,6 +39,8 @@ pub struct Control {
 pub struct MrpcConfig {
     pub prefix: PathBuf,
     pub engine_basename: String,
+    #[serde(alias = "build_cache")]
+    pub build_cache: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

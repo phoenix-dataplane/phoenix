@@ -1,7 +1,8 @@
-use crate::mrpc::marshal::{
-    ExcavateContext, MarshalError, RpcMessage, SgE, SgList, UnmarshalError,
+use crate::shadow::vec::Vec;
+use crate::{
+    AddressArbiter, ExcavateContext, MarshalError, RpcMessage, SgE, SgList, UnmarshalError,
 };
-use crate::mrpc::shadow::vec::Vec;
+
 use ipc::ptr::ShmPtr;
 
 #[inline(always)]
@@ -42,17 +43,17 @@ pub fn emplace_repeated<M: RpcMessage>(
 }
 
 #[inline(always)]
-pub unsafe fn excavate<'a, M: RpcMessage>(
+pub unsafe fn excavate<'a, M: RpcMessage, A: AddressArbiter>(
     msg: &mut M,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     msg.excavate(ctx)
 }
 
 #[inline(always)]
-pub unsafe fn excavate_optional<'a, M: RpcMessage>(
+pub unsafe fn excavate_optional<'a, M: RpcMessage, A: AddressArbiter>(
     msg: &mut Option<M>,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if let Some(msg) = msg {
         msg.excavate(ctx)?;
@@ -62,9 +63,9 @@ pub unsafe fn excavate_optional<'a, M: RpcMessage>(
 }
 
 #[inline(always)]
-pub unsafe fn excavate_repeated<'a, M: RpcMessage>(
+pub unsafe fn excavate_repeated<'a, M: RpcMessage, A: AddressArbiter>(
     msgs: &mut Vec<M>,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if msgs.len == 0 {
         msgs.buf.ptr = ShmPtr::dangling();
@@ -81,7 +82,7 @@ pub unsafe fn excavate_repeated<'a, M: RpcMessage>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut M, backend_addr as *mut M).unwrap();
     msgs.buf.ptr = buf_ptr;
     msgs.buf.cap = msgs.len;

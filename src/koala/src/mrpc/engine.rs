@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::mem;
+use std::path::PathBuf;
 
 use interface::rpc::{MessageErased, RpcId, TransportStatus};
 
@@ -12,6 +13,7 @@ use super::state::State;
 use super::{DatapathError, Error};
 use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
+use crate::mrpc::builder::build_serializer_lib;
 use crate::node::Node;
 
 pub struct MrpcEngine {
@@ -27,6 +29,8 @@ pub struct MrpcEngine {
     pub(crate) meta_buf_pool: MetaBufferPool,
 
     pub(crate) _mode: SchedulingMode,
+
+    pub(crate) dispatch_build_cache: PathBuf,
 
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
@@ -180,6 +184,23 @@ impl MrpcEngine {
                     }
                     other => panic!("unexpected: {:?}", other),
                 }
+            }
+            Command::UpdateProtos(protos) => {
+                let dylib_path =
+                    build_serializer_lib(protos.clone(), self.dispatch_build_cache.clone())?;
+                self.cmd_tx
+                    .send(Command::UpdateProtosInner(dylib_path))
+                    .unwrap();
+                match self.cmd_rx.recv().await.unwrap().0 {
+                    Ok(CompletionKind::UpdateProtos) => {
+                        // just forward it
+                        Ok(CompletionKind::UpdateProtos)
+                    }
+                    other => panic!("unexpected: {:?}", other),
+                }
+            }
+            Command::UpdateProtosInner(_) => {
+                panic!("UpdateProtosInner is only used in backend")
             }
         }
     }

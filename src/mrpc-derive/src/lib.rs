@@ -87,11 +87,11 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
         .map(|&(ref field_ident, ref field)| field.extent(quote!(self.#field_ident)));
 
     let expanded = quote! {
-        impl #impl_generics crate::mrpc::marshal::RpcMessage for #ident #ty_generics #where_clause {
-            fn marshal(&self) -> std::result::Result<crate::mrpc::marshal::SgList, crate::mrpc::marshal::MarshalError> {
+        impl #impl_generics ::mrpc_marshal::RpcMessage for #ident #ty_generics #where_clause {
+            fn marshal(&self) -> std::result::Result<::mrpc_marshal::SgList, mrpc_marshal::MarshalError> {
                 let cap = 1 + self.extent();
-                let mut sgl = crate::mrpc::marshal::SgList(std::vec::Vec::with_capacity(cap));
-                let self_sge = crate::mrpc::marshal::SgE {
+                let mut sgl = ::mrpc_marshal::SgList(std::vec::Vec::with_capacity(cap));
+                let self_sge = ::mrpc_marshal::SgE {
                     ptr: self as *const _ as usize,
                     len: std::mem::size_of::<Self>()
                 };
@@ -100,24 +100,22 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
                 Ok(sgl)
             }
 
-            unsafe fn unmarshal<'a>(
-                ctx: &mut crate::mrpc::marshal::ExcavateContext<'a>
-            ) -> std::result::Result<::ipc::ptr::ShmPtr<Self>, crate::mrpc::marshal::UnmarshalError> {
+            unsafe fn unmarshal<'a, A: ::mrpc_marshal::AddressArbiter>(
+                ctx: &mut ::mrpc_marshal::ExcavateContext<'a, A>
+            ) -> std::result::Result<::ipc::ptr::ShmPtr<Self>, ::mrpc_marshal::UnmarshalError> {
                 let self_sge = ctx.sgl
                     .next()
-                    .ok_or(crate::mrpc::marshal::UnmarshalError::SgListUnderflow)?;
+                    .ok_or(::mrpc_marshal::UnmarshalError::SgListUnderflow)?;
 
                 if self_sge.len != std::mem::size_of::<Self>() {
-                    return Err(crate::mrpc::marshal::UnmarshalError::SgELengthMismatch {
+                    return Err(::mrpc_marshal::UnmarshalError::SgELengthMismatch {
                         expected: std::mem::size_of::<Self>(),
                         actual: self_sge.len
                     });
                 }
 
                 let backend_addr = self_sge.ptr;
-                let app_addr = ctx.salloc
-                    .resource
-                    .query_app_addr(backend_addr)?;
+                let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
 
                 let mut message = ::ipc::ptr::ShmPtr::new(app_addr as *mut Self, backend_addr as *mut Self).unwrap();
                 let this = message.as_mut_backend();
@@ -130,17 +128,17 @@ fn try_message(input: TokenStream) -> Result<TokenStream, Error> {
             #[inline(always)]
             fn emplace(
                 &self,
-                sgl: &mut crate::mrpc::marshal::SgList
-            ) -> std::result::Result<(), crate::mrpc::marshal::MarshalError> {
+                sgl: &mut ::mrpc_marshal::SgList
+            ) -> std::result::Result<(), ::mrpc_marshal::MarshalError> {
                 #(#emplace)*
                 Ok(())
             }
 
             #[inline(always)]
-            unsafe fn excavate(
+            unsafe fn excavate<'a, A: ::mrpc_marshal::AddressArbiter>(
                 &mut self,
-                ctx: &mut crate::mrpc::marshal::ExcavateContext
-            ) -> std::result::Result<(), crate::mrpc::marshal::UnmarshalError> {
+                ctx: &mut ::mrpc_marshal::ExcavateContext<'a, A>
+            ) -> std::result::Result<(), ::mrpc_marshal::UnmarshalError> {
                 #(#excavate)*
                 Ok(())
             }

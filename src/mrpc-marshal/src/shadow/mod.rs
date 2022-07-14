@@ -2,5 +2,7 @@
 //! userland library, but they expose the details for marshaling and only
 //! implement minimal necessary functions.
 
-pub(crate) mod raw_vec;
-pub(crate) mod vec;
+pub mod raw_vec;
+pub mod vec;
+
+pub use vec::Vec;

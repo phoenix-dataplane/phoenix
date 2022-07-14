@@ -1,10 +1,10 @@
 macro_rules! numeric {
     ($ty:ty, $proto_ty:ident) => {
         pub mod $proto_ty {
-            use crate::mrpc::marshal::{
-                ExcavateContext, MarshalError, SgE, SgList, UnmarshalError,
+            use crate::shadow::vec::Vec;
+            use crate::{
+                AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError,
             };
-            use crate::mrpc::shadow::vec::Vec;
             use ipc::ptr::ShmPtr;
 
             #[inline(always)]
@@ -21,9 +21,9 @@ macro_rules! numeric {
             }
 
             #[inline(always)]
-            pub fn excavate_repeated<'a>(
+            pub fn excavate_repeated<'a, A: AddressArbiter>(
                 val: &mut Vec<$ty>,
-                ctx: &mut ExcavateContext<'a>,
+                ctx: &mut ExcavateContext<'a, A>,
             ) -> Result<(), UnmarshalError> {
                 if val.len == 0 {
                     val.buf.ptr = ShmPtr::dangling();
@@ -39,7 +39,7 @@ macro_rules! numeric {
                     });
                 }
                 let backend_addr = buf_sge.ptr;
-                let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+                let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
                 let buf_ptr = ShmPtr::new(app_addr as *mut $ty, backend_addr as *mut $ty).unwrap();
                 val.buf.ptr = buf_ptr;
                 val.buf.cap = val.len;
