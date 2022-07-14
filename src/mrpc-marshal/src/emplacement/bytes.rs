@@ -1,5 +1,5 @@
-use crate::mrpc::marshal::{ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
-use crate::mrpc::shadow::vec::Vec;
+use crate::shadow::vec::Vec;
+use crate::{AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
 use ipc::ptr::ShmPtr;
 
 #[inline(always)]
@@ -62,9 +62,9 @@ pub fn emplace_repeated(val: &Vec<Vec<u8>>, sgl: &mut SgList) -> Result<(), Mars
 }
 
 #[inline(always)]
-pub unsafe fn excavate<'a>(
+pub unsafe fn excavate<'a, A: AddressArbiter>(
     val: &mut Vec<u8>,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if val.len == 0 {
         val.buf.ptr = ShmPtr::dangling();
@@ -80,7 +80,7 @@ pub unsafe fn excavate<'a>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
     val.buf.ptr = buf_ptr;
     val.buf.cap = val.len;
@@ -89,9 +89,9 @@ pub unsafe fn excavate<'a>(
 }
 
 #[inline(always)]
-pub unsafe fn excavate_optional<'a>(
+pub unsafe fn excavate_optional<'a, A: AddressArbiter>(
     val: &mut Option<Vec<u8>>,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if let Some(bytes) = val {
         if bytes.len == 0 {
@@ -108,7 +108,7 @@ pub unsafe fn excavate_optional<'a>(
             });
         }
         let backend_addr = buf_sge.ptr;
-        let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+        let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
         let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
         bytes.buf.ptr = buf_ptr;
         bytes.buf.cap = bytes.len;
@@ -118,9 +118,9 @@ pub unsafe fn excavate_optional<'a>(
 }
 
 #[inline(always)]
-pub unsafe fn excavate_repeated<'a>(
+pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
     val: &mut Vec<Vec<u8>>,
-    ctx: &mut ExcavateContext<'a>,
+    ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if val.len == 0 {
         val.buf.ptr = ShmPtr::dangling();
@@ -137,7 +137,7 @@ pub unsafe fn excavate_repeated<'a>(
         });
     }
     let backend_addr = buf_sge.ptr;
-    let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+    let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     let buf_ptr = ShmPtr::new(app_addr as *mut Vec<u8>, backend_addr as *mut Vec<u8>).unwrap();
     val.buf.ptr = buf_ptr;
     val.buf.cap = val.len;
@@ -156,7 +156,7 @@ pub unsafe fn excavate_repeated<'a>(
                 });
             };
             let backend_addr = buf_sge.ptr;
-            let app_addr = ctx.salloc.resource.query_app_addr(backend_addr)?;
+            let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
             let buf_ptr = ShmPtr::new(app_addr as *mut u8, backend_addr as *mut u8).unwrap();
             bytes.buf.ptr = buf_ptr;
             bytes.buf.cap = bytes.len;

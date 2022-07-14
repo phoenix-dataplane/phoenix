@@ -13,12 +13,6 @@ use crate::engine::EngineLocalStorage;
 use crate::resource::{Error as ResourceError, ResourceTable};
 use crate::state_mgr::{StateManager, StateTrait};
 
-pub(crate) struct ShmMr {
-    pub ptr: usize,
-    pub len: usize,
-    pub align: usize,
-}
-
 pub(crate) struct State {
     sm: Arc<StateManager<Self>>,
     pub(crate) shared: Arc<Shared>,
@@ -72,7 +66,7 @@ impl State {
 
 pub(crate) struct Resource {
     // map from recv mr's local (backend) addr to app addr
-    pub(crate) recv_mr_addr_map: spin::Mutex<BTreeMap<usize, ShmMr>>,
+    pub(crate) recv_mr_addr_map: spin::Mutex<BTreeMap<usize, mrpc_marshal::ShmRecvMr>>,
     // TODO(wyj): redesign these states
     pub(crate) recv_mr_table: ResourceTable<SharedRegion>,
     // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
@@ -113,7 +107,7 @@ impl Resource {
     pub(crate) fn insert_addr_map(
         &self,
         local_addr: usize,
-        remote_buf: ShmMr,
+        remote_buf: mrpc_marshal::ShmRecvMr,
     ) -> Result<(), ResourceError> {
         // SAFETY: it is the caller's responsibility to ensure the ShmMr is power-of-two aligned.
 
@@ -124,24 +118,5 @@ impl Resource {
             .lock()
             .insert(local_addr, remote_buf)
             .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
-    }
-
-    #[inline]
-    pub(crate) fn query_app_addr(&self, backend_addr: usize) -> Result<usize, ResourceError> {
-        // shortcut because we map app_addr to the same address as backend_addr
-        // Ok(backend_addr)
-
-        let addr_map = self.recv_mr_addr_map.lock();
-        match addr_map.range(0..=backend_addr).last() {
-            Some(kv) => {
-                if kv.0 + kv.1.len >= backend_addr {
-                    let offset = backend_addr & (kv.1.align - 1);
-                    Ok(kv.1.ptr + offset)
-                } else {
-                    Err(ResourceError::NotFound)
-                }
-            }
-            None => Err(ResourceError::NotFound),
-        }
     }
 }

@@ -2,14 +2,13 @@ use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
 
+pub mod builder;
 pub mod codegen;
-pub(crate) mod emplacement;
 pub mod engine;
-pub(crate) mod marshal;
 pub mod meta_pool;
 pub mod module;
-pub(crate) mod shadow;
 pub mod state;
+pub(crate) mod unpack;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -24,6 +23,8 @@ pub(crate) enum Error {
     IpcTryRecv,
     #[error("Customer error: {0}")]
     Customer(#[from] ipc::Error),
+    #[error("Build marshal library failed: {0}")]
+    MarshalLibBuilder(#[from] builder::Error),
 }
 
 impl From<Error> for interface::Error {

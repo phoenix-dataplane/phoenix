@@ -9,12 +9,13 @@ use std::sync::Arc;
 
 use fnv::FnvHashMap;
 
-use ipc::mrpc;
-
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
+use ipc::mrpc;
+use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
+use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
@@ -22,8 +23,8 @@ use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
     future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
-use crate::mrpc::marshal::{ExcavateContext, MetaUnpacking, RpcMessage, SgE, SgList};
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
+use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
 use crate::salloc::region::SharedRegion;
 use crate::salloc::state::State as SallocState;
@@ -44,7 +45,6 @@ unsafe impl EngineLocalStorage for TlStorage {
         self
     }
 }
-
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
@@ -62,6 +62,8 @@ pub(crate) struct RpcAdapterEngine {
     // if in the future recv mr's addr is directly used as wr_id in post_recv,
     // just change Handle here to usize
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
+
+    pub(crate) serialization_engine: Option<SerializationEngine>,
 
     pub(crate) node: Node,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<mrpc::cmd::Command>,
@@ -315,7 +317,6 @@ impl RpcAdapterEngine {
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use crate::engine::graph::TryRecvError;
-        use crate::mrpc::codegen;
 
         while let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
@@ -332,27 +333,10 @@ impl RpcAdapterEngine {
             }
             // let mut timer = crate::timer::Timer::new();
 
-            // Sender marshals the data (gets an SgList)
-            let sglist = match meta_ref.msg_type {
-                RpcMsgType::Request => {
-                    match meta_ref.func_id {
-                        3687134534u32 => {
-                            // TODO: double-check whether it is valid to just conjure up an object on shm
-                            let ptr_backend = msg.addr_backend as *mut codegen::HelloRequest;
-                            let msg_ref = unsafe { &*ptr_backend };
-                            msg_ref.marshal().unwrap()
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-                RpcMsgType::Response => match meta_ref.func_id {
-                    3687134534u32 => {
-                        let ptr_backend = msg.addr_backend as *mut codegen::HelloReply;
-                        let msg_ref = unsafe { &*ptr_backend };
-                        msg_ref.marshal().unwrap()
-                    }
-                    _ => unimplemented!(),
-                },
+            let sglist = if let Some(ref module) = self.serialization_engine {
+                module.marshal(meta_ref, msg.addr_backend).unwrap()
+            } else {
+                panic!("dispatch module not loaded");
             };
             // timer.tick();
 
@@ -421,7 +405,6 @@ impl RpcAdapterEngine {
         sgl: SgList,
         conn_ctx: Arc<ConnectionContext>,
     ) -> Result<RpcId, DatapathError> {
-        use crate::mrpc::codegen;
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
@@ -442,30 +425,13 @@ impl RpcAdapterEngine {
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
-            salloc: &self.salloc.shared,
+            addr_arbiter: &self.salloc.shared.resource.recv_mr_addr_map,
         };
 
-        // let mut timer = crate::timer::Timer::new();
-        // timer.tick();
-
-        let (addr_app, addr_backend) = match meta.msg_type {
-            RpcMsgType::Request => match meta.func_id {
-                3687134534u32 => {
-                    let msg =
-                        unsafe { codegen::HelloRequest::unmarshal(&mut excavate_ctx).unwrap() };
-                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
-                    (ptr_app.addr().get(), ptr_backend.addr().get())
-                }
-                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-            },
-            RpcMsgType::Response => match meta.func_id {
-                3687134534u32 => {
-                    let msg = unsafe { codegen::HelloReply::unmarshal(&mut excavate_ctx).unwrap() };
-                    let (ptr_app, ptr_backend) = msg.to_raw_parts();
-                    (ptr_app.addr().get(), ptr_backend.addr().get())
-                }
-                _ => panic!("unknown func_id: {}, meta: {:?}", meta.func_id, meta),
-            },
+        let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
+            module.unmarshal(meta, &mut excavate_ctx).unwrap()
+        } else {
+            panic!("dispatch module not loaded");
         };
         // timer.tick();
 
@@ -730,6 +696,15 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
+            }
+            mrpc::cmd::Command::UpdateProtosInner(dylib) => {
+                log::debug!("Loading dispatch library: {:?}", dylib);
+                let module = SerializationEngine::new(dylib)?;
+                self.serialization_engine = Some(module);
+                Ok(mrpc::cmd::CompletionKind::UpdateProtos)
+            }
+            mrpc::cmd::Command::UpdateProtos(_) => {
+                unreachable!();
             }
         }
     }

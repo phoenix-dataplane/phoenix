@@ -9,8 +9,8 @@ use fnv::FnvBuildHasher;
 use nix::unistd::Pid;
 
 use interface::AsHandle;
+use mrpc_marshal::SgList;
 
-use crate::mrpc::marshal::SgList;
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
