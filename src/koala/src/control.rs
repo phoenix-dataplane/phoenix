@@ -5,9 +5,9 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::anyhow;
 
@@ -33,7 +33,6 @@ pub struct Control {
     mrpc: mrpc::module::MrpcModule,
     salloc: salloc::module::SallocModule,
 }
-
 
 impl Control {
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
