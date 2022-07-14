@@ -95,8 +95,6 @@ impl Control {
                         if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
                             log::warn!("Control dispatch: {}", e);
                         }
-                    } else {
-                        log::warn!("received data without a credential, ignored");
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -104,7 +102,6 @@ impl Control {
                     if exit_flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    log::warn!("recv failed: {:?}", e)
                 }
             }
         }
