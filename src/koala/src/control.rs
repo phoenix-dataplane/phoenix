@@ -82,33 +82,36 @@ impl Control {
 
     pub fn mainloop(&mut self, exit_flag: &Arc<AtomicBool>) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65536];
-        loop {
-            match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
-                Ok((size, sender, cred)) => {
-                    log::debug!(
-                        "received {} bytes from {:?} with credential: {:?}",
-                        size,
-                        sender,
-                        cred
-                    );
-                    if let Some(cred) = cred {
-                        if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
-                            log::warn!("Control dispatch: {}", e);
+        if !exit_flag.load(Ordering::Acquire) {
+            loop {
+                match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
+                    Ok((size, sender, cred)) => {
+                        log::debug!(
+                            "received {} bytes from {:?} with credential: {:?}",
+                            size,
+                            sender,
+                            cred
+                        );
+                        if let Some(cred) = cred {
+                            if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
+                                log::warn!("Control dispatch: {}", e);
+                            }
+                        } else {
+                            log::warn!("received data without a credential, ignored");
                         }
-                    } else {
-                        log::warn!("received data without a credential, ignored");
                     }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => {
-                    if exit_flag.load(Ordering::Acquire) {
-                        log::info!("Received SIGINT, exiting...");
-                        return Ok(());
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => {
+                        if exit_flag.load(Ordering::Acquire) {
+                            break;
+                        }
+                        log::warn!("recv failed: {:?}", e)
                     }
-                    log::warn!("recv failed: {:?}", e)
                 }
             }
         }
+        log::info!("exiting...");
+        Ok(())
     }
 
     fn build_internal_queues(&mut self) -> Vec<Node> {
