@@ -1,5 +1,9 @@
+use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use nix::sys::signal;
 
 use anyhow::Result;
 use structopt::StructOpt;
@@ -18,6 +22,15 @@ struct Opts {
     config: PathBuf,
 }
 
+lazy_static::lazy_static! {
+    static ref TERMINATE:Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
+
+extern "C" fn handle_sigint(sig: i32) {
+    assert_eq!(sig, signal::SIGINT as i32);
+    TERMINATE.borrow().store(true, Ordering::Release);
+}
+
 fn main() -> Result<()> {
     // load config
     let opts = Opts::from_args();
@@ -31,7 +44,16 @@ fn main() -> Result<()> {
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(&config));
 
+    // process Ctrl-C event
+    let sig_action = signal::SigAction::new(
+        signal::SigHandler::Handler(handle_sigint),
+        signal::SaFlags::empty(),
+        signal::SigSet::empty(),
+    );
+    unsafe { signal::sigaction(signal::SIGINT, &sig_action) }
+        .expect("failed to register sighandler");
+
     // the Control now takes over
     let mut control = Control::new(runtime_manager, config);
-    control.mainloop()
+    control.mainloop(&TERMINATE)
 }
