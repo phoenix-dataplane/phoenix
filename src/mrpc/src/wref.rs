@@ -150,14 +150,24 @@ impl<T: RpcData> IntoWRef<T> for &WRef<T> {
     }
 }
 
+#[derive(Debug)]
+struct WRefInner<T> {
+    context: u64,
+    ptr: ShmBox<T>,
+}
+
+
 // TODO(cjr): consider moving refcnt to ShmBox.
 #[derive(Debug)]
-pub struct WRef<T: RpcData>(Arc<ShmBox<T>>);
+pub struct WRef<T: RpcData>(Arc<WRefInner<T>>);
 
 impl<T: RpcData> WRef<T> {
     #[inline]
     pub fn new(msg: T) -> Self {
-        WRef(Arc::new(ShmBox::new(msg)))
+        WRef(Arc::new(WRefInner {
+            context: 0,
+            ptr: ShmBox::new(msg),
+        }))
     }
 
     #[inline]
@@ -167,13 +177,13 @@ impl<T: RpcData> WRef<T> {
 
     #[inline]
     pub(crate) fn into_shmptr(self) -> ShmNonNull<T> {
-        let (ptr_app, ptr_backend) = ShmBox::to_raw_parts(self.0.deref());
+        let (ptr_app, ptr_backend) = ShmBox::to_raw_parts(&self.0.ptr);
         // SAFETY: both ptrs are non-null because they just came from ShmBox::to_raw_parts.
         unsafe { ShmNonNull::new_unchecked(ptr_app.as_ptr(), ptr_backend.as_ptr()) }
     }
 
     #[inline]
-    fn into_raw(this: Self) -> *const ShmBox<T> {
+    fn into_raw(this: Self) -> *const WRefInner<T> {
         Arc::into_raw(this.0)
     }
 
@@ -187,7 +197,7 @@ impl<T: RpcData> WRef<T> {
     /// [`mem::transmute`][transmute] for more information on what
     /// restrictions apply in this case.
     #[inline]
-    unsafe fn from_raw(ptr: *const ShmBox<T>) -> Self {
+    unsafe fn from_raw(ptr: *const WRefInner<T>) -> Self {
         WRef(Arc::from_raw(ptr))
     }
 }
@@ -202,7 +212,7 @@ impl<T: RpcData> Deref for WRef<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
+        self.0.ptr.as_ref()
     }
 }
 
@@ -210,7 +220,7 @@ impl<T: RpcData> WRef<T> {
     #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         match Arc::get_mut(&mut this.0) {
-            Some(shmbox) => Some(shmbox.as_mut()),
+            Some(inner) => Some(inner.ptr.as_mut()),
             None => None,
         }
     }
@@ -220,7 +230,7 @@ impl<T: RpcData> WRef<T> {
         // We are careful to *not* create a reference covering the "count" fields, as
         // this would alias with concurrent access to the reference counts (e.g. by `Weak`).
         // unsafe { &mut (*this.ptr.as_ptr()).data }
-        Arc::get_mut_unchecked(&mut this.0).as_mut()
+        Arc::get_mut_unchecked(&mut this.0).ptr.as_mut()
     }
 }
 

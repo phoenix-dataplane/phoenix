@@ -407,6 +407,19 @@ impl From<std::io::Error> for Status {
     }
 }
 
+impl From<crate::Error> for Status {
+    fn from(err: crate::Error) -> Self {
+        use crate::Error::*;
+        // TODO(cjr): This mapping doesn't make sense at all.
+        let code = match err {
+            Service(..) | Interface(..) | Io(..) => Code::Internal,
+            NoAddrResolved => Code::NotFound,
+            Connect(..) => Code::Unavailable,
+        };
+        Status::new(code, err.to_string())
+    }
+}
+
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
