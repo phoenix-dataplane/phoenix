@@ -89,6 +89,9 @@ pub mod salloc;
 #[macro_use]
 pub mod macros;
 
+pub use interface::rpc::Token;
+
+#[doc(hidden)]
 pub use interface::rpc::MessageErased;
 
 pub mod rref;

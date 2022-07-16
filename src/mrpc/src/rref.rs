@@ -5,7 +5,7 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use interface::rpc::{MessageErased, RpcId};
+use interface::rpc::{MessageErased, RpcId, Token};
 use ipc::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 use ipc::ptr::ShmPtr;
 
@@ -17,10 +17,13 @@ pub type ShmView<'a, T> = RRef<'a, T>;
 #[derive(Debug)]
 struct RRefInner<'a, T> {
     rpc_id: RpcId,
+    /// User associated context.
+    token: Token,
     read_heap: &'a ReadHeap,
     data: ShmPtr<T>,
 }
 
+/// A thread-safe reference-counting pointer to the read-only shared memory heap.
 pub struct RRef<'a, T>(Arc<RRefInner<'a, T>>);
 
 // TODO(cjr): double-check this: on dropping, the inner type should not call its deallocator
@@ -51,6 +54,10 @@ impl<'a, T> Drop for RRefInner<'a, T> {
 }
 
 impl<'a, T> RRef<'a, T> {
+    /// Constructs an `RRef<T>` from the given type-erased message on the read-only
+    /// shared memory heap.
+    #[must_use]
+    #[inline]
     pub fn new(msg: &MessageErased, read_heap: &'a ReadHeap) -> Self {
         let ptr_app = msg.shm_addr_app as *mut T;
         let ptr_backend = ptr_app.with_addr(msg.shm_addr_backend);
@@ -63,9 +70,17 @@ impl<'a, T> RRef<'a, T> {
 
         RRef(Arc::new(RRefInner {
             rpc_id,
+            token: Token(msg.meta.token as usize),
             read_heap,
             data: backend_owned,
         }))
+    }
+
+    /// Returns the user associated token.
+    #[must_use]
+    #[inline]
+    pub fn token(&self) -> Token {
+        self.0.token
     }
 }
 

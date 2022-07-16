@@ -270,64 +270,31 @@ impl MrpcEngine {
         // let mut timer = crate::timer::Timer::new();
 
         match req {
-            WorkRequest::Call(erased) => {
-                // TODO(wyj): sanity check on the addr contained in erased
-                // recover the original data type based on the func_id
-                match erased.meta.func_id {
-                    3687134534u32 => {
-                        tracing::trace!(
-                            "mRPC engine got request from App, call_id={}",
-                            erased.meta.call_id
-                        );
+            WorkRequest::Call(erased) | WorkRequest::Reply(erased) => {
+                tracing::trace!(
+                    "mRPC engine got a message from App, call_id: {}",
+                    erased.meta.call_id
+                );
 
-                        // construct message meta on heap
-                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf_ptr = self
-                            .meta_buf_pool
-                            .obtain(rpc_id)
-                            .expect("MessageMeta pool exhausted");
-                        unsafe {
-                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
-                        }
+                // construct message meta on heap
+                let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
+                let meta_buf_ptr = self
+                    .meta_buf_pool
+                    .obtain(rpc_id)
+                    .expect("MessageMeta pool exhausted");
 
-                        let msg = RpcMessageTx {
-                            meta_buf_ptr,
-                            addr_backend: erased.shm_addr_backend,
-                        };
-                        // if access to message's data fields are desired,
-                        // typed message can be conjured up here via matching func_id
-                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-                    }
-                    _ => unimplemented!(),
+                // copy the meta
+                unsafe {
+                    std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                 }
-            }
-            WorkRequest::Reply(erased) => {
-                // recover the original data type based on the func_id
-                match erased.meta.func_id {
-                    3687134534u32 => {
-                        tracing::trace!(
-                            "mRPC engine got reply from App, call_id={}",
-                            erased.meta.call_id
-                        );
 
-                        let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
-                        let meta_buf_ptr = self
-                            .meta_buf_pool
-                            .obtain(rpc_id)
-                            .expect("MessageMeta pool exhausted");
-                        unsafe {
-                            std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
-                        }
-
-                        let msg = RpcMessageTx {
-                            meta_buf_ptr,
-                            addr_backend: erased.shm_addr_backend,
-                        };
-                        // if access to message's data
-                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-                    }
-                    _ => unimplemented!(),
-                }
+                let msg = RpcMessageTx {
+                    meta_buf_ptr,
+                    addr_backend: erased.shm_addr_backend,
+                };
+                // if access to message's data fields are desired,
+                // typed message can be conjured up here via matching func_id
+                self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
             }
             WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
                 self.tx_outputs()[0]

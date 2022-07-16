@@ -8,12 +8,11 @@ use fasthash::city;
 use futures::select;
 use futures::stream::{FuturesUnordered, StreamExt};
 use minstant::Instant;
-use mrpc::IntoWRef;
 use nix::sys::signal;
 use structopt::StructOpt;
 
 use ::masstree_analytics::mt_index::{threadinfo_purpose, MtIndex, ThreadInfo};
-use mrpc::{RRef, WRef};
+use mrpc::{RRef, Token, WRef};
 
 // Workload params
 const BYPASS_MASSTREE: bool = false;
@@ -54,9 +53,9 @@ struct Opt {
     /// Test milliseconds
     #[structopt(long)]
     test_ms: u64,
-    /// Number of eRPC processes in the cluster
-    #[structopt(long)]
-    num_processes: usize,
+    // /// Number of eRPC processes in the cluster
+    // #[structopt(long)]
+    // num_processes: usize,
     /// The global ID of this process
     #[structopt(long)]
     process_id: usize,
@@ -219,20 +218,19 @@ fn get_random_key(num_keys: usize) -> usize {
 // Helper function for clients
 fn generate_workload(opt: &Opt) -> Vec<Query> {
     let mut workload = Vec::with_capacity(opt.req_window);
-    for _ in 0..opt.req_window {
+    for i in 0..opt.req_window {
         let key = get_random_key(opt.num_keys) as u64;
         if fastrand::usize(..100) < opt.range_req_percent {
             // Generate a range query
-            workload.push(Query::Range(
-                RangeRequest {
-                    key,
-                    range: opt.range_size as _,
-                }
-                .into_wref(),
-            ));
+            let req = RangeRequest {
+                key,
+                range: opt.range_size as _,
+            };
+            workload.push(Query::Range(WRef::with_token(Token(i), req)));
         } else {
             // Generate a point query
-            workload.push(Query::Point(PointRequest { key }.into_wref()));
+            let req = PointRequest { key };
+            workload.push(Query::Point(WRef::with_token(Token(i), req)));
         }
     }
     workload
@@ -267,12 +265,10 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     for query in &workload {
                         match query {
                             Query::Point(req) => {
-                                let fut = local_ex.run(client.query_point(req));
-                                point_resp.push(fut);
+                                point_resp.push(local_ex.run(client.query_point(req)))
                             }
                             Query::Range(req) => {
-                                let fut = local_ex.run(client.query_range(req));
-                                range_resp.push(fut);
+                                range_resp.push(local_ex.run(client.query_range(req)));
                             }
                         }
                     }
@@ -288,9 +284,17 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         select! {
                             resp = point_resp.next() => {
                                 let rref = resp.unwrap()?;
+                                let token = rref.token();
+                                if let Query::Point(req) = &workload[token.0] {
+                                    point_resp.push(local_ex.run(client.query_point(req)));
+                                }
                             }
                             resp = range_resp.next() => {
                                 let rref = resp.unwrap()?;
+                                let token = rref.token();
+                                if let Query::Range(req) = &workload[token.0] {
+                                    range_resp.push(local_ex.run(client.query_range(req)));
+                                }
                             }
                         };
                         // let resp = responses.next().await.unwrap()?;

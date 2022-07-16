@@ -203,7 +203,7 @@ impl ClientStub {
             service_id,
             func_id,
             call_id,
-            len: 0,
+            token: req.token().0 as u64,
             msg_type: RpcMsgType::Request,
         };
 
@@ -524,7 +524,7 @@ pub fn service_post_handler<T: RpcData>(
         service_id,
         func_id,
         call_id,
-        len: 0,
+        token: reply.token().0 as u64,
         msg_type: RpcMsgType::Response,
     };
 

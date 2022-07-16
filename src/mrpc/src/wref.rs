@@ -3,6 +3,7 @@ use std::mem;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use interface::rpc::Token;
 use ipc::ptr::ShmNonNull;
 
 use crate::alloc::Box as ShmBox;
@@ -152,22 +153,40 @@ impl<T: RpcData> IntoWRef<T> for &WRef<T> {
 
 #[derive(Debug)]
 struct WRefInner<T> {
-    context: u64,
+    token: Token,
     ptr: ShmBox<T>,
 }
 
-
 // TODO(cjr): consider moving refcnt to ShmBox.
+/// A thread-safe reference-couting pointer to the writable shared memory heap.
 #[derive(Debug)]
 pub struct WRef<T: RpcData>(Arc<WRefInner<T>>);
 
 impl<T: RpcData> WRef<T> {
+    /// Constructs a `WRef<T>` from the given user message on the writable shared memory
+    /// heap. The associated token is set to default.
+    #[must_use]
     #[inline]
     pub fn new(msg: T) -> Self {
+        Self::with_token(Token::default(), msg)
+    }
+
+    /// Constructs a `WRef<T>` from a user token and the given user message on the
+    /// writable shared memory heap.
+    #[must_use]
+    #[inline]
+    pub fn with_token(token: Token, msg: T) -> Self {
         WRef(Arc::new(WRefInner {
-            context: 0,
+            token,
             ptr: ShmBox::new(msg),
         }))
+    }
+
+    /// Returns the user associated token.
+    #[must_use]
+    #[inline]
+    pub fn token(&self) -> Token {
+        self.0.token
     }
 
     #[inline]
