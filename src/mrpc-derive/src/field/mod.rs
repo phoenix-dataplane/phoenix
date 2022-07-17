@@ -10,7 +10,9 @@ use syn::{Attribute, Lit, LitBool, Meta, MetaList, MetaNameValue, NestedMeta};
 
 #[derive(Clone)]
 pub enum Field {
+    /// A scalar field.
     Scalar(scalar::Field),
+    /// A message field.
     Message(message::Field),
 }
 
