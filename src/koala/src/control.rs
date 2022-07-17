@@ -80,33 +80,31 @@ impl Control {
         }
     }
 
-    pub fn mainloop(&mut self, exit_flag: &Arc<AtomicBool>) -> anyhow::Result<()> {
+    pub fn mainloop(&mut self, exit_flag: &AtomicBool) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65536];
-        if !exit_flag.load(Ordering::Acquire) {
-            loop {
-                match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
-                    Ok((size, sender, cred)) => {
-                        log::debug!(
-                            "received {} bytes from {:?} with credential: {:?}",
-                            size,
-                            sender,
-                            cred
-                        );
-                        if let Some(cred) = cred {
-                            if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
-                                log::warn!("Control dispatch: {}", e);
-                            }
-                        } else {
-                            log::warn!("received data without a credential, ignored");
+        while !exit_flag.load(Ordering::Relaxed) {
+            match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
+                Ok((size, sender, cred)) => {
+                    log::debug!(
+                        "received {} bytes from {:?} with credential: {:?}",
+                        size,
+                        sender,
+                        cred
+                    );
+                    if let Some(cred) = cred {
+                        if let Err(e) = self.dispatch(&mut buf[..size], &sender, &cred) {
+                            log::warn!("Control dispatch: {}", e);
                         }
+                    } else {
+                        log::warn!("received data without a credential, ignored");
                     }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {
-                        if exit_flag.load(Ordering::Acquire) {
-                            break;
-                        }
-                        log::warn!("recv failed: {:?}", e)
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                Err(e) => {
+                    if exit_flag.load(Ordering::Relaxed) {
+                        break;
                     }
+                    log::warn!("recv failed: {:?}", e)
                 }
             }
         }
