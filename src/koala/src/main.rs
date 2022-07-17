@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,13 +21,11 @@ struct Opts {
     config: PathBuf,
 }
 
-lazy_static::lazy_static! {
-    static ref TERMINATE:Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-}
+static TERMINATE: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn handle_sigint(sig: i32) {
     assert_eq!(sig, signal::SIGINT as i32);
-    TERMINATE.borrow().store(true, Ordering::Release);
+    TERMINATE.store(true, Ordering::Relaxed);
 }
 
 fn main() -> Result<()> {
