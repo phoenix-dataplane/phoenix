@@ -24,3 +24,11 @@ smol = "1.2.5"
 minstant = "0.1.1"
 futures = "0.3.21"
 fastrand = "1.7.0"
+
+[[bin]]
+name = "masstree_analytics_client"
+path = "src/client.rs"
+
+[[bin]]
+name = "masstree_analytics_server"
+path = "src/server.rs"

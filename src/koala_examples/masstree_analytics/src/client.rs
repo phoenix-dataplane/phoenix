@@ -11,11 +11,9 @@ use minstant::Instant;
 use nix::sys::signal;
 use structopt::StructOpt;
 
-use ::masstree_analytics::mt_index::{threadinfo_purpose, MtIndex, ThreadInfo};
-use mrpc::{RRef, Token, WRef};
+use mrpc::{Token, WRef};
 
 // Workload params
-const BYPASS_MASSTREE: bool = false;
 const APP_MAX_REQ_WINDOW: usize = 8;
 
 static TERMINATE: AtomicBool = AtomicBool::new(false);
@@ -27,12 +25,9 @@ extern "C" fn handle_sigint(sig: i32) {
 
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// Number of server foreground threads
+    /// Test milliseconds
     #[structopt(long)]
-    num_server_fg_threads: usize,
-    /// Number of server background threads
-    #[structopt(long)]
-    num_server_bg_threads: usize,
+    test_ms: u64,
     /// Number of client threads
     #[structopt(long)]
     num_client_threads: usize,
@@ -48,17 +43,6 @@ struct Opt {
     /// Percentage of range scans
     #[structopt(long)]
     range_req_percent: usize,
-
-    // === App common flags in apps/apps_common.h ===
-    /// Test milliseconds
-    #[structopt(long)]
-    test_ms: u64,
-    // /// Number of eRPC processes in the cluster
-    // #[structopt(long)]
-    // num_processes: usize,
-    /// The global ID of this process
-    #[structopt(long)]
-    process_id: usize,
     /// Server address, could be an IP address or domain name. If not specified, server will use
     /// 0.0.0.0 and client will use 127.0.0.1
     #[structopt(long)]
@@ -68,133 +52,12 @@ struct Opt {
     server_port: u16,
 }
 
-impl Opt {
-    fn is_server(&self) -> bool {
-        self.process_id == 0
-    }
-}
-
 pub mod masstree_analytics {
     mrpc::include_proto!("masstree_analytics");
 }
 
-use crate::masstree_analytics::masstree_analytics_server::{
-    MasstreeAnalytics, MasstreeAnalyticsServer,
-};
-use crate::masstree_analytics::{
-    PointRequest, PointResponse, QueryResult, RangeRequest, RangeResponse,
-};
-
 use crate::masstree_analytics::masstree_analytics_client::MasstreeAnalyticsClient;
-
-#[derive(Debug)]
-struct MasstreeAnalyticsService {
-    mti: MtIndex,
-    ti_vec: Vec<ThreadInfo>,
-    dummy_point_response: WRef<PointResponse>,
-}
-
-impl MasstreeAnalyticsService {
-    fn new(mti: MtIndex, ti_vec: Vec<ThreadInfo>) -> Self {
-        Self {
-            mti,
-            ti_vec,
-            dummy_point_response: WRef::new(PointResponse {
-                result: QueryResult::NotFound.into(),
-                value: 0,
-            }),
-        }
-    }
-}
-
-#[mrpc::async_trait]
-impl MasstreeAnalytics for MasstreeAnalyticsService {
-    async fn query_point<'s>(
-        &self,
-        req: RRef<'s, PointRequest>,
-    ) -> Result<WRef<PointResponse>, mrpc::Status> {
-        log::trace!("point request: {:?}", req);
-
-        #[allow(unreachable_code)]
-        if BYPASS_MASSTREE {
-            // Send a garbage response
-            return Ok(self.dummy_point_response.clone());
-        }
-
-        let mut value = 0;
-        let found = self.mti.get(req.key as usize, &mut value, self.ti_vec[0]);
-        let result = if found {
-            QueryResult::Found
-        } else {
-            QueryResult::NotFound
-        };
-
-        let resp = WRef::new(PointResponse {
-            result: result.into(),
-            value: value as _,
-        });
-
-        Ok(resp)
-    }
-
-    async fn query_range<'s>(
-        &self,
-        req: RRef<'s, RangeRequest>,
-    ) -> Result<WRef<RangeResponse>, mrpc::Status> {
-        log::trace!("range request: {:?}", req);
-
-        let count = self
-            .mti
-            .sum_in_range(req.key as usize, req.range as usize, self.ti_vec[0]);
-
-        let resp = WRef::new(RangeResponse {
-            result: QueryResult::Found.into(),
-            range_count: count as _,
-        });
-
-        Ok(resp)
-    }
-}
-
-fn run_server(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
-    // Create the Masstree using the main thread and insert keys
-    let ti = ThreadInfo::new(threadinfo_purpose::TI_MAIN, -1);
-    let mti = MtIndex::new(ti);
-
-    for i in 0..opt.num_keys {
-        // eRPC uses city hash
-        let key = city::hash64(unsafe {
-            slice::from_raw_parts(&i as *const _ as *const u8, mem::size_of_val(&i))
-        }) as usize;
-        let value = i;
-        mti.put(key, value, ti);
-    }
-
-    // Create Masstree threadinfo structs for server threads
-    let total_server_threads = opt.num_server_fg_threads + opt.num_server_bg_threads;
-    let mut ti_vec = Vec::with_capacity(total_server_threads);
-    for i in 0..total_server_threads {
-        ti_vec.push(ThreadInfo::new(threadinfo_purpose::TI_PROCESS, i as _));
-    }
-
-    // mRPC stuff
-    // TODO(cjr): eRPC spawns a bunch of foreground and background threads for point and range
-    // query handler respectively. This design is reasonable because user can usually tell whether
-    // a service is going to block.
-    //
-    // We should add an add_service_blocking() API for blocking tasks (e.g., range query).
-    smol::block_on(async {
-        let service = MasstreeAnalyticsService::new(mti, ti_vec);
-        let _server = mrpc::stub::Server::bind((
-            opt.server_addr.as_deref().unwrap_or("0.0.0.0"),
-            opt.server_port,
-        ))?
-        .add_service(MasstreeAnalyticsServer::new(service))
-        .serve()
-        .await?;
-        Ok(())
-    })
-}
+use crate::masstree_analytics::{PointRequest, RangeRequest};
 
 #[derive(Debug)]
 enum Query {
@@ -274,12 +137,12 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     loop {
-                        if TERMINATE.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        if start.elapsed() > dura {
-                            break;
-                        }
+                        // if TERMINATE.load(Ordering::Relaxed) {
+                        //     break;
+                        // }
+                        // if start.elapsed() > dura {
+                        //     break;
+                        // }
 
                         select! {
                             resp = point_resp.next() => {
@@ -320,8 +183,10 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+mod logging;
+
 fn main() {
-    init_env_log("RUST_LOG", "debug");
+    logging::init_env_log("RUST_LOG", "debug");
     fastrand::seed(42);
 
     // register sigint handler
@@ -348,36 +213,5 @@ fn main() {
         opt.range_req_percent
     );
 
-    if opt.num_server_bg_threads == 0 {
-        log::warn!("main: No background threads. Range queries will run in foreground.");
-    }
-
-    if opt.is_server() {
-        run_server(opt).unwrap();
-    } else {
-        run_client(opt).unwrap();
-    }
-}
-
-fn init_env_log(filter_env: &str, default_level: &str) {
-    use chrono::Utc;
-    use std::io::Write;
-
-    let env = env_logger::Env::new().filter_or(filter_env, default_level);
-    env_logger::Builder::from_env(env)
-        .format(|buf, record| {
-            let level_style = buf.default_level_style(record.level());
-            writeln!(
-                buf,
-                "[{} {} {}:{}] {}",
-                Utc::now().format("%Y-%m-%d %H:%M:%S%.6f"),
-                level_style.value(record.level()),
-                record.file().unwrap_or("<unnamed>"),
-                record.line().unwrap_or(0),
-                &record.args()
-            )
-        })
-        .init();
-
-    log::info!("env_logger initialized");
+    run_client(opt).unwrap();
 }

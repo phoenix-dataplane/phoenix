@@ -5,28 +5,19 @@ timeout_secs = 15
 
 [[worker]]
 host = "danyang-06"
-bin = "masstree_analytics"
+bin = "masstree_analytics_server"
 args = """\
-  --process-id 0 \
-  --test-ms 10000 \
+  --num-keys 1000000 \
   --num-server-fg-threads 14 \
   --num-server-bg-threads 2 \
-  --num-client-threads 8 \
-  --req-window 2 \
-  --num-keys 1000000 \
-  --range-size 128 \
-  --range-req-percent 1 \
   --server-port 5000 \
 """
 
 [[worker]]
 host = "danyang-05"
-bin = "masstree_analytics"
+bin = "masstree_analytics_client"
 args = """\
-  --process-id 1 \
   --test-ms 10000 \
-  --num-server-fg-threads 14 \
-  --num-server-bg-threads 2 \
   --num-client-threads 8 \
   --req-window 2 \
   --num-keys 1000000 \
