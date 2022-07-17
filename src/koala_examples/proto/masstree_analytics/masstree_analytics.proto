@@ -14,8 +14,9 @@ service MasstreeAnalytics {
 
 // The result for whether the key of a query is found.
 enum QueryResult {
-  FOUND = 0;
-  NOT_FOUND = 1;
+  // 0 is used as the default value.
+  NOT_FOUND = 0;
+  FOUND = 1;
 }
 
 // The request message containing the key for point query.

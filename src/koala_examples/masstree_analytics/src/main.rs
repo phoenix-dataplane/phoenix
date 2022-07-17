@@ -283,28 +283,32 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
 
                         select! {
                             resp = point_resp.next() => {
-                                let rref = resp.unwrap()?;
-                                let token = rref.token();
-                                if let Query::Point(req) = &workload[token.0] {
-                                    point_resp.push(local_ex.run(client.query_point(req)));
+                                if resp.is_some() {
+                                    let rref = resp.unwrap()?;
+                                    let token = rref.token();
+                                    if let Query::Point(req) = &workload[token.0] {
+                                        point_resp.push(local_ex.run(client.query_point(req)));
+                                    }
                                 }
                             }
                             resp = range_resp.next() => {
-                                let rref = resp.unwrap()?;
-                                let token = rref.token();
-                                if let Query::Range(req) = &workload[token.0] {
-                                    range_resp.push(local_ex.run(client.query_range(req)));
+                                if resp.is_some() {
+                                    let rref = resp.unwrap()?;
+                                    let token = rref.token();
+                                    if let Query::Range(req) = &workload[token.0] {
+                                        range_resp.push(local_ex.run(client.query_range(req)));
+                                    }
+                                }
+                            }
+                            default => {
+                                if TERMINATE.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if start.elapsed() > dura {
+                                    break;
                                 }
                             }
                         };
-                        // let resp = responses.next().await.unwrap()?;
-                        // match resp {
-                        //     PointResponse { result, value } => {}
-                        //     RangeResponse {
-                        //         result,
-                        //         range_count,
-                        //     } => {}
-                        // }
                     }
 
                     Result::<(), mrpc::Status>::Ok(())
