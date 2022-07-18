@@ -24,6 +24,8 @@ smol = "1.2.5"
 minstant = "0.1.1"
 futures = "0.3.21"
 fastrand = "1.7.0"
+arc-swap = "1.5.0"
+crossbeam-utils = "0.8.10"
 
 [[bin]]
 name = "masstree_analytics_client"
