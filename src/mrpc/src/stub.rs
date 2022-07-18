@@ -291,16 +291,20 @@ impl ClientStub {
                     .collect();
 
                 // return the mapped addr back
-                SA_CTX.with(|sa_ctx| {
-                    let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
-                    sa_ctx.service.send_cmd(req)?;
-                    // COMMENT(cjr): must wait for the reply!
-                    rx_recv_impl!(
-                        sa_ctx.service,
-                        ipc::salloc::cmd::CompletionKind::NewMappedAddrs
-                    )?;
-                    Result::<(), Error>::Ok(())
-                })?;
+                // SA_CTX.with(|sa_ctx| {
+                //     let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
+                //     sa_ctx.service.send_cmd(req)?;
+                //     // COMMENT(cjr): must wait for the reply!
+                //     rx_recv_impl!(
+                //         sa_ctx.service,
+                //         ipc::salloc::cmd::CompletionKind::NewMappedAddrs
+                //     )?;
+                //     Result::<(), Error>::Ok(())
+                // })?;
+                let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                ctx.service.send_cmd(req)?;
+                // wait for the reply!
+                rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
 
                 Ok(Self {
                     handle: conn_handle,
@@ -369,6 +373,8 @@ impl Server {
     pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut msg_buffer = Vec::with_capacity(32);
         loop {
+            // TODO(cjr): change this to check_cm_event(); cm event contains new connections
+            // establishment and destruction; read heap scaling.
             // check new incoming connections
             self.check_new_incoming_connection()?;
             // check new requests
@@ -381,35 +387,68 @@ impl Server {
         MRPC_CTX.with(|ctx| {
             match ctx.service.try_recv_fd() {
                 Ok(fds) => {
-                    let mut vaddrs = Vec::new();
-                    rx_recv_impl!(ctx.service, CompletionKind::NewConnection, conn_resp, {
-                        let conn_handle = conn_resp.conn_handle;
-                        assert_eq!(fds.len(), conn_resp.read_regions.len());
-                        assert!(self.handles.insert(conn_handle));
-                        // setup recv cache
-                        CONN_SERVER_STUB_MAP
-                            .with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
+                    match ctx.service.recv_comp()?.0 {
+                        Ok(CompletionKind::NewConnection(conn_resp)) => {
+                            let conn_handle = conn_resp.conn_handle;
+                            assert_eq!(fds.len(), conn_resp.read_regions.len());
+                            assert!(self.handles.insert(conn_handle));
+                            // setup recv cache
+                            CONN_SERVER_STUB_MAP
+                                .with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
 
-                        let read_heap = ReadHeap::new(&conn_resp, &fds);
-                        vaddrs = read_heap
-                            .rbufs
-                            .iter()
-                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
-                            .collect();
-                        self.read_heaps.insert(conn_handle, read_heap);
-                        Ok(())
-                    })?;
+                            let read_heap = ReadHeap::new(&conn_resp, &fds);
+                            let vaddrs = read_heap
+                                .rbufs
+                                .iter()
+                                .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                                .collect();
+                            self.read_heaps.insert(conn_handle, read_heap);
+
+                            let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                            ctx.service.send_cmd(req)?;
+                            // NO NEED TO WAIT
+                            Ok(())
+                        }
+                        Ok(CompletionKind::NewMappedAddrs) => {
+                            // do nothing, just consume the completion
+                            Ok(())
+                        }
+                        Err(e) => Err(Error::Interface(stringify!($resp), e)),
+                        otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
+                    }?;
+
+                    // rx_recv_impl!(ctx.service, CompletionKind::NewConnection, conn_resp, {
+                    //     conn_handle = conn_resp.conn_handle;
+                    //     assert_eq!(fds.len(), conn_resp.read_regions.len());
+                    //     assert!(self.handles.insert(conn_handle));
+                    //     // setup recv cache
+                    //     CONN_SERVER_STUB_MAP
+                    //         .with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
+
+                    //     let read_heap = ReadHeap::new(&conn_resp, &fds);
+                    //     vaddrs = read_heap
+                    //         .rbufs
+                    //         .iter()
+                    //         .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                    //         .collect();
+                    //     self.read_heaps.insert(conn_handle, read_heap);
+                    //     Ok(())
+                    // })?;
                     // return the mapped addr back
-                    SA_CTX.with(|sa_ctx| {
-                        let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
-                        sa_ctx.service.send_cmd(req)?;
-                        // COMMENT(cjr): must wait for the reply!
-                        rx_recv_impl!(
-                            sa_ctx.service,
-                            ipc::salloc::cmd::CompletionKind::NewMappedAddrs
-                        )?;
-                        Result::<(), Error>::Ok(())
-                    })?;
+                    // SA_CTX.with(|sa_ctx| {
+                    //     let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
+                    //     sa_ctx.service.send_cmd(req)?;
+                    //     // COMMENT(cjr): must wait for the reply!
+                    //     rx_recv_impl!(
+                    //         sa_ctx.service,
+                    //         ipc::salloc::cmd::CompletionKind::NewMappedAddrs
+                    //     )?;
+                    //     Result::<(), Error>::Ok(())
+                    // })?;
+                    // let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                    // ctx.service.send_cmd(req)?;
+                    // NO NEED TO WAIT?// wait for the reply!
+                    // rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
                 }
                 Err(ipc::Error::TryRecvFd(ipc::TryRecvError::Empty)) => {}
                 Err(e) => return Err(e.into()),

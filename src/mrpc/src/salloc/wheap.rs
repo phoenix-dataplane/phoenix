@@ -331,7 +331,7 @@ impl SharedHeapAllocator {
     }
 
     pub(crate) unsafe fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
-        // backend deallocation is handled by SharedRegion's drop together with global GarbageCollector
+        // backend deallocation is handled by SharedRegion::drop together with global GarbageCollector
         use slabmalloc::Allocator;
         match layout.size() {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {

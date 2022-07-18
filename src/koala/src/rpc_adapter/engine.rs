@@ -15,6 +15,7 @@ use ipc::mrpc;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
+use super::pool::BufferSlab;
 use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
@@ -26,8 +27,8 @@ use crate::engine::{
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
-use crate::salloc::region::SharedRegion;
-use crate::salloc::state::State as SallocState;
+// use crate::salloc::region::SharedRegion;
+// use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
 
 pub(crate) struct TlStorage {
@@ -45,13 +46,14 @@ unsafe impl EngineLocalStorage for TlStorage {
         self
     }
 }
+
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
     pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
     pub(crate) tls: Box<TlStorage>,
 
-    pub(crate) salloc: SallocState,
+    // pub(crate) salloc: SallocState,
 
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<RpcMessageTx>,
@@ -367,11 +369,11 @@ impl RpcAdapterEngine {
 
                     // TODO(cjr): only handle the first element, fix it later
                     for call_id in &call_ids[..1] {
-                        let recv_mrs = self
+                        let recv_buffer_handles = self
                             .recv_mr_usage
                             .remove(&RpcId(conn_id, *call_id))
                             .expect("invalid WR identifier");
-                        self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
+                        self.reclaim_recv_buffers(cmid, &recv_buffer_handles)?;
                     }
                     // timer.tick();
                     // log::info!("ReclaimRecvBuf: {}", timer);
@@ -439,7 +441,7 @@ impl RpcAdapterEngine {
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
-            addr_arbiter: &self.salloc.shared.resource.recv_mr_addr_map,
+            addr_arbiter: &self.state.resource().addr_map,
         };
 
         let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
@@ -497,13 +499,13 @@ impl RpcAdapterEngine {
                                     self.state.resource().cmid_table.get(&cmid_handle)?;
                                 // received a segment of RPC message
                                 let sge = SgE {
-                                    ptr: wr_ctx.mr_addr,
+                                    ptr: wr_ctx.buffer_addr,
                                     len: wc.byte_len as _, // note this byte_len is only valid for
                                                            // recv request
                                 };
                                 let mut recv_ctx = conn_ctx.receiving_ctx.lock();
                                 recv_ctx.sg_list.0.push(sge);
-                                recv_ctx.recv_mrs.push(Handle(wc.wr_id as u32));
+                                recv_ctx.recv_buffer_handles.push(Handle(wc.wr_id as u32));
                                 drop(recv_ctx);
                                 conn_ctx
                             };
@@ -530,7 +532,8 @@ impl RpcAdapterEngine {
                                 )?;
 
                                 // keep them outstanding because they will be used by the user
-                                self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
+                                self.recv_mr_usage
+                                    .insert(recv_id, recv_ctx.recv_buffer_handles);
                             }
                             progress += 1;
                         }
@@ -561,9 +564,9 @@ impl RpcAdapterEngine {
         mr_handles: &[Handle],
     ) -> Result<(), DatapathError> {
         for handle in mr_handles {
-            let recv_mr = self.salloc.resource().recv_mr_table.get(handle)?;
-            let off = recv_mr.as_ptr().expose_addr();
-            let len = recv_mr.len();
+            let recv_buffer = self.state.resource().recv_buffer_table.get(handle)?;
+            let off = recv_buffer.addr();
+            let len = recv_buffer.len();
 
             let mut odp_mr = self.get_or_init_odp_mr();
             unsafe {
@@ -587,11 +590,12 @@ impl RpcAdapterEngine {
             Some(mut pre_id) => {
                 // prepare and post receive buffers
                 let (read_regions, fds) = self.prepare_recv_buffers(&mut pre_id)?;
-                // accept
-                let id = pre_id.accept(None).await?;
-                let handle = id.as_handle();
-                // insert resources after connection establishment
-                self.state.resource().insert_cmid(id, 128)?;
+                let handle = pre_id.as_handle();
+                // move pre_cm_id to staging
+                self.state
+                    .resource()
+                    .staging_pre_cmid_table
+                    .insert(handle, pre_id)?;
                 // pass these resources back to the user
                 let conn_resp = ConnectResponse {
                     conn_handle: handle,
@@ -601,6 +605,11 @@ impl RpcAdapterEngine {
                     mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
                 ));
                 self.cmd_tx.send(comp)?;
+
+                // // accept connection after we get the AddrMap updated
+                // let id = pre_id.accept(None).await?;
+                // // insert resources after connection establishment
+                // self.state.resource().insert_cmid(id, 128)?;
                 Ok(Status::Progress(1))
             }
         }
@@ -610,47 +619,47 @@ impl RpcAdapterEngine {
         &mut self,
         pre_id: &mut ulib::ucm::PreparedCmId,
     ) -> Result<(Vec<ReadHeapRegion>, Vec<RawFd>), ControlPathError> {
-        // create 128 receive mrs, post recv requestse and
-        // This is safe because even though recv_mr is moved, the backing memfd and
-        // mapped memory regions are still there, and nothing of this mr is changed.
-        // We also make sure the lifetime of the mr is longer by storing it in the
-        // state.
-        let mut recv_mrs = Vec::new();
+        // create 128 receive mrs, post recv requests
+        let slab = BufferSlab::new(128, 8 * 1024 * 1024, 8 * 1024 * 1024)?;
+
+        // post receives
         for _ in 0..128 {
-            let recv_mr: Arc<SharedRegion> =
-                self.salloc.resource().allocate_recv_mr(8 * 1024 * 1024)?;
-            recv_mrs.push(recv_mr);
-        }
-        // for _ in 0..128 {
-        //     let recv_mr: ulib::uverbs::MemoryRegion<u8> = pre_id.alloc_msgs(8 * 1024 * 1024)?;
-        //     recv_mrs.push(recv_mr);
-        // }
-        for recv_mr in recv_mrs.iter_mut() {
             let mut odp_mr = self.get_or_init_odp_mr();
-            let wr_id = recv_mr.as_handle().0 as u64;
+            // This is fine because we just allocated 128 buffers there
+            let recv_buffer = slab.obtain().unwrap();
+
+            let handle = recv_buffer.as_handle();
+            let wr_id = handle.0 as u64;
             let wr_ctx = WrContext {
                 conn_id: pre_id.as_handle(),
-                mr_addr: recv_mr.as_ptr().addr(),
+                buffer_addr: recv_buffer.addr(),
             };
-            let off = recv_mr.as_ptr().addr();
-            let len = recv_mr.len();
+
+            let off = recv_buffer.addr();
+            let len = recv_buffer.len();
+
             unsafe {
                 pre_id.post_recv(&mut odp_mr, off..off + len, wr_id)?;
             }
             self.state.resource().wr_contexts.insert(wr_id, wr_ctx)?;
+            self.state
+                .resource()
+                .recv_buffer_table
+                .insert(handle, recv_buffer)?;
         }
-        let mut read_regions = Vec::with_capacity(128);
-        let mut fds = Vec::with_capacity(128);
-        for recv_mr in recv_mrs {
-            let file_off = 0;
-            read_regions.push(ReadHeapRegion {
-                handle: recv_mr.as_handle(),
-                addr: recv_mr.as_ptr().addr(),
-                len: recv_mr.len(),
-                file_off,
-            });
-            fds.push(recv_mr.memfd().as_raw_fd());
-        }
+
+        let region = slab.storage();
+        let read_regions = vec![ReadHeapRegion {
+            handle: region.as_handle(),
+            addr: region.as_ptr().addr(),
+            len: region.len(),
+            file_off: 0,
+        }];
+        let fds = vec![region.memfd().as_raw_fd()];
+
+        // don't forget this
+        self.state.resource().recv_buffer_pool.replenish(slab);
+
         Ok((read_regions, fds))
     }
 
@@ -714,6 +723,34 @@ impl RpcAdapterEngine {
                     .listener_table
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(mrpc::cmd::CompletionKind::Bind(handle))
+            }
+            mrpc::cmd::Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
+                log::debug!("NewMappedAddrs, app_vaddr: {:?}", app_vaddrs);
+                for (mr_handle, app_vaddr) in app_vaddrs.iter() {
+                    let region = self.state.resource().recv_buffer_pool.find(mr_handle)?;
+                    let mr_local_addr = region.as_ptr().expose_addr();
+                    let mr_remote_mapped = mrpc_marshal::ShmRecvMr {
+                        ptr: *app_vaddr,
+                        len: region.len(),
+                        align: region.align(),
+                    };
+                    self.state
+                        .resource()
+                        .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
+                }
+                // finish the last step to establish a connection
+                if let Ok(Some(pre_id)) = self
+                    .state
+                    .resource()
+                    .staging_pre_cmid_table
+                    .remove_resource(&conn_handle)
+                {
+                    // accept connection after we get the AddrMap updated
+                    let id = Arc::try_unwrap(pre_id).unwrap().accept(None).await?;
+                    // insert resources after connection establishment
+                    self.state.resource().insert_cmid(id, 128)?;
+                }
+                Ok(mrpc::cmd::CompletionKind::NewMappedAddrs)
             }
             mrpc::cmd::Command::UpdateProtosInner(dylib) => {
                 log::debug!("Loading dispatch library: {:?}", dylib);

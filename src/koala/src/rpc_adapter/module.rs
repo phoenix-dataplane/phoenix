@@ -79,14 +79,14 @@ impl RpcAdapterEngineBuilder {
     fn build(self) -> Result<RpcAdapterEngine> {
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        // let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         Ok(RpcAdapterEngine {
             state,
             odp_mr: None,
             tls: Box::new(TlStorage { ops: self.ops }),
-            salloc: salloc_state,
+            // salloc: salloc_state,
             local_buffer: VecDeque::new(),
             node: self.node,
             cmd_rx: self.cmd_rx,

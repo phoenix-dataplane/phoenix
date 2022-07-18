@@ -14,6 +14,7 @@ use super::Error;
 
 #[derive(Debug)]
 pub struct ReadHeap {
+    /// The number of `RRef<T>`s pointing to this heap.
     pub(crate) rref_cnt: AtomicUsize,
     pub(crate) rbufs: Vec<ReadRegion>,
 }
@@ -23,7 +24,7 @@ impl Drop for ReadHeap {
         let cnt = self.rref_cnt.load(Ordering::Acquire);
         assert_eq!(
             cnt, 0,
-            "There are {} outstanding references on this heap",
+            "Found {} outstanding references still pointing to this heap",
             cnt
         );
     }

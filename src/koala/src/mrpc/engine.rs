@@ -94,7 +94,8 @@ impl MrpcEngine {
             // timer.tick();
 
             // 50ns
-            self.check_new_incoming_connection()?;
+            // self.check_new_incoming_connection()?;
+            self.check_input_cmd_queue()?;
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             // timer.tick();
             // log::info!("mrpc mainloop: {}", timer);
@@ -136,7 +137,8 @@ impl MrpcEngine {
             Ok(req) => {
                 let result = self.process_cmd(&req).await;
                 match result {
-                    Ok(res) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
+                    Ok(Some(res)) => self.customer.send_comp(cmd::Completion(Ok(res)))?,
+                    Ok(None) => return Ok(Progress(0)),
                     Err(e) => self.customer.send_comp(cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
@@ -154,7 +156,7 @@ impl MrpcEngine {
         self.transport_type = Some(transport_type);
     }
 
-    async fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
+    async fn process_cmd(&mut self, req: &cmd::Command) -> Result<Option<cmd::CompletionKind>, Error> {
         use ipc::mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(transport_type) => {
@@ -162,28 +164,40 @@ impl MrpcEngine {
                     Err(Error::TransportType)
                 } else {
                     self.create_transport(*transport_type);
-                    Ok(CompletionKind::SetTransport)
+                    Ok(Some(CompletionKind::SetTransport))
                 }
             }
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
-                match self.cmd_rx.recv().await.unwrap().0 {
-                    Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
-                        self.customer.send_fd(&fds).unwrap();
-                        Ok(CompletionKind::Connect(conn_resp))
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
+                Ok(None)
+                // match self.cmd_rx.recv().await.unwrap().0 {
+                //     Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
+                //         self.customer.send_fd(&fds).unwrap();
+                //         Ok(CompletionKind::Connect(conn_resp))
+                //     }
+                //     other => panic!("unexpected: {:?}", other),
+                // }
             }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
-                match self.cmd_rx.recv().await.unwrap().0 {
-                    Ok(CompletionKind::Bind(listener_handle)) => {
-                        // just forward it
-                        Ok(CompletionKind::Bind(listener_handle))
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
+                Ok(None)
+                // match self.cmd_rx.recv().await.unwrap().0 {
+                //     Ok(CompletionKind::Bind(listener_handle)) => {
+                //         // just forward it
+                //         Ok(CompletionKind::Bind(listener_handle))
+                //     }
+                //     other => panic!("unexpected: {:?}", other),
+                // }
+            }
+            Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
+                self.cmd_tx
+                    .send(Command::NewMappedAddrs(*conn_handle, app_vaddrs.clone()))
+                    .unwrap();
+                Ok(None)
+                // match self.cmd_rx.recv().await.unwrap().0 {
+                //     Ok(CompletionKind::NewMappedAddrs) => Ok(CompletionKind::NewMappedAddrs),
+                //     other => panic!("unexpected: {:?}", other),
+                // }
             }
             Command::UpdateProtos(protos) => {
                 let dylib_path =
@@ -191,13 +205,14 @@ impl MrpcEngine {
                 self.cmd_tx
                     .send(Command::UpdateProtosInner(dylib_path))
                     .unwrap();
-                match self.cmd_rx.recv().await.unwrap().0 {
-                    Ok(CompletionKind::UpdateProtos) => {
-                        // just forward it
-                        Ok(CompletionKind::UpdateProtos)
-                    }
-                    other => panic!("unexpected: {:?}", other),
-                }
+                Ok(None)
+                // match self.cmd_rx.recv().await.unwrap().0 {
+                //     Ok(CompletionKind::UpdateProtos) => {
+                //         // just forward it
+                //         Ok(CompletionKind::UpdateProtos)
+                //     }
+                //     other => panic!("unexpected: {:?}", other),
+                // }
             }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
@@ -359,17 +374,31 @@ impl MrpcEngine {
         }
     }
 
-    fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
+    // fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
+    fn check_input_cmd_queue(&mut self) -> Result<Status, Error> {
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {
+                    // server new incoming connection
                     Ok(CompletionKind::NewConnectionInternal(conn_resp, fds)) => {
                         // TODO(cjr): check if this send_fd will block indefinitely.
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::NewConnection(conn_resp);
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                        Ok(Status::Progress(1))
+                    }
+                    // client connection response
+                    Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
+                        self.customer.send_fd(&fds).unwrap();
+                        let comp_kind = CompletionKind::Connect(conn_resp);
+                        self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                        Ok(Status::Progress(1))
+                    }
+                    // server bind response
+                    c @ Ok(CompletionKind::Bind(..) | CompletionKind::NewMappedAddrs | CompletionKind::UpdateProtos) => {
+                        self.customer.send_comp(cmd::Completion(c))?;
                         Ok(Status::Progress(1))
                     }
                     other => panic!("unexpected: {:?}", other),

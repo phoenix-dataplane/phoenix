@@ -138,4 +138,14 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
         }
         Ok(())
     }
+
+    pub(crate) fn remove_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
+        let mut table = self.table.lock();
+        let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
+        if close {
+            let r = table.remove(h).unwrap();
+            return Ok(Some(r.data()));
+        }
+        Ok(None)
+    }
 }
