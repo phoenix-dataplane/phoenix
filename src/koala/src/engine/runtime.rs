@@ -6,11 +6,14 @@ use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
+use dashmap::DashMap;
 use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
-use super::{EngineContainer, EngineLocalStorage, EngineResult, Indicator};
+use super::container::DetachedEngineContainer;
+use super::manager::EngineId;
+use super::{ActiveEngineContainer, EngineLocalStorage, EngineResult, Indicator};
 
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
@@ -70,10 +73,13 @@ pub(crate) struct Runtime {
     pub(crate) _id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
-    pub(crate) running: RefCell<Vec<RefCell<EngineContainer>>>,
+    pub(crate) running: RefCell<Vec<RefCell<(EngineId, ActiveEngineContainer)>>>,
 
     pub(crate) new_pending: AtomicBool,
-    pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
+    pub(crate) pending: Mutex<Vec<RefCell<(EngineId, ActiveEngineContainer)>>>,
+
+    pub(crate) _suspended: DashMap<EngineId, ActiveEngineContainer>,
+    pub(crate) detached: DashMap<EngineId, DetachedEngineContainer>,
 }
 
 impl Runtime {
@@ -98,7 +104,7 @@ impl Runtime {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
-    pub(crate) fn add_engine(&self, engine: EngineContainer) {
+    pub(crate) fn add_engine(&self, engine: ActiveEngineContainer) {
         self.pending.lock().push(RefCell::new(engine));
         self.new_pending.store(true, Ordering::Release);
     }

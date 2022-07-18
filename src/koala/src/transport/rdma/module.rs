@@ -19,7 +19,7 @@ use super::engine::TransportEngine;
 use super::ops::Ops;
 use super::state::{State, Shared};
 use crate::config::RdmaTransportConfig;
-use crate::engine::container::EngineContainer;
+use crate::engine::container::ActiveEngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
@@ -54,7 +54,7 @@ fn create_cm_engine(runtime_manager: &RuntimeManager, state_mgr: &SharedStateMan
     let cm_engine = CmEngine::new(node, state);
 
     // always submit the engine to a dedicate runtime
-    runtime_manager.submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+    runtime_manager.submit(ActiveEngineContainer::new(cm_engine), SchedulingMode::Dedicate);
     Ok(())
 }
 
@@ -150,7 +150,7 @@ impl TransportModule {
 
         // submit the engine to a runtime
         self.runtime_manager
-            .submit(EngineContainer::new(engine), mode);
+            .submit(ActiveEngineContainer::new(engine), mode);
 
         Ok(())
     }

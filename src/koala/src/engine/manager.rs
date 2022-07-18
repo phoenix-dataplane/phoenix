@@ -1,16 +1,26 @@
 //! Runtime manager is the control plane of runtimes. It is responsible for
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-
-use spin::Mutex;
+use std::sync::Mutex;
 
 use interface::engine::SchedulingMode;
+use nix::unistd::Pid;
 
-use super::container::EngineContainer;
+use super::EngineType;
+use super::container::ActiveEngineContainer;
 use super::runtime::{self, Runtime};
 use crate::config::Config;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EngineId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RuntimeId(u64);
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
@@ -20,10 +30,11 @@ struct Inner {
     next_core: usize,
     runtimes: Vec<Arc<Runtime>>,
     handles: Vec<JoinHandle<Result<(), runtime::Error>>>,
+    clients: HashMap<Pid, HashSet<(EngineId, EngineType)>>,
 }
 
 impl Inner {
-    fn schedule_dedicate(&mut self, engine: EngineContainer) {
+    fn schedule_dedicate(&mut self, engine: ActiveEngineContainer) {
         // find a spare runtime
         let rid = match self
             .runtimes
@@ -58,13 +69,14 @@ impl RuntimeManager {
             next_core: 0,
             runtimes: Vec::with_capacity(1),
             handles: Vec::with_capacity(1),
+            clients: HashMap::new(),
         };
         RuntimeManager {
             inner: Mutex::new(inner),
         }
     }
 
-    pub(crate) fn submit(&self, engine: EngineContainer, mode: SchedulingMode) {
+    pub(crate) fn submit(&self, engine: ActiveEngineContainer, mode: SchedulingMode) {
         let mut inner = self.inner.lock();
         match mode {
             SchedulingMode::Dedicate => {

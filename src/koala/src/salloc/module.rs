@@ -16,7 +16,7 @@ use ipc::unix::DomainSocket;
 use super::engine::SallocEngine;
 use super::state::{State, Shared};
 use crate::config::SallocConfig;
-use crate::engine::container::EngineContainer;
+use crate::engine::container::ActiveEngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
@@ -114,7 +114,7 @@ impl SallocModule {
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
         self.runtime_manager
-            .submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
+            .submit(ActiveEngineContainer::new(engine), SchedulingMode::Dedicate);
 
         Ok(())
     }

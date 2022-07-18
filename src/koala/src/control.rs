@@ -14,7 +14,7 @@ use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
 
 use crate::config::Config;
-use crate::engine::container::EngineContainer;
+use crate::engine::container::ActiveEngineContainer;
 use crate::engine::graph::create_channel;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
@@ -161,7 +161,7 @@ impl Control {
         let nodes = self.build_internal_queues();
 
         // build all engines from nodes
-        let mut engines: Vec<EngineContainer> = Vec::new();
+        let mut engines: Vec<ActiveEngineContainer> = Vec::new();
 
         // establish a specialized channel between mrpc and rpc-adapter
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -203,7 +203,7 @@ impl Control {
                         &self.salloc,
                         &self.rdma_transport
                     )?;
-                    engines.push(EngineContainer::new(e1));
+                    engines.push(ActiveEngineContainer::new(e1));
                 }
                 EngineType::Overload => unimplemented!(),
             };

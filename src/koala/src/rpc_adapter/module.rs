@@ -14,7 +14,7 @@ use ipc::unix::DomainSocket;
 use super::acceptor::engine::AcceptorEngine;
 use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::{State, Shared};
-use crate::engine::container::EngineContainer;
+use crate::engine::container::ActiveEngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::salloc::module::SallocModule;
@@ -43,7 +43,7 @@ fn create_acceptor_engine(
 
     // always submit the engine to a dedicate runtime
     runtime_manager.submit(
-        EngineContainer::new(acceptor_engine),
+        ActiveEngineContainer::new(acceptor_engine),
         SchedulingMode::Dedicate,
     );
     Ok(())

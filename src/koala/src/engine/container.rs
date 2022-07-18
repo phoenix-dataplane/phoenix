@@ -11,7 +11,7 @@ pub(crate) struct DetachedEngineContainer {
     desc: String,
 }
 
-pub(crate) struct EngineContainer {
+pub(crate) struct ActiveEngineContainer {
     // SAFETY: the future's lifetime will be extended to static.
     // We must ensure the engine is not moved / dropped
     // before polling the future.
@@ -35,7 +35,7 @@ unsafe fn extend_lifetime<'a>(
     std::mem::transmute::<BoxFuture<'a, EngineResult>, BoxFuture<'static, EngineResult>>(fut)
 }
 
-impl EngineContainer {
+impl ActiveEngineContainer {
     /// Spin up a new engine
     pub(crate) fn new<E: Engine>(mut engine: E) -> Self {
         let indicator = Indicator::new(0);

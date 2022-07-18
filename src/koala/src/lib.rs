@@ -21,7 +21,7 @@ pub mod module;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;
-
+pub mod plugin;
 pub mod mrpc;
 
 pub(crate) mod dependency;

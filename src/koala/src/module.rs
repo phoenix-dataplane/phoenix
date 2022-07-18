@@ -10,10 +10,6 @@ use crate::engine::{Engine, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::{SharedStorage, ResourceCollection};
 
-pub struct ModuleCollection {
-    pub modules: HashMap<String, Arc<dyn KoalaModule>>,
-
-} 
 
 pub enum NewEngineRequest<'a> {
     Service {

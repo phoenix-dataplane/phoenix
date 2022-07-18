@@ -15,7 +15,7 @@ use ipc::unix::DomainSocket;
 use super::engine::MrpcEngine;
 use super::state::{State, Shared};
 use crate::config::MrpcConfig;
-use crate::engine::container::EngineContainer;
+use crate::engine::container::ActiveEngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
@@ -157,7 +157,7 @@ impl MrpcModule {
 
         // 5. submit the engine to a runtime
         self.runtime_manager
-            .submit(EngineContainer::new(engine), mode);
+            .submit(ActiveEngineContainer::new(engine), mode);
 
         Ok(())
     }
