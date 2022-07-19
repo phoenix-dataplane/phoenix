@@ -369,6 +369,28 @@ impl Server {
             self.poll_requests(&mut msg_buffer).await?;
             self.post_replies(&mut msg_buffer)?;
         }
+
+        // use futures::select;
+        // use futures::stream::UnorderedFutures;
+        // let mut running = UnorderedFutures::new();
+        // loop {
+        //     select! {
+        //         reply_erased = running.next() => {
+        //             msg_buffer.push(reply_erased);
+        //         }
+        //         completed => {}
+        //         default => {
+        //             // no futures is ready
+        //             self.check_cm_event()?;
+        //             // check new requests
+        //             // self.poll_requests(&mut msg_buffer).await?;
+        //             self.poll_requests(&mut running)?;
+        //             if !msg_buffer.is_empty() {
+        //                 self.post_replies(&mut msg_buffer)?;
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     fn handle_new_connection(

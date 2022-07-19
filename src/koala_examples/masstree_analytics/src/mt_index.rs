@@ -16,7 +16,7 @@ impl ThreadInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MtIndex(*mut ());
 
 unsafe impl Send for MtIndex {}

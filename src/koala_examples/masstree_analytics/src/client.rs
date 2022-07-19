@@ -60,6 +60,9 @@ struct Opt {
     /// Server port
     #[structopt(long)]
     server_port: u16,
+    /// Number of server foreground threads
+    #[structopt(long)]
+    num_server_fg_threads: usize,
 }
 
 pub mod masstree_analytics {
@@ -216,7 +219,7 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                 // frameworks (establishing connections to a particular server thread).
                 let stub = MasstreeAnalyticsClient::connect((
                     opt.server_addr.as_deref().unwrap_or("127.0.0.1"),
-                    opt.server_port,
+                    opt.server_port + (tid % opt.num_server_fg_threads) as u16,
                 ))?;
                 log::info!("main: Thread {}: Connected. Sending requests.", tid);
 
@@ -268,7 +271,7 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                                     let req_id = rref.token().0;
                                     let usec = req_ts[req_id].elapsed().as_micros() as usize;
                                     client.num_resps_tot += 1;
-                                    client.point_latency.update(usec * 10);
+                                    client.range_latency.update(usec * 10);
                                     if let Query::Range(req) = &workload[req_id] {
                                         req_ts[req_id] = Instant::now();
                                         range_resp.push(local_ex.run(stub.query_range(req)));

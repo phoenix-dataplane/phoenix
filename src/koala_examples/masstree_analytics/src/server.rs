@@ -1,3 +1,4 @@
+#![feature(scoped_threads)]
 use std::mem;
 use std::slice;
 
@@ -44,14 +45,16 @@ use crate::masstree_analytics::{
 #[derive(Debug)]
 struct MasstreeAnalyticsService {
     mti: MtIndex,
+    tid: usize,
     ti_vec: Vec<ThreadInfo>,
     dummy_point_response: WRef<PointResponse>,
 }
 
 impl MasstreeAnalyticsService {
-    fn new(mti: MtIndex, ti_vec: Vec<ThreadInfo>) -> Self {
+    fn new(mti: MtIndex, tid: usize, ti_vec: Vec<ThreadInfo>) -> Self {
         Self {
             mti,
+            tid,
             ti_vec,
             dummy_point_response: WRef::new(PointResponse {
                 result: QueryResult::NotFound.into(),
@@ -67,7 +70,7 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         &self,
         req: RRef<'s, PointRequest>,
     ) -> Result<WRef<PointResponse>, mrpc::Status> {
-        log::trace!("point request: {:?}", req);
+        log::trace!("point request: {:?} in mRPC thread {}", req, self.tid);
 
         #[allow(unreachable_code)]
         if BYPASS_MASSTREE {
@@ -76,7 +79,7 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         }
 
         let mut value = 0;
-        let found = self.mti.get(req.key as usize, &mut value, self.ti_vec[0]);
+        let found = self.mti.get(req.key as usize, &mut value, self.ti_vec[self.tid]);
         let result = if found {
             QueryResult::Found
         } else {
@@ -137,17 +140,32 @@ fn run_server(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     // a service is going to block.
     //
     // We should add an add_service_blocking() API for blocking tasks (e.g., range query).
-    smol::block_on(async {
-        let service = MasstreeAnalyticsService::new(mti, ti_vec);
-        let _server = mrpc::stub::Server::bind((
-            opt.server_addr.as_deref().unwrap_or("0.0.0.0"),
-            opt.server_port,
-        ))?
-        .add_service(MasstreeAnalyticsServer::new(service))
-        .serve()
-        .await?;
-        Ok(())
-    })
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for i in 0..opt.num_server_fg_threads {
+            let tid = i;
+            // cloning the reference
+            let mti = mti.clone();
+            // cloning the reference
+            let ti_vec = ti_vec.clone();
+            let opt = &opt;
+            handles.push(s.spawn(move || {
+                smol::block_on(async {
+                    let service = MasstreeAnalyticsService::new(mti, tid, ti_vec);
+                    let _server = mrpc::stub::Server::bind((
+                        opt.server_addr.as_deref().unwrap_or("0.0.0.0"),
+                        opt.server_port + tid as u16,
+                    ))?
+                    .add_service(MasstreeAnalyticsServer::new(service))
+                    .serve()
+                    .await?;
+                    Result::<(), Box<dyn std::error::Error>>::Ok(())
+                }).unwrap();
+            }));
+        }
+    });
+
+    Ok(())
 }
 
 mod logging;

@@ -25,4 +25,5 @@ args = """\
   --range-req-percent 1 \
   --server-port 5000 \
   --server-addr rdma0.danyang-06 \
+  --num-server-fg-threads 14 \
 """
