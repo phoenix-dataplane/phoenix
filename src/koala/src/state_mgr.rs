@@ -1,5 +1,5 @@
 use std::collections::hash_map;
-use std::sync::{Weak, Arc};
+use std::sync::{Arc, Weak};
 
 use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
@@ -13,7 +13,7 @@ pub trait ProcessShared: Sized {
 /// Per-user-application-process shared state
 pub struct SharedStateManager<S> {
     // TODO(wyj): determine whether we should wrap states in Mutex?
-    // i.e., restoring engines in dedicated thread or on main control thread? 
+    // i.e., restoring engines in dedicated thread or on main control thread?
     pub states: spin::Mutex<HashMap<Pid, Weak<S>>>,
 }
 
@@ -24,14 +24,13 @@ impl<S: ProcessShared> SharedStateManager<S> {
         }
     }
 
-    pub fn get_or_create(&self, pid: Pid) -> Result<Arc<S>, <S as ProcessShared>::Err>  {
+    pub fn get_or_create(&self, pid: Pid) -> Result<Arc<S>, <S as ProcessShared>::Err> {
         let mut states = self.states.lock();
         match states.entry(pid) {
             hash_map::Entry::Occupied(mut entry) => {
                 if let Some(state) = entry.get().upgrade() {
                     Ok(state)
-                }
-                else {
+                } else {
                     let state = S::new(pid)?;
                     let wrapped = Arc::new(state);
                     entry.insert(Arc::downgrade(&wrapped));

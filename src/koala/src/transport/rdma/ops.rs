@@ -40,9 +40,9 @@ pub(crate) struct Ops {
 
 impl Clone for Ops {
     fn clone(&self) -> Self {
-        let shared = Arc::clone(&self.state.shared); 
+        let shared = Arc::clone(&self.state.shared);
         let state = State::new(shared);
-        Ops { state } 
+        Ops { state }
     }
 }
 

@@ -1,8 +1,10 @@
 pub use version::{version, Version};
 
-// dump -> unload
-// restore -> reinstate
+use crate::storage::ResourceCollection;
+
+use super::Engine;
+
 pub trait Unload {
-    fn suspend(&mut self);
-    fn unload(self);
+    fn detach(&mut self);
+    fn unload(self: Box<Self>) -> ResourceCollection;
 }

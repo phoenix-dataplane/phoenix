@@ -1,6 +1,7 @@
 //! A Control is the entry of control plane. It directs commands from the external
 //! world to corresponding module.
 use nix::unistd::Pid;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -14,10 +15,13 @@ use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
 
 use crate::config::Config;
-use crate::engine::container::ActiveEngineContainer;
+use crate::engine::container;
+use crate::engine::container::EngineContainer;
 use crate::engine::graph::create_channel;
 use crate::engine::manager::RuntimeManager;
+use crate::engine::upgrade::EngineUpgrader;
 use crate::node::Node;
+use crate::plugin::PluginCollection;
 use crate::{
     mrpc, rpc_adapter, salloc,
     transport::{rdma, tcp},
@@ -32,6 +36,8 @@ pub struct Control {
     mrpc: mrpc::module::MrpcModule,
     salloc: salloc::module::SallocModule,
     rpc_adapter: rpc_adapter::module::RpcAdapterModule,
+    plugins: Arc<PluginCollection>,
+    upgrader: EngineUpgrader,
 }
 
 impl Control {
@@ -63,6 +69,10 @@ impl Control {
         assert!(config.salloc.is_some());
         let salloc_config = config.salloc.clone().unwrap();
 
+        let plugins = Arc::new(PluginCollection::new());
+        plugins.load_plugin(String::from("Salloc"), "/tmp/salloc.dylib");
+        let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
+
         Control {
             sock,
             config,
@@ -78,6 +88,8 @@ impl Control {
             mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
             salloc: salloc::module::SallocModule::new(salloc_config, Arc::clone(&runtime_manager)),
             rpc_adapter: rpc_adapter::module::RpcAdapterModule::new(),
+            plugins,
+            upgrader,
         }
     }
 
@@ -161,7 +173,7 @@ impl Control {
         let nodes = self.build_internal_queues();
 
         // build all engines from nodes
-        let mut engines: Vec<ActiveEngineContainer> = Vec::new();
+        let mut engines: Vec<EngineContainer> = Vec::new();
 
         // establish a specialized channel between mrpc and rpc-adapter
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -201,16 +213,18 @@ impl Control {
                         rx.take().unwrap(),
                         tx2.take().unwrap(),
                         &self.salloc,
-                        &self.rdma_transport
+                        &self.rdma_transport,
                     )?;
-                    engines.push(ActiveEngineContainer::new(e1));
+                    engines.push(EngineContainer::new(e1));
                 }
                 EngineType::Overload => unimplemented!(),
+                EngineType::SallocV2 => unimplemented!(),
             };
         }
         // submit engines to runtime
         for e in engines {
-            self.runtime_manager.submit(e, mode);
+            self.runtime_manager
+                .submit(Pid::from_raw(cred.pid.unwrap()), e, mode);
         }
         Ok(())
     }
@@ -252,6 +266,28 @@ impl Control {
                         self.salloc
                             .handle_new_client(&self.sock, &client_path, mode, cred)?;
                     }
+                    EngineType::SallocV2 => {
+                        let module = self.plugins.modules.get("Salloc").unwrap();
+                        let request = crate::module::NewEngineRequest::Service {
+                            sock: &self.sock,
+                            cleint_path: &client_path,
+                            mode,
+                            cred,
+                        };
+                        let engine = module
+                            .value()
+                            .create_engine(
+                                &crate::engine::EngineType(String::from("Salloc")),
+                                request,
+                            )
+                            .unwrap();
+                        let container = EngineContainer::new_v2(engine);
+                        self.runtime_manager.submit(
+                            Pid::from_raw(cred.pid.unwrap()),
+                            container,
+                            mode,
+                        );
+                    }
                     _ => unimplemented!(),
                 }
                 Ok(())
@@ -263,6 +299,14 @@ impl Control {
                 .tcp_transport
                 .handle_request(&req, &self.sock, sender, cred),
             control::Request::Mrpc(req) => self.mrpc.handle_request(&req, &self.sock, sender, cred),
+            control::Request::Upgrade => {
+                self.plugins
+                    .load_plugin(String::from("Salloc"), "/tmp/salloc.dylib");
+                let mut engines = HashSet::new();
+                engines.insert(crate::engine::EngineType(String::from("Salloc")));
+                self.upgrader.upgrade(engines);
+                Ok(())
+            }
         }
     }
 }

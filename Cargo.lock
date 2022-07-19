@@ -758,6 +758,7 @@ dependencies = [
  "futures-core",
  "futures-task",
  "futures-util",
+ "num_cpus",
 ]
 
 [[package]]
@@ -1088,26 +1089,6 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "version",
-]
-
-[[package]]
-name = "koala-salloc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures",
- "interface",
- "ipc",
- "koala",
- "lazy_static",
- "libc",
- "memfd",
- "memmap-fixed",
- "mrpc-marshal",
- "nix 0.23.1",
- "spin",
- "thiserror",
- "uuid",
 ]
 
 [[package]]

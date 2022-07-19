@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crossbeam::channel::Receiver as DataReceiver;
 use crossbeam::channel::Sender as DataSender;
-use nix::unistd::Pid;
 use thiserror::Error;
 use tokio::sync::mpsc::UnboundedReceiver as CommandReceiver;
 use tokio::sync::mpsc::UnboundedSender as CommandSender;

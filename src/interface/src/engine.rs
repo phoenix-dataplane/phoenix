@@ -18,4 +18,5 @@ pub enum EngineType {
     RpcAdapterAcceptor,
     Overload,
     Salloc,
+    SallocV2,
 }

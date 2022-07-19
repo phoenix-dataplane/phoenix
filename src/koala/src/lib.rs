@@ -8,6 +8,7 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(core_intrinsics)]
+#![feature(drain_filter)]
 
 extern crate tracing;
 // alias
@@ -18,11 +19,11 @@ pub mod control;
 pub mod engine;
 pub mod envelop;
 pub mod module;
+pub mod mrpc;
+pub mod plugin;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;
-pub mod plugin;
-pub mod mrpc;
 
 pub(crate) mod dependency;
 
@@ -37,21 +38,14 @@ pub(crate) mod timer;
 #[macro_export]
 macro_rules! unimplemented_ungradable {
     ($engine:ident) => {
-        use crate::engine::{Upgradable, Version};
-        impl Upgradable for $engine {
-            fn version(&self) -> Version {
+        use crate::engine::Unload;
+        use crate::storage::ResourceCollection;
+        impl Unload for $engine {
+            fn detach(&mut self) {
                 unimplemented!();
             }
 
-            fn check_compatible(&self, _v2: Version) -> bool {
-                unimplemented!();
-            }
-
-            fn suspend(&mut self) {
-                unimplemented!();
-            }
-
-            fn unload(self) {
+            fn unload(self: Box<Self>) -> ResourceCollection {
                 unimplemented!();
             }
         }

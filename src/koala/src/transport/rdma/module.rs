@@ -17,19 +17,22 @@ use ipc::unix::DomainSocket;
 use super::cm::engine::CmEngine;
 use super::engine::TransportEngine;
 use super::ops::Ops;
-use super::state::{State, Shared};
+use super::state::{Shared, State};
 use crate::config::RdmaTransportConfig;
-use crate::engine::container::ActiveEngineContainer;
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
-
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 /// Create API Operations.
-pub(crate) fn create_ops(runtime_manager: &RuntimeManager, state_mgr: &SharedStateManager<Shared>, client_pid: Pid) -> Result<Ops> {
+pub(crate) fn create_ops(
+    runtime_manager: &Arc<RuntimeManager>,
+    state_mgr: &SharedStateManager<Shared>,
+    client_pid: Pid,
+) -> Result<Ops> {
     // first create cm engine
     create_cm_engine(runtime_manager, state_mgr, client_pid)?;
 
@@ -40,9 +43,13 @@ pub(crate) fn create_ops(runtime_manager: &RuntimeManager, state_mgr: &SharedSta
     Ok(Ops::new(state))
 }
 
-fn create_cm_engine(runtime_manager: &RuntimeManager, state_mgr: &SharedStateManager<Shared>, client_pid: Pid) -> Result<()> {
+fn create_cm_engine(
+    runtime_manager: &Arc<RuntimeManager>,
+    state_mgr: &SharedStateManager<Shared>,
+    client_pid: Pid,
+) -> Result<()> {
     let shared = state_mgr.get_or_create(client_pid)?;
-    
+
     // only create one cm_engine for a client process
     // if refcnt > 1, then there is already a CmEngine running0
     if Arc::strong_count(&shared) > 1 {
@@ -54,7 +61,11 @@ fn create_cm_engine(runtime_manager: &RuntimeManager, state_mgr: &SharedStateMan
     let cm_engine = CmEngine::new(node, state);
 
     // always submit the engine to a dedicate runtime
-    runtime_manager.submit(ActiveEngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+    runtime_manager.submit(
+        client_pid,
+        EngineContainer::new(cm_engine),
+        SchedulingMode::Dedicate,
+    );
     Ok(())
 }
 
@@ -150,7 +161,7 @@ impl TransportModule {
 
         // submit the engine to a runtime
         self.runtime_manager
-            .submit(ActiveEngineContainer::new(engine), mode);
+            .submit(client_pid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

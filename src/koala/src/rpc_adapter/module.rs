@@ -13,27 +13,26 @@ use ipc::unix::DomainSocket;
 
 use super::acceptor::engine::AcceptorEngine;
 use super::engine::{RpcAdapterEngine, TlStorage};
-use super::state::{State, Shared};
-use crate::engine::container::ActiveEngineContainer;
+use super::state::{Shared, State};
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::salloc::module::SallocModule;
-use crate::salloc::state::{State as SallocState, Shared as SallocShared};
+use crate::salloc::state::{Shared as SallocShared, State as SallocState};
 use crate::state_mgr::SharedStateManager;
 use crate::transport::rdma::module::TransportModule;
 use crate::transport::rdma::ops::Ops;
 
-
 fn create_acceptor_engine(
-    runtime_manager: &RuntimeManager,
+    runtime_manager: &Arc<RuntimeManager>,
     state_mgr: &SharedStateManager<Shared>,
     client_pid: Pid,
     ops: Ops,
 ) -> Result<()> {
     let shared = state_mgr.get_or_create(client_pid)?;
-    
-     // only create one RpcAcceptor engine for one client process
-    if Arc::strong_count(&shared) >  1 {
+
+    // only create one RpcAcceptor engine for one client process
+    if Arc::strong_count(&shared) > 1 {
         return Ok(());
     }
 
@@ -43,7 +42,8 @@ fn create_acceptor_engine(
 
     // always submit the engine to a dedicate runtime
     runtime_manager.submit(
-        ActiveEngineContainer::new(acceptor_engine),
+        client_pid,
+        EngineContainer::new(acceptor_engine),
         SchedulingMode::Dedicate,
     );
     Ok(())
@@ -79,7 +79,7 @@ impl RpcAdapterEngineBuilder {
             cmd_tx,
             ops,
             shared,
-            salloc_shared
+            salloc_shared,
         }
     }
 
@@ -107,13 +107,13 @@ impl RpcAdapterEngineBuilder {
 }
 
 pub struct RpcAdapterModule {
-    state_mgr: SharedStateManager<Shared>
+    state_mgr: SharedStateManager<Shared>,
 }
 
 impl RpcAdapterModule {
     pub fn new() -> Self {
         RpcAdapterModule {
-            state_mgr: SharedStateManager::new()
+            state_mgr: SharedStateManager::new(),
         }
     }
 
@@ -136,7 +136,7 @@ impl RpcAdapterModule {
 
     pub(crate) fn create_engine(
         &self,
-        runtime_manager: &RuntimeManager,
+        runtime_manager: &Arc<RuntimeManager>,
         n: Node,
         mode: SchedulingMode,
         client_pid: Pid,
@@ -145,14 +145,27 @@ impl RpcAdapterModule {
         salloc: &SallocModule,
         rdam_transport: &TransportModule,
     ) -> Result<RpcAdapterEngine> {
-        let ops = crate::transport::rdma::module::create_ops(runtime_manager, &rdam_transport.state_mgr, client_pid)?;
+        let ops = crate::transport::rdma::module::create_ops(
+            runtime_manager,
+            &rdam_transport.state_mgr,
+            client_pid,
+        )?;
 
         create_acceptor_engine(runtime_manager, &self.state_mgr, client_pid, ops.clone())?;
 
         let shared = self.state_mgr.get_or_create(client_pid)?;
         let salloc_shared = salloc.stage_mgr.get_or_create(client_pid)?;
 
-        let builder = RpcAdapterEngineBuilder::new(n, client_pid, mode, cmd_rx, cmd_tx, ops, shared, salloc_shared);
+        let builder = RpcAdapterEngineBuilder::new(
+            n,
+            client_pid,
+            mode,
+            cmd_rx,
+            cmd_tx,
+            ops,
+            shared,
+            salloc_shared,
+        );
         let engine = builder.build()?;
 
         Ok(engine)

@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::io;
+use std::sync::Arc;
 
 use nix::unistd::Pid;
 
@@ -28,5 +28,5 @@ impl ProcessShared for Shared {
             _other_state: (),
         };
         Ok(shared)
-    } 
+    }
 }

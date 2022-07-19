@@ -1,7 +1,7 @@
 use std::alloc::Layout;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use std::io;
+use std::sync::Arc;
 
 use interface::AsHandle;
 use nix::unistd::Pid;

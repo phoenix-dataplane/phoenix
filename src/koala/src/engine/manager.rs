@@ -1,17 +1,18 @@
 //! Runtime manager is the control plane of runtimes. It is responsible for
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
 use std::sync::Mutex;
+use std::thread::{self, JoinHandle};
 
+use dashmap::DashMap;
 use interface::engine::SchedulingMode;
 use nix::unistd::Pid;
 
-use super::EngineType;
-use super::container::ActiveEngineContainer;
+use super::container::EngineContainer;
 use super::runtime::{self, Runtime};
+use super::EngineType;
 use crate::config::Config;
 
 #[repr(transparent)]
@@ -23,78 +24,95 @@ pub struct EngineId(u64);
 pub struct RuntimeId(u64);
 
 pub struct RuntimeManager {
-    inner: Mutex<Inner>,
+    pub inner: Mutex<Inner>,
+    // TODO(wyj): handle multiple threads
+    pub clients: DashMap<Pid, DashMap<EngineId, (EngineType, RuntimeId)>>,
+    // map engines to client Pid
+    // TODO(wyj): handle multiple threads
+    engines: DashMap<EngineId, Pid>,
 }
 
-struct Inner {
-    next_core: usize,
-    runtimes: Vec<Arc<Runtime>>,
-    handles: Vec<JoinHandle<Result<(), runtime::Error>>>,
-    clients: HashMap<Pid, HashSet<(EngineId, EngineType)>>,
+pub struct Inner {
+    engine_counter: u64,
+    runtime_counter: u64,
+    pub(crate) runtimes: HashMap<RuntimeId, Arc<Runtime>>,
+    handles: HashMap<RuntimeId, JoinHandle<Result<(), runtime::Error>>>,
 }
 
 impl Inner {
-    fn schedule_dedicate(&mut self, engine: ActiveEngineContainer) {
+    fn schedule_dedicate(
+        &mut self,
+        engine: EngineContainer,
+        rm: &Arc<RuntimeManager>,
+    ) -> RuntimeId {
         // find a spare runtime
-        let rid = match self
-            .runtimes
-            .iter()
-            .enumerate()
-            .find(|(_i, r)| r.is_empty())
-        {
-            Some((rid, _runtime)) => rid,
-            None => {
-                // if there's no spare runtime, and there are available resources (e.g. cpus),
-                // spawn a new one.
-
-                // find the next available CPU and start a runtime on it.
-                let rid = self.next_core;
-                self.start_runtime(self.next_core);
-                self.next_core += 1;
-                rid
-            }
+        // NOTE(wyj): iterating over HashMap should be fine
+        // as submitting a new engine is not on fast path
+        // Moreover, there are only limited number of runtimes
+        let rid = match self.runtimes.iter().find(|(_i, r)| r.is_empty()) {
+            Some((rid, _runtime)) => *rid,
+            None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
         };
 
-        self.runtimes[rid].add_engine(engine);
+        let engine_id = EngineId(self.engine_counter);
+        self.engine_counter += 1;
+        self.runtimes[&rid].add_engine(engine_id, engine);
 
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
-        self.handles[rid].thread().unpark();
+        self.handles[&rid].thread().unpark();
+
+        rid
     }
 }
 
 impl RuntimeManager {
     pub fn new(_config: &Config) -> Self {
         let inner = Inner {
-            next_core: 0,
-            runtimes: Vec::with_capacity(1),
-            handles: Vec::with_capacity(1),
-            clients: HashMap::new(),
+            engine_counter: 0,
+            runtime_counter: 0,
+            runtimes: HashMap::with_capacity(1),
+            handles: HashMap::with_capacity(1),
         };
         RuntimeManager {
             inner: Mutex::new(inner),
+            clients: DashMap::new(),
+            engines: DashMap::new(),
         }
     }
 
-    pub(crate) fn submit(&self, engine: ActiveEngineContainer, mode: SchedulingMode) {
-        let mut inner = self.inner.lock();
+    pub(crate) fn submit(
+        self: &Arc<Self>,
+        pid: Pid,
+        engine: EngineContainer,
+        mode: SchedulingMode,
+    ) {
+        let mut inner = self.inner.lock().unwrap();
         match mode {
             SchedulingMode::Dedicate => {
-                inner.schedule_dedicate(engine);
+                let rid = inner.schedule_dedicate(engine, self);
             }
             SchedulingMode::Compact => unimplemented!(),
             SchedulingMode::Spread => unimplemented!(),
         }
     }
+
+    pub(crate) fn register_shutdown(&self, engine_id: EngineId) {
+        let (_, pid) = self.engines.remove(&engine_id).unwrap();
+        let client = self.clients.get_mut(&pid).unwrap();
+        client.remove(&engine_id);
+    }
 }
 
 impl Inner {
-    fn start_runtime(&mut self, core: usize) {
-        let runtime = Arc::new(Runtime::new(core));
-        self.runtimes.push(Arc::clone(&runtime));
+    fn start_runtime(&mut self, core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
+        let runtime_id = RuntimeId(self.runtime_counter);
+        self.runtime_counter += 1;
+        let runtime = Arc::new(Runtime::new(runtime_id, rm));
+        self.runtimes.insert(runtime_id, Arc::clone(&runtime));
 
         let handle = thread::Builder::new()
-            .name(format!("Runtime {}", core))
+            .name(format!("Runtime {}", runtime_id.0))
             .spawn(move || {
                 // check core id
                 let num_cpus = num_cpus::get();
@@ -110,6 +128,7 @@ impl Inner {
             })
             .unwrap_or_else(|e| panic!("failed to spawn new threads: {}", e));
 
-        self.handles.push(handle);
+        self.handles.insert(runtime_id, handle);
+        runtime_id
     }
 }

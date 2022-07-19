@@ -13,14 +13,13 @@ use ipc::mrpc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::MrpcEngine;
-use super::state::{State, Shared};
+use super::state::{Shared, State};
 use crate::config::MrpcConfig;
-use crate::engine::container::ActiveEngineContainer;
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
-
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -55,7 +54,7 @@ impl MrpcEngineBuilder {
             client_pid,
             mode,
             serializer_build_cache,
-            shared
+            shared,
         }
     }
 
@@ -157,7 +156,7 @@ impl MrpcModule {
 
         // 5. submit the engine to a runtime
         self.runtime_manager
-            .submit(ActiveEngineContainer::new(engine), mode);
+            .submit(client_pid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

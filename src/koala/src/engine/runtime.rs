@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -11,9 +12,8 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
-use super::container::DetachedEngineContainer;
-use super::manager::EngineId;
-use super::{ActiveEngineContainer, EngineLocalStorage, EngineResult, Indicator};
+use super::manager::{EngineId, RuntimeId, RuntimeManager};
+use super::{EngineContainer, EngineLocalStorage, EngineResult, Indicator};
 
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
@@ -68,27 +68,49 @@ pub enum Error {
 /// the runtime moves engines from `pending` to `running` by checking the `new_pending` flag.
 unsafe impl Sync for Runtime {}
 
+/// Result for a suspend request
+pub enum SuspendResult {
+    /// Container to suspended engine
+    Engine(EngineContainer),
+    /// Engine not found in current runtime,
+    /// either it is already shutdown
+    /// or not exists
+    NotFound,
+}
+
 pub(crate) struct Runtime {
-    /// engine id
-    pub(crate) _id: usize,
+    /// runtime id
+    pub(crate) _id: RuntimeId,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
-    pub(crate) running: RefCell<Vec<RefCell<(EngineId, ActiveEngineContainer)>>>,
+    pub(crate) running: RefCell<Vec<(EngineId, RefCell<EngineContainer>)>>,
 
     pub(crate) new_pending: AtomicBool,
-    pub(crate) pending: Mutex<Vec<RefCell<(EngineId, ActiveEngineContainer)>>>,
+    pub(crate) pending: Mutex<Vec<(EngineId, RefCell<EngineContainer>)>>,
 
-    pub(crate) _suspended: DashMap<EngineId, ActiveEngineContainer>,
-    pub(crate) detached: DashMap<EngineId, DetachedEngineContainer>,
+    pub(crate) new_suspend: AtomicBool,
+    pub(crate) suspend_requests: Mutex<Vec<EngineId>>,
+    /// Engines that are still active but suspended
+    /// They may be moved to another runtime,
+    /// or detach and live upgrade to a new version.
+    pub(crate) suspended: DashMap<EngineId, SuspendResult>,
+
+    pub(crate) runtime_manager: Arc<RuntimeManager>,
 }
 
 impl Runtime {
-    pub(crate) fn new(id: usize) -> Self {
+    pub(crate) fn new(id: RuntimeId, rm: Arc<RuntimeManager>) -> Self {
         Runtime {
             _id: id,
             running: RefCell::new(Vec::new()),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
+
+            new_suspend: AtomicBool::new(false),
+            suspend_requests: Mutex::new(Vec::new()),
+            suspended: DashMap::new(),
+
+            runtime_manager: rm,
         }
     }
 
@@ -104,9 +126,14 @@ impl Runtime {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
-    pub(crate) fn add_engine(&self, engine: ActiveEngineContainer) {
-        self.pending.lock().push(RefCell::new(engine));
+    pub(crate) fn add_engine(&self, id: EngineId, engine: EngineContainer) {
+        self.pending.lock().push((id, RefCell::new(engine)));
         self.new_pending.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn request_suspend(&self, id: EngineId) {
+        self.suspend_requests.lock().push(id);
+        self.new_suspend.store(true, Ordering::Release);
     }
 
     #[inline]
@@ -149,7 +176,7 @@ impl Runtime {
             self.save_energy_or_shutdown(last_event_ts);
 
             // drive each engine
-            for (index, engine) in self.running.borrow().iter().enumerate() {
+            for (index, (_eid, engine)) in self.running.borrow().iter().enumerate() {
                 // TODO(cjr): Set engine's local storage here before poll
                 ENGINE_LS.with(|els| {
                     // Safety: The purpose here is to emulate thread-local storage for Engine.
@@ -190,10 +217,11 @@ impl Runtime {
 
             // garbage collect every several rounds, maybe move to another thread.
             for index in shutdown.drain(..).rev() {
-                let engine = self.running.borrow_mut().swap_remove(index);
+                let (id, engine) = self.running.borrow_mut().swap_remove(index);
                 let desc = engine.borrow().description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
+                self.runtime_manager.register_shutdown(id);
             }
 
             // move newly added runtime to the scheduling queue
@@ -206,6 +234,35 @@ impl Runtime {
                 )
             {
                 self.running.borrow_mut().append(&mut self.pending.lock());
+            }
+
+            if Ok(true)
+                == self.new_suspend.compare_exchange(
+                    true,
+                    false,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
+                let mut engine_ids = {
+                    let mut guard = self.suspend_requests.lock();
+                    guard.drain(..).collect::<HashSet<_>>()
+                };
+
+                let mut running = self.running.borrow_mut();
+                let engines = running
+                    .drain_filter(|(engine_id, _)| engine_ids.contains(engine_id))
+                    .collect::<Vec<_>>();
+                for (engine_id, engine) in engines {
+                    let engine = engine.into_inner();
+                    self.suspended
+                        .insert(engine_id, SuspendResult::Engine(engine));
+                    engine_ids.remove(&engine_id);
+                }
+
+                for engine_id in engine_ids {
+                    self.suspended.insert(engine_id, SuspendResult::NotFound);
+                }
             }
         }
     }

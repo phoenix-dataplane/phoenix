@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
+use std::io;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::io;
 
 use dashmap::DashMap;
 use fnv::FnvBuildHasher;
@@ -33,7 +33,7 @@ impl State {
         State {
             rpc_adapter_id,
             shared,
-            cq: None
+            cq: None,
         }
     }
 }

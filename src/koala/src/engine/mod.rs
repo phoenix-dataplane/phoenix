@@ -8,13 +8,13 @@ pub mod future;
 pub mod manager;
 pub mod unload;
 pub use unload::{Unload, Version};
-pub mod upgrade;
 pub(crate) mod graph;
 pub(crate) mod lb;
 pub(crate) mod runtime;
+pub mod upgrade;
 pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
 pub(crate) mod container;
-pub(crate) use container::ActiveEngineContainer;
+pub(crate) use container::EngineContainer;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,7 +38,7 @@ impl Default for Indicator {
     }
 }
 
-pub trait Engine: Unload + Vertex + Send + 'static {
+pub trait Engine: Unload + Vertex + Send + Unpin + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,

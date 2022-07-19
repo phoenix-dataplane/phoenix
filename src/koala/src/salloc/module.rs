@@ -14,13 +14,12 @@ use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
 use super::engine::SallocEngine;
-use super::state::{State, Shared};
+use super::state::{Shared, State};
 use crate::config::SallocConfig;
-use crate::engine::container::ActiveEngineContainer;
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
-
 
 pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -33,7 +32,12 @@ pub(crate) struct SallocEngineBuilder {
 }
 
 impl SallocEngineBuilder {
-    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode, shared: Arc<Shared>) -> Self {
+    fn new(
+        customer: CustomerType,
+        client_pid: Pid,
+        mode: SchedulingMode,
+        shared: Arc<Shared>,
+    ) -> Self {
         SallocEngineBuilder {
             customer,
             client_pid,
@@ -44,7 +48,7 @@ impl SallocEngineBuilder {
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let salloc_state =  State::new(self.shared);
+        let salloc_state = State::new(self.shared);
 
         let node = Node::new(EngineType::Salloc);
 
@@ -113,8 +117,11 @@ impl SallocModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
-        self.runtime_manager
-            .submit(ActiveEngineContainer::new(engine), SchedulingMode::Dedicate);
+        self.runtime_manager.submit(
+            client_pid,
+            EngineContainer::new(engine),
+            SchedulingMode::Dedicate,
+        );
 
         Ok(())
     }

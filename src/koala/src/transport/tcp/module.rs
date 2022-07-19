@@ -16,7 +16,7 @@ use ipc::unix::DomainSocket;
 
 use super::engine::TransportEngine;
 use crate::config::TcpTransportConfig;
-use crate::engine::container::ActiveEngineContainer;
+use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 
@@ -108,7 +108,7 @@ impl TransportModule {
 
         // 5. submit the engine to a runtime
         self.runtime_manager
-            .submit(ActiveEngineContainer::new(engine), mode);
+            .submit(client_pid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

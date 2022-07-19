@@ -6,12 +6,7 @@ use futures::future::BoxFuture;
 
 use super::{Engine, EngineLocalStorage, EngineResult, Indicator};
 
-pub(crate) struct DetachedEngineContainer {
-    engine: Box<dyn Engine>,
-    desc: String,
-}
-
-pub(crate) struct ActiveEngineContainer {
+pub(crate) struct EngineContainer {
     // SAFETY: the future's lifetime will be extended to static.
     // We must ensure the engine is not moved / dropped
     // before polling the future.
@@ -35,7 +30,7 @@ unsafe fn extend_lifetime<'a>(
     std::mem::transmute::<BoxFuture<'a, EngineResult>, BoxFuture<'static, EngineResult>>(fut)
 }
 
-impl ActiveEngineContainer {
+impl EngineContainer {
     /// Spin up a new engine
     pub(crate) fn new<E: Engine>(mut engine: E) -> Self {
         let indicator = Indicator::new(0);
@@ -49,6 +44,34 @@ impl ActiveEngineContainer {
         let els = unsafe { engine.els() };
 
         let mut pinned = Box::pin(engine);
+        let future = {
+            let engine_mut = pinned.as_mut();
+            // SAFETY: manaually extend
+            let fut = engine_mut.activate();
+            unsafe { extend_lifetime(fut) }
+        };
+
+        Self {
+            future,
+            engine: pinned,
+            indicator,
+            desc,
+            els,
+        }
+    }
+
+    pub(crate) fn new_v2(mut engine: Box<dyn Engine>) -> Self {
+        let indicator = Indicator::new(0);
+        engine.set_tracker(indicator.clone());
+        let desc = engine.description();
+        // SAFETY: apparently EngineLocalStorage cannot be 'static,
+        // The caller must ensure that the els() is called within an engine.
+        // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
+        // It points to some states attatched to the engine
+        // hence in reality its lifetime is bound by engine (future) s lifetime
+        let els = unsafe { engine.els() };
+
+        let mut pinned = Pin::new(engine);
         let future = {
             let engine_mut = pinned.as_mut();
             // SAFETY: manaually extend
@@ -88,11 +111,13 @@ impl ActiveEngineContainer {
         self.els
     }
 
-    /// Suspend current engine in prepare for upgrade
+    /// Detach current engine in prepare for upgrade
     /// Some preparatory work is done during this step
     /// e.g., flush inter-engine shared queues
     ///There is no need to call this function if only moves
-    pub(crate) fn suspend(self) -> DetachedEngineContainer {
-        todo!()
+    pub(crate) fn detach(self) -> Box<dyn Engine> {
+        std::mem::drop(self.future);
+        let engine = self.engine;
+        unsafe { Pin::into_inner_unchecked(engine) }
     }
 }
