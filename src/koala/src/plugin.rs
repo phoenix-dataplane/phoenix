@@ -73,6 +73,7 @@ impl PluginCollection {
         let plugin = self.plugins.get_mut(&name).unwrap();
         let module = plugin.init_module();
         let engines = module.engines();
+        self.graph.lock().unwrap().add_engines(&engines[..]);
         for engine in engines {
             self.engine_registry.insert(engine.clone(), name.clone());
         }

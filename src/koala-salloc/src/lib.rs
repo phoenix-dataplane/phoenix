@@ -2,17 +2,16 @@
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
 
-use std::alloc::LayoutError;
 use module::SallocModule;
+use std::alloc::LayoutError;
 use thiserror::Error;
-
 
 pub(crate) mod engine;
 pub mod module;
 pub mod region;
 pub mod state;
 
-use koala::{resource::Error as ResourceError, state_mgr::SharedStateManager, module::KoalaModule};
+use koala::{module::KoalaModule, resource::Error as ResourceError, state_mgr::SharedStateManager};
 
 #[derive(Error, Debug)]
 pub(crate) enum ControlPathError {
@@ -46,7 +45,7 @@ impl<T> From<SendError<T>> for ControlPathError {
 }
 
 #[no_mangle]
-pub extern "Rust" fn init_module() -> Box<dyn KoalaModule> {
+pub fn init_module() -> Box<dyn KoalaModule> {
     let stage_mgr = SharedStateManager::new();
     Box::new(SallocModule { stage_mgr })
 }

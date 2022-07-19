@@ -41,6 +41,7 @@ async fn upgrade_client(
             if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
                     let engine = container.detach();
+                    eprintln!("Dumping engine states...");
                     let state = engine.unload();
                     local_states.insert(*eid, (engine_type.clone(), state));
                 }
@@ -57,6 +58,7 @@ async fn upgrade_client(
         let module = plugins.modules.get_mut(module_name.value()).unwrap();
         let engine = module.restore_engine(&engine_type, state).unwrap();
         let container = EngineContainer::new_v2(engine);
+        eprintln!("Restore engine and submit to runtime...");
         rm.submit(pid, container, SchedulingMode::Dedicate);
     }
 }

@@ -48,7 +48,6 @@ impl SallocEngineBuilder {
         // share the state with rpc adapter
         let salloc_state = State::new(self.shared);
 
-
         Ok(SallocEngine {
             customer: self.customer,
             indicator: None,
@@ -89,13 +88,19 @@ impl KoalaModule for SallocModule {
         // global: &mut ResourceCollection,
         // plugged: &ModuleCollection
     ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
-        if let NewEngineRequest::Service { sock, cleint_path, mode, cred } = request {
+        if let NewEngineRequest::Service {
+            sock,
+            cleint_path,
+            mode,
+            cred,
+        } = request
+        {
             // 1. generate a path and bind a unix domain socket to it
             let uuid = Uuid::new_v4();
-            
+
             // let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
             let instance_name = format!("sallocv2-{}.sock", uuid);
-            let engine_path = PathBuf::from("/tmp/salloc").join(instance_name);
+            let engine_path = PathBuf::from("/tmp/koala").join(instance_name);
 
             // 2. create customer stub
             let customer =
@@ -109,10 +114,10 @@ impl KoalaModule for SallocModule {
             let builder = SallocEngineBuilder::new(customer, client_pid, mode, shared);
             let engine = builder.build()?;
 
-
             Ok(Box::new(engine))
-        } else { panic!() }
-
+        } else {
+            panic!()
+        }
     }
 
     fn restore_engine(
@@ -124,7 +129,14 @@ impl KoalaModule for SallocModule {
         // plugged: &ModuleCollection
     ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
         // 0. generate a path and bind a unix domain socket to it
-        let customer = unsafe { *local.remove("customer").unwrap().downcast_unchecked::<CustomerType>() }; 
+        eprintln!("Reloading Salloc-customer");
+        let customer = unsafe {
+            *local
+                .remove("customer")
+                .unwrap()
+                .downcast_unchecked::<CustomerType>()
+        };
+        eprintln!("Reloading Salloc-state");
         let state = unsafe { *local.remove("state").unwrap().downcast_unchecked::<State>() };
         let engine = SallocEngine {
             customer,
@@ -134,4 +146,3 @@ impl KoalaModule for SallocModule {
         Ok(Box::new(engine))
     }
 }
-

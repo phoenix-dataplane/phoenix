@@ -30,6 +30,12 @@ impl EngineGraph {
             .or_insert_with(|| graph.add_node(engine.clone()))
     }
 
+    pub fn add_engines(&mut self, engines: &[EngineType]) {
+        for engine in engines {
+            self.get_or_insert_index(engine);
+        }
+    }
+
     pub fn add_dependency(&mut self, edges: &[EnginePair]) {
         for edge in edges {
             let from = self.get_or_insert_index(&edge.0);

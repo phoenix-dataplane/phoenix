@@ -6,11 +6,11 @@ use std::sync::Arc;
 use interface::AsHandle;
 use nix::unistd::Pid;
 
+use super::region::SharedRegion;
+use super::ControlPathError;
 use koala::engine::EngineLocalStorage;
 use koala::resource::{Error as ResourceError, ResourceTable};
 use koala::state_mgr::ProcessShared;
-use super::region::SharedRegion;
-use super::ControlPathError;
 
 pub(crate) struct State {
     pub(crate) shared: Arc<Shared>,

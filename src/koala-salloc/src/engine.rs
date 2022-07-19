@@ -44,13 +44,15 @@ impl Engine for SallocEngine {
 }
 
 impl Unload for SallocEngine {
-    fn detach(&mut self) { }
+    fn detach(&mut self) {}
 
     fn unload(self: Box<Self>) -> ResourceCollection {
         let engine = *self;
         let mut collections = ResourceCollection::new();
-        
+
+        eprintln!("Dumping Salloc-customer...");
         collections.insert("customer".to_string(), Box::new(engine.customer));
+        eprintln!("Dumping Salloc-state...");
         collections.insert("state".to_string(), Box::new(engine.state));
         collections
     }

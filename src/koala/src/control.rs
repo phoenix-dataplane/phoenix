@@ -70,7 +70,7 @@ impl Control {
         let salloc_config = config.salloc.clone().unwrap();
 
         let plugins = Arc::new(PluginCollection::new());
-        plugins.load_plugin(String::from("Salloc"), "/tmp/salloc.dylib");
+        plugins.load_plugin(String::from("Salloc"), "/tmp/libkoala_salloc.so");
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
 
         Control {
@@ -301,7 +301,8 @@ impl Control {
             control::Request::Mrpc(req) => self.mrpc.handle_request(&req, &self.sock, sender, cred),
             control::Request::Upgrade => {
                 self.plugins
-                    .load_plugin(String::from("Salloc"), "/tmp/salloc.dylib");
+                    .load_plugin(String::from("Salloc"), "/tmp/libkoala_salloc.so");
+                eprintln!("KOALA: upgrade salloc engine, module: /tmp/libkoala_salloc.so");
                 let mut engines = HashSet::new();
                 engines.insert(crate::engine::EngineType(String::from("Salloc")));
                 self.upgrader.upgrade(engines);

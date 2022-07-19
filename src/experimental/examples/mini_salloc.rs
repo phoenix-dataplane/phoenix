@@ -10,7 +10,6 @@ use ipc::service::ShmService;
 const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
 const DEFAULT_KOALA_CONTROL: &str = "control.sock";
 
-
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
@@ -47,7 +46,6 @@ macro_rules! rx_recv_impl {
     };
 }
 
-
 pub(crate) struct SAContext {
     pub(crate) service:
         ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
@@ -55,8 +53,11 @@ pub(crate) struct SAContext {
 
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
-        let service =
-            ShmService::register(&*DEFAULT_KOALA_PREFIX, &*DEFAULT_KOALA_CONTROL, EngineType::SallocV2)?;
+        let service = ShmService::register(
+            &*DEFAULT_KOALA_PREFIX,
+            &*DEFAULT_KOALA_CONTROL,
+            EngineType::SallocV2,
+        )?;
         Ok(Self { service })
     }
 }
@@ -77,9 +78,7 @@ fn allocate_shm(len: usize) -> Result<usize, Error> {
         assert!(file_len >= len);
 
         match ctx.service.recv_comp().unwrap().0 {
-            Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => {
-                Ok(remote_addr)
-            }
+            Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => Ok(remote_addr),
             Err(e) => Err(Error::Interface("AllocShm", e)),
             otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
         }
@@ -105,11 +104,14 @@ pub enum Error {
     Interface(&'static str, interface::Error),
 }
 
-
 fn main() {
-    let size = 1024 * 1024;
+    // 64MB
+    let size = 1024 * 1024 * 64;
     loop {
+        let start = std::time::Instant::now();
         let addr = allocate_shm(size).unwrap();
         dealloc_shm(addr);
+        let elapsed = start.elapsed().as_millis();
+        println!("Alloc and dealloc 64MB, latency={}ms", elapsed);
     }
 }

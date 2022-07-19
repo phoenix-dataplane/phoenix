@@ -44,7 +44,7 @@ impl Inner {
         &mut self,
         engine: EngineContainer,
         rm: &Arc<RuntimeManager>,
-    ) -> RuntimeId {
+    ) -> (EngineId, RuntimeId) {
         // find a spare runtime
         // NOTE(wyj): iterating over HashMap should be fine
         // as submitting a new engine is not on fast path
@@ -62,7 +62,7 @@ impl Inner {
         // whether the runtime and only unpark it when it's in parked state.
         self.handles[&rid].thread().unpark();
 
-        rid
+        (engine_id, rid)
     }
 }
 
@@ -90,7 +90,11 @@ impl RuntimeManager {
         let mut inner = self.inner.lock().unwrap();
         match mode {
             SchedulingMode::Dedicate => {
-                let rid = inner.schedule_dedicate(engine, self);
+                let (eid, rid) = inner.schedule_dedicate(engine, self);
+                // TODO: write it correct
+                let entry = self.clients.entry(pid).or_insert_with(DashMap::new);
+                entry.insert(eid, (EngineType("Salloc".to_string()), rid));
+                self.engines.insert(eid, pid);
             }
             SchedulingMode::Compact => unimplemented!(),
             SchedulingMode::Spread => unimplemented!(),

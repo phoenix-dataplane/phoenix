@@ -255,6 +255,10 @@ impl Runtime {
                     .collect::<Vec<_>>();
                 for (engine_id, engine) in engines {
                     let engine = engine.into_inner();
+                    eprintln!(
+                        "Remove engine {} from runtime",
+                        engine.description().to_owned()
+                    );
                     self.suspended
                         .insert(engine_id, SuspendResult::Engine(engine));
                     engine_ids.remove(&engine_id);

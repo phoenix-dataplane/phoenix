@@ -1115,6 +1115,12 @@ dependencies = [
 [[package]]
 name = "koala-utils"
 version = "0.1.0"
+dependencies = [
+ "bincode",
+ "interface",
+ "ipc",
+ "uuid",
+]
 
 [[package]]
 name = "lazy_static"
