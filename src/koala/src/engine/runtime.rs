@@ -83,10 +83,13 @@ unsafe impl Sync for Runtime {}
 
 pub(crate) struct Runtime {
     /// engine id
-    pub(crate) _id: usize,
+    pub(crate) id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<RefCell<EngineContainer>>>,
+
+    // Whether the engine is dedicated or shared.
+    pub(crate) dedicated: AtomicBool,
 
     pub(crate) new_pending: AtomicBool,
     pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
@@ -95,8 +98,9 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn new(id: usize) -> Self {
         Runtime {
-            _id: id,
+            id,
             running: RefCell::new(Vec::new()),
+            dedicated: AtomicBool::new(false),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
         }
@@ -114,7 +118,14 @@ impl Runtime {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
-    pub(crate) fn add_engine(&self, engine: EngineContainer) {
+    #[inline]
+    pub(crate) fn is_dedicated(&self) -> bool {
+        self.dedicated.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
+        self.dedicated.fetch_or(dedicated, Ordering::Release);
         self.pending.lock().push(RefCell::new(engine));
         self.new_pending.store(true, Ordering::Release);
     }
@@ -134,11 +145,17 @@ impl Runtime {
 
         // park the engine only then it's empty
         if dura > SHUTDOWN_THRESHOLD && self.is_empty() {
+            tracing::trace!("Runtime {} is shutting down", self.id);
             thread::park();
+            tracing::trace!("Runtime {} is restarted", self.id);
         } else if dura > DEEP_SLEEP_THRESHOLD {
+            tracing::trace!("Runtime {} is going to deep sleep", self.id);
             thread::park_timeout(DEEP_SLEEP_DURATION);
+            tracing::trace!("Runtime {} has waked from deep sleep", self.id);
         } else if dura > SLEEP_THRESHOLD {
+            tracing::trace!("Runtime {} is going to sleep", self.id);
             thread::park_timeout(SLEEP_DURATION);
+            tracing::trace!("Runtime {} has waked from sleep", self.id);
         }
     }
 
@@ -204,6 +221,10 @@ impl Runtime {
                 let desc = engine.borrow().description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
+            }
+
+            if self.is_empty() {
+                self.dedicated.store(false, Ordering::Release);
             }
 
             // move newly added runtime to the scheduling queue

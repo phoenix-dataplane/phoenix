@@ -345,12 +345,12 @@ where
 
         match res {
             control::ResponseKind::ConnectEngine {
-                mode,
+                mode: _mode,
                 one_shot_name: server_name,
                 wq_cap,
                 cq_cap,
             } => {
-                assert_eq!(mode, SchedulingMode::Dedicate);
+                // assert_eq!(mode, SchedulingMode::Dedicate);
                 let (cmd_tx1, cmd_rx1): (IpcSender<Command>, IpcReceiver<Command>) =
                     crate::ipc_channel::channel()?;
                 let (cmd_tx2, cmd_rx2): (IpcSender<Completion>, IpcReceiver<Completion>) =
