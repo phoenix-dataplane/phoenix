@@ -156,7 +156,10 @@ impl MrpcEngine {
         self.transport_type = Some(transport_type);
     }
 
-    async fn process_cmd(&mut self, req: &cmd::Command) -> Result<Option<cmd::CompletionKind>, Error> {
+    async fn process_cmd(
+        &mut self,
+        req: &cmd::Command,
+    ) -> Result<Option<cmd::CompletionKind>, Error> {
         use ipc::mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(transport_type) => {
@@ -170,34 +173,16 @@ impl MrpcEngine {
             Command::Connect(addr) => {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 Ok(None)
-                // match self.cmd_rx.recv().await.unwrap().0 {
-                //     Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
-                //         self.customer.send_fd(&fds).unwrap();
-                //         Ok(CompletionKind::Connect(conn_resp))
-                //     }
-                //     other => panic!("unexpected: {:?}", other),
-                // }
             }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
                 Ok(None)
-                // match self.cmd_rx.recv().await.unwrap().0 {
-                //     Ok(CompletionKind::Bind(listener_handle)) => {
-                //         // just forward it
-                //         Ok(CompletionKind::Bind(listener_handle))
-                //     }
-                //     other => panic!("unexpected: {:?}", other),
-                // }
             }
             Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
                 self.cmd_tx
                     .send(Command::NewMappedAddrs(*conn_handle, app_vaddrs.clone()))
                     .unwrap();
                 Ok(None)
-                // match self.cmd_rx.recv().await.unwrap().0 {
-                //     Ok(CompletionKind::NewMappedAddrs) => Ok(CompletionKind::NewMappedAddrs),
-                //     other => panic!("unexpected: {:?}", other),
-                // }
             }
             Command::UpdateProtos(protos) => {
                 let dylib_path =
@@ -206,13 +191,6 @@ impl MrpcEngine {
                     .send(Command::UpdateProtosInner(dylib_path))
                     .unwrap();
                 Ok(None)
-                // match self.cmd_rx.recv().await.unwrap().0 {
-                //     Ok(CompletionKind::UpdateProtos) => {
-                //         // just forward it
-                //         Ok(CompletionKind::UpdateProtos)
-                //     }
-                //     other => panic!("unexpected: {:?}", other),
-                // }
             }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
@@ -397,7 +375,11 @@ impl MrpcEngine {
                         Ok(Status::Progress(1))
                     }
                     // server bind response
-                    c @ Ok(CompletionKind::Bind(..) | CompletionKind::NewMappedAddrs | CompletionKind::UpdateProtos) => {
+                    c @ Ok(
+                        CompletionKind::Bind(..)
+                        | CompletionKind::NewMappedAddrs
+                        | CompletionKind::UpdateProtos,
+                    ) => {
                         self.customer.send_comp(cmd::Completion(c))?;
                         Ok(Status::Progress(1))
                     }

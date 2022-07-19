@@ -457,7 +457,10 @@ where
         if !self.has_recv_comp() {
             return Err(Error::TryRecv(TryRecvError::Empty));
         }
-        let comp = self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?;
+        let comp = self
+            .cmd_rx
+            .try_recv()
+            .map_err(|e| Error::TryRecv(e.into()))?;
         self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
         Ok(comp)
     }

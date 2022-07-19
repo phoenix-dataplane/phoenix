@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, BTreeMap};
+use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -11,11 +11,11 @@ use nix::unistd::Pid;
 use interface::AsHandle;
 use mrpc_marshal::SgList;
 
+use super::pool::{BufferPool, RecvBuffer};
+use super::serialization::AddressMap;
 use crate::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use crate::rpc_adapter::ulib;
 use crate::state_mgr::{StateManager, StateTrait};
-use super::pool::{BufferPool, RecvBuffer};
-use super::serialization::AddressMap;
 
 pub(crate) struct State {
     // per engine state

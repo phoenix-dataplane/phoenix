@@ -27,8 +27,6 @@ use crate::engine::{
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
-// use crate::salloc::region::SharedRegion;
-// use crate::salloc::state::State as SallocState;
 use crate::transport::rdma::ops::Ops;
 
 pub(crate) struct TlStorage {
@@ -52,8 +50,6 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) state: State,
     pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
     pub(crate) tls: Box<TlStorage>,
-
-    // pub(crate) salloc: SallocState,
 
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<RpcMessageTx>,
@@ -605,11 +601,6 @@ impl RpcAdapterEngine {
                     mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
                 ));
                 self.cmd_tx.send(comp)?;
-
-                // // accept connection after we get the AddrMap updated
-                // let id = pre_id.accept(None).await?;
-                // // insert resources after connection establishment
-                // self.state.resource().insert_cmid(id, 128)?;
                 Ok(Status::Progress(1))
             }
         }
