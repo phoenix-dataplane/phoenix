@@ -645,6 +645,7 @@ dependencies = [
  "libc",
  "linked-hash-map",
  "log",
+ "memfd",
  "nix 0.23.1",
  "num_cpus",
  "petgraph",
@@ -1090,6 +1091,30 @@ dependencies = [
  "uuid",
  "version",
 ]
+
+[[package]]
+name = "koala-salloc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "lazy_static",
+ "libc",
+ "memfd",
+ "memmap-fixed",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "spin",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "koala-utils"
+version = "0.1.0"
 
 [[package]]
 name = "lazy_static"

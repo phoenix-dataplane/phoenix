@@ -78,7 +78,7 @@ impl PluginCollection {
         }
 
         let edges = module.dependencies();
-        self.graph.lock().unwrap().add_dependency(edges);
+        self.graph.lock().unwrap().add_dependency(&edges[..]);
 
         let (service_name, service_engine) = module.service();
         self.add_service(service_name.clone(), service_engine.clone());

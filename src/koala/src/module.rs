@@ -13,7 +13,7 @@ pub type ModuleCollection = DashMap<String, Box<dyn KoalaModule>>;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Service(String);
+pub struct Service(pub String);
 
 pub enum NewEngineRequest<'a> {
     Service {
@@ -35,10 +35,10 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     fn name(&self) -> &str;
 
     /// The main service engine
-    fn service(&self) -> (&Service, &EngineType);
+    fn service(&self) -> (Service, EngineType);
 
     /// Engine types provided by the module
-    fn engines(&self) -> &[EngineType];
+    fn engines(&self) -> Vec<EngineType>;
 
     /// Dependencies between the engines
     /// It may include external engines
@@ -46,7 +46,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// If access to other service engine's resource is needed
     /// The resources should be wrapped in ProcessShared state
     /// and managed by the corresponding module's state_mgr
-    fn dependencies(&self) -> &[EnginePair];
+    fn dependencies(&self) -> Vec<EnginePair>;
 
     /// Create a new engine
     /// * `shared`:

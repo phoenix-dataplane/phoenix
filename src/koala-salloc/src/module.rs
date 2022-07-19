@@ -1,10 +1,11 @@
 use std::os::unix::net::{SocketAddr, UCred};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use lazy_static::lazy_static;
+use koala::envelop::ResourceDowncast;
+use koala::module::{KoalaModule, NewEngineRequest};
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -14,43 +15,42 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, control_plane, dp};
 use ipc::unix::DomainSocket;
 
-use super::state::State;
-use crate::config::SallocConfig;
-use crate::engine::container::EngineContainer;
-use crate::engine::manager::RuntimeManager;
-use crate::node::Node;
-use crate::state_mgr::StateManager;
+use super::engine::SallocEngine;
+use super::state::{Shared, State};
+use koala::state_mgr::SharedStateManager;
 
-lazy_static! {
-    pub(crate) static ref STATE_MGR: Arc<StateManager<State>> = Arc::new(StateManager::new());
-}
-
-pub type CustomerType =
+pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
     client_pid: Pid,
     _mode: SchedulingMode,
+    shared: Arc<Shared>,
 }
 
 impl SallocEngineBuilder {
-    fn new(customer: CustomerType, client_pid: Pid, mode: SchedulingMode) -> Self {
+    fn new(
+        customer: CustomerType,
+        client_pid: Pid,
+        mode: SchedulingMode,
+        shared: Arc<Shared>,
+    ) -> Self {
         SallocEngineBuilder {
             customer,
             client_pid,
             _mode: mode,
+            shared,
         }
     }
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let salloc_state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        let node = Node::new(EngineType::Salloc);
+        let salloc_state = State::new(self.shared);
+
 
         Ok(SallocEngine {
             customer: self.customer,
-            node,
             indicator: None,
             state: salloc_state,
         })
@@ -58,60 +58,80 @@ impl SallocEngineBuilder {
 }
 
 pub struct SallocModule {
-    config: SallocConfig,
-    runtime_manager: Arc<RuntimeManager>,
+    pub(crate) stage_mgr: SharedStateManager<Shared>,
 }
 
-impl SallocModule {
-    pub fn new(config: SallocConfig, runtime_manager: Arc<RuntimeManager>) -> Self {
-        SallocModule {
-            config,
-            runtime_manager,
-        }
+impl KoalaModule for SallocModule {
+    fn name(&self) -> &str {
+        const name: &'static str = "Salloc";
+        name
     }
 
-    pub fn handle_request(
-        &mut self,
-        req: &control_plane::Request,
-        _sock: &DomainSocket,
-        sender: &SocketAddr,
-        _cred: &UCred,
-    ) -> Result<()> {
-        let _client_path = sender
-            .as_pathname()
-            .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
-        match req {
-            _ => unreachable!("unknown req: {:?}", req),
-        }
+    fn service(&self) -> (koala::module::Service, koala::engine::EngineType) {
+        let service = koala::module::Service(String::from("Salloc"));
+        let etype = koala::engine::EngineType("Salloc".to_string());
+        (service, etype)
     }
 
-    pub fn handle_new_client<P: AsRef<Path>>(
-        &mut self,
-        sock: &DomainSocket,
-        client_path: P,
-        mode: SchedulingMode,
-        cred: &UCred,
-    ) -> Result<()> {
-        // 1. generate a path and bind a unix domain socket to it
-        let uuid = Uuid::new_v4();
-        let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-        let engine_path = self.config.prefix.join(instance_name);
+    fn engines(&self) -> Vec<koala::engine::EngineType> {
+        vec![koala::engine::EngineType("Salloc".to_string())]
+    }
 
-        // 2. create customer stub
-        let customer =
-            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+    fn dependencies(&self) -> Vec<koala::engine::EnginePair> {
+        vec![]
+    }
 
-        // 3. the following part are expected to be done in the Engine's constructor.
-        // the transport module is responsible for initializing and starting the transport engines
-        let client_pid = Pid::from_raw(cred.pid.unwrap());
+    fn create_engine(
+        &self,
+        ty: &koala::engine::EngineType,
+        request: koala::module::NewEngineRequest,
+        // shared: &mut SharedStorage,
+        // global: &mut ResourceCollection,
+        // plugged: &ModuleCollection
+    ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
+        if let NewEngineRequest::Service { sock, cleint_path, mode, cred } = request {
+            // 1. generate a path and bind a unix domain socket to it
+            let uuid = Uuid::new_v4();
+            
+            // let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
+            let instance_name = format!("sallocv2-{}.sock", uuid);
+            let engine_path = PathBuf::from("/tmp/salloc").join(instance_name);
 
-        let builder = SallocEngineBuilder::new(customer, client_pid, mode);
-        let engine = builder.build()?;
+            // 2. create customer stub
+            let customer =
+                Customer::from_shm(ShmCustomer::accept(sock, cleint_path, mode, engine_path)?);
 
-        // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
-        self.runtime_manager
-            .submit(EngineContainer::new(engine), SchedulingMode::Dedicate);
+            // 3. the following part are expected to be done in the Engine's constructor.
+            // the transport module is responsible for initializing and starting the transport engines
+            let client_pid = Pid::from_raw(cred.pid.unwrap());
 
-        Ok(())
+            let shared = self.stage_mgr.get_or_create(client_pid)?;
+            let builder = SallocEngineBuilder::new(customer, client_pid, mode, shared);
+            let engine = builder.build()?;
+
+
+            Ok(Box::new(engine))
+        } else { panic!() }
+
+    }
+
+    fn restore_engine(
+        &self,
+        ty: &koala::engine::EngineType,
+        mut local: koala::storage::ResourceCollection,
+        // shared: &mut SharedStorage,
+        // global: &mut ResourceCollection,
+        // plugged: &ModuleCollection
+    ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
+        // 0. generate a path and bind a unix domain socket to it
+        let customer = unsafe { *local.remove("customer").unwrap().downcast_unchecked::<CustomerType>() }; 
+        let state = unsafe { *local.remove("state").unwrap().downcast_unchecked::<State>() };
+        let engine = SallocEngine {
+            customer,
+            indicator: None,
+            state,
+        };
+        Ok(Box::new(engine))
     }
 }
+

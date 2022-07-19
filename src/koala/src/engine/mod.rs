@@ -38,7 +38,7 @@ impl Default for Indicator {
     }
 }
 
-pub trait Engine: Unload + Vertex + Send + Unpin + 'static {
+pub trait Engine: Unload + Send + Unpin + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,
