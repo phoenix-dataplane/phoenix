@@ -10,8 +10,10 @@ use std::os::unix::net::UCred;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crossbeam::atomic::AtomicCell;
+use minstant::Instant;
 use uuid::Uuid;
 
 use serde::{Deserialize, Serialize};
@@ -73,7 +75,7 @@ pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     client_path: PathBuf,
     sock: DomainSocket,
     cmd_rx_entries: ShmObject<AtomicUsize>,
-    cmd_tx: IpcSender<Completion>,
+    cmd_tx: IpcSenderNotify<Completion>,
     cmd_rx: IpcReceiver<Command>,
     dp_wq: ShmReceiver<WorkRequest>,
     dp_cq: ShmSender<WorkCompletion>,
@@ -149,6 +151,7 @@ where
         let dp_wq = ShmReceiver::new(wq_cap)?;
         let dp_cq = ShmSender::new(cq_cap)?;
 
+        let cmd_tx_entries = ShmObject::new(AtomicUsize::new(0))?;
         let cmd_rx_entries = ShmObject::new(AtomicUsize::new(0))?;
         let fd_notifier = ShmObject::new(AtomicUsize::new(0))?;
 
@@ -162,6 +165,7 @@ where
                 dp_cq.memfd().as_raw_fd(),
                 dp_cq.empty_signal().as_raw_fd(),
                 dp_cq.full_signal().as_raw_fd(),
+                ShmObject::memfd(&cmd_tx_entries).as_raw_fd(),
                 ShmObject::memfd(&cmd_rx_entries).as_raw_fd(),
                 ShmObject::memfd(&fd_notifier).as_raw_fd(),
             ],
@@ -172,7 +176,7 @@ where
             client_path: client_path.as_ref().to_path_buf(),
             sock: engine_sock,
             cmd_rx_entries,
-            cmd_tx,
+            cmd_tx: IpcSenderNotify::new(cmd_tx, cmd_tx_entries),
             cmd_rx,
             dp_wq,
             dp_cq,
@@ -258,32 +262,8 @@ where
     }
 }
 
-// /// A Service trait sends Command (contorl path) and WorkRequest (datapath)
-// /// and reply with Completion (control path) and WorkCompletion (datapath).
-// pub trait Service {
-//     type Command;
-//     type Completion;
-//     type WorkRequest;
-//     type WorkCompletion;
-//
-//     fn recv_fd(&self) -> Result<Vec<RawFd>, Error>;
-//
-//     fn send_cmd(&self, cmd: Self::Command) -> Result<(), Error>;
-//
-//     fn recv_comp(&self) -> Result<Self::Completion, Error>;
-//
-//     fn enqueue_wr_with<F: FnOnce(*mut Self::WorkRequest, usize) -> usize>(
-//         &self,
-//         f: F,
-//     ) -> Result<(), Error>;
-//
-//     fn dequeue_wc_with<F: FnOnce(*const Self::WorkCompletion, usize) -> usize>(
-//         &self,
-//         f: F,
-//     ) -> Result<(), Error>;
-// }
-
-/// # Comment:
+/// A `Service` sends Command (contorl path) and WorkRequest (datapath)
+/// and reply with Completion (control path) and WorkCompletion (datapath).
 ///
 /// The user must ensure that there is no concurrent access to this Service.
 pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
@@ -292,6 +272,8 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     cmd_rx: IpcReceiver<Completion>,
     dp_wq: RefCell<ShmSender<WorkRequest>>,
     dp_cq: RefCell<ShmReceiver<WorkCompletion>>,
+    timer: AtomicCell<Instant>,
+    cmd_rx_entries: ShmObject<AtomicUsize>,
     fd_notifier: ShmObject<AtomicUsize>,
 }
 
@@ -379,7 +361,7 @@ where
                 // receive file descriptors to attach to the shared memory queues
                 let (fds, cred) = sock.recv_fd()?;
                 Self::check_credential(&sock, cred)?;
-                assert_eq!(fds.len(), 8);
+                assert_eq!(fds.len(), 9);
                 let (wq_memfd, wq_empty_signal, wq_full_signal) = unsafe {
                     (
                         File::from_raw_fd(fds[0]),
@@ -394,8 +376,9 @@ where
                         File::from_raw_fd(fds[5]),
                     )
                 };
-                let cmd_notify_memfd = unsafe { File::from_raw_fd(fds[6]) };
-                let fd_notifier_memfd = unsafe { File::from_raw_fd(fds[7]) };
+                let cmd_rx_notify_memfd = unsafe { File::from_raw_fd(fds[6]) };
+                let cmd_tx_notify_memfd = unsafe { File::from_raw_fd(fds[7]) };
+                let fd_notifier_memfd = unsafe { File::from_raw_fd(fds[8]) };
 
                 // attach to the shared memories
                 let dp_wq = ShmSender::<WorkRequest>::open(
@@ -411,15 +394,18 @@ where
                     cq_full_signal,
                 )?;
 
-                let entries = ShmObject::open(cmd_notify_memfd)?;
+                let cmd_rx_entries = ShmObject::open(cmd_rx_notify_memfd)?;
+                let cmd_tx_entries = ShmObject::open(cmd_tx_notify_memfd)?;
                 let fd_notifier = ShmObject::open(fd_notifier_memfd)?;
 
                 Ok(Self {
                     sock,
-                    cmd_tx: IpcSenderNotify::new(cmd_tx1, entries),
+                    cmd_tx: IpcSenderNotify::new(cmd_tx1, cmd_tx_entries),
                     cmd_rx: cmd_rx2,
                     dp_wq: RefCell::new(dp_wq),
                     dp_cq: RefCell::new(dp_cq),
+                    timer: AtomicCell::new(Instant::now()),
+                    cmd_rx_entries,
                     fd_notifier,
                 })
             }
@@ -457,9 +443,23 @@ where
     }
 
     #[inline]
+    pub fn has_recv_comp(&self) -> bool {
+        static TIMEOUT: Duration = Duration::from_millis(100);
+        if self.timer.load().elapsed() > TIMEOUT {
+            self.timer.store(Instant::now());
+            return true;
+        }
+        self.cmd_rx_entries.load(Ordering::Relaxed) > 0
+    }
+
+    #[inline]
     pub fn try_recv_comp(&self) -> Result<Completion, Error> {
-        panic!("Shouldn't call this");
-        // Ok(self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?)
+        if !self.has_recv_comp() {
+            return Err(Error::TryRecv(TryRecvError::Empty));
+        }
+        let comp = self.cmd_rx.try_recv().map_err(|e| Error::TryRecv(e.into()))?;
+        self.cmd_rx_entries.fetch_sub(1, Ordering::Relaxed);
+        Ok(comp)
     }
 
     #[inline]

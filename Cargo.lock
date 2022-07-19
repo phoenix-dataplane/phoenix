@@ -1028,6 +1028,7 @@ dependencies = [
  "libc",
  "memfd",
  "memmap2 0.5.4",
+ "minstant",
  "nix 0.23.1",
  "serde",
  "shmem-ipc",
