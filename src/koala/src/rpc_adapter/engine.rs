@@ -284,7 +284,7 @@ impl RpcAdapterEngine {
             cmid.post_send(
                 odp_mr,
                 meta_sge.ptr..meta_sge.ptr + meta_sge.len,
-                0,
+                ctx,
                 SendFlags::SIGNALED,
             )?;
         }
@@ -295,7 +295,7 @@ impl RpcAdapterEngine {
             if i + 1 < sglist.0.len() {
                 // post send
                 unsafe {
-                    cmid.post_send(odp_mr, off..off + sge.len, 0, SendFlags::SIGNALED)?;
+                    cmid.post_send(odp_mr, off..off + sge.len, ctx, SendFlags::SIGNALED)?;
                 }
             } else {
                 // post send with imm
