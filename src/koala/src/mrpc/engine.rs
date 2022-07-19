@@ -306,6 +306,7 @@ impl MrpcEngine {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::RpcMessage(msg) => {
+                        // let mut timer = crate::timer::Timer::new();
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
                             "mRPC engine send message to App, call_id={}",
@@ -317,6 +318,7 @@ impl MrpcEngine {
                             shm_addr_app: msg.addr_app,
                             shm_addr_backend: msg.addr_backend,
                         };
+                        // timer.tick();
 
                         // the following operation takes around 100ns
                         let mut sent = false;
@@ -330,6 +332,9 @@ impl MrpcEngine {
                                 1
                             })?;
                         }
+
+                        // timer.tick();
+                        // log::info!("MrpcEngine check_input_queue: {}", timer);
                     }
                     EngineRxMessage::Ack(rpc_id, status) => {
                         // release message meta buffer

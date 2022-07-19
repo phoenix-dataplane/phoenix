@@ -355,7 +355,7 @@ impl Ops {
         &self,
         listener_handle: Handle,
     ) -> Result<Option<returned::CmId>> {
-        log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
+        // log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;

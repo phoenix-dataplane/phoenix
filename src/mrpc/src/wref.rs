@@ -147,7 +147,7 @@ impl<T: RpcData> IntoWRef<T> for WRef<T> {
 
 impl<T: RpcData> IntoWRef<T> for &WRef<T> {
     fn into_wref(self) -> WRef<T> {
-        WRef::clone(self)
+        WRef::clone(&self)
     }
 }
 
@@ -238,7 +238,7 @@ impl<T: RpcData> Clone for WRef<T> {
     fn clone(&self) -> Self {
         WRef {
             token: self.token,
-            inner: self.inner.clone(),
+            inner: Arc::clone(&self.inner),
         }
     }
 }

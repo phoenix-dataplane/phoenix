@@ -54,6 +54,9 @@ pub(crate) struct RpcAdapterEngine {
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<RpcMessageTx>,
 
+    // the number of pending receives that are going on. this can avoid the runtime from sleeping
+    // pub(crate) pending_recv: usize,
+
     // records the recv mr usage (a list of recv mr Handle) of each received message (identified by connection handle and call id)
     // if in the future multiple sge are packed into a single recv mr
     // then we only needs to maintain an additional reference counter for each recv mr, i.e., HashMap<Handle, u64>;
@@ -419,12 +422,15 @@ impl RpcAdapterEngine {
     ) -> Result<RpcId, DatapathError> {
         // log::debug!("unmarshal_and_deliver_up, sgl: {:0x?}", sgl);
 
+        // let mut timer = crate::timer::Timer::new();
+
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = conn_ctx.cmid.as_handle();
 
         let recv_id = RpcId(meta.conn_id, meta.call_id);
 
+        // timer.tick();
         // replenish the credits
         if meta.msg_type == RpcMsgType::Response {
             let call_id = meta.call_id;
@@ -434,6 +440,7 @@ impl RpcAdapterEngine {
             conn_ctx.credit.fetch_add(req_ctx.sg_len, Ordering::AcqRel);
             drop(outstanding_req);
         }
+        // timer.tick();
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
@@ -452,14 +459,12 @@ impl RpcAdapterEngine {
             addr_backend,
             addr_app,
         };
-        // timer.tick();
 
         self.rx_outputs()[0]
             .send(EngineRxMessage::RpcMessage(msg))
             .unwrap();
 
         // timer.tick();
-        // log::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
         // log::info!("unmarshal_and_deliver_up {}", timer);
 
         Ok(recv_id)
@@ -468,6 +473,7 @@ impl RpcAdapterEngine {
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
+        // TODO(cjr): update this
         let mut comps = Vec::with_capacity(32);
         let cq = self.state.get_or_init_cq();
         cq.poll(&mut comps)?;
@@ -512,6 +518,8 @@ impl RpcAdapterEngine {
                                     "post_recv received complete message, wr_id={}",
                                     wc.wr_id
                                 );
+                                // let mut timer = crate::timer::Timer::new();
+
                                 use std::ops::DerefMut;
                                 let mut recv_ctx =
                                     mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
@@ -522,14 +530,20 @@ impl RpcAdapterEngine {
                                     Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
                                 }
 
+                                // timer.tick();
+                                // 200-500ns
                                 let recv_id = self.unmarshal_and_deliver_up(
                                     recv_ctx.sg_list,
                                     Arc::clone(&conn_ctx),
                                 )?;
+                                // timer.tick();
 
+                                // 60-70ns
                                 // keep them outstanding because they will be used by the user
                                 self.recv_mr_usage
                                     .insert(recv_id, recv_ctx.recv_buffer_handles);
+                                // timer.tick();
+                                // log::info!("check_transport_service: {}", timer);
                             }
                             progress += 1;
                         }

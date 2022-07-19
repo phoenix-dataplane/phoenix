@@ -48,6 +48,7 @@ impl SerializationEngine {
         Ok(module)
     }
 
+    #[inline]
     pub(crate) fn marshal(
         &self,
         meta: &MessageMeta,
@@ -56,6 +57,7 @@ impl SerializationEngine {
         (self.marshal_fn)(meta, addr_backend)
     }
 
+    #[inline]
     pub(crate) fn unmarshal(
         &self,
         meta: &MessageMeta,

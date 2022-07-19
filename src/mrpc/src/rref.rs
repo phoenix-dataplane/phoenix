@@ -86,7 +86,7 @@ impl<'a, T> RRef<'a, T> {
 
 impl<'a, T> Clone for RRef<'a, T> {
     fn clone(&self) -> Self {
-        RRef(self.0.clone())
+        RRef(Arc::clone(&self.0))
     }
 }
 
