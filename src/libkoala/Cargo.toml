@@ -11,10 +11,7 @@ ipc = { path = "../ipc" }
 utils = { path = "../utils" }
 
 thiserror = "1.0.29"
-anyhow = "1.0.44"
 uuid = "0.8.2"
-ibverbs = "0.6.1"
-dns-lookup = "1.0.8"
 libc = "0.2.103"
 nix = "0.23.0"
 fnv = "1.0.7"
