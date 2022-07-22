@@ -315,7 +315,6 @@ impl Latency {
             };
         }
         unfold!(bin0, bin1, bin2, bin3, bin4);
-        assert!(thres > 0);
         self.bin4.end()
     }
 }

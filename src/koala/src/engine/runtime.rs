@@ -173,7 +173,7 @@ impl Runtime {
             // TODO(cjr): if there's no active engine on this runtime, call `mwait` to put the CPU
             // into an optimized state. (the wakeup latency and whether it can be used in user mode
             // are two concerns)
-            // self.save_energy_or_shutdown(last_event_ts);
+            self.save_energy_or_shutdown(last_event_ts);
 
             // drive each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
