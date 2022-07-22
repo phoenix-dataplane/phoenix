@@ -8,8 +8,8 @@ use mrpc::{RRef, WRef};
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
+    // mrpc::include_proto!("rpc_hello");
+    include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};

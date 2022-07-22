@@ -2059,6 +2059,7 @@ name = "rpc_bench"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "minstant",
  "mrpc",
  "mrpc-build",
  "prost",

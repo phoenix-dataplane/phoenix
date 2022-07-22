@@ -1,17 +1,21 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use minstant::Instant;
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
 use mrpc::WRef;
 
+#[allow(unused)]
+mod latency;
+
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
+    // mrpc::include_proto!("rpc_hello");
+    include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
@@ -66,39 +70,125 @@ async fn run_bench(
     client: &GreeterClient,
     reqs: &[WRef<HelloRequest>],
     warmup: bool,
-) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
-    let mut response_count = 0;
+) -> Result<latency::Latency, mrpc::Status> {
     let mut reply_futures = FuturesUnordered::new();
-    let mut starts = Vec::with_capacity(args.total_iters);
-    let mut latencies = Vec::with_capacity(args.total_iters);
+    let mut starts = Vec::with_capacity(args.provision_count);
+    starts.resize_with(args.provision_count, || Instant::now());
+    let mut latency = latency::Latency::new();
+    let mut start = Instant::now();
+    let refresh_period = Duration::from_millis(500);
 
     // start sending
     for i in 0..args.total_iters {
-        starts.push(Instant::now());
-        let fut = client.say_hello(&reqs[i % args.provision_count]);
+        starts[i % args.provision_count] = Instant::now();
+        let mut req = WRef::clone(&reqs[i % args.provision_count]);
+        req.set_token(mrpc::Token(i));
+        let fut = client.say_hello(req);
         reply_futures.push(fut);
         if reply_futures.len() >= args.concurrency {
-            let _resp = reply_futures.next().await.unwrap()?;
+            let resp = reply_futures.next().await.unwrap()?;
+            let req_id = resp.token().0;
             if warmup {
-                eprintln!("warmup: resp {} received", response_count);
-                response_count += 1;
+                eprintln!("warmup: resp {} received", req_id);
             }
-            latencies.push(starts[latencies.len()].elapsed());
+            let dura = starts[req_id % args.provision_count].elapsed();
+            latency.update((dura * 10).as_micros() as usize);
+        }
+
+        if start.elapsed() > refresh_period {
+            // println!("{latency}");
+            println!(
+                "samples: {},min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+                latency.count(),
+                latency.perc(0.) as f64 / 10.0,
+                latency.perc(0.50) as f64 / 10.0,
+                latency.perc(0.95) as f64 / 10.0,
+                latency.perc(0.99) as f64 / 10.0,
+                latency.perc(1.0) as f64 / 10.0,
+            );
+            latency.reset();
+            start = Instant::now();
         }
     }
 
     // draining the remaining futures
     while !reply_futures.is_empty() {
-        let _response = reply_futures.next().await.unwrap()?;
-        latencies.push(starts[latencies.len()].elapsed());
+        let resp = reply_futures.next().await.unwrap()?;
+        let req_id = resp.token().0;
+        latency.update(starts[req_id % args.provision_count].elapsed().as_micros() as usize * 10);
         if warmup {
-            eprintln!("warmup: resp {} received", response_count);
-            response_count += 1;
+            eprintln!("warmup: resp {} received", req_id);
         }
     }
 
-    Ok(std::iter::zip(starts, latencies).collect())
+    Ok(latency)
 }
+
+// #[allow(unused)]
+// async fn run_bench(
+//     args: &Args,
+//     client: &GreeterClient,
+//     reqs: &[WRef<HelloRequest>],
+//     warmup: bool,
+// ) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
+// // ) -> Result<latency::Latency, mrpc::Status> {
+//     let mut response_count = 0;
+//     let mut reply_futures = FuturesUnordered::new();
+//     let mut starts = Vec::with_capacity(args.total_iters);
+//     // let mut starts = Vec::with_capacity(args.provision_count);
+//     // starts.resize_with(args.provision_count, || Instant::now());
+//     let mut latencies = Vec::with_capacity(args.total_iters);
+//     // let mut latency = latency::Latency::new();
+//     // let mut start = Instant::now();
+//     // let refresh_period = Duration::from_millis(500);
+//
+//     // start sending
+//     for i in 0..args.total_iters {
+//         starts.push(Instant::now());
+//         // starts[i % args.provision_count] = Instant::now();
+//         let fut = client.say_hello(&reqs[i % args.provision_count]);
+//         reply_futures.push(fut);
+//         if reply_futures.len() >= args.concurrency {
+//             let _resp = reply_futures.next().await.unwrap()?;
+//             // let resp = reply_futures.next().await.unwrap()?;
+//             if warmup {
+//                 eprintln!("warmup: resp {} received", response_count);
+//                 response_count += 1;
+//             }
+//             latencies.push(starts[latencies.len()].elapsed());
+//             // latency.update(starts[resp.token().0].elapsed().as_micros() as usize * 10);
+//         }
+//
+//         // if start.elapsed() > refresh_period {
+//         //     println!(
+//         //         "samples: {},min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+//         //         latency.count(),
+//         //         latency.perc(0.) as f64 / 10.0,
+//         //         latency.perc(0.50) as f64 / 10.0,
+//         //         latency.perc(0.95) as f64 / 10.0,
+//         //         latency.perc(0.99) as f64 / 10.0,
+//         //         latency.perc(1.0) as f64 / 10.0,
+//         //     );
+//         //     latency.reset();
+//         //     start = Instant::now();
+//         // }
+//     }
+//
+//     // draining the remaining futures
+//     while !reply_futures.is_empty() {
+//         // let resp = reply_futures.next().await.unwrap()?;
+//         // latency.update(starts[resp.token().0].elapsed().as_micros() as usize * 10);
+//         let _resp = reply_futures.next().await.unwrap()?;
+//         latencies.push(starts[latencies.len()].elapsed());
+//         if warmup {
+//             eprintln!("warmup: resp {} received", response_count);
+//             response_count += 1;
+//         }
+//     }
+//
+//     // Ok(latency)
+//     Ok(std::iter::zip(starts, latencies).collect())
+// }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let args = Args::from_args();
@@ -134,43 +224,56 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         smol::block_on(async {
             // provision
             let mut reqs = Vec::new();
-            for _ in 0..args.provision_count {
+            for i in 0..args.provision_count {
                 let mut name = Vec::with_capacity(args.req_size);
                 name.resize(args.req_size, 42);
-                let req = WRef::new(HelloRequest { name });
+                let req = WRef::with_token(mrpc::Token(i), HelloRequest { name });
                 reqs.push(req);
             }
 
             // warm up
-            let _ = run_bench(&args, &client, &reqs, true).await?;
+            // let _ = run_bench(&args, &client, &reqs, true).await?;
             // let _ = BenchApp::new(&args, &client, &reqs, true).await?;
 
             let start = Instant::now();
             let stats = run_bench(&args, &client, &reqs, false).await?;
             // let stats = BenchApp::new(&args, &client, &reqs, false).await?;
             let dura = start.elapsed();
-            let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
+            // let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
 
             // print stats
+            println!("{stats}");
+
             println!(
                 "dura: {:?}, speed: {:?}",
                 dura,
                 8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
             );
 
-            // print latencies
-            latencies.sort();
-            let cnt = latencies.len();
             println!(
                 "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
                 dura,
-                dura / starts.len() as u32,
-                latencies[0],
-                latencies[cnt / 2],
-                latencies[(cnt as f64 * 0.95) as usize],
-                latencies[(cnt as f64 * 0.99) as usize],
-                latencies[cnt - 1]
+                dura / args.total_iters as u32,
+                stats.perc(0.) as f64 / 10.0,
+                stats.perc(0.50) as f64 / 10.0,
+                stats.perc(0.95) as f64 / 10.0,
+                stats.perc(0.99) as f64 / 10.0,
+                stats.perc(1.0) as f64 / 10.0,
             );
+
+            // print latencies
+            // latencies.sort();
+            // let cnt = latencies.len();
+            // println!(
+            //     "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+            //     dura,
+            //     dura / starts.len() as u32,
+            //     latencies[0],
+            //     latencies[cnt / 2],
+            //     latencies[(cnt as f64 * 0.95) as usize],
+            //     latencies[(cnt as f64 * 0.99) as usize],
+            //     latencies[cnt - 1]
+            // );
 
             Result::<(), mrpc::Status>::Ok(())
         }).unwrap();

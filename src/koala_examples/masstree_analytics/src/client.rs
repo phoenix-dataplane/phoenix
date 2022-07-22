@@ -256,9 +256,10 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                                 if resp.is_some() {
                                     let rref = resp.unwrap()?;
                                     let req_id = rref.token().0;
-                                    let usec = req_ts[req_id].elapsed().as_micros() as usize;
+                                    // scale up to fit in the bucket
+                                    let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
                                     client.num_resps_tot += 1;
-                                    client.point_latency.update(usec * 10);
+                                    client.point_latency.update(usec);
                                     if let Query::Point(req) = &workload[req_id] {
                                         req_ts[req_id] = Instant::now();
                                         point_resp.push(local_ex.run(stub.query_point(req)));
@@ -269,9 +270,10 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                                 if resp.is_some() {
                                     let rref = resp.unwrap()?;
                                     let req_id = rref.token().0;
-                                    let usec = req_ts[req_id].elapsed().as_micros() as usize;
+                                    // scale up to fit in the bucket
+                                    let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
                                     client.num_resps_tot += 1;
-                                    client.range_latency.update(usec * 10);
+                                    client.range_latency.update(usec);
                                     if let Query::Range(req) = &workload[req_id] {
                                         req_ts[req_id] = Instant::now();
                                         range_resp.push(local_ex.run(stub.query_range(req)));

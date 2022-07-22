@@ -541,23 +541,19 @@ pub fn service_pre_handler<'a, T: Unpin>(
 
 pub fn service_post_handler<T: RpcData>(
     reply: WRef<T>,
-    conn_id: Handle,
-    service_id: u32,
-    func_id: u32,
-    call_id: u32,
+    req_opaque: &MessageErased,
 ) -> MessageErased {
     // construct meta
     let meta = MessageMeta {
-        conn_id,
-        service_id,
-        func_id,
-        call_id,
-        token: reply.token().0 as u64,
         msg_type: RpcMsgType::Response,
+        ..req_opaque.meta
     };
 
     // track the msg as pending
-    PENDING_WREF.insert(RpcId::new(conn_id, func_id), WRef::clone(&reply));
+    PENDING_WREF.insert(
+        RpcId::new(meta.conn_id, meta.func_id),
+        WRef::clone(&reply),
+    );
 
     let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {
