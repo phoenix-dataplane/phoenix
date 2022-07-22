@@ -1,13 +1,16 @@
 name = "benchmark/write_thpt-32b"
 description = "Run RPS benchmark for RDMA write"
 group = "write_thpt"
+timeout_secs = 10
 
 [[worker]]
 host = "danyang-06"
 bin = "bench_bw"
 args = "write -n 10000 -s 32"
+dependencies = []
 
 [[worker]]
 host = "danyang-05"
 bin = "bench_bw"
 args = "write -n 10000 -s 32 -c rdma0.danyang-06"
+dependencies = [0]

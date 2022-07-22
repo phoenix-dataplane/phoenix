@@ -1,6 +1,7 @@
 name = "benchmark/write_thpt-32b-8p"
 description = "Run RPS benchmark for RDMA write 8 Processes"
 group = "write_thpt"
+timeout_secs = 60
 
 [[worker]]
 host = "danyang-06"

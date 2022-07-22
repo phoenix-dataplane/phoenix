@@ -72,6 +72,10 @@ struct Opt {
     /// Output directory of log files
     #[structopt(short, long)]
     output_dir: Option<path::PathBuf>,
+
+    /// Dry-run. Use this option to check the configs.
+    #[structopt(long)]
+    dry_run: bool,
 }
 
 fn open_with_create_append<P: AsRef<path::Path>>(path: P) -> fs::File {
@@ -200,6 +204,7 @@ fn start_ssh(
         Duration::from_secs(opt.global_timeout_secs)
     };
     let cargo_dir = config.workdir.clone();
+    let dry_run = opt.dry_run;
 
     move || {
         // using stupid timers to enforce launch order.
@@ -269,8 +274,10 @@ fn start_ssh(
             .arg(ip);
         kill_cmd.arg(format!("pkill -f {}", worker.bin));
 
-        // poll command status until timeout or user Ctrl-C
-        wait_command(cmd, Some(kill_cmd), timeout, &host).unwrap();
+        if !dry_run {
+            // poll command status until timeout or user Ctrl-C
+            wait_command(cmd, Some(kill_cmd), timeout, &host).unwrap();
+        }
     }
 }
 
@@ -442,14 +449,6 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
         let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs, delay));
         handles.push(h);
     }
-
-    // // start workers
-    // let mut handles = vec![];
-    // for w in &spec.worker {
-    //     let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs));
-    //     handles.push(h);
-    //     thread::sleep(Duration::from_millis(1000));
-    // }
 
     // join
     for h in handles {

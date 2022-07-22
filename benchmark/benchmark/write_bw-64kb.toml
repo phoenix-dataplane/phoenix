@@ -1,13 +1,16 @@
 name = "benchmark/write_bw-64kb"
 description = "Run bandwidth benchmark for RDMA write"
 group = "write_bw"
+timeout_secs = 10
 
 [[worker]]
 host = "danyang-06"
 bin = "bench_bw"
 args = "write -n 10000"
+dependencies = []
 
 [[worker]]
 host = "danyang-05"
 bin = "bench_bw"
 args = "write -n 10000 -c rdma0.danyang-06"
+dependencies = [0]

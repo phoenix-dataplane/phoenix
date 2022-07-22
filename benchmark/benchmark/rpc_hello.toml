@@ -1,13 +1,16 @@
 name = "benchmark/rpc_hello"
 description = "Run rpc_hello benchmark"
 group = "rpc_hello"
+timeout_secs = 10
 
 [[worker]]
 host = "danyang-06"
 bin = "rpc_hello_server"
 args = ""
+dependencies = []
 
 [[worker]]
 host = "danyang-05"
 bin = "rpc_hello_client"
 args = "-c rdma0.danyang-06"
+dependencies = [0]
