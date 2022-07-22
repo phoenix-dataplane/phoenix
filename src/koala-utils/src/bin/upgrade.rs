@@ -23,10 +23,10 @@ fn main() {
     }
     let mut sock = DomainSocket::bind(sock_path).unwrap();
 
-    let req = control::Request::Upgrade;
-    let buf = bincode::serialize(&req).unwrap();
-    assert!(buf.len() < MAX_MSG_LEN);
+    // let req = control::Request::Upgrade;
+    // let buf = bincode::serialize(&req).unwrap();
+    // assert!(buf.len() < MAX_MSG_LEN);
 
-    let service_path = PathBuf::from(DEFAULT_KOALA_PREFIX).join(DEFAULT_KOALA_CONTROL);
-    sock.send_to(&buf, &service_path).unwrap();
+    // let service_path = PathBuf::from(DEFAULT_KOALA_PREFIX).join(DEFAULT_KOALA_CONTROL);
+    // sock.send_to(&buf, &service_path).unwrap();
 }

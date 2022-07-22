@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 
 use petgraph::graph::NodeIndex;
-use petgraph::visit::{DfsPostOrder, Walker, WalkerIter};
+use petgraph::visit::{DfsPostOrder, Walker};
 use petgraph::Graph;
 
 use crate::engine::{EnginePair, EngineType};

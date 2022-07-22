@@ -21,6 +21,7 @@ use super::state::{Shared, State};
 use crate::config::RdmaTransportConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::module::Service;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
 
@@ -30,7 +31,7 @@ pub type CustomerType =
 /// Create API Operations.
 pub(crate) fn create_ops(
     runtime_manager: &Arc<RuntimeManager>,
-    state_mgr: &SharedStateManager<Shared>,
+    state_mgr: &mut SharedStateManager<Shared>,
     client_pid: Pid,
 ) -> Result<Ops> {
     // first create cm engine
@@ -45,7 +46,7 @@ pub(crate) fn create_ops(
 
 fn create_cm_engine(
     runtime_manager: &Arc<RuntimeManager>,
-    state_mgr: &SharedStateManager<Shared>,
+    state_mgr: &mut SharedStateManager<Shared>,
     client_pid: Pid,
 ) -> Result<()> {
     let shared = state_mgr.get_or_create(client_pid)?;
@@ -61,8 +62,10 @@ fn create_cm_engine(
     let cm_engine = CmEngine::new(node, state);
 
     // always submit the engine to a dedicate runtime
+    let gid = runtime_manager.get_new_group_id(client_pid, Service(String::from("DEFAULT")));
     runtime_manager.submit(
         client_pid,
+        gid,
         EngineContainer::new(cm_engine),
         SchedulingMode::Dedicate,
     );
@@ -132,7 +135,7 @@ impl TransportModule {
     }
 
     pub fn handle_new_client<P: AsRef<Path>>(
-        &self,
+        &mut self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -153,15 +156,18 @@ impl TransportModule {
         let client_pid = Pid::from_raw(cred.pid.unwrap());
 
         // 3.1. create the ops and cm engine
-        let ops = create_ops(&self.runtime_manager, &self.state_mgr, client_pid)?;
+        let ops = create_ops(&self.runtime_manager, &mut self.state_mgr, client_pid)?;
 
         // 4. create the engine
         let builder = TransportEngineBuilder::new(customer, mode, ops);
         let engine = builder.build()?;
 
         // submit the engine to a runtime
+        let gid = self
+            .runtime_manager
+            .get_new_group_id(client_pid, Service(String::from("DEFAULT")));
         self.runtime_manager
-            .submit(client_pid, EngineContainer::new(engine), mode);
+            .submit(client_pid, gid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

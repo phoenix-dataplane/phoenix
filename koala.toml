@@ -74,3 +74,8 @@ egress = [
 ingress = [
   ["rpc-adapter", "mrpc.0"],
 ]
+
+[[plugin]]
+name = "Salloc"
+lib = "/tmp/koala/plugins/libkoala_salloc.so"
+config = "/tmp/koala/configs/salloc.toml"

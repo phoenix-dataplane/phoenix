@@ -1073,6 +1073,7 @@ dependencies = [
  "quote",
  "rdma",
  "scheduler",
+ "semver 1.0.12",
  "serde",
  "serde_json",
  "smallstr",
@@ -1089,7 +1090,6 @@ dependencies = [
  "tracing-chrome",
  "tracing-subscriber",
  "uuid",
- "version",
 ]
 
 [[package]]
@@ -1109,8 +1109,13 @@ dependencies = [
  "nix 0.23.1",
  "spin",
  "thiserror",
+ "tracing",
  "uuid",
 ]
+
+[[package]]
+name = "koala-transport-rdma"
+version = "0.1.0"
 
 [[package]]
 name = "koala-utils"
@@ -2022,7 +2027,7 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0dfe2087c51c460008730de8b57e6a320782fbfb312e1f4d520e6c6fae155ee"
 dependencies = [
- "semver",
+ "semver 0.11.0",
 ]
 
 [[package]]
@@ -2064,6 +2069,12 @@ checksum = "f301af10236f6df4160f7c3f04eec6dbc70ace82d23326abad5edee88801c6b6"
 dependencies = [
  "semver-parser",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2333e6df6d6598f2b1974829f853c2b4c5f4a6e503c10af918081aa6f8564e1"
 
 [[package]]
 name = "semver-parser"
@@ -2584,12 +2595,6 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
-
-[[package]]
-name = "version"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a449064fee414fcc201356a3e6c1510f6c8829ed28bb06b91c54ebe208ce065"
 
 [[package]]
 name = "version_check"

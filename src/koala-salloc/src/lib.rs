@@ -3,7 +3,7 @@
 #![feature(peer_credentials_unix_socket)]
 
 use module::SallocModule;
-use std::alloc::LayoutError;
+use std::{alloc::LayoutError, path::Path};
 use thiserror::Error;
 
 pub(crate) mod engine;
@@ -45,7 +45,7 @@ impl<T> From<SendError<T>> for ControlPathError {
 }
 
 #[no_mangle]
-pub fn init_module() -> Box<dyn KoalaModule> {
+pub fn init_module(_config_path: &Path) -> Box<dyn KoalaModule> {
     let stage_mgr = SharedStateManager::new();
     Box::new(SallocModule { stage_mgr })
 }

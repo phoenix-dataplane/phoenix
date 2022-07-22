@@ -1,23 +1,24 @@
-use std::os::unix::net::{SocketAddr, UCred};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::Result;
-use koala::envelop::ResourceDowncast;
-use koala::module::{KoalaModule, NewEngineRequest};
+use anyhow::{bail, Result};
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use interface::engine::{EngineType, SchedulingMode};
-use ipc;
+use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
-use ipc::salloc::{cmd, control_plane, dp};
-use ipc::unix::DomainSocket;
+use ipc::salloc::{cmd, dp};
+
+use koala::engine::EngineType;
+use koala::envelop::ResourceDowncast;
+use koala::module::{KoalaModule, ModuleDowncast};
+use koala::module::{ModuleCollection, NewEngineRequest, Service, Version};
+use koala::state_mgr::SharedStateManager;
+use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
-use koala::state_mgr::SharedStateManager;
 
 pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -61,12 +62,7 @@ pub struct SallocModule {
 }
 
 impl KoalaModule for SallocModule {
-    fn name(&self) -> &str {
-        const name: &'static str = "Salloc";
-        name
-    }
-
-    fn service(&self) -> (koala::module::Service, koala::engine::EngineType) {
+    fn service(&self) -> (Service, EngineType) {
         let service = koala::module::Service(String::from("Salloc"));
         let etype = koala::engine::EngineType("Salloc".to_string());
         (service, etype)
@@ -80,17 +76,29 @@ impl KoalaModule for SallocModule {
         vec![]
     }
 
+    fn check_compatibility(&self, _prev: Option<&Version>, _curr: &HashMap<&str, Version>) -> bool {
+        true
+    }
+
+    fn migrate(&mut self, prev_module: Box<dyn KoalaModule>) {
+        let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
+        self.stage_mgr = prev_concrete.stage_mgr;
+    }
+
     fn create_engine(
-        &self,
-        ty: &koala::engine::EngineType,
-        request: koala::module::NewEngineRequest,
-        // shared: &mut SharedStorage,
-        // global: &mut ResourceCollection,
-        // plugged: &ModuleCollection
-    ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
+        &mut self,
+        ty: &EngineType,
+        request: NewEngineRequest,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+        _plugged: &ModuleCollection,
+    ) -> Result<Box<dyn koala::engine::Engine>> {
+        if &ty.0 != "Salloc" {
+            bail!("invalid engine type {:?}", ty)
+        }
         if let NewEngineRequest::Service {
             sock,
-            cleint_path,
+            client_path: cleint_path,
             mode,
             cred,
         } = request
@@ -121,22 +129,24 @@ impl KoalaModule for SallocModule {
     }
 
     fn restore_engine(
-        &self,
-        ty: &koala::engine::EngineType,
-        mut local: koala::storage::ResourceCollection,
-        // shared: &mut SharedStorage,
-        // global: &mut ResourceCollection,
-        // plugged: &ModuleCollection
-    ) -> Result<Box<dyn koala::engine::Engine>, Box<dyn std::error::Error>> {
-        // 0. generate a path and bind a unix domain socket to it
-        eprintln!("Reloading Salloc-customer");
+        &mut self,
+        ty: &EngineType,
+        mut local: ResourceCollection,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+        _plugged: &ModuleCollection,
+        _prev_version: Version,
+    ) -> Result<Box<dyn koala::engine::Engine>> {
+        if &ty.0 != "Salloc" {
+            bail!("invalid engine type {:?}", ty)
+        }
+        tracing::trace!("restoring salloc engine");
         let customer = unsafe {
             *local
                 .remove("customer")
                 .unwrap()
                 .downcast_unchecked::<CustomerType>()
         };
-        eprintln!("Reloading Salloc-state");
         let state = unsafe { *local.remove("state").unwrap().downcast_unchecked::<State>() };
         let engine = SallocEngine {
             customer,

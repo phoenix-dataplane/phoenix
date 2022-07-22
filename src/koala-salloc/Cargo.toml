@@ -14,8 +14,7 @@ ipc = { path = "../ipc" }
 koala = { path = "../koala" }
 mrpc-marshal = { path = "../mrpc-marshal" } 
 memmap-fixed = { path = "../memmap-fixed" }
-
-
+tracing = "0.1"
 anyhow = "1.0.58"
 lazy_static = "1.4.0"
 nix = "0.23.0"

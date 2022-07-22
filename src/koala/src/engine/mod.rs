@@ -7,7 +7,7 @@ use futures::future::BoxFuture;
 pub mod future;
 pub mod manager;
 pub mod unload;
-pub use unload::{Unload, Version};
+pub use unload::Unload;
 pub(crate) mod graph;
 pub(crate) mod lb;
 pub(crate) mod runtime;

@@ -39,13 +39,17 @@ pub(crate) mod timer;
 macro_rules! unimplemented_ungradable {
     ($engine:ident) => {
         use crate::engine::Unload;
-        use crate::storage::ResourceCollection;
+        use crate::storage::{ResourceCollection, SharedStorage};
         impl Unload for $engine {
             fn detach(&mut self) {
                 unimplemented!();
             }
 
-            fn unload(self: Box<Self>) -> ResourceCollection {
+            fn unload(
+                self: Box<Self>,
+                _shared: &mut SharedStorage,
+                _global: &mut ResourceCollection,
+            ) -> ResourceCollection {
                 unimplemented!();
             }
         }

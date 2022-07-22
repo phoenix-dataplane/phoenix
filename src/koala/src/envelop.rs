@@ -44,9 +44,9 @@ impl<T: Any> TypeTagged for T {
     }
 }
 
-pub trait AnyResource: TypeTagged + Send + 'static {}
+pub trait AnyResource: TypeTagged + Send + Sync + 'static {}
 
-impl<T: TypeTagged + Send + 'static> AnyResource for T {}
+impl<T: TypeTagged + Send + Sync + 'static> AnyResource for T {}
 
 impl dyn AnyResource {
     /// Returns `true` if the inner type is the same as `T`.

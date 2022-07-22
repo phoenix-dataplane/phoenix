@@ -16,6 +16,7 @@ use super::engine::{RpcAdapterEngine, TlStorage};
 use super::state::{Shared, State};
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::module::Service;
 use crate::node::Node;
 use crate::salloc::module::SallocModule;
 use crate::salloc::state::{Shared as SallocShared, State as SallocState};
@@ -25,7 +26,7 @@ use crate::transport::rdma::ops::Ops;
 
 fn create_acceptor_engine(
     runtime_manager: &Arc<RuntimeManager>,
-    state_mgr: &SharedStateManager<Shared>,
+    state_mgr: &mut SharedStateManager<Shared>,
     client_pid: Pid,
     ops: Ops,
 ) -> Result<()> {
@@ -41,8 +42,10 @@ fn create_acceptor_engine(
     let acceptor_engine = AcceptorEngine::new(node, state, Box::new(TlStorage { ops }));
 
     // always submit the engine to a dedicate runtime
+    let gid = runtime_manager.get_new_group_id(client_pid, Service(String::from("DEFAULT")));
     runtime_manager.submit(
         client_pid,
+        gid,
         EngineContainer::new(acceptor_engine),
         SchedulingMode::Dedicate,
     );
@@ -135,23 +138,28 @@ impl RpcAdapterModule {
     }
 
     pub(crate) fn create_engine(
-        &self,
+        &mut self,
         runtime_manager: &Arc<RuntimeManager>,
         n: Node,
         mode: SchedulingMode,
         client_pid: Pid,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
-        salloc: &SallocModule,
-        rdam_transport: &TransportModule,
+        salloc: &mut SallocModule,
+        rdam_transport: &mut TransportModule,
     ) -> Result<RpcAdapterEngine> {
         let ops = crate::transport::rdma::module::create_ops(
             runtime_manager,
-            &rdam_transport.state_mgr,
+            &mut rdam_transport.state_mgr,
             client_pid,
         )?;
 
-        create_acceptor_engine(runtime_manager, &self.state_mgr, client_pid, ops.clone())?;
+        create_acceptor_engine(
+            runtime_manager,
+            &mut self.state_mgr,
+            client_pid,
+            ops.clone(),
+        )?;
 
         let shared = self.state_mgr.get_or_create(client_pid)?;
         let salloc_shared = salloc.stage_mgr.get_or_create(client_pid)?;

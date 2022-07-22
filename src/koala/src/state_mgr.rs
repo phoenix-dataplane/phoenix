@@ -12,21 +12,18 @@ pub trait ProcessShared: Sized {
 
 /// Per-user-application-process shared state
 pub struct SharedStateManager<S> {
-    // TODO(wyj): determine whether we should wrap states in Mutex?
-    // i.e., restoring engines in dedicated thread or on main control thread?
-    pub states: spin::Mutex<HashMap<Pid, Weak<S>>>,
+    states: HashMap<Pid, Weak<S>>,
 }
 
 impl<S: ProcessShared> SharedStateManager<S> {
     pub fn new() -> Self {
         SharedStateManager {
-            states: spin::Mutex::new(HashMap::default()),
+            states: HashMap::default(),
         }
     }
 
-    pub fn get_or_create(&self, pid: Pid) -> Result<Arc<S>, <S as ProcessShared>::Err> {
-        let mut states = self.states.lock();
-        match states.entry(pid) {
+    pub fn get_or_create(&mut self, pid: Pid) -> Result<Arc<S>, <S as ProcessShared>::Err> {
+        match self.states.entry(pid) {
             hash_map::Entry::Occupied(mut entry) => {
                 if let Some(state) = entry.get().upgrade() {
                     Ok(state)

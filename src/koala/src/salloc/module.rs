@@ -18,6 +18,7 @@ use super::state::{Shared, State};
 use crate::config::SallocConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::module::Service;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
 
@@ -93,7 +94,7 @@ impl SallocModule {
     }
 
     pub(crate) fn handle_new_client<P: AsRef<Path>>(
-        &self,
+        &mut self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -117,8 +118,12 @@ impl SallocModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime, overwrite the mode, force to use dedicated runtime
+        let gid = self
+            .runtime_manager
+            .get_new_group_id(client_pid, Service(String::from("DEFAULT")));
         self.runtime_manager.submit(
             client_pid,
+            gid,
             EngineContainer::new(engine),
             SchedulingMode::Dedicate,
         );

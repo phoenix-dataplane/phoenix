@@ -14,6 +14,8 @@ use super::container::EngineContainer;
 use super::runtime::{self, Runtime};
 use super::EngineType;
 use crate::config::Config;
+use crate::module::Service;
+use crate::storage::ResourceCollection;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,17 +25,66 @@ pub struct EngineId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RuntimeId(u64);
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GroupId(u64);
+
+#[derive(Debug, Clone)]
+pub struct EngineInfo {
+    /// Application process PID that this engine serves
+    pub(crate) pid: Pid,
+    /// Which group the engine belongs to,
+    pub(crate) gid: GroupId,
+    /// Runtime ID the engine is running on
+    pub(crate) rid: RuntimeId,
+    /// The type of the engine
+    pub(crate) engine_type: EngineType,
+    /// Scheduling mode
+    pub(crate) scheduling_mode: SchedulingMode,
+}
+
+pub(crate) struct GlobalResourceManager {
+    pub(crate) resource: DashMap<Pid, ResourceCollection>,
+    /// Number of active engine groups for each application process
+    active_cnt: DashMap<Pid, usize>,
+}
+
+impl GlobalResourceManager {
+    fn new() -> Self {
+        GlobalResourceManager {
+            resource: DashMap::new(),
+            active_cnt: DashMap::new(),
+        }
+    }
+
+    #[inline]
+    fn register_group_shutdown(&self, pid: Pid) {
+        let removed = self.active_cnt.remove_if_mut(&pid, |_, cnt| {
+            *cnt -= 1;
+            *cnt == 0
+        });
+        if removed.is_some() {
+            self.resource.remove(&pid);
+        }
+    }
+}
+
 pub struct RuntimeManager {
     pub inner: Mutex<Inner>,
-    // TODO(wyj): handle multiple threads
-    pub clients: DashMap<Pid, DashMap<EngineId, (EngineType, RuntimeId)>>,
-    // map engines to client Pid
-    // TODO(wyj): handle multiple threads
-    engines: DashMap<EngineId, Pid>,
+    /// Per-process counter for generating ID of engine groups
+    group_counter: DashMap<Pid, u64>,
+    /// Info about the engines
+    pub(crate) engine_subscriptions: DashMap<EngineId, EngineInfo>,
+    /// The service each engine group is running,
+    /// and the number of active engines in that group
+    pub(crate) service_subscriptions: DashMap<(Pid, GroupId), (Service, usize)>,
+    pub(crate) global_resource_mgr: GlobalResourceManager,
 }
 
 pub struct Inner {
+    // the number of engines are at most u64::MAX
     engine_counter: u64,
+    // the number of runtimes are at most u64::MAX
     runtime_counter: u64,
     pub(crate) runtimes: HashMap<RuntimeId, Arc<Runtime>>,
     handles: HashMap<RuntimeId, JoinHandle<Result<(), runtime::Error>>>,
@@ -55,7 +106,7 @@ impl Inner {
         };
 
         let engine_id = EngineId(self.engine_counter);
-        self.engine_counter += 1;
+        self.engine_counter = self.engine_counter.checked_add(1).unwrap();
         self.runtimes[&rid].add_engine(engine_id, engine);
 
         // a runtime will not be parked when having pending engines, so in theory, we can check
@@ -76,42 +127,71 @@ impl RuntimeManager {
         };
         RuntimeManager {
             inner: Mutex::new(inner),
-            clients: DashMap::new(),
-            engines: DashMap::new(),
+            group_counter: DashMap::new(),
+            engine_subscriptions: DashMap::new(),
+            service_subscriptions: DashMap::new(),
+            global_resource_mgr: GlobalResourceManager::new(),
         }
     }
 
     pub(crate) fn submit(
         self: &Arc<Self>,
         pid: Pid,
+        gid: GroupId,
         engine: EngineContainer,
         mode: SchedulingMode,
     ) {
         let mut inner = self.inner.lock().unwrap();
         match mode {
             SchedulingMode::Dedicate => {
+                let engine_type = engine.engine_type().clone();
                 let (eid, rid) = inner.schedule_dedicate(engine, self);
-                // TODO: write it correct
-                let entry = self.clients.entry(pid).or_insert_with(DashMap::new);
-                entry.insert(eid, (EngineType("Salloc".to_string()), rid));
-                self.engines.insert(eid, pid);
+                let engine_info = EngineInfo {
+                    pid,
+                    gid,
+                    rid,
+                    scheduling_mode: mode,
+                    engine_type,
+                };
+                let prev = self.engine_subscriptions.insert(eid, engine_info);
+                debug_assert!(prev.is_none());
+                // increase active engine count for corresponding engine group
+                self.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 += 1;
             }
             SchedulingMode::Compact => unimplemented!(),
             SchedulingMode::Spread => unimplemented!(),
         }
     }
 
-    pub(crate) fn register_shutdown(&self, engine_id: EngineId) {
-        let (_, pid) = self.engines.remove(&engine_id).unwrap();
-        let client = self.clients.get_mut(&pid).unwrap();
-        client.remove(&engine_id);
+    #[inline]
+    pub(crate) fn get_new_group_id(&self, pid: Pid, service: Service) -> GroupId {
+        let mut counter = self.group_counter.entry(pid).or_insert(0);
+        let gid = GroupId(*counter);
+        self.service_subscriptions.insert((pid, gid), (service, 0));
+        *self.global_resource_mgr.active_cnt.entry(pid).or_insert(0) += 1;
+        *counter = counter.checked_add(1).unwrap();
+        gid
+    }
+
+    #[inline]
+    pub(crate) fn register_engine_shutdown(&self, engine_id: EngineId) {
+        let info = self.engine_subscriptions.remove(&engine_id).unwrap().1;
+        let removed =
+            self.service_subscriptions
+                .remove_if_mut(&(info.pid, info.gid), |_, (_, cnt)| {
+                    *cnt -= 1;
+                    *cnt == 0
+                });
+        if removed.is_some() {
+            self.global_resource_mgr.register_group_shutdown(info.pid);
+        }
     }
 }
 
 impl Inner {
-    fn start_runtime(&mut self, core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
+    fn start_runtime(&mut self, _core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
         let runtime_id = RuntimeId(self.runtime_counter);
-        self.runtime_counter += 1;
+        self.runtime_counter = self.runtime_counter.checked_add(1).unwrap();
         let runtime = Arc::new(Runtime::new(runtime_id, rm));
         self.runtimes.insert(runtime_id, Arc::clone(&runtime));
 
@@ -119,10 +199,10 @@ impl Inner {
             .name(format!("Runtime {}", runtime_id.0))
             .spawn(move || {
                 // check core id
-                let num_cpus = num_cpus::get();
-                if core >= num_cpus {
-                    return Err(runtime::Error::InvalidId(core));
-                }
+                // let num_cpus = num_cpus::get();
+                // if core >= num_cpus {
+                //     return Err(runtime::Error::InvalidId(core));
+                // }
                 // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
                 // does not run on the hyperthread core pair. Since we cannot expect that we always
                 // have hyperthread core pair available, not setting affinity turns out to be better.

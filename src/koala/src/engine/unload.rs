@@ -1,10 +1,10 @@
-pub use version::{version, Version};
-
-use crate::storage::ResourceCollection;
-
-use super::Engine;
+use crate::storage::{ResourceCollection, SharedStorage};
 
 pub trait Unload {
     fn detach(&mut self);
-    fn unload(self: Box<Self>) -> ResourceCollection;
+    fn unload(
+        self: Box<Self>,
+        shared: &mut SharedStorage,
+        global: &mut ResourceCollection,
+    ) -> ResourceCollection;
 }

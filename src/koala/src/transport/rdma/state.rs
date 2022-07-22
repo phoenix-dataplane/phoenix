@@ -54,7 +54,6 @@ impl ProcessShared for Shared {
     type Err = io::Error;
 
     fn new(pid: Pid) -> io::Result<Self> {
-        let resource = Resource::new()?;
         let cm_manager = tokio::sync::Mutex::new(CmEventManager::new()?);
         let shared = Shared {
             cm_manager,

@@ -1,12 +1,20 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 
+use anyhow;
+use anyhow::bail;
+
 use dashmap::DashMap;
+use ipc::control::PluginDescriptor;
 
 use crate::dependency::EngineGraph;
 use crate::engine::EngineType;
 use crate::module::KoalaModule;
 use crate::module::Service;
+
+pub type InitFn = fn(&Path) -> Box<dyn KoalaModule>;
 
 pub struct Plugin {
     lib: libloading::Library,
@@ -19,13 +27,9 @@ impl Plugin {
         Plugin { lib, _old: None }
     }
 
-    pub fn init_module(&self) -> Box<dyn KoalaModule> {
-        let func = unsafe {
-            self.lib
-                .get::<unsafe fn() -> Box<dyn KoalaModule>>(b"init_module")
-                .unwrap()
-        };
-        let module = unsafe { func() };
+    pub fn init_module(&self, config_path: &Path) -> Box<dyn KoalaModule> {
+        let func = unsafe { self.lib.get::<InitFn>(b"init_module").unwrap() };
+        let module = func(config_path);
         module
     }
 
@@ -38,16 +42,24 @@ impl Plugin {
         }
     }
 
+    #[inline]
     pub fn unload_old(&mut self) {
         self._old = None
+    }
+
+    #[inline]
+    pub fn rollback(&mut self) {
+        if self._old.is_some() {
+            self.lib = self._old.take().unwrap();
+        }
     }
 }
 
 pub struct PluginCollection {
     plugins: DashMap<String, Plugin>,
-    pub modules: DashMap<String, Box<dyn KoalaModule>>,
-    pub engine_registry: DashMap<EngineType, String>,
-    pub service_registry: DashMap<Service, Vec<EngineType>>,
+    pub(crate) modules: DashMap<String, Box<dyn KoalaModule>>,
+    pub(crate) engine_registry: DashMap<EngineType, String>,
+    pub(crate) service_registry: DashMap<Service, Vec<EngineType>>,
     graph: Mutex<EngineGraph>,
 }
 
@@ -62,29 +74,88 @@ impl PluginCollection {
         }
     }
 
-    pub fn load_plugin<P: AsRef<Path>>(&self, name: String, path: P) {
-        let old = self.plugins.remove(&name);
-        if let Some((_, old)) = old {
-            self.plugins.insert(name.clone(), old.upgrade(path));
-        } else {
-            self.plugins.insert(name.clone(), Plugin::new(path));
+    /// Load or upgrade plugins
+    /// Returns a set of affected engine types
+    pub fn load_or_upgrade_plugins(
+        &self,
+        descriptors: &Vec<PluginDescriptor>,
+    ) -> anyhow::Result<HashSet<EngineType>> {
+        let mut new_modules = HashMap::new();
+        let mut old_verions = HashMap::new();
+        let mut new_versions = HashMap::new();
+        let modules_guard = self.modules.iter().collect::<Vec<_>>();
+        for module in modules_guard.iter() {
+            new_versions.insert(&module.key()[..], module.value().version());
         }
 
-        let plugin = self.plugins.get_mut(&name).unwrap();
-        let module = plugin.init_module();
-        let engines = module.engines();
-        self.graph.lock().unwrap().add_engines(&engines[..]);
-        for engine in engines {
-            self.engine_registry.insert(engine.clone(), name.clone());
+        // load new moduels (plugins)
+        for descriptor in descriptors.iter() {
+            let old = self.plugins.remove(&descriptor.name);
+            if let Some((_, old)) = old {
+                let old_ver = self.modules.get(&descriptor.name).unwrap().version();
+                old_verions.insert(&descriptor.name[..], old_ver);
+                self.plugins
+                    .insert(descriptor.name.clone(), old.upgrade(&descriptor.lib_path));
+            } else {
+                self.plugins
+                    .insert(descriptor.name.clone(), Plugin::new(&descriptor.lib_path));
+            }
+            let new_plugin = self.plugins.get_mut(&descriptor.name).unwrap();
+            let new_module = new_plugin.init_module(descriptor.config_path.as_ref());
+            new_versions.insert(&descriptor.name[..], new_module.version());
+            new_modules.insert(&descriptor.name[..], new_module);
         }
 
-        let edges = module.dependencies();
-        self.graph.lock().unwrap().add_dependency(&edges[..]);
+        // check compatibility
+        let mut compatible = true;
+        for (name, module) in new_modules.iter() {
+            let old_ver = old_verions.get(*name);
+            if !module.check_compatibility(old_ver, &new_versions) {
+                compatible = false;
+                break;
+            }
+        }
 
-        let (service_name, service_engine) = module.service();
-        self.add_service(service_name.clone(), service_engine.clone());
+        if !compatible {
+            // not compatible, rollback
+            for descriptor in descriptors.iter() {
+                self.plugins.get_mut(&descriptor.name).unwrap().rollback();
+            }
+            bail!("New plugins are not compatible with existing ones");
+        }
 
-        self.modules.insert(name, module);
+        // if compatible, finish upgrade
+        let mut graph_guard = self.graph.lock().unwrap();
+        let mut upgraded_engine_types = HashSet::new();
+        for (name, mut module) in new_modules.into_iter() {
+            if let Some((_, old_module)) = self.modules.remove(name) {
+                // migrate any states/resources from old module
+                module.migrate(old_module);
+            }
+            let engines = module.engines();
+            upgraded_engine_types.extend(engines.iter().cloned());
+            graph_guard.add_engines(&engines[..]);
+            for engine in engines {
+                self.engine_registry
+                    .insert(engine.clone(), name.to_string());
+            }
+
+            let edges = module.dependencies();
+            graph_guard.add_dependency(&edges[..]);
+
+            let (service_name, service_engine) = module.service();
+            self.add_service(service_name.clone(), service_engine.clone());
+
+            self.modules.insert(name.to_string(), module);
+        }
+        Ok(upgraded_engine_types)
+    }
+
+    /// Finish upgrade of all engines, unload old plugins
+    pub(crate) fn upgrade_cleanup(&self) {
+        for mut plugin in self.plugins.iter_mut() {
+            plugin.value_mut().unload_old()
+        }
     }
 
     fn add_service(&self, service: Service, engine: EngineType) {

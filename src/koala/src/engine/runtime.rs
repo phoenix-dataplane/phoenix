@@ -30,12 +30,12 @@ impl Indicator {
     }
 
     #[inline]
-    pub(crate) fn set_busy(&self) {
+    pub fn set_busy(&self) {
         self.0.store(Self::BUSY, Ordering::Relaxed)
     }
 
     #[inline]
-    pub(crate) fn set_nwork(&self, nwork: usize) {
+    pub fn set_nwork(&self, nwork: usize) {
         // TODO(cjr): double-check if this is OK
         self.0.store(nwork, Ordering::Relaxed)
     }
@@ -69,7 +69,7 @@ pub enum Error {
 unsafe impl Sync for Runtime {}
 
 /// Result for a suspend request
-pub enum SuspendResult {
+pub(crate) enum SuspendResult {
     /// Container to suspended engine
     Engine(EngineContainer),
     /// Engine not found in current runtime,
@@ -217,11 +217,11 @@ impl Runtime {
 
             // garbage collect every several rounds, maybe move to another thread.
             for index in shutdown.drain(..).rev() {
-                let (id, engine) = self.running.borrow_mut().swap_remove(index);
+                let (eid, engine) = self.running.borrow_mut().swap_remove(index);
                 let desc = engine.borrow().description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
-                self.runtime_manager.register_shutdown(id);
+                self.runtime_manager.register_engine_shutdown(eid);
             }
 
             // move newly added runtime to the scheduling queue

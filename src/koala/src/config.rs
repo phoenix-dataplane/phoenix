@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use interface::engine::EngineType;
+use ipc::control::PluginDescriptor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -90,6 +91,7 @@ pub struct Config {
     pub log_file: Option<String>,
     pub tracing: TracingConfig,
     pub profiling: ProfilingConfig,
+    pub plugin: Vec<PluginDescriptor>,
     pub modules: Vec<String>,
     pub control: Control,
     #[serde(alias = "transport-rdma")]

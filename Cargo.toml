@@ -3,6 +3,7 @@ members = [
   "src/experimental",
   "src/koala",
   "src/koala-salloc",
+  "src/koala-transport-rdma",
   "src/koala-utils",
   "src/mrpc-derive",
   "src/mrpc-marshal",

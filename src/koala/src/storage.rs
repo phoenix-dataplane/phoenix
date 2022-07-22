@@ -33,6 +33,24 @@ pub struct DataPathBroker {
 }
 
 impl CommandPathBroker {
+    pub(crate) fn new() -> Self {
+        CommandPathBroker {
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
+        }
+    }
+}
+
+impl DataPathBroker {
+    pub(crate) fn new() -> Self {
+        DataPathBroker {
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
+        }
+    }
+}
+
+impl CommandPathBroker {
     /// Attemp to downcast the sender
     pub fn get_sender<T: AnyMessage>(
         &mut self,
@@ -141,4 +159,14 @@ pub struct SharedStorage {
     pub command_path: CommandPathBroker,
     pub data_path: DataPathBroker,
     pub resources: ResourceCollection,
+}
+
+impl SharedStorage {
+    pub(crate) fn new() -> Self {
+        SharedStorage {
+            command_path: CommandPathBroker::new(),
+            data_path: DataPathBroker::new(),
+            resources: ResourceCollection::new(),
+        }
+    }
 }

@@ -3,8 +3,9 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 
 use futures::future::BoxFuture;
+use semver::Version;
 
-use super::{Engine, EngineLocalStorage, EngineResult, Indicator};
+use super::{Engine, EngineLocalStorage, EngineResult, EngineType, Indicator};
 
 pub(crate) struct EngineContainer {
     // SAFETY: the future's lifetime will be extended to static.
@@ -18,6 +19,8 @@ pub(crate) struct EngineContainer {
     engine: Pin<Box<dyn Engine>>,
     indicator: Indicator,
     desc: String,
+    ty: EngineType,
+    version: Version,
     els: Option<&'static dyn EngineLocalStorage>,
 }
 
@@ -31,7 +34,7 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
-    /// Spin up a new engine
+    // TODO(wyj): remove this function
     pub(crate) fn new<E: Engine>(mut engine: E) -> Self {
         let indicator = Indicator::new(0);
         engine.set_tracker(indicator.clone());
@@ -51,16 +54,20 @@ impl EngineContainer {
             unsafe { extend_lifetime(fut) }
         };
 
+        let dummy_version = Version::parse("1.0").unwrap();
         Self {
             future,
             engine: pinned,
             indicator,
             desc,
+            version: dummy_version,
+            ty: EngineType(String::from("DEFAULT")),
             els,
         }
     }
 
-    pub(crate) fn new_v2(mut engine: Box<dyn Engine>) -> Self {
+    /// Spin up a new engine
+    pub(crate) fn new_v2(mut engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
         let indicator = Indicator::new(0);
         engine.set_tracker(indicator.clone());
         let desc = engine.description();
@@ -84,6 +91,8 @@ impl EngineContainer {
             engine: pinned,
             indicator,
             desc,
+            version,
+            ty,
             els,
         }
     }
@@ -109,6 +118,16 @@ impl EngineContainer {
     #[inline]
     pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         self.els
+    }
+
+    #[inline]
+    pub(crate) fn engine_type(&self) -> &EngineType {
+        &self.ty
+    }
+
+    #[inline]
+    pub(crate) fn version(&self) -> Version {
+        self.version.clone()
     }
 
     /// Detach current engine in prepare for upgrade

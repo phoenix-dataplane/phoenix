@@ -17,6 +17,7 @@ use super::state::{Shared, State};
 use crate::config::MrpcConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::module::Service;
 use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
 use crate::state_mgr::SharedStateManager;
@@ -116,7 +117,7 @@ impl MrpcModule {
     }
 
     pub fn handle_new_client<P: AsRef<Path>>(
-        &self,
+        &mut self,
         sock: &DomainSocket,
         client_path: P,
         mode: SchedulingMode,
@@ -155,8 +156,11 @@ impl MrpcModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
+        let gid = self
+            .runtime_manager
+            .get_new_group_id(client_pid, Service(String::from("DEFAULT")));
         self.runtime_manager
-            .submit(client_pid, EngineContainer::new(engine), mode);
+            .submit(client_pid, gid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

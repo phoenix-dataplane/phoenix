@@ -9,13 +9,21 @@ use crate::transport::{rdma, tcp};
 
 type IResult<T> = Result<T, interface::Error>;
 
+/// Description for loading/upgrading a plugin
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct PluginDescriptor {
+    pub name: String,
+    pub lib_path: PathBuf,
+    pub config_path: PathBuf,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
     NewClient(SchedulingMode, EngineType),
     RdmaTransport(rdma::control_plane::Request),
     TcpTransport(tcp::control_plane::Request),
     Mrpc(mrpc::control_plane::Request),
-    Upgrade,
+    Upgrade(Vec<PluginDescriptor>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

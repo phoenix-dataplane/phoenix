@@ -5,9 +5,10 @@ use std::pin::Pin;
 use futures::future::BoxFuture;
 
 use ipc::salloc::cmd;
+
 use koala::engine::{future, Unload};
 use koala::engine::{Engine, EngineResult, Indicator};
-use koala::storage::ResourceCollection;
+use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::module::CustomerType;
 use super::{ControlPathError, ResourceError};
@@ -46,13 +47,15 @@ impl Engine for SallocEngine {
 impl Unload for SallocEngine {
     fn detach(&mut self) {}
 
-    fn unload(self: Box<Self>) -> ResourceCollection {
+    fn unload(
+        self: Box<Self>,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+    ) -> ResourceCollection {
         let engine = *self;
         let mut collections = ResourceCollection::new();
-
-        eprintln!("Dumping Salloc-customer...");
+        tracing::trace!("dumping salloc engine states...");
         collections.insert("customer".to_string(), Box::new(engine.customer));
-        eprintln!("Dumping Salloc-state...");
         collections.insert("state".to_string(), Box::new(engine.state));
         collections
     }
@@ -66,7 +69,7 @@ impl SallocEngine {
                 Progress(n) => nwork += n,
                 Status::Disconnected => return Ok(()),
             }
-            // self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.as_ref().unwrap().set_nwork(nwork);
             future::yield_now().await;
         }
     }

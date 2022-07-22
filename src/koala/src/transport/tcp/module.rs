@@ -18,6 +18,7 @@ use super::engine::TransportEngine;
 use crate::config::TcpTransportConfig;
 use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
+use crate::module::Service;
 use crate::node::Node;
 
 pub type CustomerType =
@@ -107,8 +108,11 @@ impl TransportModule {
         let engine = builder.build()?;
 
         // 5. submit the engine to a runtime
+        let gid = self
+            .runtime_manager
+            .get_new_group_id(client_pid, Service(String::from("DEFAULT")));
         self.runtime_manager
-            .submit(client_pid, EngineContainer::new(engine), mode);
+            .submit(client_pid, gid, EngineContainer::new(engine), mode);
 
         Ok(())
     }

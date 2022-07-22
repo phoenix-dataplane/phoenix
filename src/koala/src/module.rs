@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::{os::unix::ucred::UCred, path::Path};
 
+pub use anyhow::Result;
 use dashmap::DashMap;
 use interface::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
+pub use semver::Version;
 
 use crate::engine::{Engine, EnginePair, EngineType};
 use crate::envelop::TypeTagged;
@@ -18,7 +21,7 @@ pub struct Service(pub String);
 pub enum NewEngineRequest<'a> {
     Service {
         sock: &'a DomainSocket,
-        cleint_path: &'a Path,
+        client_path: &'a Path,
         mode: SchedulingMode,
         cred: &'a UCred,
     },
@@ -31,8 +34,13 @@ pub enum NewEngineRequest<'a> {
 // TODO(wyj): figure out whether we want to share modules between threads
 // i.e., restoring engines in dedicated thread or on main control thread?
 pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
-    /// The module's name
-    fn name(&self) -> &str;
+    /// The version of the module
+    fn version(&self) -> Version {
+        let major = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
+        let minor = env!("CARGO_PKG_VERSION_MINOR").parse().unwrap();
+        let patch = env!("CARGO_PKG_VERSION_PATCH").parse().unwrap();
+        Version::new(major, minor, patch)
+    }
 
     /// The main service engine
     fn service(&self) -> (Service, EngineType);
@@ -48,6 +56,18 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// and managed by the corresponding module's state_mgr
     fn dependencies(&self) -> Vec<EnginePair>;
 
+    /// Check whether the upgrade is compatible,
+    /// provide with previous verion of current module,
+    /// and all currently loaded modules' versions.
+    /// For modules that are to be upgraded,
+    /// `curr` contains the version after upgrade.
+    fn check_compatibility(&self, prev: Option<&Version>, curr: &HashMap<&str, Version>) -> bool;
+
+    /// Migrate states / resources from older version of the module
+    /// e.g., shared state manager
+    /// prev version can be obtained from version() method of `prev_module`
+    fn migrate(&mut self, prev_module: Box<dyn KoalaModule>);
+
     /// Create a new engine
     /// * `shared`:
     ///     Message brokers and resources shared among a service
@@ -57,17 +77,17 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     ///     All modules currently plugged in koala-control
     ///     Enable state sharing between engines in different services    
     fn create_engine(
-        &self,
+        &mut self,
         ty: &EngineType,
         request: NewEngineRequest,
-        // shared: &mut SharedStorage,
-        // global: &mut ResourceCollection,
-        // plugged: &ModuleCollection
-    ) -> Result<Box<dyn Engine>, Box<dyn std::error::Error>>;
+        shared: &mut SharedStorage,
+        global: &mut ResourceCollection,
+        plugged: &ModuleCollection,
+    ) -> Result<Box<dyn Engine>>;
 
     /// Restore and upgrade an engine from dumped states
     /// * `local`: The engine's local states
-    /// The implementation should be responsible for correctly dumping and restoring the states/
+    /// The implementation should be responsible for correctly dumping and restoring the states.
     /// Depending on previous engines' version, different actions may be taken.
     /// For instance, if engine B uses engine A's shared state,
     /// then engine A and B must be jointly upgrade,
@@ -82,13 +102,51 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// engines should dumped their states to atomic components,
     /// so that the new state type can be reassembled from the components.
     fn restore_engine(
-        &self,
+        &mut self,
         ty: &EngineType,
         local: ResourceCollection,
-        // shared: &mut SharedStorage,
-        // global: &mut ResourceCollection,
-        // plugged: &ModuleCollection
-    ) -> Result<Box<dyn Engine>, Box<dyn std::error::Error>>;
+        shared: &mut SharedStorage,
+        global: &mut ResourceCollection,
+        plugged: &ModuleCollection,
+        prev_version: Version,
+    ) -> Result<Box<dyn Engine>>;
+}
+
+pub trait ModuleDowncast: Sized {
+    fn downcast<T: KoalaModule>(self) -> Result<Box<T>, Self>;
+    unsafe fn downcast_unchecked<T: KoalaModule>(self) -> Box<T>;
+}
+
+impl ModuleDowncast for Box<dyn KoalaModule> {
+    #[inline]
+    fn downcast<T: KoalaModule>(self) -> Result<Box<T>, Self> {
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked()) }
+        } else {
+            Err(self)
+        }
+    }
+
+    #[inline]
+    unsafe fn downcast_unchecked<T: KoalaModule>(self) -> Box<T> {
+        debug_assert!(self.is::<T>());
+        let raw: *mut dyn KoalaModule = Box::into_raw(self);
+        Box::from_raw(raw as *mut T)
+    }
+}
+
+impl dyn KoalaModule {
+    #[inline]
+    pub fn is<T: KoalaModule>(&self) -> bool {
+        // Get TypeTag of the type this function is instantiated with
+        let t = <T as TypeTagged>::type_tag_();
+
+        // Get TypeTag of the type in the trait object
+        let concrete = self.type_tag();
+
+        // Compare both TypeTags on equality
+        t == concrete
+    }
 }
 
 pub struct ModulePlugin {}
