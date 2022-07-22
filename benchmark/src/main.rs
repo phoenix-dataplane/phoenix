@@ -33,6 +33,8 @@ struct WorkerSpec {
     host: String,
     bin: String,
     args: String,
+    #[serde(default)]
+    dependencies: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,6 +183,7 @@ fn start_ssh(
     worker: WorkerSpec,
     config: &Config,
     envs: &[(String, String)],
+    delay: Duration,
 ) -> impl FnOnce() {
     let benchmark_name = benchmark.name.clone();
     let host = worker.host.clone();
@@ -199,6 +202,9 @@ fn start_ssh(
     let cargo_dir = config.workdir.clone();
 
     move || {
+        // using stupid timers to enforce launch order.
+        thread::sleep(delay);
+
         let (ip, port) = (&host, "22");
 
         let mut cmd = Command::new("ssh");
@@ -231,7 +237,8 @@ fn start_ssh(
         let env_path = env::var("PATH").expect("failed to get PATH");
         if !debug_mode {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
+                // "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 target/release/{} {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -240,7 +247,7 @@ fn start_ssh(
             ));
         } else {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 target/debug/{} {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -385,7 +392,8 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
     };
 
     // bulid benchmark cases
-    let binaries: Vec<String> = spec.worker.iter().map(|s| s.bin.clone()).collect();
+    let mut binaries: Vec<String> = spec.worker.iter().map(|s| s.bin.clone()).collect();
+    binaries.dedup();
     let cargo_dir = &config.workdir;
     build_all(&binaries, cargo_dir)?;
 
@@ -397,13 +405,51 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
         spec.description
     );
 
-    // start workers
-    let mut handles = vec![];
-    for w in &spec.worker {
-        let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs));
-        handles.push(h);
-        thread::sleep(Duration::from_millis(1000));
+    // calculate a start time for each worker according to their topological order
+    use std::collections::VecDeque;
+    let n = spec.worker.len();
+    let mut start_ts = vec![0; n];
+    let mut g = vec![vec![]; n];
+    let mut indegree = vec![0; n];
+    let mut queue = VecDeque::new();
+    for (i, w) in spec.worker.iter().enumerate() {
+        indegree[i] = w.dependencies.len();
+        if w.dependencies.is_empty() {
+            queue.push_back(i);
+        }
+        for &j in &w.dependencies {
+            g[j].push(i);
+        }
     }
+    while let Some(x) = queue.pop_front() {
+        log::trace!("x: {}, start_ts[x]: {}", x, start_ts[x]);
+        for &y in &g[x] {
+            log::trace!("(x -> y): ({} -> {}), start_ts[y]: {}", x, y, start_ts[y]);
+            start_ts[y] = start_ts[y].max(start_ts[x] + 1);
+            indegree[y] -= 1;
+            if indegree[y] == 0 {
+                queue.push_back(y);
+            }
+        }
+    }
+
+    log::debug!("start_ts: {:?}", start_ts);
+
+    // start workers based on their start_ts
+    let mut handles = vec![];
+    for (i, w) in spec.worker.iter().enumerate() {
+        let delay = Duration::from_millis(start_ts[i] * 1000);
+        let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs, delay));
+        handles.push(h);
+    }
+
+    // // start workers
+    // let mut handles = vec![];
+    // for w in &spec.worker {
+    //     let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs));
+    //     handles.push(h);
+    //     thread::sleep(Duration::from_millis(1000));
+    // }
 
     // join
     for h in handles {
