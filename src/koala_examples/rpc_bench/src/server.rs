@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
-use mrpc::shmview::ShmView;
-use mrpc::stub::RpcMessage;
+use mrpc::{RRef, WRef};
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
@@ -41,66 +40,74 @@ pub struct Args {
 
 #[derive(Debug)]
 struct MyGreeter {
-    replies: Vec<RpcMessage<HelloReply>>,
+    replies: Vec<WRef<HelloReply>>,
     count: AtomicUsize,
     args: Args,
 }
 
+#[mrpc::async_trait]
 impl Greeter for MyGreeter {
-    fn say_hello(
+    async fn say_hello<'s>(
         &self,
-        _request: ShmView<HelloRequest>,
-    ) -> Result<&RpcMessage<HelloReply>, mrpc::Status> {
+        _request: RRef<'s, HelloRequest>,
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
         let my_count = self.count.fetch_add(1, Ordering::AcqRel);
-        let ret = Ok(&self.replies[my_count % self.args.provision_count]);
+        let ret = Ok(WRef::clone(
+            &self.replies[my_count % self.args.provision_count],
+        ));
         return ret;
     }
 }
 
 #[derive(Debug)]
 struct MyGreeterBlocking {
-    reply: RpcMessage<HelloReply>,
+    reply: WRef<HelloReply>,
 }
 
+#[mrpc::async_trait]
 impl Greeter for MyGreeterBlocking {
-    fn say_hello(
+    async fn say_hello<'s>(
         &self,
-        _request: ShmView<HelloRequest>,
-    ) -> Result<&RpcMessage<HelloReply>, mrpc::Status> {
-        Ok(&self.reply)
+        _request: RRef<'s, HelloRequest>,
+    ) -> Result<WRef<HelloReply>, mrpc::Status> {
+        Ok(WRef::clone(&self.reply))
     }
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-    let args = Args::from_args();
-    let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
+    smol::block_on(async {
+        let args = Args::from_args();
+        let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-    if args.blocking {
-        let message = Vec::new();
-        let msg = RpcMessage::new(HelloReply { message });
-        let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
-            .serve()?;
-    } else {
-        let mut replies = Vec::new();
-        for _ in 0..args.provision_count {
-            let mut message = Vec::new();
-            message.resize(args.reply_size, 43);
-            let msg = RpcMessage::new(HelloReply { message });
-            replies.push(msg);
+        if args.blocking {
+            let message = Vec::new();
+            let msg = WRef::new(HelloReply { message });
+            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+                .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
+                .serve()
+                .await?;
+        } else {
+            let mut replies = Vec::new();
+            for _ in 0..args.provision_count {
+                let mut message = Vec::new();
+                message.resize(args.reply_size, 43);
+                let msg = WRef::new(HelloReply { message });
+                replies.push(msg);
+            }
+            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+                .add_service(GreeterServer::new(MyGreeter {
+                    replies,
+                    count: AtomicUsize::new(0),
+                    args,
+                }))
+                .serve()
+                .await?;
         }
-        let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(GreeterServer::new(MyGreeter {
-                replies,
-                count: AtomicUsize::new(0),
-                args,
-            }))
-            .serve()?;
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 fn init_tokio_tracing(

@@ -49,7 +49,7 @@ pub fn generate<T: Service>(
         /// Generated server implementations.
         #(#mod_attributes)*
         pub mod #server_mod {
-            use ::mrpc::stub::{NamedService, RpcMessage, Service};
+            use ::mrpc::stub::{NamedService, Service};
 
             #generated_trait
 
@@ -80,16 +80,17 @@ pub fn generate<T: Service>(
                 const NAME: &'static str = #path;
             }
 
+            #[mrpc::async_trait]
             impl<T: #server_trait> Service for #server_service<T> {
-                fn call(
+                async fn call(
                     &self,
                     req: ::mrpc::MessageErased,
-                    reclaim_buffer: &::mrpc::stub::ReclaimBuffer,
-                ) -> (::mrpc::MessageErased, u64) {
+                    read_heap: &::mrpc::salloc::ReadHeap,
+                ) -> ::mrpc::MessageErased {
                     let conn_id = req.meta.conn_id;
                     let call_id = req.meta.call_id;
                     let func_id = req.meta.func_id;
-                    // todo!()
+
                     match func_id {
                         #methods
                         _ => {
@@ -111,6 +112,7 @@ fn generate_trait<T: Service>(
     let trait_methods = generate_trait_methods(service, proto_path, compile_well_known_types);
 
     quote::quote! {
+        #[mrpc::async_trait]
         pub trait #server_trait: Send + Sync + 'static {
             #trait_methods
         }
@@ -135,10 +137,10 @@ fn generate_trait_methods<T: Service>(
         // mRPC does not support streaming
         let method = quote::quote! {
             #method_doc
-            fn #name(
+            async fn #name<'s>(
                 &self,
-                request: ::mrpc::shmview::ShmView<#req_type>
-            ) -> Result<&RpcMessage<#res_type>, ::mrpc::Status>;
+                request: ::mrpc::RRef<'s, #req_type>
+            ) -> Result<::mrpc::WRef<#res_type>, ::mrpc::Status>;
         };
 
         stream.extend(method);
@@ -156,21 +158,20 @@ fn generate_methods<T: Service>(
     let package = service.package();
 
     for method in service.methods() {
-        let service_id = mrpc_get_service_id(&get_service_path(package, service));
-
         let func_id = mrpc_get_func_id(&get_method_path(package, service, method));
         let func_ident = quote::format_ident!("{}", method.name());
 
         let (_req_type, _res_type) =
             method.request_response_name(proto_path, compile_well_known_types);
-        // TODO
+
         let match_branch = quote::quote! {
             #func_id => {
-                // let req_view: mrpc::shmview::ShmView<'_, #req_type> = mrpc::stub::service_pre_handler(&req, &());
-                let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                match self.inner.#func_ident(req_view) {
+                // let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
+                let req = ::mrpc::RRef::new(&req, read_heap);
+                let res = self.inner.#func_ident(req).await;
+                match res {
                     Ok(reply) => {
-                        ::mrpc::stub::service_post_handler(reply, conn_id, #service_id, #func_id, call_id)
+                        ::mrpc::stub::service_post_handler(reply, conn_id, Self::SERVICE_ID, #func_id, call_id)
                     }
                     Err(_status) => {
                         todo!();

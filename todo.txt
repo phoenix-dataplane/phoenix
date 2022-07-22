@@ -4,6 +4,7 @@ Yongji
 - codegen for RpcAdapter's dyanmic dispatch
 - builder of shared library of generated code
   for dyanmic binding
+- live upgrade
 
 Shihan
 - TCP backend + RpcAdapterTcp
@@ -20,11 +21,18 @@ Yechen
 
 Jingrong
 - dynamic binding
+- API
+- real apps
 
 Other major tasks
 - performance deep dive
 	- engine overhead
 	- explicit mr registration
+
+Real Applications
+- eRPC maastree
+- DeathStarBench seems to be running in containers. How to deal with
+  this situation?
 
 Prost codegen
 -[x] encoding (update this)
@@ -42,7 +50,16 @@ Security
   only this way r/o permission can be enforced
 
 RPC
-- Prost codegen
+- merge mrpc::Error into mrpc::Status
+- *shared buffer among connections*
+- reduce the default 128 buffers to 1 big buffer
+- remove the dependencies in thread_local
+- change connect to async too
+- Change MessageErased to MessageOpaque
+- adding ReclaimRecvBuf back, but in another way
+- add a IoReactor in userland
+- credit implementation has issues
+-[x] Prost codegen
 -[x] zero-copy RPC interface
 -[x] RPC Trait
 -[x] Heap allocator
@@ -50,29 +67,29 @@ RPC
   this architecture?
 
 API
-- the return value of a rpc call at the service side should be a Future
-- moving RpcMessage from stub to root
+-[x] the return value of a rpc call at the service side should be a Future
+-[x] moving RpcMessage from stub to root
 - adding prelude (ShmView, RpcMessage)
-- mrpc::Status should contains specific error, and be renamed
+-[x] mrpc::Status should contains specific error, and be renamed
 -[x] return value should not be a &mut RpcMessage
 -[x] service handler should not take &mut self
 
 Benchmark Suite
--[x] build then run
+- *collect and print result*
 - worker starting order
+-[x] build then run
 -[x] allow setting timeouts in concrete cases
 -[x] auto kill on clean up
-- collect and print result
 -[x] *setup CI (which public CI service has RDMA NIC?) and benchmarks*
 - <s>Build a CI pipeline with all kinds of tests and benchmarks</s>
-- simplify rpc_hello, add more complex rpc_hello
+-[x] simplify rpc_hello, add more complex rpc_hello
 -[x] also test latency
 
 Engine Framework
 - *Implement Packaged scheduling policy* and see if latency is improved
   for small RPCs
 - Implement Shared scheduling policy
-- move CmEngine and AcceptorEngine to Shared
+- move CmEngine and AcceptorEngine to Shared runtime
 -[x] suspend the runtime to save CPUs based on indicator
 - <s>new challenge: *fault isolation*</s> Updated: doen through careful
   engineering
@@ -92,15 +109,15 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
+- Properly garbage collect CmEngine
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
-- *UDP socket send/recv fd must be nonblocking*
+-[x] *UDP socket send/recv fd must be nonblocking*
 - visibility of mods in koala backend code
-- adding a log
+-[x] adding a log (???)
 -[x] add span_info back
 -[x] create koala-trace dir
 - <s>use env_logger and minitrace to replace tokio-tracing</s>
 -[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
-- Garbage collect CmEngine
 -[x] *add static tracing* points at various points in code for performance
   analysis
 - CmIdBuilder::new() -> CmId::builder()
@@ -129,42 +146,42 @@ Misc
   the number of engines to build.
 
 Shared memory heap
-- need some tests for memory reclamation
 - *check if a read only shm file descriptor can be open with write
   permission and really written*
-- shared heap dealloc
+- need some tests for memory reclamation
+- remove file_off (it should be all zero now, given the existence of
+  AddressMediator)
+-[o] ShmBox, ShmPtr, Coa (Coa to finish)
+-[x] shared heap dealloc
 - use MMAP_HUGETLB, also reg_mr with huge tlb
 -[x] SharedHeapAllocator should not use MemoryRegion any more. The pd and
   rkey, inner_handle are unnecessary. And TCP does not have these
   fields, either.
-- remove file_off (it should be all zero now, given the existence of
-  AddressMediator)
 -[x] need a SharedHeapEngine(SAllocEngine). This engine shares state (mrs) with
   rpc_adapter.
 - use pointer strict provenance
 -[x] rdma mr.rs handle layout (size + alignment) rather than just size
 -[x] find a more efficient way to allocate aligned `shared memory`, maybe
-  using map_fixed
+     using map_fixed
 -[x] use MAP_FIXED_NOREPLACE
 -[x] replace Unique with ShmPtr
-- ShmBox, ShmPtr, Coa
 -[x] slabmalloc use 1GB huge page
 - dyn RpcMessage may some more fields, e.g., to access the content of
   message
-- dynamic dispatching is slow, embed meta with dyn RpcMessage
-- prost codegen marshal/unmarshal
-- prost codegen service interface
+-[x] dynamic dispatching is slow, embed meta with dyn RpcMessage
+-[x] prost codegen marshal/unmarshal
+-[x] prost codegen service interface
 
 RPC init version
-- fix bug in runtime.is_spinning()
-- releasing reply
-- needs to spend a lot of time checking new incoming connections
-- get sglist right after jumping into koala space
-- send/recv is too naive
-- API, req/resp must be moved into RPC (better to allow pass a reference)
+- *send/recv is too naive*
+-[x] API, req/resp must be moved into RPC (better to allow pass a reference)
+-[x] fix bug in runtime.is_spinning()
+-[x] releasing reply
+-[x] needs to spend a lot of time checking new incoming connections
+-[x] get sglist right after jumping into koala space
 -[x] ODP
 -[x] *call rdma-transport directly from rpc_adapter/ulib*
--[o] memory returned by allocate_shm is not page aligned, needs
+-[x] memory returned by allocate_shm is not page aligned, needs
   improvement
 -[x] check incoming connect requests and make Listener::get_request()
   non-blocking
@@ -176,10 +193,10 @@ RPC init version
 -[x] koala configuration, engine paths are not read from koala.toml
 - make modules in control.rs optional, based on their occurrences in
   koala.toml
-- error handling at various places (user glue code, marshal/unmarshal)
-- Rewrite the marshal/unmarshal and SgList
+-[x] error handling at various places (user glue code, marshal/unmarshal)
+-[x] Rewrite the marshal/unmarshal and SgList
 - MutableResourceTable (global lock and slot lock) (State)
-- the lifetime of a reply on the server credit?
+-[x] the lifetime of a reply on the server credit?
 
 Policy
 - Implement more engines for global policy
@@ -191,14 +208,15 @@ Transport Trait
 - Implement a socket datapath
 
 Performance & CPU efficiency
+- Measure the time spent in userland
 - *Packaged scheduling policy*
-- shortcut query_app_addr
 - *optimize userland latency*
+- shortcut query_app_addr
 - dashmap access latency seems high (rpc_adapter::check_incoming_connections)
 - Change ResoruceTable to one of the implementations of a concurrent
   hashmap (e.g., dashmap).
 - GetSendComp() is currently busy spinning
-- Save CPU cycles in TransportEngine::run()
+-[x] Save CPU cycles in TransportEngine::run()
 -[x] Use FnvHashMap in transport/engine
 -[x] Change to Ordering::Relaxed
 -[x] Control path is too slow
@@ -207,13 +225,15 @@ Performance & CPU efficiency
       multiple CQs</s>
 
 Testing
--[x] Test various threading models for koala
+- *write a multi-thread RPC test*
+- *Crash consistency test*
+-[x] test various threading models for koala
 - One thread post_send/recv, another thread poll_cq
 - Multiple threads operate on their own QPs, and poll the CQs associated
   with those QPs
 - Run those tests simultaneously with multiple processes
 
-Application
+Small example code
 - allreduce
 - alltoall is so slow, why?
 
@@ -227,8 +247,8 @@ Thread-safety
 -[x] Per process resource management.
 
 Resource Releasing
-- Think over it carefully, rollback the creating resource operation when
-  there is exception in the middle.
+- *Think over it carefully, rollback the creating resource operation when
+  there is exception in the middle.*
 -[x] implement resource release
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 
@@ -249,9 +269,12 @@ Memory Registration
 -[x] Check if it is possible to avoid rounding up to page
 
 libkoala interface
-    -[x] CmId::connect()
-    -[x] CmIdListener::bind()
-    -[x] CmIdListener::incoming()
-    -[x] CmIdListener::accept()
+-[x] CmId::connect()
+-[x] CmIdListener::bind()
+-[x] CmIdListener::incoming()
+-[x] CmIdListener::accept()
 
 Multi-NIC
+
+Cloud native
+- Let koala run on Azure

@@ -3,7 +3,6 @@ use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::ptr;
-use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -13,6 +12,7 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc;
+use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
 use super::serialization::SerializationEngine;
@@ -175,12 +175,12 @@ impl RpcAdapterEngine {
     #[inline]
     fn choose_strategy(sglist: &SgList) -> RpcStrategy {
         // See if the total length can fit into a meta buffer
-        let nbytes_lens_and_value: usize = sglist
+        let serialized_size: usize = sglist
             .0
             .iter()
             .map(|sge| mem::size_of::<u32>() + sge.len)
             .sum();
-        if nbytes_lens_and_value < MetaBuffer::capacity() {
+        if serialized_size < MetaBuffer::capacity() {
             RpcStrategy::Fused
         } else {
             RpcStrategy::Standard
@@ -209,9 +209,11 @@ impl RpcAdapterEngine {
                 .push_back(ReqContext { call_id, sg_len: 1 });
         }
 
-        let off = meta_buf_ptr.0.as_ptr().addr();
+        let off = meta_buf_ptr.0.as_ptr().expose_addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
 
+        // TODO(cjr): impl Serialize for SgList
+        // Serialize the sglist
         // write the lens to MetaBuffer
         meta_buf.num_sge = sglist.0.len() as u32;
 
@@ -228,14 +230,17 @@ impl RpcAdapterEngine {
             value_len += sge.len;
         }
 
+        // write the values to MetaBuffer
+        meta_buf.value_len = value_len as u32;
+
         let odp_mr = self.get_or_init_odp_mr();
 
         // post send with imm
-        tracing::trace!("post_send_imm, len={}", meta_buf.header_len() + value_len);
+        // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
         unsafe {
             cmid.post_send_with_imm(
                 odp_mr,
-                off..off + meta_buf.header_len() + value_len,
+                off..off + meta_buf.len(),
                 ctx,
                 SendFlags::SIGNALED,
                 0,
@@ -271,7 +276,7 @@ impl RpcAdapterEngine {
         // Sender posts send requests from the SgList
         let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
         let meta_sge = SgE {
-            ptr: (meta_ref as *const MessageMeta).addr(),
+            ptr: (meta_ref as *const MessageMeta).expose_addr(),
             len: mem::size_of::<MessageMeta>(),
         };
 
@@ -360,10 +365,11 @@ impl RpcAdapterEngine {
                     let cmid = &conn_ctx.cmid;
                     // timer.tick();
 
-                    for call_id in call_ids {
+                    // TODO(cjr): only handle the first element, fix it later
+                    for call_id in &call_ids[..1] {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&RpcId(conn_id, call_id))
+                            .remove(&RpcId(conn_id, *call_id))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
                     }
@@ -381,23 +387,31 @@ impl RpcAdapterEngine {
         use std::ptr::Unique;
 
         assert_eq!(sg_list.0.len(), 1);
-        // modify the first sge in place
-        sg_list.0[0].len = mem::size_of::<MessageMeta>();
 
         let meta_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MetaBuffer).unwrap();
         let meta_buf = unsafe { meta_buf_ptr.as_ref() };
+        // tracing::trace!("reshape_fused_sg_list: meta_buf: {:?}", meta_buf);
+
+        // modify the first sge in place
+        sg_list.0[0].len = mem::size_of::<MessageMeta>();
 
         let num_sge = meta_buf.num_sge as usize;
-        let lens_buf = unsafe {
-            slice::from_raw_parts(meta_buf.length_delimited.as_ptr().cast::<u32>(), num_sge)
-        };
-        let value_buf_offset = num_sge * mem::size_of::<u32>();
+        let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
+        debug_assert!(_prefix.is_empty() && _suffix.is_empty());
+
+        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
+        let mut value_offset = 0;
+
         for i in 0..num_sge {
             sg_list.0.push(SgE {
-                ptr: value_buf_offset + meta_buf.length_delimited.as_ptr().addr(),
-                len: lens_buf[i] as usize,
+                ptr: value_buf_base + value_offset,
+                len: lens[i] as usize,
             });
+
+            value_offset += lens[i] as usize;
         }
+
+        // tracing::trace!("reshape_fused_sg_list: sg_list: {:?}", sg_list);
     }
 
     fn unmarshal_and_deliver_up(
@@ -515,7 +529,7 @@ impl RpcAdapterEngine {
                                     Arc::clone(&conn_ctx),
                                 )?;
 
-                                // insert mr usages
+                                // keep them outstanding because they will be used by the user
                                 self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
                             }
                             progress += 1;
@@ -572,15 +586,19 @@ impl RpcAdapterEngine {
             None => Ok(Status::Progress(0)),
             Some(mut pre_id) => {
                 // prepare and post receive buffers
-                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id)?;
+                let (read_regions, fds) = self.prepare_recv_buffers(&mut pre_id)?;
                 // accept
                 let id = pre_id.accept(None).await?;
                 let handle = id.as_handle();
                 // insert resources after connection establishment
                 self.state.resource().insert_cmid(id, 128)?;
                 // pass these resources back to the user
+                let conn_resp = ConnectResponse {
+                    conn_handle: handle,
+                    read_regions,
+                };
                 let comp = mrpc::cmd::Completion(Ok(
-                    mrpc::cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
+                    mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
                 ));
                 self.cmd_tx.send(comp)?;
                 Ok(Status::Progress(1))
@@ -591,7 +609,7 @@ impl RpcAdapterEngine {
     fn prepare_recv_buffers(
         &mut self,
         pre_id: &mut ulib::ucm::PreparedCmId,
-    ) -> Result<(Vec<(Handle, usize, usize, i64)>, Vec<RawFd>), ControlPathError> {
+    ) -> Result<(Vec<ReadHeapRegion>, Vec<RawFd>), ControlPathError> {
         // create 128 receive mrs, post recv requestse and
         // This is safe because even though recv_mr is moved, the backing memfd and
         // mapped memory regions are still there, and nothing of this mr is changed.
@@ -621,19 +639,19 @@ impl RpcAdapterEngine {
             }
             self.state.resource().wr_contexts.insert(wr_id, wr_ctx)?;
         }
-        let mut returned_mrs = Vec::with_capacity(128);
+        let mut read_regions = Vec::with_capacity(128);
         let mut fds = Vec::with_capacity(128);
         for recv_mr in recv_mrs {
             let file_off = 0;
-            returned_mrs.push((
-                recv_mr.as_handle(),
-                recv_mr.as_ptr().addr(),
-                recv_mr.len(),
+            read_regions.push(ReadHeapRegion {
+                handle: recv_mr.as_handle(),
+                addr: recv_mr.as_ptr().addr(),
+                len: recv_mr.len(),
                 file_off,
-            ));
+            });
             fds.push(recv_mr.memfd().as_raw_fd());
         }
-        Ok((returned_mrs, fds))
+        Ok((read_regions, fds))
     }
 
     async fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
@@ -673,18 +691,18 @@ impl RpcAdapterEngine {
                     .await?;
                 let mut pre_id = builder.build()?;
                 // prepare and post receive buffers
-                let (returned_mrs, fds) = self.prepare_recv_buffers(&mut pre_id)?;
+                let (read_regions, fds) = self.prepare_recv_buffers(&mut pre_id)?;
                 // connect
                 let id = pre_id.connect(None).await?;
                 let handle = id.as_handle();
 
                 // insert resources after connection establishment
                 self.state.resource().insert_cmid(id, 128)?;
-                Ok(mrpc::cmd::CompletionKind::ConnectInternal(
-                    handle,
-                    returned_mrs,
-                    fds,
-                ))
+                let conn_resp = ConnectResponse {
+                    conn_handle: handle,
+                    read_regions,
+                };
+                Ok(mrpc::cmd::CompletionKind::ConnectInternal(conn_resp, fds))
             }
             mrpc::cmd::Command::Bind(addr) => {
                 log::debug!("Bind, addr: {:?}", addr);

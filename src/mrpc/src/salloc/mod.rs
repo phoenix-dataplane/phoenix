@@ -27,8 +27,12 @@ impl SAContext {
 }
 
 pub(crate) mod gc;
-pub(crate) mod heap;
-pub(crate) mod region;
+
+pub(crate) mod wheap;
+pub(crate) use wheap::SharedHeapAllocator;
+
+pub(crate) mod rheap;
+pub use rheap::ReadHeap;
 
 #[derive(Error, Debug)]
 pub enum Error {

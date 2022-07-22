@@ -17,7 +17,7 @@ use std::alloc::{AllocError, Layout};
 
 use ipc::ptr::{ShmNonNull, ShmPtr};
 
-use crate::salloc::heap::SharedHeapAllocator;
+use crate::salloc::SharedHeapAllocator;
 
 // The declaration of the `Box` struct must be kept in sync with the
 // `alloc::alloc::box_free` function or ICEs will happen. See the comment

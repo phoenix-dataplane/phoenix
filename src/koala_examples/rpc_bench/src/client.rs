@@ -6,7 +6,7 @@ use futures::stream::StreamExt;
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
-use mrpc::stub::RpcMessage;
+use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
@@ -57,10 +57,14 @@ pub struct Args {
     pub provision_count: usize,
 }
 
+// mod bench_app;
+// include!("./bench_app.rs");
+
+#[allow(unused)]
 async fn run_bench(
     args: &Args,
     client: &GreeterClient,
-    reqs: &[RpcMessage<HelloRequest>],
+    reqs: &[WRef<HelloRequest>],
     warmup: bool,
 ) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
     let mut response_count = 0;
@@ -107,16 +111,16 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         smol::block_on(async {
             let mut name = Vec::with_capacity(args.req_size);
             name.resize(args.req_size, 42);
-            let mut req = RpcMessage::new(HelloRequest { name });
+            let req = WRef::new(HelloRequest { name });
 
             for i in 0..args.total_iters {
-                let _resp = client.say_hello(&mut req).await.unwrap();
+                let _resp = client.say_hello(&req).await.unwrap();
                 eprintln!("resp {} received", i);
             }
 
             let start = Instant::now();
             for _i in 0..args.total_iters {
-                let _resp = client.say_hello(&mut req).await.unwrap();
+                let _resp = client.say_hello(&req).await.unwrap();
             }
 
             let dura = start.elapsed();
@@ -133,14 +137,17 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             for _ in 0..args.provision_count {
                 let mut name = Vec::with_capacity(args.req_size);
                 name.resize(args.req_size, 42);
-                let req = RpcMessage::new(HelloRequest { name });
+                let req = WRef::new(HelloRequest { name });
                 reqs.push(req);
             }
 
+            // warm up
             let _ = run_bench(&args, &client, &reqs, true).await?;
+            // let _ = BenchApp::new(&args, &client, &reqs, true).await?;
 
             let start = Instant::now();
             let stats = run_bench(&args, &client, &reqs, false).await?;
+            // let stats = BenchApp::new(&args, &client, &reqs, false).await?;
             let dura = start.elapsed();
             let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
 
