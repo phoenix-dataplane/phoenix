@@ -2,6 +2,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::os::unix::io::AsRawFd;
 use std::path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -12,6 +13,9 @@ use serde::Deserialize;
 use structopt::StructOpt;
 
 pub mod line_reader;
+use crate::line_reader::{LineReader, NonBlockingLineReader};
+
+pub mod tee;
 
 // read from config.toml
 #[derive(Debug, Clone, Deserialize)]
@@ -73,7 +77,11 @@ struct Opt {
     #[structopt(short, long)]
     output_dir: Option<path::PathBuf>,
 
-    /// Dry-run. Use this option to check the configs.
+    /// Do out print to stdout
+    #[structopt(short, long)]
+    silent: bool,
+
+    /// Dry-run. Use this option to check the configs
     #[structopt(long)]
     dry_run: bool,
 }
@@ -95,11 +103,24 @@ fn get_command_str(cmd: &Command) -> String {
         .join(" ")
 }
 
+fn create_non_blocking_reader<R: io::Read + AsRawFd + 'static, W: io::Write + 'static>(
+    r: R,
+    writer: Option<W>,
+) -> Box<dyn NonBlockingLineReader> {
+    if let Some(w) = writer {
+        Box::new(LineReader::new(tee::TeeReader::new(r, w)))
+    } else {
+        Box::new(LineReader::new(tee::TeeReader::new(r, tee::DevNull)))
+    }
+}
+
 fn wait_command(
     mut cmd: Command,
     mut kill_cmd: Option<Command>,
     timeout: Duration,
     host: &str,
+    stdout_writer: Option<fs::File>,
+    stderr_writer: Option<fs::File>,
 ) -> io::Result<()> {
     let start = Instant::now();
     let cmd_str = get_command_str(&cmd);
@@ -109,8 +130,14 @@ fn wait_command(
         .spawn()
         .unwrap_or_else(|e| panic!("Failed to spawn '{cmd_str}' because: {e}"));
 
-    let mut stdout_reader = child.stdout.take().map(line_reader::LineReader::new);
-    let mut stderr_reader = child.stderr.take().map(line_reader::LineReader::new);
+    let mut stdout_reader = child
+        .stdout
+        .take()
+        .map(|r| create_non_blocking_reader(r, stdout_writer));
+    let mut stderr_reader = child
+        .stderr
+        .take()
+        .map(|r| create_non_blocking_reader(r, stderr_writer));
 
     loop {
         if let Some(reader) = stdout_reader.as_mut() {
@@ -173,7 +200,7 @@ fn wait_command(
             thread::sleep(Duration::from_millis(1000));
 
             if let Some(kill_cmd) = kill_cmd.take() {
-                wait_command(kill_cmd, None, Duration::from_secs(2), "")?;
+                wait_command(kill_cmd, None, Duration::from_secs(2), "", None, None)?;
             }
         }
     }
@@ -205,6 +232,7 @@ fn start_ssh(
     };
     let cargo_dir = config.workdir.clone();
     let dry_run = opt.dry_run;
+    let silent = opt.silent;
 
     move || {
         // using stupid timers to enforce launch order.
@@ -214,6 +242,8 @@ fn start_ssh(
 
         let mut cmd = Command::new("ssh");
 
+        let mut stdout_writer = None;
+        let mut stderr_writer = None;
         if let Some(output_dir) = output_dir {
             let stdout_file = output_dir
                 .join(format!("{}_{}.log", worker.bin, ip))
@@ -224,10 +254,22 @@ fn start_ssh(
 
             let stdout = open_with_create_append(stdout_file);
             let stderr = open_with_create_append(stderr_file);
-            cmd.stdout(stdout).stderr(stderr);
+            if silent {
+                // This has less indirection and will be more efficient.
+                cmd.stdout(stdout).stderr(stderr);
+            } else {
+                stdout_writer = Some(stdout);
+                stderr_writer = Some(stderr);
+                cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            }
         } else {
             // collect the result to local stdout, similar to mpirun
             cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            if silent {
+                log::warn!(
+                    "You may want to specify `--output=<output>` to capture the running log"
+                );
+            }
         }
 
         cmd.arg("-oStrictHostKeyChecking=no")
@@ -276,7 +318,15 @@ fn start_ssh(
 
         if !dry_run {
             // poll command status until timeout or user Ctrl-C
-            wait_command(cmd, Some(kill_cmd), timeout, &host).unwrap();
+            wait_command(
+                cmd,
+                Some(kill_cmd),
+                timeout,
+                &host,
+                stdout_writer,
+                stderr_writer,
+            )
+            .unwrap();
         }
     }
 }
@@ -310,7 +360,7 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     log::debug!("building command: {}", cmd_str);
 
     let timeout_60s = Duration::from_secs(60);
-    wait_command(cargo_build_cmd, None, timeout_60s, "")?;
+    wait_command(cargo_build_cmd, None, timeout_60s, "", None, None)?;
     Ok(())
 }
 

@@ -6,6 +6,15 @@ use std::slice;
 
 use bytes::{BufMut, Bytes, BytesMut};
 
+/// A nonblocking version of a std::io::Lines iterator.
+pub trait NonBlockingLineReader {
+    fn eof(&self) -> bool;
+
+    /// On success, returns a new line from the reader or `None` if there's no new line currently.
+    /// On error, returns the underlying io::Error during the read.
+    fn next_line(&mut self) -> io::Result<Option<Bytes>>;
+}
+
 pub struct LineReader<R> {
     reader: R,
     lines: VecDeque<Bytes>,
@@ -23,13 +32,15 @@ impl<R: Read + AsRawFd> LineReader<R> {
             eof: false,
         }
     }
+}
 
+impl<R: Read> NonBlockingLineReader for LineReader<R> {
     #[inline]
-    pub fn eof(&self) -> bool {
+    fn eof(&self) -> bool {
         self.eof
     }
 
-    pub fn next_line(&mut self) -> io::Result<Option<Bytes>> {
+    fn next_line(&mut self) -> io::Result<Option<Bytes>> {
         if !self.lines.is_empty() {
             return Ok(self.lines.pop_front());
         }
