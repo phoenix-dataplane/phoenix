@@ -1,13 +1,16 @@
 #![feature(scoped_threads)]
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use chashmap::CHashMap;
 use cht::map::HashMap as ChtHashMap;
 use dashmap::DashMap;
+// use flurry::{HashMap as FlurryHashMap, HashMapRef as FlurryHashMapRef};
+use contrie::ConMap;
 use fnv::FnvBuildHasher;
+use sharded::Map as ShardedMap;
 
 // Concurrent key-value adapter trait.
 trait KvAdapter<K, V> {
@@ -49,6 +52,29 @@ impl<K: Eq + Hash, V> KvAdapter<K, V> for CHashMap<K, V> {
 }
 
 impl<K: Eq + Hash, V: Clone> KvAdapter<K, V> for ChtHashMap<K, V, FnvBuildHasher> {
+    #[inline]
+    fn insert_kv(&self, key: K, val: V) {
+        self.insert(key, val);
+    }
+    #[inline]
+    fn get_kv(&self, key: &K) {
+        let _val = self.get(key);
+    }
+}
+
+impl<K: Eq + Hash, V: Clone> KvAdapter<K, V> for ShardedMap<K, V> {
+    #[inline]
+    fn insert_kv(&self, key: K, val: V) {
+        self.insert(key, val);
+    }
+    #[inline]
+    fn get_kv(&self, key: &K) {
+        let (key, shard) = self.read(key);
+        let _val = shard.get(key);
+    }
+}
+
+impl<K: Eq + Hash, V, S: BuildHasher> KvAdapter<K, V> for ConMap<K, V, S> {
     #[inline]
     fn insert_kv(&self, key: K, val: V) {
         self.insert(key, val);
@@ -137,12 +163,25 @@ fn bench_concurrent(max_concurrency: usize) {
 
         let map = DashMap::<u32, u32, FnvBuildHasher>::default();
         bench(nthreads, "DashMap", map);
+
         let map = spin::Mutex::new(HashMap::<u32, u32, FnvBuildHasher>::default());
         bench(nthreads, "spin::Mutex<HashMap>", map);
+
         let map = ChtHashMap::<u32, u32, FnvBuildHasher>::default();
         bench(nthreads, "cht::HashMap", map);
+
         let map = CHashMap::<u32, u32>::default();
         bench(nthreads, "CHashMap", map);
+
+        let map = ShardedMap::<u32, u32>::default();
+        bench(nthreads, "sharded::Map", map);
+
+        // let map = FlurryHashMap::<u32, u32, FnvBuildHasher>::default();
+        // // let map = map.pin();
+        // bench(nthreads, "flurry::HashMapRef", map);
+
+        let map = ConMap::<u32, u32, FnvBuildHasher>::with_hasher(Default::default());
+        bench(nthreads, "contrie::ConMap", map);
     }
 }
 

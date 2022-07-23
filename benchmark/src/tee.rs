@@ -36,10 +36,7 @@ impl<R: Read, W: Write> TeeReader<R, W> {
     ///
     /// Errors reported by the write operation will be interpreted as errors for the read
     pub fn new(reader: R, writer: W) -> TeeReader<R, W> {
-        TeeReader {
-            reader,
-            writer,
-        }
+        TeeReader { reader, writer }
     }
 }
 

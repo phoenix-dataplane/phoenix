@@ -79,7 +79,9 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         }
 
         let mut value = 0;
-        let found = self.mti.get(req.key as usize, &mut value, self.ti_vec[self.tid]);
+        let found = self
+            .mti
+            .get(req.key as usize, &mut value, self.ti_vec[self.tid]);
         let result = if found {
             QueryResult::Found
         } else {
@@ -160,7 +162,8 @@ fn run_server(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     .serve()
                     .await?;
                     Result::<(), Box<dyn std::error::Error>>::Ok(())
-                }).unwrap();
+                })
+                .unwrap();
             }));
         }
     });

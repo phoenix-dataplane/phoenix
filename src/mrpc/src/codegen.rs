@@ -34,7 +34,9 @@ pub mod greeter_client {
         // NOTE(cjr): We implement two separate `update_protos` for client and server because they
         // may find the proto file from differnt path (even from two different machines).
         fn update_protos() -> Result<(), ::mrpc::Error> {
-            let srcs = [include_str!("../../koala_examples/proto/rpc_hello/rpc_hello.proto")];
+            let srcs = [include_str!(
+                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+            )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }
 
@@ -93,7 +95,9 @@ pub mod greeter_server {
 
     impl<T: Greeter> GreeterServer<T> {
         fn update_protos() -> Result<(), ::mrpc::Error> {
-            let srcs = [include_str!("../../koala_examples/proto/rpc_hello/rpc_hello.proto")];
+            let srcs = [include_str!(
+                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+            )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }
 
@@ -123,9 +127,7 @@ pub mod greeter_server {
                     let req = mrpc::RRef::new(&req_opaque, read_heap);
                     let res = self.inner.say_hello(req).await;
                     match res {
-                        Ok(reply) => {
-                            ::mrpc::stub::service_post_handler(reply, &req_opaque)
-                        }
+                        Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),
                         Err(_status) => {
                             todo!();
                         }

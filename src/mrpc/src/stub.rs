@@ -550,10 +550,7 @@ pub fn service_post_handler<T: RpcData>(
     };
 
     // track the msg as pending
-    PENDING_WREF.insert(
-        RpcId::new(meta.conn_id, meta.func_id),
-        WRef::clone(&reply),
-    );
+    PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.func_id), WRef::clone(&reply));
 
     let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {
