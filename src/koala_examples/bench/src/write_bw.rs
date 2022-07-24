@@ -150,7 +150,7 @@ fn run_client_thread(tid: usize, server_tid: usize, ctx: Context) -> Result<(), 
     eprintln!("mainloop finished");
 
     // Tell the server to close the connection
-    for c in &channels {
+    for c in channels {
         c.close_remote().unwrap();
     }
 

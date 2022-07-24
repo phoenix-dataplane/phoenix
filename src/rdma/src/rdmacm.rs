@@ -311,7 +311,7 @@ impl Drop for CmEvent {
         // ignore the error
         let rc = unsafe { ffi::rdma_ack_cm_event(self.0) };
         if rc != 0 {
-            log::warn!(
+            log::debug!(
                 "An error occurred on ack_cm_event: {:?}",
                 io::Error::last_os_error()
             );
@@ -532,11 +532,11 @@ unsafe impl<'res> Sync for CmId<'res> {}
 
 impl<'res> Drop for CmId<'res> {
     fn drop(&mut self) {
-        log::warn!("dropping CmId in rdmacm");
+        log::debug!("dropping CmId in rdmacm");
         let rc = unsafe { ffi::rdma_destroy_id(self.0) };
-        log::warn!("dropped CmId in rdmacm, rc: {}", rc);
+        log::debug!("dropped CmId in rdmacm, rc: {}", rc);
         if rc != 0 {
-            log::warn!(
+            log::debug!(
                 "error occured when destroying cm_id: {:?}",
                 io::Error::last_os_error()
             );

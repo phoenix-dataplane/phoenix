@@ -397,10 +397,10 @@ unsafe impl Sync for Inner {}
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        log::warn!("dropping CmId Inner, Please drop QP first");
+        log::debug!("dropping CmId Inner, Please drop QP first");
         // TODO(cjr): drop QP first
         let _ = DropCmId(self.handle);
-        log::warn!("dropped CmId Inner");
+        log::debug!("dropped CmId Inner");
     }
 }
 

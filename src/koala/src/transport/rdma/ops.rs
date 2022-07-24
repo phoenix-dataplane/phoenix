@@ -663,7 +663,7 @@ impl Ops {
         // let ec_handle = cmid.event_channel().as_handle();
         // let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
-        log::warn!("Disconnect returned, cmid: {:?}", cmid);
+        log::debug!("Disconnect returned, cmid: {:?}", cmid);
         Ok(())
     }
 
@@ -681,7 +681,7 @@ impl Ops {
 
         let ec = if let Some(cmid) = maybe_id.as_ref() {
             let ec_handle = cmid.event_channel().as_handle();
-            log::warn!("destroy_id: before ec_handle: {:?}", ec_handle);
+            log::debug!("destroy_id: before ec_handle: {:?}", ec_handle);
             let event_channel = self
                 .resource()
                 .event_channel_table
@@ -693,7 +693,7 @@ impl Ops {
 
             let event_channel = event_channel.unwrap();
             event_channel.clear_event_queue();
-            log::warn!("destroy_id: after ec_handle: {:?}", ec_handle);
+            log::debug!("destroy_id: after ec_handle: {:?}", ec_handle);
             Some(event_channel)
         } else {
             None
@@ -701,7 +701,7 @@ impl Ops {
 
         drop(maybe_id);
         drop(ec);
-        log::warn!("DestroyId returned, cmid: {:?}", cmid);
+        log::debug!("DestroyId returned, cmid: {:?}", cmid);
         Ok(())
     }
 
@@ -831,22 +831,6 @@ impl Ops {
             .register_event_channel(channel_handle, channel)?;
         Ok(())
     }
-
-    // fn get_one_cm_event(
-    //     &self,
-    //     // event_channel_handle: &Handle,
-    //     event_channel: &EventChannel,
-    //     event_type: rdma::ffi::rdma_cm_event_type::Type,
-    // ) -> Option<rdmacm::CmEvent> {
-    //     // self.state
-    //     //     .shared
-    //     //     .cm_manager
-    //     //     .try_lock()
-    //     //     .ok()
-    //     //     .and_then(|mut manager| manager.get_one_cm_event(event_channel_handle, event_type))
-    //     // let event_channel = self.resource().event_channel_table.get(event_channel_handle)?;
-    //     event_channel.get_one_cm_event(event_type)
-    // }
 
     fn pop_first_cm_error(&self) -> Option<ApiError> {
         self.state

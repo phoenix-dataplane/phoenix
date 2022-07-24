@@ -191,21 +191,13 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                         // On recv error, the peer probably disconnects.
                         // The server/client should release the related resources of this
                         // connection.
-                        eprintln!("RecvError conn_id: {:?}, status: {:?}", conn_id, status);
+                        log::debug!("RecvError conn_id: {:?}, status: {:?}", conn_id, status);
                         CONN_ERROR_BUFFER.with_borrow_mut(|m| {
                             m.entry(*conn_id)
                                 .or_insert_with(|| VecDeque::new())
                                 .push_back(Error::Disconnect(*conn_id))
                         });
                         return Err(Error::Disconnect(*conn_id));
-                        // RECV_REPLY_CACHE.with_borrow_mut(|cache| match *status {
-                        //     TransportStatus::Success => {
-                        //         cache.insert(RpcId(conn_id, call_id), Ok(*msg));
-                        //     }
-                        //     TransportStatus::Error(_e) => {
-                        //         cache.insert(RpcId(conn_id, call_id), Err(*status));
-                        //     }
-                        // })
                     }
                 }
             }
@@ -383,10 +375,6 @@ pub struct Server {
     #[allow(unused)]
     listener_handle: Handle,
     connections: HashMap<Handle, Connection>,
-    // handles: HashSet<Handle>,
-    // // conn -> ReadHeap
-    // read_heaps: HashMap<Handle, ReadHeap>,
-    // service_id -> Service
     routes: HashMap<u32, Box<dyn Service>>,
 }
 
@@ -469,7 +457,6 @@ impl Server {
             Ok(fds) => {
                 let conn_handle = conn_resp.conn_handle;
                 assert_eq!(fds.len(), conn_resp.read_regions.len());
-                // assert!(self.handles.insert(conn_handle));
                 // setup recv cache
                 CONN_SERVER_STUB_MAP.with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
 
@@ -584,7 +571,6 @@ impl Server {
             let service_id = request.meta.service_id;
             match self.routes.get_mut(&service_id) {
                 Some(s) => {
-                    // let read_heap = &self.read_heaps[&request.meta.conn_id];
                     match self.connections.get(&request.meta.conn_id) {
                         Some(conn) => {
                             let read_heap = &conn.read_heap;
@@ -592,12 +578,12 @@ impl Server {
                             msg_buffer.push(reply_erased);
                         }
                         None => {
-                            // the connection has disappeared
+                            // the connection has disappeared, do nothing
                         }
                     }
                 }
                 None => {
-                    eprintln!("unrecognized request: {:?}", request);
+                    log::warn!("unrecognized request: {:?}", request);
                 }
             }
         }

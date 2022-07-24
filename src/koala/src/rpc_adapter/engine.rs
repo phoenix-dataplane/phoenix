@@ -110,9 +110,9 @@ impl Engine for RpcAdapterEngine {
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
         let desc = self.description().to_owned();
-        log::warn!("{} is being dropped", desc);
+        log::debug!("{} is being dropped", desc);
         self.state.stop_acceptor(true);
-        log::warn!("stop acceptor bit set");
+        log::debug!("stop acceptor bit set");
     }
 }
 
@@ -554,7 +554,7 @@ impl RpcAdapterEngine {
                     }
                 }
                 WcStatus::Error(code) => {
-                    log::warn!("wc failed: {:?}", wc);
+                    log::debug!("wc failed: {:?}", wc);
                     // TODO(cjr): bubble up the error, close the connection, and return an error
                     // to the user.
                     let msg = if let Ok(wr_ctx) = self.state.resource().wr_contexts.get(&wc.wr_id) {
