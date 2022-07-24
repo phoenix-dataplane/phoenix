@@ -78,8 +78,8 @@ impl AcceptorEngine {
 
 impl AcceptorEngine {
     async fn check_new_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
-        let table = self.state.resource().listener_table.inner().lock();
-        for entry in table.values() {
+        let table = &self.state.resource().listener_table.inner();
+        for entry in table.iter() {
             let listener = entry.data();
             if let Some(mut builder) = listener.1.try_get_request()? {
                 // choose an rpc_adapter evenly
@@ -103,4 +103,31 @@ impl AcceptorEngine {
         }
         Ok(Status::Progress(1))
     }
+
+    // async fn check_new_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
+    //     let table = self.state.resource().listener_table.inner().lock();
+    //     for entry in table.values() {
+    //         let listener = entry.data();
+    //         if let Some(mut builder) = listener.1.try_get_request()? {
+    //             // choose an rpc_adapter evenly
+    //             let rpc_adapter_id = listener.0;
+    //             let cq = self.state.resource().cq_ref_table.get(&rpc_adapter_id)?;
+    //             // setup connection parameters
+    //             let pre_id = builder
+    //                 .set_send_cq(&cq)
+    //                 .set_recv_cq(&cq)
+    //                 .set_max_send_wr(128)
+    //                 .set_max_recv_wr(128)
+    //                 .build()?;
+    //             // RpcAdapter please check for new pre_cmid
+    //             self.state
+    //                 .resource()
+    //                 .pre_cmid_table
+    //                 .entry(rpc_adapter_id)
+    //                 .or_insert_with(VecDeque::new)
+    //                 .push_back(pre_id);
+    //         }
+    //     }
+    //     Ok(Status::Progress(1))
+    // }
 }

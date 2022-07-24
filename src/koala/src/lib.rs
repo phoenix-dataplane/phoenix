@@ -19,6 +19,7 @@ pub mod engine;
 pub mod mrpc;
 pub(crate) mod node;
 pub(crate) mod resource;
+// pub(crate) mod resource2;
 pub(crate) mod rpc_adapter;
 pub(crate) mod salloc;
 pub(crate) mod state_mgr;
