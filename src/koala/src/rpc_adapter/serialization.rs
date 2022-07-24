@@ -1,17 +1,14 @@
-use std::collections::BTreeMap;
 use std::ffi::OsStr;
 
 use interface::rpc::MessageMeta;
-use mrpc_marshal::{ExcavateContext, SgList, ShmRecvMr};
+use mrpc_marshal::{ExcavateContext, SgList};
 use mrpc_marshal::{MarshalError, UnmarshalError};
 
-pub(crate) type AddressMap = spin::Mutex<BTreeMap<usize, ShmRecvMr>>;
+pub(crate) use mrpc_marshal::AddressMap;
 
 pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalError>;
-pub(crate) type UnmarshalFn = fn(
-    &MessageMeta,
-    &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>,
-) -> Result<(usize, usize), UnmarshalError>;
+pub(crate) type UnmarshalFn =
+    fn(&MessageMeta, &mut ExcavateContext<AddressMap>) -> Result<(usize, usize), UnmarshalError>;
 
 pub(crate) struct SerializationEngine {
     _library: libloading::Library,

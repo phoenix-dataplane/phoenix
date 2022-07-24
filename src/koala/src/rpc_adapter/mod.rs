@@ -27,6 +27,8 @@ pub(crate) enum ControlPathError {
     Layout(#[from] LayoutError),
     #[error("SharedRegion allocate error: {0}")]
     SharedRegion(#[from] region::Error),
+    #[error("{0}")]
+    InsertAddrMap(#[from] mrpc_marshal::AddressExists),
 
     // Below are errors that does not return to the user.
     #[error("Send command error")]

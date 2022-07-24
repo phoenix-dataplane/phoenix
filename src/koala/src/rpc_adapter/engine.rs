@@ -750,6 +750,7 @@ impl RpcAdapterEngine {
                     };
                     self.state
                         .resource()
+                        .addr_map
                         .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
                 }
                 // finish the last step to establish a connection

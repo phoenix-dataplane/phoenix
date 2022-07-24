@@ -1,9 +1,9 @@
+use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::mem;
 
-use dashmap::DashMap;
 use dashmap::mapref::entry;
+use dashmap::DashMap;
 use fnv::FnvBuildHasher;
 
 use thiserror::Error;
@@ -81,17 +81,11 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
     }
 
     pub(crate) fn get(&self, h: &K) -> Result<Arc<R>, Error> {
-        self.table
-            .get(h)
-            .map(|r| r.data())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.data()).ok_or(Error::NotFound)
     }
 
     pub(crate) fn get_dp(&self, h: &K) -> Result<Arc<R>, Error> {
-        self.table
-            .get(h)
-            .map(|r| r.data())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.data()).ok_or(Error::NotFound)
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
@@ -122,16 +116,17 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
 
     pub(crate) fn open_resource(&self, h: &K) -> Result<(), Error> {
         // increase the refcnt
-        self.table
-            .get(h)
-            .map(|r| r.open())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.open()).ok_or(Error::NotFound)
     }
 
     /// Reduces the reference counter by one. Returns the resource when it is the last instance
     /// in the table.
     pub(crate) fn close_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
-        let close = self.table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
+        let close = self
+            .table
+            .get(h)
+            .map(|r| r.close())
+            .ok_or(Error::NotFound)?;
         if close {
             let r = self.table.remove(h).unwrap();
             return Ok(Some(r.1.data()));

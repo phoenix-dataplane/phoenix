@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::io;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -145,7 +145,7 @@ impl Resource {
             cmid_table: ResourceTable::default(),
             listener_table: ResourceTable::default(),
             wr_contexts: ResourceTableGeneric::default(),
-            addr_map: spin::Mutex::new(BTreeMap::new()),
+            addr_map: AddressMap::new(),
             recv_buffer_table: ResourceTable::default(),
             recv_buffer_pool: BufferPool::new(),
             cq_ref_table: ResourceTableGeneric::default(),
@@ -160,22 +160,6 @@ impl Resource {
     ) -> Result<(), ResourceError> {
         self.cmid_table
             .insert(cmid.as_handle(), ConnectionContext::new(cmid, credit))
-    }
-
-    pub(crate) fn insert_addr_map(
-        &self,
-        local_addr: usize,
-        remote_buf: mrpc_marshal::ShmRecvMr,
-    ) -> Result<(), ResourceError> {
-        // SAFETY: it is the caller's responsibility to ensure the ShmMr is power-of-two aligned.
-
-        // NOTE(wyj): local_addr points to the start of the recv_mr on backend side
-        // the recv_mr on app side has the same length as the backend side
-        // the length is logged in remote_buf
-        self.addr_map
-            .lock()
-            .insert(local_addr, remote_buf)
-            .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
     }
 }
 
