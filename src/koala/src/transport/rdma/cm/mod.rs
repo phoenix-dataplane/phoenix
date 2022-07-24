@@ -1,12 +1,14 @@
-use fnv::FnvHashMap as HashMap;
+// use fnv::FnvHashMap as HashMap;
 use std::collections::VecDeque;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
+use std::sync::atomic::Ordering;
 
 use interface::Handle;
 use rdma::rdmacm;
 
+use super::state::EventChannel;
 use super::ApiError;
 use crate::resource::ResourceTable;
 
@@ -15,8 +17,7 @@ pub(crate) mod engine;
 pub(crate) struct CmEventManager {
     pub(crate) poll: mio::Poll,
     // event_channel_handle -> EventPool
-    event_channel_buffer: HashMap<interface::Handle, VecDeque<rdmacm::CmEvent>>,
-
+    // event_channel_buffer: HashMap<interface::Handle, VecDeque<rdmacm::CmEvent>>,
     pub(crate) err_buffer: VecDeque<ApiError>,
 }
 
@@ -24,7 +25,7 @@ impl CmEventManager {
     pub(crate) fn new() -> io::Result<Self> {
         Ok(CmEventManager {
             poll: mio::Poll::new()?,
-            event_channel_buffer: HashMap::default(),
+            // event_channel_buffer: HashMap::default(),
             err_buffer: VecDeque::new(),
         })
     }
@@ -49,22 +50,22 @@ impl CmEventManager {
     /// Get an event that matches the event type.
     ///
     /// If there's any event matches, return the first one matched. Otherwise, returns None.
-    pub(crate) fn get_one_cm_event(
-        &mut self,
-        event_channel_handle: &Handle,
-        event_type: rdma::ffi::rdma_cm_event_type::Type,
-    ) -> Option<rdmacm::CmEvent> {
-        let event_queue = self
-            .event_channel_buffer
-            .entry(*event_channel_handle)
-            .or_insert_with(VecDeque::default);
+    // pub(crate) fn get_one_cm_event(
+    //     &mut self,
+    //     event_channel_handle: &Handle,
+    //     event_type: rdma::ffi::rdma_cm_event_type::Type,
+    // ) -> Option<rdmacm::CmEvent> {
+    //     let event_queue = self
+    //         .event_channel_buffer
+    //         .entry(*event_channel_handle)
+    //         .or_insert_with(VecDeque::default);
 
-        if let Some(pos) = event_queue.iter().position(|e| e.event() == event_type) {
-            event_queue.remove(pos)
-        } else {
-            None
-        }
-    }
+    //     if let Some(pos) = event_queue.iter().position(|e| e.event() == event_type) {
+    //         event_queue.remove(pos)
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub(crate) fn first_error(&mut self) -> Option<ApiError> {
         self.err_buffer.pop_front()
@@ -72,7 +73,7 @@ impl CmEventManager {
 
     pub(crate) fn poll_cm_event_once(
         &mut self,
-        event_channel_table: &ResourceTable<rdmacm::EventChannel>,
+        event_channel_table: &ResourceTable<EventChannel>,
     ) -> Result<(), ApiError> {
         let mut events = mio::Events::with_capacity(1);
         self.poll
@@ -87,6 +88,19 @@ impl CmEventManager {
             let cm_event = event_channel.get_cm_event().map_err(ApiError::RdmaCm)?;
             if cm_event.event() == rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED {
                 log::warn!("poll_cm_event_once get a disonnected event");
+                // Call disconnect to ack
+                if let Ok(0) = unsafe { &*cm_event.id().context() }.compare_exchange(
+                    0,
+                    1,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    log::debug!("passively call disconnect");
+                    cm_event.id().disconnect().map_err(ApiError::RdmaCm)?;
+                }
+
+                // No need to add the event to event_channel since the QP will be destroyed
+                return Ok(());
             }
 
             // reregister everytime to simulate level-trigger
@@ -99,10 +113,11 @@ impl CmEventManager {
                 )
                 .map_err(ApiError::Mio)?;
 
-            self.event_channel_buffer
-                .entry(handle)
-                .or_insert_with(VecDeque::default)
-                .push_back(cm_event);
+            // self.event_channel_buffer
+            //     .entry(handle)
+            //     .or_insert_with(VecDeque::default)
+            //     .push_back(cm_event);
+            event_channel.add_event(cm_event);
 
             return Ok(());
         }

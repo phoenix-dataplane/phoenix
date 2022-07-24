@@ -36,6 +36,7 @@ use std::io;
 use thiserror::Error;
 
 use interface::engine::EngineType;
+use interface::Handle;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
 use libkoala::_rx_recv_impl as rx_recv_impl;
@@ -118,4 +119,6 @@ pub enum Error {
     NoAddrResolved,
     #[error("Connect failed: {0}")]
     Connect(interface::Error),
+    #[error("Disconnected: {0:?}")]
+    Disconnect(Handle),
 }

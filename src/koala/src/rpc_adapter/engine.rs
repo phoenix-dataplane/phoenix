@@ -112,6 +112,7 @@ impl Drop for RpcAdapterEngine {
         let desc = self.description().to_owned();
         log::warn!("{} is being dropped", desc);
         self.state.stop_acceptor(true);
+        log::warn!("stop acceptor bit set");
     }
 }
 
@@ -556,10 +557,18 @@ impl RpcAdapterEngine {
                     log::warn!("wc failed: {:?}", wc);
                     // TODO(cjr): bubble up the error, close the connection, and return an error
                     // to the user.
-                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                    let msg = if let Ok(wr_ctx) = self.state.resource().wr_contexts.get(&wc.wr_id) {
+                        // this is a recv operation. don't know the rpc_id
+                        let conn_id = wr_ctx.conn_id;
+                        EngineRxMessage::RecvError(conn_id, TransportStatus::Error(code))
+                    } else {
+                        let rpc_id = RpcId::decode_u64(wc.wr_id);
+                        EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code))
+                    };
                     self.rx_outputs()[0]
-                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code)))
-                        .unwrap();
+                        .send(msg)
+                        .unwrap_or_else(|e| panic!("bubble up the error, send failed e: {}", e));
+                    // the error is caused by unexpected shutdown of mrpc engine
                 }
             }
         }
@@ -748,7 +757,7 @@ impl RpcAdapterEngine {
                     .state
                     .resource()
                     .staging_pre_cmid_table
-                    .remove_resource(&conn_handle)
+                    .close_resource(&conn_handle)
                 {
                     // accept connection after we get the AddrMap updated
                     let id = Arc::try_unwrap(pre_id).unwrap().accept(None).await?;

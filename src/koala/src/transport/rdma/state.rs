@@ -5,6 +5,7 @@ use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::collections::VecDeque;
 
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
@@ -147,6 +148,62 @@ fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
 unsafe impl Send for Resource {}
 unsafe impl Sync for Resource {}
 
+#[derive(Debug)]
+pub(crate) struct EventChannel {
+    inner: rdmacm::EventChannel,
+    event_queue: spin::Mutex<VecDeque<rdmacm::CmEvent>>,
+}
+
+impl AsHandle for EventChannel {
+    #[inline]
+    fn as_handle(&self) -> Handle {
+        self.inner.as_handle()
+    }
+}
+
+use std::ops::Deref;
+impl Deref for EventChannel {
+    type Target = rdmacm::EventChannel;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl EventChannel {
+    pub(crate) fn new(inner: rdmacm::EventChannel) -> Self {
+        Self {
+            inner,
+            event_queue: spin::Mutex::new(VecDeque::new()),
+        }
+    }
+
+    /// Get an event that matches the event type.
+    ///
+    /// If there's any event matches, return the first one matched. Otherwise, returns None.
+    pub(crate) fn get_one_cm_event(
+        &self,
+        event_type: rdma::ffi::rdma_cm_event_type::Type,
+    ) -> Option<rdmacm::CmEvent> {
+        let mut event_queue = self.event_queue.lock();
+        if let Some(pos) = event_queue
+            .iter()
+            .position(|e| e.event() == event_type)
+        {
+            event_queue.remove(pos)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn add_event(&self, cm_event: rdmacm::CmEvent) {
+        self.event_queue.lock().push_back(cm_event);
+    }
+
+    pub(crate) fn clear_event_queue(&self) {
+        self.event_queue.lock().clear();
+    }
+}
+
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 pub(crate) struct Resource {
     cmid_cnt: AtomicU32,
@@ -154,7 +211,9 @@ pub(crate) struct Resource {
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
     pub(crate) cmid_table: ResourceTable<CmId<'static>>,
-    pub(crate) event_channel_table: ResourceTable<rdmacm::EventChannel>,
+    // NOTE(cjr): On drop, the events in EventChannel buffer must be dropped first before dropping
+    // CmId
+    pub(crate) event_channel_table: ResourceTable<EventChannel>,
     pub(crate) qp_table: ResourceTable<ibv::QueuePair<'static>>,
     pub(crate) mr_table: ResourceTable<rdma::mr::MemoryRegion>,
     pub(crate) cq_table: ResourceTable<ibv::CompletionQueue<'static>>,

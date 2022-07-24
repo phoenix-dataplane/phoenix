@@ -38,6 +38,8 @@ pub(crate) struct RpcMessageRx {
 pub(crate) enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
     Ack(RpcId, TransportStatus),
+    // (conn_id, status), we cannot know which rpc_id the receive corresponds
+    RecvError(Handle, TransportStatus),
 }
 
 pub(crate) trait Vertex {

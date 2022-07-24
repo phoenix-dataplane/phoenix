@@ -9,11 +9,11 @@ use std::os::raw::{c_char, c_void};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr;
 use std::slice;
+use std::sync::atomic::AtomicU64;
 
 #[cfg(feature = "koala")]
 use std::ops::DerefMut;
 
-use log::warn;
 use socket2::SockAddr;
 
 #[cfg(feature = "koala")]
@@ -311,7 +311,7 @@ impl Drop for CmEvent {
         // ignore the error
         let rc = unsafe { ffi::rdma_ack_cm_event(self.0) };
         if rc != 0 {
-            warn!(
+            log::warn!(
                 "An error occurred on ack_cm_event: {:?}",
                 io::Error::last_os_error()
             );
@@ -536,7 +536,7 @@ impl<'res> Drop for CmId<'res> {
         let rc = unsafe { ffi::rdma_destroy_id(self.0) };
         log::warn!("dropped CmId in rdmacm, rc: {}", rc);
         if rc != 0 {
-            warn!(
+            log::warn!(
                 "error occured when destroying cm_id: {:?}",
                 io::Error::last_os_error()
             );
@@ -580,6 +580,12 @@ impl<'res> CmId<'res> {
         assert!(!self.0.is_null());
         let route = unsafe { &*self.0 }.route;
         unsafe { route.addr.addr.ibaddr.sgid }.into()
+    }
+
+    #[inline]
+    pub fn context(&self) -> *const AtomicU64 {
+        assert!(!self.0.is_null());
+        &unsafe { &*self.0 }.context as *const _ as *const AtomicU64
     }
 
     pub fn create_ep<'ctx>(
@@ -642,6 +648,17 @@ impl<'res> CmId<'res> {
 
         assert!(!cm_id.is_null());
         Ok(CmId(cm_id, PhantomData))
+    }
+
+    pub fn migrate_id(&self, channel: &EventChannel) -> io::Result<()> {
+        let id = self.0;
+        let channel = channel.0;
+        let rc = unsafe { ffi::rdma_migrate_id(id, channel) };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
     }
 
     pub fn bind_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {

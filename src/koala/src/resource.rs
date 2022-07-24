@@ -128,18 +128,9 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
             .ok_or(Error::NotFound)
     }
 
-    pub(crate) fn close_resource(&self, h: &K) -> Result<(), Error> {
-        let mut table = self.table.lock();
-        let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
-        if close {
-            let r = table.remove(h).unwrap();
-            // just to make the drop explicit
-            mem::drop(r);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn remove_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
+    /// Reduces the reference counter by one. Returns the resource when it is the last instance
+    /// in the table.
+    pub(crate) fn close_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
         let mut table = self.table.lock();
         let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
         if close {
@@ -148,4 +139,15 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
         }
         Ok(None)
     }
+
+    // /// Return the resource when it is the last instance in the table.
+    // pub(crate) fn remove_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
+    //     let mut table = self.table.lock();
+    //     let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
+    //     if close {
+    //         let r = table.remove(h).unwrap();
+    //         return Ok(Some(r.data()));
+    //     }
+    //     Ok(None)
+    // }
 }

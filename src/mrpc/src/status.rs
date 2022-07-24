@@ -415,6 +415,7 @@ impl From<crate::Error> for Status {
             Service(..) | Interface(..) | Io(..) => Code::Internal,
             NoAddrResolved => Code::NotFound,
             Connect(..) => Code::Unavailable,
+            Disconnect(..) => Code::Internal,
         };
         Status::new(code, err.to_string())
     }

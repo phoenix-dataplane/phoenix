@@ -535,7 +535,7 @@ impl TransportEngine {
                 Ok(CompletionKind::CreateEp(ret_cmid))
             }
             Command::CreateId(port_space) => {
-                let ret_cmid = self.ops.create_id(*port_space).await?;
+                let ret_cmid = self.ops.create_id(*port_space)?;
                 Ok(CompletionKind::CreateId(ret_cmid))
             }
             Command::Listen(cmid_handle, backlog) => {
@@ -632,7 +632,7 @@ impl TransportEngine {
                 Ok(CompletionKind::DestroyQp)
             }
             Command::Disconnect(cmid) => {
-                self.ops.disconnect(cmid).await?;
+                self.ops.disconnect(cmid)?;
                 Ok(CompletionKind::Disconnect)
             }
             Command::DestroyId(cmid) => {

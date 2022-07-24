@@ -2,7 +2,7 @@ use std::future::Future;
 use std::mem;
 use std::path::PathBuf;
 
-use interface::rpc::{MessageErased, RpcId, TransportStatus};
+use interface::rpc::{MessageErased, RpcId};
 
 use interface::engine::SchedulingMode;
 use ipc::mrpc::{cmd, control_plane, dp};
@@ -122,6 +122,7 @@ impl MrpcEngine {
                         self.meta_buf_pool.release(rpc_id)?;
                     }
                     EngineRxMessage::RpcMessage(_) => {}
+                    EngineRxMessage::RecvError(..) => {}
                 },
                 Err(TryRecvError::Disconnected) => return Ok(()),
                 Err(TryRecvError::Empty) => {}
@@ -325,10 +326,8 @@ impl MrpcEngine {
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
                                 sent = true;
-                                ptr.cast::<dp::Completion>().write(dp::Completion::Incoming(
-                                    erased,
-                                    TransportStatus::Success,
-                                ));
+                                ptr.cast::<dp::Completion>()
+                                    .write(dp::Completion::Incoming(erased));
                                 1
                             })?;
                         }
@@ -345,6 +344,17 @@ impl MrpcEngine {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::Outgoing(rpc_id, status));
+                                1
+                            })?;
+                        }
+                    }
+                    EngineRxMessage::RecvError(conn_id, status) => {
+                        let mut sent = false;
+                        while !sent {
+                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                sent = true;
+                                ptr.cast::<dp::Completion>()
+                                    .write(dp::Completion::RecvError(conn_id, status));
                                 1
                             })?;
                         }

@@ -85,6 +85,7 @@ impl CmEngine {
     fn poll_cm_event_once(&mut self) -> Result<(), ApiError> {
         // NOTE(cjr): It is fine to blocking_lock here, because we guarantee the CmEngine are
         // running on a separate Runtime.
+        // TODO(cjr): the above assumption may not held anymore, fix this.
         self.state
             .shared
             .cm_manager

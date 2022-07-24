@@ -69,6 +69,7 @@ impl AcceptorEngine {
             // let Progress(n) = self.check_disconnected_events().await?;
             // nwork += n;
             if self.state.acceptor_should_stop() {
+                log::info!("{} is stopping", self.description());
                 return Ok(());
             }
             // if self.state.alive_engines() == 1 && self.num_alive_connections() == 0 {
@@ -112,11 +113,41 @@ impl AcceptorEngine {
     //     self.state.resource().cmid_table.inner().lock().len()
     // }
 
+    // async fn check_disconnected_events(&mut self) -> Result<Status, ControlPathError> {
+    //     use interface::AsHandle;
+
+    //     let mut closing = Vec::new(); // smallvec
+    //     let table = self.state.resource().event_channel_table.inner().lock();
+    //     for entry in table.values() {
+    //         let event_channel = entry.data();
+    //         if let Some(ev) = event_channel
+    //             .get_one_cm_event(rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED)
+    //         {
+    //             closing.push((ev.as_handle(), ev.id().as_handle()));
+    //         }
+    //     }
+    //     for (ec_handle, cmid_handle) in closing {
+    //         log::debug!("closing cmid_handle: {:?}", cmid_handle);
+    //         self.state
+    //             .resource()
+    //             .cmid_table
+    //             .close_resource(&cmid_handle)?;
+    //         self.state
+    //             .resource()
+    //             .event_channel_table
+    //             .close_resource(&ec_handle)?;
+    //     }
+    //     Ok(Status::Progress(1))
+    // }
+
     // should have a loop to get whatever event and process them
     // async fn check_disconnected_events(&mut self) -> Result<Status, ControlPathError> {
     //     use interface::AsHandle;
 
-    //     log::warn!("check_disconnected_events: {}", self.num_alive_connections());
+    //     // TODO(cjr): This loop may affect performance badly. Change to a cm event queue.
+    //     // or poll event_channel_table
+
+    //     // log::warn!("check_disconnected_events: {}", self.num_alive_connections());
     //     let table = self.state.resource().cmid_table.inner().lock();
     //     let mut closing = Vec::new();
     //     for entry in table.values() {
