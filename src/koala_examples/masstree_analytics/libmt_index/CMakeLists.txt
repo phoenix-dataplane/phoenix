@@ -1,17 +1,3 @@
-# # MtIndex
-# add_library(mt_index ${CMAKE_SOURCE_DIR}/src/koala_examples/masstree_analytics/src/mt_index_api.cc)
-# add_dependencies(mt_index masstree)
-# # inlude masstree's config.h
-# add_definitions(-include ${PROJECT_BINARY_DIR}/src/3rdparty/masstree-beta/config.h)
-# # include masstree headers
-# target_include_directories(mt_index PRIVATE ${CMAKE_SOURCE_DIR}/src/3rdparty/masstree-beta)
-# # link with masstree
-# target_link_directories(mt_index PUBLIC ${PROJECT_BINARY_DIR}/src/3rdparty/masstree-beta)
-# target_link_libraries(mt_index masstree)
-
-# # CMake-based Masstree library from anujkaliaiitd/masstree-beta
-# add_subdirectory(src/3rdparty/masstree-beta)
-
 cmake_minimum_required(VERSION 3.0)
 project(mt_index)
 

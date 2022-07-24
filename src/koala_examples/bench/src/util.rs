@@ -7,14 +7,14 @@ use libkoala::{cm, verbs};
 
 pub const CTX_POLL_BATCH: usize = 16;
 
-#[derive(StructOpt, Debug, PartialEq)]
+#[derive(StructOpt, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     Send,
     Read,
     Write,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Test {
     BW,
     LAT,
@@ -30,6 +30,7 @@ impl From<&str> for Verb {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Opts {
     pub verb: Verb,
     pub ip: String,
@@ -37,8 +38,12 @@ pub struct Opts {
     pub num: usize,
     pub warmup: usize,
     pub size: usize,
+    pub num_qp: usize,
+    pub num_client_threads: usize,
+    pub num_server_threads: usize,
 }
 
+#[derive(Debug, Clone)]
 pub struct Context {
     pub opt: Opts,
     pub tst: Test,
@@ -58,7 +63,8 @@ impl Context {
             max_recv_wr: 512,
             max_send_sge: 1,
             max_recv_sge: 1,
-            max_inline_data: if tst == Test::BW { 0 } else { 236 },
+            // max_inline_data: if tst == Test::BW { 0 } else { 236 },
+            max_inline_data: 236,
         };
 
         Context {

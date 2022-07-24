@@ -1,0 +1,15 @@
+name = "benchmark/write_tput/write_tput-32b-8c-8s-8q"
+description = "Run RPS benchmark for RDMA write 8 client threads and 8 server threads, each with 8 QPs"
+group = "write_tput"
+timeout_secs = 60
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 1000000 -s 32 --port 5000 --num-qp 8 --num-client-threads 8 --num-server-threads 8"
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 1000000 -s 32 -c rdma0.danyang-06 --port 5000 --num-qp 8 --num-client-threads 8 --num-server-threads 8"
+dependencies = [0]

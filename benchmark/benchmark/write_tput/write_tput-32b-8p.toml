@@ -1,6 +1,6 @@
-name = "benchmark/write_thpt-32b-8p"
+name = "benchmark/write_tput/write_tput-32b-8p"
 description = "Run RPS benchmark for RDMA write 8 Processes"
-group = "write_thpt"
+group = "write_tput"
 timeout_secs = 60
 
 [[worker]]

@@ -296,6 +296,13 @@ impl WorkCompletion {
             dlid_path_bits: 0,
         }
     }
+
+    /// Was the work completion successful?
+    #[inline]
+    #[must_use]
+    pub fn success(&self) -> bool {
+        self.status == WcStatus::Success
+    }
 }
 
 // TODO(cjr): add more static asserts to make sure WorkCompletion is compatible with ibv_wc
