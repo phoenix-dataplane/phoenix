@@ -331,8 +331,7 @@ impl Drop for CmId {
 }
 
 impl CmId {
-    pub fn builder<'pd, 'ctx, 'scq, 'rcq, 'srq>(
-    ) -> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+    pub fn builder<'pd, 'ctx, 'scq, 'rcq, 'srq>() -> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         CmIdBuilder::new()
     }
 

@@ -2,15 +2,15 @@
 use std::collections::VecDeque;
 use std::io;
 use std::os::unix::io::AsRawFd;
-use std::time::Duration;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use interface::Handle;
 use rdma::rdmacm;
 
 use super::state::EventChannel;
 use super::ApiError;
-use crate::resource::{ResourceTable, Error as ResourceError};
+use crate::resource::{Error as ResourceError, ResourceTable};
 
 pub(crate) mod engine;
 

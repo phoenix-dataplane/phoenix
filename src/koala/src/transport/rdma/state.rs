@@ -1,11 +1,11 @@
 //! Per-process state that is shared among multiple transport engines.
+use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomPinned;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::collections::VecDeque;
 
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
@@ -185,10 +185,7 @@ impl EventChannel {
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<rdmacm::CmEvent> {
         let mut event_queue = self.event_queue.lock();
-        if let Some(pos) = event_queue
-            .iter()
-            .position(|e| e.event() == event_type)
-        {
+        if let Some(pos) = event_queue.iter().position(|e| e.event() == event_type) {
             event_queue.remove(pos)
         } else {
             None
