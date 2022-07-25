@@ -191,7 +191,12 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                         // On recv error, the peer probably disconnects.
                         // The server/client should release the related resources of this
                         // connection.
-                        log::debug!("RecvError conn_id: {:?}, status: {:?}", conn_id, status);
+                        // log::debug!("RecvError conn_id: {:?}, status: {:?}", conn_id, status);
+                        log::debug!(
+                            "Connection {:?} disconnected, status: {:?}",
+                            conn_id,
+                            status
+                        );
                         CONN_ERROR_BUFFER.with_borrow_mut(|m| {
                             m.entry(*conn_id)
                                 .or_insert_with(|| VecDeque::new())

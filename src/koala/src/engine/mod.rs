@@ -17,6 +17,9 @@ pub(crate) use container::EngineContainer;
 
 pub(crate) mod future;
 
+pub(crate) mod channel;
+pub(crate) mod flavors;
+
 pub(crate) trait Engine: Upgradable + Vertex + Send {
     /// The type of value produced on completion.
     type Future: Future<Output = EngineResult> + Send + 'static;

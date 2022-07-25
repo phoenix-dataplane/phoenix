@@ -15,6 +15,7 @@ use interface::engine::{EngineType, SchedulingMode};
 use ipc::unix::DomainSocket;
 
 use crate::config::Config;
+use crate::engine::channel::ChannelFlavor;
 use crate::engine::container::EngineContainer;
 use crate::engine::graph::create_channel;
 use crate::engine::manager::RuntimeManager;
@@ -112,7 +113,7 @@ impl Control {
         Ok(())
     }
 
-    fn build_internal_queues(&mut self) -> Vec<Node> {
+    fn build_internal_queues(&mut self, mode: SchedulingMode) -> Vec<Node> {
         // create a node for each vertex in the graph
         let mut nodes: Vec<Node> = self
             .config
@@ -123,7 +124,15 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = create_channel();
+            let flavor = match mode {
+                SchedulingMode::Dedicate | SchedulingMode::Spread => {
+                    ChannelFlavor::Concurrent
+                }
+                SchedulingMode::Compact => {
+                    ChannelFlavor::Sequential
+                }
+            };
+            let (sender, receiver) = create_channel(flavor);
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -139,7 +148,15 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let (sender, receiver) = create_channel();
+            let flavor = match mode {
+                SchedulingMode::Dedicate | SchedulingMode::Spread => {
+                    ChannelFlavor::Concurrent
+                }
+                SchedulingMode::Compact => {
+                    ChannelFlavor::Sequential
+                }
+            };
+            let (sender, receiver) = create_channel(flavor);
             nodes
                 .iter_mut()
                 .find(|x| x.id == e[0])
@@ -165,7 +182,7 @@ impl Control {
     ) -> anyhow::Result<()> {
         // let mode = SchedulingMode::Compact;
         // build internal queues
-        let nodes = self.build_internal_queues();
+        let nodes = self.build_internal_queues(mode);
 
         // build all engines from nodes
         let mut engines: Vec<EngineContainer> = Vec::new();
