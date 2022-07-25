@@ -77,6 +77,7 @@ impl RpcAdapterEngineBuilder {
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
+        const BUF_LEN: usize = 32;
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
         // let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
@@ -95,6 +96,7 @@ impl RpcAdapterEngineBuilder {
             indicator: None,
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
+            wc_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }
 }

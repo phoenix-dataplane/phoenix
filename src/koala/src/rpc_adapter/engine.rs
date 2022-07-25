@@ -74,6 +74,9 @@ pub(crate) struct RpcAdapterEngine {
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Option<Indicator>,
+
+    // work completion read buffer
+    pub(crate) wc_read_buffer: Vec<interface::WorkCompletion>,
 }
 
 crate::unimplemented_ungradable!(RpcAdapterEngine);
@@ -489,12 +492,17 @@ impl RpcAdapterEngine {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
         // TODO(cjr): update this
-        let mut comps = Vec::with_capacity(32);
+        // let mut comps = Vec::with_capacity(32);
+
         let cq = self.state.get_or_init_cq();
-        cq.poll(&mut comps)?;
+        // cq.poll(&mut comps)?;
+        self.wc_read_buffer.clear();
+        cq.poll(&mut self.wc_read_buffer)?;
+
+        let comps = mem::take(&mut self.wc_read_buffer);
 
         let mut progress = 0;
-        for wc in comps {
+        for wc in &comps {
             match wc.status {
                 WcStatus::Success => {
                     match wc.opcode {
@@ -586,6 +594,9 @@ impl RpcAdapterEngine {
                 }
             }
         }
+
+        self.wc_read_buffer = comps;
+
         // COMMENT(cjr): Progress(0) here is okay for now because we haven't use the progress as
         // any indicator.
         Ok(Status::Progress(progress))
