@@ -15,16 +15,16 @@ pub(crate) struct Sender<T> {
 pub(crate) enum SenderFlavor<T> {
     /// Crossbeam MPMC channel.
     Concurrent(flavors::concurrent::Sender<T>),
-    // /// Sequential single-threaded queue. Not concurrent safe. Must be used with special
-    // /// scheduling policy.
-    // Sequential(flavors::sequential::Sender<T>),
+    /// Sequential single-threaded queue. Not concurrent safe. Must be used with special
+    /// scheduling policy.
+    Sequential(flavors::sequential::Sender<T>),
 }
 
 macro_rules! choose_sender_flavor {
     ($flavor:expr, $func:ident $(, $args:tt)*) => {
         match $flavor {
             SenderFlavor::Concurrent(c) => c.$func($($args)*),
-            // SenderFlavor::Sequential(c) => c.$func($($args)*),
+            SenderFlavor::Sequential(c) => c.$func($($args)*),
         }
     };
 }
@@ -32,7 +32,7 @@ macro_rules! choose_sender_flavor {
 impl<T> Sender<T> {
     #[inline]
     pub(crate) fn send(&mut self, t: T) -> Result<(), SendError<T>> {
-        choose_sender_flavor!(&self.flavor, send, t)
+        choose_sender_flavor!(&mut self.flavor, send, t)
     }
 }
 
@@ -46,16 +46,16 @@ pub(crate) struct Receiver<T> {
 pub(crate) enum ReceiverFlavor<T> {
     /// Crossbeam MPMC channel.
     Concurrent(flavors::concurrent::Receiver<T>),
-    // /// Sequential single-threaded queue. Not concurrent safe. Must be used with special
-    // /// scheduling policy.
-    // Sequential(flavors::sequential::Receiver<T>),
+    /// Sequential single-threaded queue. Not concurrent safe. Must be used with special
+    /// scheduling policy.
+    Sequential(flavors::sequential::Receiver<T>),
 }
 
 macro_rules! choose_receiver_flavor {
     ($flavor:expr, $func:ident $(, $args:tt)*) => {
         match $flavor {
             ReceiverFlavor::Concurrent(c) => c.$func($($args)*),
-            // ReceiverFlavor::Sequential(c) => c.$func($($args)*),
+            ReceiverFlavor::Sequential(c) => c.$func($($args)*),
         }
     };
 }
@@ -63,7 +63,7 @@ macro_rules! choose_receiver_flavor {
 impl<T> Receiver<T> {
     #[inline]
     pub(crate) fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        choose_receiver_flavor!(&self.flavor, try_recv)
+        choose_receiver_flavor!(&mut self.flavor, try_recv)
     }
 }
 
@@ -87,7 +87,15 @@ pub(crate) fn create_channel<T>(flavor: ChannelFlavor) -> (Sender<T>, Receiver<T
             )
         }
         ChannelFlavor::Sequential => {
-            todo!();
+            let (sender, receiver) = flavors::sequential::create_channel();
+            (
+                Sender {
+                    flavor: SenderFlavor::Sequential(sender),
+                },
+                Receiver {
+                    flavor: ReceiverFlavor::Sequential(receiver),
+                },
+            )
         }
     }
 }

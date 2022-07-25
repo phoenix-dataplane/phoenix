@@ -91,6 +91,7 @@ impl AcceptorEngine {
                     .set_recv_cq(&cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
+                    .set_max_inline_data(super::super::engine::MAX_INLINE_DATA as _)
                     .build()?;
                 // RpcAdapter please check for new pre_cmid
                 self.state

@@ -180,7 +180,7 @@ impl Control {
         mode: SchedulingMode,
         cred: &UCred,
     ) -> anyhow::Result<()> {
-        // let mode = SchedulingMode::Compact;
+        let mode = SchedulingMode::Compact;
         // build internal queues
         let nodes = self.build_internal_queues(mode);
 

@@ -1,98 +1,80 @@
-//! Multiple producer single consumer queue.
+//! Single producer single consumer queue. Non-thread-safe.
+use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex};
-use std::mem;
+use std::rc::Rc;
 
-pub struct Sender<T> {
-    shared: Arc<Shared<T>>,
+use super::super::channel::{SendError, TryRecvError};
+
+#[derive(Debug)]
+pub(crate) struct Sender<T> {
+    shared: Rc<Shared<T>>,
 }
 
-// T doesn't need be Clone
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        let mut inner = self.shared.inner.lock().unwrap();
-        inner.senders += 1;
-        drop(inner);
-        Sender {
-            shared: Arc::clone(&self.shared),
-        }
-    }
+// Rc is not safe to send. However, we (the developers) make sure when sending the Channel
+// to another thread, all of this references (Senders, Receivers) will be moving to the
+// same thread.
+unsafe impl<T: Send> Send for Sender<T> {}
+
+#[derive(Debug)]
+pub(crate) struct Receiver<T> {
+    shared: Rc<Shared<T>>,
 }
 
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        let mut inner = self.shared.inner.lock().unwrap();
-        inner.senders -= 1;
-        let was_last = inner.senders == 0;
-        drop(inner);
-        if was_last {
-            self.shared.available.notify_one();
-        }
-    }
-}
+// Rc is not safe to send. However, we (the developers) make sure when sending the Channel
+// to another thread, all of this references (Senders, Receivers) will be moving to the
+// same thread.
+unsafe impl<T: Send> Send for Receiver<T> {}
 
-pub struct Receiver<T> {
-    shared: Arc<Shared<T>>,
-    buffer: VecDeque<T>,
-}
-
+#[derive(Debug)]
 struct Inner<T> {
     queue: VecDeque<T>,
-    senders: usize,
 }
 
+#[derive(Debug)]
 struct Shared<T> {
-    inner: Mutex<Inner<T>>,
-    available: Condvar,
+    inner: RefCell<Inner<T>>,
 }
 
 impl<T> Sender<T> {
-    pub fn send(&mut self, t: T) {
-        let mut inner = self.shared.inner.lock().unwrap();
+    pub(crate) fn send(&mut self, t: T) -> Result<(), SendError<T>> {
+        if Rc::strong_count(&self.shared) == 1 {
+            // cannot use type alias as constructor.
+            return Err(crossbeam::channel::SendError(t));
+        }
+        let mut inner = self.shared.inner.borrow_mut();
         inner.queue.push_back(t);
         drop(inner);
-        self.shared.available.notify_one();
+        Ok(())
     }
 }
 
 impl<T> Receiver<T> {
-    pub fn recv(&mut self) -> Option<T> {
-        if let Some(ret) = self.buffer.pop_front() {
-            return Some(ret);
+    pub(crate) fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        if Rc::strong_count(&self.shared) == 1 {
+            return Err(TryRecvError::Disconnected);
         }
-        let mut inner = self.shared.inner.lock().unwrap();
-        loop {
-            match inner.queue.pop_front() {
-                Some(t) => {
-                    mem::swap(&mut self.buffer, &mut inner.queue);
-                    return Some(t);
-                }
-                None if inner.senders == 0 => return None,
-                None => {
-                    inner = self.shared.available.wait(inner).unwrap();
-                }
-            }
+        let mut inner = self.shared.inner.borrow_mut();
+        match inner.queue.pop_front() {
+            Some(t) => Ok(t),
+            None => Err(TryRecvError::Empty),
         }
     }
 }
 
-pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
+pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Inner {
         queue: VecDeque::new(),
-        senders: 1,
     };
     let shared = Shared {
-        inner: Mutex::new(inner),
-        available: Condvar::new(),
+        inner: RefCell::new(inner),
     };
-    let shared = Arc::new(shared);
+    let shared = Rc::new(shared);
     (
         Sender {
             shared: shared.clone(),
         },
         Receiver {
             shared: shared.clone(),
-            buffer: VecDeque::new(),
         },
     )
 }
@@ -102,22 +84,22 @@ mod tests {
     use super::*;
     #[test]
     fn ping_pong() {
-        let (mut tx, mut rx) = channel();
-        tx.send(42);
-        assert_eq!(rx.recv(), Some(42));
+        let (mut tx, mut rx) = create_channel();
+        assert_eq!(tx.send(42), Ok(()));
+        assert_eq!(rx.try_recv(), Ok(42));
     }
 
     #[test]
     fn closed_tx() {
-        let (tx, mut rx) = channel::<()>();
+        let (tx, mut rx) = create_channel::<()>();
         drop(tx);
-        assert_eq!(rx.recv(), None);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 
     #[test]
     fn closed_rx() {
-        let (mut tx, rx) = channel();
+        let (mut tx, rx) = create_channel();
         drop(rx);
-        tx.send(42);
+        assert_eq!(tx.send(42), Err(crossbeam::channel::SendError(42)));
     }
 }

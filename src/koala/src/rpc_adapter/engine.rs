@@ -29,6 +29,8 @@ use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
 use crate::transport::rdma::ops::Ops;
 
+pub(crate) const MAX_INLINE_DATA: usize = 128;
+
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
 }
@@ -239,12 +241,17 @@ impl RpcAdapterEngine {
 
         // post send with imm
         // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
+        let send_flags = if meta_buf.len() <= MAX_INLINE_DATA {
+            SendFlags::INLINE
+        } else {
+            SendFlags::empty()
+        };
         unsafe {
             cmid.post_send_with_imm(
                 odp_mr,
                 off..off + meta_buf.len(),
                 ctx,
-                SendFlags::SIGNALED,
+                send_flags | SendFlags::SIGNALED,
                 0,
             )?;
         }
@@ -710,6 +717,7 @@ impl RpcAdapterEngine {
                     .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
+                    .set_max_inline_data(MAX_INLINE_DATA as u32)
                     .resolve_route(addr)
                     .await?;
                 let mut pre_id = builder.build()?;
