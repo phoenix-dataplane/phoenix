@@ -1151,7 +1151,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallstr",
- "smallvec 1.8.0",
+ "smallvec 1.9.0",
  "spin",
  "static_assertions",
  "structopt",
@@ -1449,6 +1449,7 @@ dependencies = [
  "memfd",
  "memmap-fixed",
  "memmap2 0.5.4",
+ "minstant",
  "nix 0.23.1",
  "slabmalloc",
  "smol",
@@ -1680,7 +1681,7 @@ dependencies = [
  "instant",
  "libc",
  "redox_syscall",
- "smallvec 1.8.0",
+ "smallvec 1.9.0",
  "winapi 0.3.9",
 ]
 
@@ -1693,7 +1694,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "redox_syscall",
- "smallvec 1.8.0",
+ "smallvec 1.9.0",
  "windows-sys",
 ]
 
@@ -2317,7 +2318,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b1aefdf380735ff8ded0b15f31aab05daf1f70216c01c02a12926badd1df9d"
 dependencies = [
- "smallvec 1.8.0",
+ "smallvec 1.9.0",
 ]
 
 [[package]]
@@ -2331,9 +2332,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2dd574626839106c320a323308629dcb1acfc96e32a8cba364ddc61ac23ee83"
+checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 
 [[package]]
 name = "smol"
@@ -2638,7 +2639,7 @@ dependencies = [
  "matchers",
  "regex",
  "sharded-slab",
- "smallvec 1.8.0",
+ "smallvec 1.9.0",
  "thread_local",
  "tracing",
  "tracing-core",

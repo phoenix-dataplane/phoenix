@@ -80,7 +80,6 @@ impl Context {
 
 // mRPC collections
 pub mod alloc;
-// pub mod codegen;  // use include! macro
 
 pub mod stub;
 
@@ -103,6 +102,9 @@ pub use wref::{IntoWRef, WRef};
 
 pub mod status;
 pub use status::{Code, Status};
+
+#[cfg(feature = "timing")]
+pub(crate) mod timing;
 
 /// A re-export of [`async-trait`](https://docs.rs/async-trait) for use with codegen.
 pub use async_trait::async_trait;

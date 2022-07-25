@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
-// use std::collections::{HashMap, HashSet};
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
 
@@ -130,8 +129,14 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
     }
 }
 
+#[cfg(feature = "timing")]
+use crate::timing::{SampleKind, Timer};
+
 thread_local! {
     static COMP_READ_BUFFER: RefCell<Vec<dp::Completion>> = RefCell::new(Vec::with_capacity(32));
+
+    #[cfg(feature = "timing")]
+    static TIMER: RefCell<Timer> = RefCell::new(Timer::new());
 }
 
 pub(crate) fn check_completion_queue() -> Result<(), Error> {
@@ -157,6 +162,11 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                         match msg.meta.msg_type {
                             RpcMsgType::Request => {
                                 // server receives requests
+                                #[cfg(feature = "timing")]
+                                TIMER.with_borrow_mut(|timer| {
+                                    timer
+                                        .sample(RpcId(conn_id, call_id), SampleKind::ServerRequest);
+                                });
                                 let stub_id = CONN_SERVER_STUB_MAP
                                     .with(|map| map.borrow().get(&conn_id).map(|x| *x));
                                 if let Some(stub_id) = stub_id {
@@ -166,6 +176,10 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                                 }
                             }
                             RpcMsgType::Response => {
+                                #[cfg(feature = "timing")]
+                                TIMER.with_borrow_mut(|timer| {
+                                    timer.sample(RpcId(conn_id, call_id), SampleKind::ClientReply);
+                                });
                                 // client receives responses
                                 RECV_REPLY_CACHE.with_borrow_mut(|cache| {
                                     cache.insert(RpcId(conn_id, call_id), Ok(*msg))
@@ -201,6 +215,11 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                             m.entry(*conn_id)
                                 .or_insert_with(|| VecDeque::new())
                                 .push_back(Error::Disconnect(*conn_id))
+                        });
+
+                        #[cfg(feature = "timing")]
+                        TIMER.with_borrow(|timer| {
+                            println!("{}", timer);
                         });
                         return Err(Error::Disconnect(*conn_id));
                     }
@@ -314,6 +333,14 @@ impl ClientStub {
             shm_addr_backend: ptr_backend.addr().get(),
         };
 
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow_mut(|timer| {
+            timer.sample(
+                RpcId::new(meta.conn_id, meta.call_id),
+                SampleKind::ClientRequest,
+            );
+        });
+
         let req = dp::WorkRequest::Call(erased);
         MRPC_CTX.with(|ctx| {
             let mut sent = false;
@@ -372,6 +399,11 @@ impl !Sync for ClientStub {}
 impl Drop for ClientStub {
     fn drop(&mut self) {
         PENDING_WREF.erase_by_connection(self.get_handle());
+
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow(|timer| {
+            println!("{}", timer);
+        });
     }
 }
 
@@ -533,6 +565,14 @@ impl Server {
             "client post reply to mRPC engine, call_id={}",
             erased.meta.call_id
         );
+
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow_mut(|timer| {
+            timer.sample(
+                RpcId::new(erased.meta.conn_id, erased.meta.call_id),
+                SampleKind::ServerReply,
+            );
+        });
 
         let wr = dp::WorkRequest::Reply(erased);
         MRPC_CTX.with(|ctx| {
