@@ -5,20 +5,19 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use koala::resource::Error as ResourceError; 
 use koala::module::KoalaModule;
+use koala::resource::Error as ResourceError;
 
 use salloc::ControlPathError as SallocError;
 
 pub(crate) mod acceptor;
-pub(crate) mod ulib;
 pub(crate) mod engine;
+pub mod module;
 pub(crate) mod serialization;
 pub mod state;
-pub mod module;
+pub(crate) mod ulib;
 
-use module::RpcAdapterModule; 
-
+use module::RpcAdapterModule;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]

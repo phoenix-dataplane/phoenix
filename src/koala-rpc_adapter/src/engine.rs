@@ -17,23 +17,22 @@ use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use transport_rdma::ops::Ops;
-use salloc::region::SharedRegion;
-use salloc::state::Shared as SallocShared;
+use mrpc::message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use mrpc::unpack::UnpackFromSgE;
-use mrpc::message::{EngineTxMessage, EngineRxMessage, RpcMessageTx, RpcMessageRx};
+use salloc::region::SharedRegion;
+use salloc::state::Shared as SallocShared;
+use transport_rdma::ops::Ops;
 
 use koala::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Unload};
-use koala::module::{ModuleCollection, Version};
 use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::serialization::SerializationEngine;
-use super::ulib;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
-use super ::{ControlPathError, DatapathError};
-
+use super::ulib;
+use super::{ControlPathError, DatapathError};
 
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
@@ -96,7 +95,7 @@ impl Unload for RpcAdapterEngine {
     ) -> ResourceCollection {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
-        let engine = *self; 
+        let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(12);
         tracing::trace!("dumping RpcAdapterEngine states...");
@@ -107,7 +106,10 @@ impl Unload for RpcAdapterEngine {
         collections.insert("salloc".to_string(), Box::new(engine.salloc));
         collections.insert("local_buffer".to_string(), Box::new(engine.local_buffer));
         collections.insert("recv_mr_usage".to_string(), Box::new(engine.recv_mr_usage));
-        collections.insert("serialization_engine".to_string(), Box::new(engine.serialization_engine));
+        collections.insert(
+            "serialization_engine".to_string(),
+            Box::new(engine.serialization_engine),
+        );
         collections.insert("cmd_tx".to_string(), Box::new(engine.cmd_tx));
         collections.insert("cmd_rx".to_string(), Box::new(engine.cmd_rx));
         collections.insert("dp_tx".to_string(), Box::new(engine.dp_tx));
@@ -185,7 +187,7 @@ impl RpcAdapterEngine {
             .unwrap()
             .downcast::<crossbeam::channel::Receiver<EngineTxMessage>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-            
+
         let engine = RpcAdapterEngine {
             state,
             odp_mr,
@@ -570,9 +572,7 @@ impl RpcAdapterEngine {
         };
         // timer.tick();
 
-        self.dp_tx
-            .send(EngineRxMessage::RpcMessage(msg))
-            .unwrap();
+        self.dp_tx.send(EngineRxMessage::RpcMessage(msg)).unwrap();
 
         // timer.tick();
         // tracing::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
@@ -707,9 +707,11 @@ impl RpcAdapterEngine {
                 // insert resources after connection establishment
                 self.state.resource().insert_cmid(id, 128)?;
                 // pass these resources back to the user
-                let comp = cmd::Completion(Ok(
-                    cmd::CompletionKind::NewConnectionInternal(handle, returned_mrs, fds),
-                ));
+                let comp = cmd::Completion(Ok(cmd::CompletionKind::NewConnectionInternal(
+                    handle,
+                    returned_mrs,
+                    fds,
+                )));
                 self.cmd_tx.send(comp)?;
                 Ok(Status::Progress(1))
             }

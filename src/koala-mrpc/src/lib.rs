@@ -9,16 +9,16 @@ use koala::module::KoalaModule;
 use koala::resource::Error as ResourceError;
 
 pub mod builder;
-pub mod message;
-pub mod meta_pool;
-pub mod unpack;
-pub mod state;
-pub mod module;
 pub(crate) mod config;
 pub(crate) mod engine;
+pub mod message;
+pub mod meta_pool;
+pub mod module;
+pub mod state;
+pub mod unpack;
 
-use module::MrpcModule;
 use config::MrpcConfig;
+use module::MrpcModule;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {

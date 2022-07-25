@@ -54,12 +54,13 @@ impl CommandPathBroker {
     pub fn put_sender<T: AnyMessage>(
         &mut self,
         engine: EngineType,
-        sender: CommandSender<T>
+        sender: CommandSender<T>,
     ) -> Result<(), Error> {
         if self.senders.contains_key(&engine) {
-            return Err(Error::AlreadyExists)
+            return Err(Error::AlreadyExists);
         }
-        self.senders.insert(engine, AnyCommandSender(Box::new(sender)));
+        self.senders
+            .insert(engine, AnyCommandSender(Box::new(sender)));
         Ok(())
     }
 
@@ -107,12 +108,13 @@ impl CommandPathBroker {
     pub fn put_receiver<T: AnyMessage>(
         &mut self,
         engine: EngineType,
-        receiver: CommandReceiver<T>
+        receiver: CommandReceiver<T>,
     ) -> Result<(), Error> {
         if self.receivers.contains_key(&engine) {
-            return Err(Error::AlreadyExists)
+            return Err(Error::AlreadyExists);
         }
-        self.receivers.insert(engine, AnyCommandReceiver(Box::new(receiver)));
+        self.receivers
+            .insert(engine, AnyCommandReceiver(Box::new(receiver)));
         Ok(())
     }
 
@@ -140,10 +142,10 @@ impl DataPathBroker {
     pub fn put_sender<T: AnyMessage>(
         &mut self,
         pair: EnginePair,
-        sender: DataSender<T>
+        sender: DataSender<T>,
     ) -> Result<(), Error> {
         if self.senders.contains_key(&pair) {
-            return Err(Error::AlreadyExists)
+            return Err(Error::AlreadyExists);
         }
         self.senders.insert(pair, AnyDataSender(Box::new(sender)));
         Ok(())
@@ -170,12 +172,13 @@ impl DataPathBroker {
     pub fn put_receiver<T: AnyMessage>(
         &mut self,
         pair: EnginePair,
-        receiver: DataReceiver<T>
+        receiver: DataReceiver<T>,
     ) -> Result<(), Error> {
         if self.receivers.contains_key(&pair) {
-            return Err(Error::AlreadyExists)
+            return Err(Error::AlreadyExists);
         }
-        self.receivers.insert(pair, AnyDataReceiver(Box::new(receiver)));
+        self.receivers
+            .insert(pair, AnyDataReceiver(Box::new(receiver)));
         Ok(())
     }
 

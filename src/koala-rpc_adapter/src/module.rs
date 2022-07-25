@@ -1,6 +1,6 @@
-use std::collections::{VecDeque, HashMap};
-use std::sync::Arc;
 use anyhow::{anyhow, bail, Result};
+use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use nix::unistd::Pid;
 
@@ -8,25 +8,27 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
-use mrpc::message::{EngineTxMessage, EngineRxMessage};
+use mrpc::message::{EngineRxMessage, EngineTxMessage};
 use salloc::module::SallocModule;
 use salloc::state::Shared as SallocShared;
 use transport_rdma::module::RdmaTransportModule;
 use transport_rdma::ops::Ops;
 
-use koala::engine::{Engine, EngineType, EnginePair};
-use koala::module::{KoalaModule, Service, Version, ModuleDowncast, NewEngineRequest, ModuleCollection};
-use koala::storage::{ResourceCollection, SharedStorage};
+use koala::engine::{Engine, EnginePair, EngineType};
+use koala::module::{
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, Version,
+};
 use koala::state_mgr::SharedStateManager;
+use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::acceptor::engine::AcceptorEngine;
-use crate::engine::{TlStorage, RpcAdapterEngine};
+use crate::engine::{RpcAdapterEngine, TlStorage};
 use crate::state::{Shared, State};
 
 pub(crate) struct AcceptorEngineBuilder {
     _client_pid: Pid,
     shared: Arc<Shared>,
-    ops: Ops
+    ops: Ops,
 }
 
 impl AcceptorEngineBuilder {
@@ -51,7 +53,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
     dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-    dp_rx: crossbeam::channel::Receiver<EngineTxMessage>, 
+    dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
     ops: Ops,
     shared: Arc<Shared>,
     salloc_shared: Arc<SallocShared>,
@@ -64,7 +66,7 @@ impl RpcAdapterEngineBuilder {
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
         dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>, 
+        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
         ops: Ops,
         shared: Arc<Shared>,
         salloc_shared: Arc<SallocShared>,
@@ -131,15 +133,15 @@ impl KoalaModule for RpcAdapterModule {
     }
 
     fn dependencies(&self) -> Vec<EnginePair> {
-        let p1 = ( 
+        let p1 = (
             EngineType(String::from("RpcAdapterEngine")),
             EngineType(String::from("RpcAcceptorEngine")),
         );
-        let p2 = ( 
+        let p2 = (
             EngineType(String::from("RpcAcceptorEngine")),
             EngineType(String::from("RdmaCmEngine")),
         );
-        let p3 = ( 
+        let p3 = (
             EngineType(String::from("RpcAdapterEngine")),
             EngineType(String::from("RdmaCmEngine")),
         );
@@ -154,7 +156,7 @@ impl KoalaModule for RpcAdapterModule {
         let module = *self;
         let mut collections = ResourceCollection::new();
         collections.insert("state_mgr".to_string(), Box::new(module.state_mgr));
-        collections  
+        collections
     }
 
     fn migrate(&mut self, prev_module: Box<dyn KoalaModule>) {
@@ -162,7 +164,7 @@ impl KoalaModule for RpcAdapterModule {
         let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
         self.state_mgr = prev_concrete.state_mgr;
     }
- 
+
     fn create_engine(
         &mut self,
         ty: &EngineType,
@@ -186,10 +188,11 @@ impl KoalaModule for RpcAdapterModule {
 
         match ty.0.as_str() {
             "RpcAcceptorEngine" => {
-                if let NewEngineRequest::Auxiliary { 
-                    pid: client_pid, 
+                if let NewEngineRequest::Auxiliary {
+                    pid: client_pid,
                     mode: _,
-                } = request {
+                } = request
+                {
                     let engine = self.create_acceptor_engine(client_pid, rdma_transport)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
@@ -201,7 +204,8 @@ impl KoalaModule for RpcAdapterModule {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode,
-                } = request {
+                } = request
+                {
                     let tx_edge = (
                         EngineType("MrpcEngine".to_string()),
                         EngineType("RpcAdapterEngine".to_string()),
@@ -211,17 +215,25 @@ impl KoalaModule for RpcAdapterModule {
                         EngineType("MrpcEngine".to_string()),
                     );
                     let mrpc_ty = tx_edge.0.clone();
-                    let rpc_adapter_ty = tx_edge.1.clone(); 
+                    let rpc_adapter_ty = tx_edge.1.clone();
 
                     let (dp_tx_edge_sender, dp_tx_edge_receiver) = mrpc::message::create_channel();
                     shared.data_path.put_sender(tx_edge, dp_tx_edge_sender)?;
                     let (dp_rx_edge_sender, dp_rx_edge_receiver) = mrpc::message::create_channel();
-                    shared.data_path.put_receiver(rx_edge, dp_rx_edge_receiver)?;
+                    shared
+                        .data_path
+                        .put_receiver(rx_edge, dp_rx_edge_receiver)?;
 
-                    let (adapter_cmd_sender, adapter_cmd_receiver) = tokio::sync::mpsc::unbounded_channel();
-                    shared.command_path.put_sender(rpc_adapter_ty, adapter_cmd_sender)?;
-                    let (mrpc_comp_sender, mrpc_comp_receiver) = tokio::sync::mpsc::unbounded_channel();
-                    shared.command_path.put_receiver(mrpc_ty, mrpc_comp_receiver)?;
+                    let (adapter_cmd_sender, adapter_cmd_receiver) =
+                        tokio::sync::mpsc::unbounded_channel();
+                    shared
+                        .command_path
+                        .put_sender(rpc_adapter_ty, adapter_cmd_sender)?;
+                    let (mrpc_comp_sender, mrpc_comp_receiver) =
+                        tokio::sync::mpsc::unbounded_channel();
+                    shared
+                        .command_path
+                        .put_receiver(mrpc_ty, mrpc_comp_receiver)?;
 
                     let engine = self.create_rpc_adapter_engine(
                         mode,
@@ -231,7 +243,7 @@ impl KoalaModule for RpcAdapterModule {
                         dp_rx_edge_sender,
                         dp_tx_edge_receiver,
                         salloc,
-                        rdma_transport
+                        rdma_transport,
                     )?;
                     Ok(Some(Box::new(engine)))
                 } else {
@@ -239,7 +251,7 @@ impl KoalaModule for RpcAdapterModule {
                 }
             }
             _ => bail!("invalid engine type {:?}", ty),
-        } 
+        }
     }
 
     fn restore_engine(
@@ -253,25 +265,14 @@ impl KoalaModule for RpcAdapterModule {
     ) -> Result<Box<dyn Engine>> {
         match ty.0.as_str() {
             "RpcAcceptorEngine" => {
-                let engine = AcceptorEngine::restore(
-                    local, 
-                    shared, 
-                    global, 
-                    plugged, 
-                    prev_version
-                )?;
+                let engine = AcceptorEngine::restore(local, shared, global, plugged, prev_version)?;
                 Ok(Box::new(engine))
-            },
+            }
             "RpcAdapterEngine" => {
-                let engine = RpcAdapterEngine::restore(
-                    local,
-                    shared, 
-                    global, 
-                    plugged, 
-                    prev_version
-                )?;
+                let engine =
+                    RpcAdapterEngine::restore(local, shared, global, plugged, prev_version)?;
                 Ok(Box::new(engine))
-            },
+            }
             _ => bail!("invalid engine type {:?}", ty),
         }
     }
@@ -285,17 +286,16 @@ impl RpcAdapterModule {
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Command>,
         dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>, 
+        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
         salloc: &mut SallocModule,
-        rdma_transport: &mut RdmaTransportModule
-    ) -> Result<RpcAdapterEngine>
-    {
+        rdma_transport: &mut RdmaTransportModule,
+    ) -> Result<RpcAdapterEngine> {
         // Acceptor engine should already been created at this moment
         let ops = rdma_transport.create_ops(client_pid)?;
         let shared = self.state_mgr.get_or_create(client_pid)?;
         // Get salloc state
         let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
- 
+
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
             mode,
@@ -305,7 +305,7 @@ impl RpcAdapterModule {
             dp_rx,
             ops,
             shared,
-            salloc_shared
+            salloc_shared,
         );
         let engine = builder.build()?;
         Ok(engine)

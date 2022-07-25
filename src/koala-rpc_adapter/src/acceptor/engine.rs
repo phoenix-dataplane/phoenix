@@ -5,8 +5,8 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use koala::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Unload};
-use koala::module::{ModuleCollection, Version};
 use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::super::engine::TlStorage;
@@ -31,7 +31,7 @@ impl AcceptorEngine {
 
 impl Unload for AcceptorEngine {
     #[inline]
-    fn detach(&mut self) { }
+    fn detach(&mut self) {}
 
     fn unload(
         self: Box<Self>,
@@ -67,7 +67,7 @@ impl AcceptorEngine {
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = AcceptorEngine {
-            indicator: None, 
+            indicator: None,
             state,
             tls,
         };
@@ -75,14 +75,12 @@ impl AcceptorEngine {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Progress(usize),
 }
 
 use Status::Progress;
-
 
 impl Engine for AcceptorEngine {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {

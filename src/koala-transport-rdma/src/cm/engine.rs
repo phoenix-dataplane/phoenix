@@ -5,8 +5,8 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
-use koala::module::{ModuleCollection, Version};
 use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::state::State;
@@ -28,7 +28,7 @@ impl CmEngine {
 
 impl Unload for CmEngine {
     #[inline]
-    fn detach(&mut self) { }
+    fn detach(&mut self) {}
 
     fn unload(
         self: Box<Self>,
@@ -57,10 +57,10 @@ impl CmEngine {
             .unwrap()
             .downcast::<State>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
- 
+
         let engine = CmEngine {
             indicator: None,
-            state
+            state,
         };
         Ok(engine)
     }

@@ -64,10 +64,10 @@ impl SharedRegion {
         let target_addr = ADDRESS_MEDIATOR.allocate(layout);
         let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
 
-        Ok(Self { 
+        Ok(Self {
             mmap,
             memfd,
-            _align: align
+            _align: align,
         })
     }
 

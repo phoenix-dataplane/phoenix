@@ -5,7 +5,7 @@ use std::{io, path::Path};
 
 use thiserror::Error;
 
-use koala::{resource::Error as ResourceError, module::KoalaModule};
+use koala::{module::KoalaModule, resource::Error as ResourceError};
 
 pub(crate) mod cm;
 pub(crate) mod config;

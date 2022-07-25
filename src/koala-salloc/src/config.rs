@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -13,7 +13,7 @@ impl Default for SallocConfig {
     fn default() -> Self {
         SallocConfig {
             prefix: PathBuf::from("/tmp/koala"),
-            engine_basename: String::from("salloc")
+            engine_basename: String::from("salloc"),
         }
     }
 }

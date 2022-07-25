@@ -9,15 +9,15 @@ use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, dp};
 
-use koala::engine::{EngineType, EnginePair};
+use koala::engine::{EnginePair, EngineType};
 use koala::module::{KoalaModule, ModuleDowncast};
 use koala::module::{ModuleCollection, NewEngineRequest, Service, Version};
 use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
-use crate::config::SallocConfig;
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
+use crate::config::SallocConfig;
 
 pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -120,7 +120,7 @@ impl KoalaModule for SallocModule {
         }
         if let NewEngineRequest::Service {
             sock,
-            client_path ,
+            client_path,
             mode,
             cred,
         } = request
@@ -131,7 +131,7 @@ impl KoalaModule for SallocModule {
             // let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
             let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
             let engine_path = self.config.prefix.join(instance_name);
-            
+
             // 2. create customer stub
             let customer =
                 Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
@@ -162,13 +162,7 @@ impl KoalaModule for SallocModule {
         if &ty.0 != "SallocEngine" {
             bail!("invalid engine type {:?}", ty)
         }
-        let engine = SallocEngine::restore(
-            local,
-            shared,
-            global,
-            plugged,
-            prev_version
-        )?;
+        let engine = SallocEngine::restore(local, shared, global, plugged, prev_version)?;
         Ok(Box::new(engine))
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::os::unix::ucred::UCred;
 use std::path::Path;
 use std::sync::Arc;
@@ -9,13 +9,15 @@ use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
-use ipc::unix::DomainSocket;
 use ipc::transport::rdma::{cmd, dp};
+use ipc::unix::DomainSocket;
 
-use koala::engine::{Engine, EngineType, EnginePair};
-use koala::module::{KoalaModule, Service, Version, ModuleDowncast, NewEngineRequest, ModuleCollection};
-use koala::storage::{ResourceCollection, SharedStorage};
+use koala::engine::{Engine, EnginePair, EngineType};
+use koala::module::{
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, Version,
+};
 use koala::state_mgr::SharedStateManager;
+use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::cm::engine::CmEngine;
 use crate::config::RdmaTransportConfig;
@@ -103,7 +105,7 @@ impl KoalaModule for RdmaTransportModule {
     }
 
     fn dependencies(&self) -> Vec<EnginePair> {
-        let p1 = ( 
+        let p1 = (
             EngineType(String::from("RdmaTransportEngine")),
             EngineType(String::from("CmEngine")),
         );
@@ -119,7 +121,7 @@ impl KoalaModule for RdmaTransportModule {
         let mut collections = ResourceCollection::new();
         collections.insert("state_mgr".to_string(), Box::new(module.state_mgr));
         collections.insert("config".to_string(), Box::new(module.config));
-        collections  
+        collections
     }
 
     fn migrate(&mut self, prev_module: Box<dyn KoalaModule>) {
@@ -127,7 +129,7 @@ impl KoalaModule for RdmaTransportModule {
         let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
         self.state_mgr = prev_concrete.state_mgr;
     }
- 
+
     fn create_engine(
         &mut self,
         ty: &EngineType,
@@ -138,10 +140,11 @@ impl KoalaModule for RdmaTransportModule {
     ) -> Result<Option<Box<dyn Engine>>> {
         match ty.0.as_str() {
             "RdmaCmEngine" => {
-                if let NewEngineRequest::Auxiliary { 
-                    pid: client_pid, 
+                if let NewEngineRequest::Auxiliary {
+                    pid: client_pid,
                     mode: _,
-                } = request {
+                } = request
+                {
                     let engine = self.create_cm_engine(client_pid)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
@@ -155,7 +158,8 @@ impl KoalaModule for RdmaTransportModule {
                     client_path,
                     mode,
                     cred,
-                } = request {
+                } = request
+                {
                     let engine = self.create_transport_engine(sock, client_path, mode, cred)?;
                     Ok(Some(Box::new(engine)))
                 } else {
@@ -163,7 +167,7 @@ impl KoalaModule for RdmaTransportModule {
                 }
             }
             _ => bail!("invalid engine type {:?}", ty),
-        } 
+        }
     }
 
     fn restore_engine(
@@ -177,25 +181,14 @@ impl KoalaModule for RdmaTransportModule {
     ) -> Result<Box<dyn Engine>> {
         match ty.0.as_str() {
             "RdmaCmEngine" => {
-                let engine = CmEngine::restore(
-                    local, 
-                    shared, 
-                    global, 
-                    plugged, 
-                    prev_version
-                )?;
+                let engine = CmEngine::restore(local, shared, global, plugged, prev_version)?;
                 Ok(Box::new(engine))
-            },
+            }
             "RdmaTransportEngine" => {
-                let engine = TransportEngine::restore(
-                    local,
-                    shared, 
-                    global, 
-                    plugged, 
-                    prev_version
-                )?;
+                let engine =
+                    TransportEngine::restore(local, shared, global, plugged, prev_version)?;
                 Ok(Box::new(engine))
-            },
+            }
             _ => bail!("invalid engine type {:?}", ty),
         }
     }

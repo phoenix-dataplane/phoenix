@@ -3,8 +3,8 @@ use std::io;
 
 use thiserror::Error;
 
-use transport_rdma::{ApiError, DatapathError};
 use transport_rdma::ops::Ops;
+use transport_rdma::{ApiError, DatapathError};
 
 use koala::engine::ENGINE_LS;
 

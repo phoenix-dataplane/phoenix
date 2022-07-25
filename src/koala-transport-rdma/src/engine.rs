@@ -16,8 +16,8 @@ use rdma::ibv;
 use rdma::rdmacm;
 
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
-use koala::module::{ModuleCollection, Version};
 use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::module::CustomerType;
@@ -36,7 +36,7 @@ pub(crate) struct TransportEngine {
 
 impl Unload for TransportEngine {
     #[inline]
-    fn detach(&mut self) { }
+    fn detach(&mut self) {}
 
     fn unload(
         self: Box<Self>,
@@ -50,7 +50,10 @@ impl Unload for TransportEngine {
         collections.insert("mode".to_string(), Box::new(engine._mode));
         collections.insert("ops".to_string(), Box::new(engine.ops));
         collections.insert("cq_err_buffer".to_string(), Box::new(engine.cq_err_buffer));
-        collections.insert("wr_read_buffer".to_string(), Box::new(engine.wr_read_buffer));
+        collections.insert(
+            "wr_read_buffer".to_string(),
+            Box::new(engine.wr_read_buffer),
+        );
         collections
     }
 }

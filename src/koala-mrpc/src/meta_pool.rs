@@ -7,7 +7,6 @@ use interface::rpc::{MessageMeta, RpcId};
 
 use koala::resource::Error as ResourceError;
 
-
 pub(crate) const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 
 /// A buffer holds the room for MessageMeta and optionally an entire message.

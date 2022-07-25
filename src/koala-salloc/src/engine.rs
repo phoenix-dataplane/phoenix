@@ -8,9 +8,9 @@ use futures::future::BoxFuture;
 use ipc::salloc::cmd;
 
 use koala::engine::{future, Unload};
+use koala::engine::{Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::module::{ModuleCollection, Version};
-use koala::engine::{Engine, EngineResult, Indicator};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::module::CustomerType;

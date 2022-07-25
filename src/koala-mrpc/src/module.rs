@@ -10,18 +10,19 @@ use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::mrpc::{cmd, dp};
 
-use koala::engine::{EngineType, EnginePair};
-use koala::module::{KoalaModule, Service, Version, ModuleDowncast, NewEngineRequest, ModuleCollection};
-use koala::storage::{ResourceCollection, SharedStorage};
+use koala::engine::{EnginePair, EngineType};
+use koala::module::{
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, Version,
+};
 use koala::state_mgr::SharedStateManager;
+use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::config::MrpcConfig;
 
-use super::message::{EngineTxMessage, EngineRxMessage};
-use super::meta_pool::MetaBufferPool;
 use super::engine::MrpcEngine;
+use super::message::{EngineRxMessage, EngineTxMessage};
+use super::meta_pool::MetaBufferPool;
 use super::state::{Shared, State};
-
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -150,7 +151,7 @@ impl KoalaModule for MrpcModule {
         }
         if let NewEngineRequest::Service {
             sock,
-            client_path ,
+            client_path,
             mode,
             cred,
         } = request
@@ -173,7 +174,7 @@ impl KoalaModule for MrpcModule {
             // 4. obtain senders/receivers of shared queues with RpcAdapterEngine
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
-            // according to the topological order 
+            // according to the topological order
             let tx_edge = (
                 EngineType("MrpcEngine".to_string()),
                 EngineType("RpcAdapterEngine".to_string()),
@@ -218,13 +219,7 @@ impl KoalaModule for MrpcModule {
         if &ty.0 != "MrpcEngine" {
             bail!("invalid engine type {:?}", ty)
         }
-        let engine = MrpcEngine::restore(
-            local,
-            shared,
-            global,
-            plugged,
-            prev_version
-        )?;
+        let engine = MrpcEngine::restore(local, shared, global, plugged, prev_version)?;
         Ok(Box::new(engine))
     }
 }

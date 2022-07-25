@@ -16,7 +16,6 @@ use koala::state_mgr::ProcessShared;
 
 use super::ulib;
 
-
 pub(crate) struct State {
     // per engine state
     pub(crate) rpc_adapter_id: usize,

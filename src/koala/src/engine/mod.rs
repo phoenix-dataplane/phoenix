@@ -4,19 +4,19 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
+pub(crate) mod container;
 pub mod future;
-pub mod manager;
-pub mod unload;
 pub(crate) mod graph;
 pub(crate) mod lb;
+pub mod manager;
 pub(crate) mod runtime;
+pub mod unload;
 pub(crate) mod upgrade;
-pub(crate) mod container;
 
-pub use unload::Unload;
-pub use runtime::ENGINE_LS;
-pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
 pub(crate) use container::EngineContainer;
+pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
+pub use runtime::ENGINE_LS;
+pub use unload::Unload;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

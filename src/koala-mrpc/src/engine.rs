@@ -10,17 +10,16 @@ use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
-use koala::module::{ModuleCollection, Version};
 use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
-use super::message::{EngineTxMessage, EngineRxMessage, RpcMessageTx};
+use super::builder::build_serializer_lib;
+use super::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use super::meta_pool::MetaBufferPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
-use super::builder::build_serializer_lib;
-
 
 pub struct MrpcEngine {
     pub(crate) _state: State,
@@ -73,9 +72,18 @@ impl Unload for MrpcEngine {
         collections.insert("dp_tx".to_string(), Box::new(engine.dp_tx));
         collections.insert("dp_rx".to_string(), Box::new(engine.dp_rx));
         collections.insert("meta_buf_pool".to_string(), Box::new(engine.meta_buf_pool));
-        collections.insert("dispatch_build_cache".to_string(), Box::new(engine.dispatch_build_cache));
-        collections.insert("transport_type".to_string(), Box::new(engine.transport_type));
-        collections.insert("wr_read_buffer".to_string(), Box::new(engine.wr_read_buffer));
+        collections.insert(
+            "dispatch_build_cache".to_string(),
+            Box::new(engine.dispatch_build_cache),
+        );
+        collections.insert(
+            "transport_type".to_string(),
+            Box::new(engine.transport_type),
+        );
+        collections.insert(
+            "wr_read_buffer".to_string(),
+            Box::new(engine.wr_read_buffer),
+        );
         collections
     }
 }
@@ -170,7 +178,6 @@ enum Status {
 }
 
 use Status::Progress;
-
 
 impl Engine for MrpcEngine {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {

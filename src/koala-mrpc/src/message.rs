@@ -1,7 +1,7 @@
 use std::ptr::Unique;
 
 use crossbeam;
-use crossbeam::channel::{Sender, Receiver};
+use crossbeam::channel::{Receiver, Sender};
 
 use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;

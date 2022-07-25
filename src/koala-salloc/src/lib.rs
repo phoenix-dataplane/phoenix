@@ -9,8 +9,8 @@ use thiserror::Error;
 use koala::module::KoalaModule;
 use koala::resource::Error as ResourceError;
 
-pub(crate) mod engine;
 pub(crate) mod config;
+pub(crate) mod engine;
 pub mod module;
 pub mod region;
 pub mod state;
