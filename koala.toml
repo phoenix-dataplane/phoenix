@@ -74,3 +74,9 @@ egress = [
 ingress = [
   ["rpc-adapter", "mrpc.0"],
 ]
+
+# Packaged engines
+[group]
+groups = [
+  ["rpc-adapter", "mrpc.0"],
+]

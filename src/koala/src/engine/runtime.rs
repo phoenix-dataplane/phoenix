@@ -10,6 +10,7 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
+use super::group::EngineGroup;
 use super::{EngineContainer, EngineLocalStorage, EngineResult};
 
 thread_local! {
@@ -124,19 +125,34 @@ impl Runtime {
     }
 
     #[inline]
-    pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
+    // pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
+    pub(crate) fn add_engine(&self, engine_group: EngineGroup, dedicated: bool) {
+        // TODO(cjr): FIXME
+        // immediate update the dedicate bit
         self.dedicated.fetch_or(dedicated, Ordering::Release);
-        self.pending.lock().push(RefCell::new(engine));
+
+        log::info!("Runtime {}, adding {:?}", self.id, engine_group);
+
+        // adding the engines
+        // TODO(cjr): Also record the engine_group.id so that when moving engines around runtime,
+        // we can know which engines should be moved together.
+        let mut pending = self.pending.lock();
+        for engine in engine_group.engines {
+            pending.push(RefCell::new(engine));
+        }
         self.new_pending.store(true, Ordering::Release);
     }
 
     #[inline]
     fn save_energy_or_shutdown(&self, last_event_ts: Instant) {
-        // goes into sleep mode after 100 us
-        const SLEEP_THRESHOLD: Duration = Duration::from_micros(100);
+        // THRES:DURA = 20:1 will lose around 10% bandwidth which is unacceptable,
+        // 200:1 looks good so far.
+
+        // goes into sleep mode after 1000 us
+        const SLEEP_THRESHOLD: Duration = Duration::from_micros(1000);
         const SLEEP_DURATION: Duration = Duration::from_micros(5);
-        // goes into deep sleep after 1 ms
-        const DEEP_SLEEP_THRESHOLD: Duration = Duration::from_millis(1);
+        // goes into deep sleep after 10 ms
+        const DEEP_SLEEP_THRESHOLD: Duration = Duration::from_millis(10);
         const DEEP_SLEEP_DURATION: Duration = Duration::from_micros(50);
         // shutdown after idle for 1 second
         const SHUTDOWN_THRESHOLD: Duration = Duration::from_secs(1);

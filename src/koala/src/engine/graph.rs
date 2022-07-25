@@ -8,8 +8,8 @@ use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
 use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
-use super::channel::{Receiver, Sender};
 pub(crate) use super::channel::create_channel;
+use super::channel::{Receiver, Sender};
 use crate::mrpc::meta_pool::MetaBufferPtr;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;

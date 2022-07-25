@@ -57,7 +57,7 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) local_buffer: VecDeque<RpcMessageTx>,
 
     // the number of pending receives that are going on. this can avoid the runtime from sleeping
-    // pub(crate) pending_recv: usize,
+    pub(crate) pending_recv: usize,
 
     // records the recv mr usage (a list of recv mr Handle) of each received message (identified by connection handle and call id)
     // if in the future multiple sge are packed into a single recv mr
@@ -147,7 +147,11 @@ impl RpcAdapterEngine {
             self.check_incoming_connection().await?;
             // timer.tick();
 
-            self.indicator.as_ref().unwrap().set_nwork(work);
+            // If there's pending receives, there will always be future work to do.
+            self.indicator
+                .as_ref()
+                .unwrap()
+                .set_nwork(work + self.pending_recv);
 
             // log::info!("RpcAdapter mainloop: {}", timer);
             future::yield_now().await;
@@ -207,6 +211,7 @@ impl RpcAdapterEngine {
         // TODO(cjr): XXX, this credit implementation has big flaws
         if msg_type == RpcMsgType::Request {
             conn_ctx.credit.fetch_sub(1, Ordering::AcqRel);
+            self.pending_recv += 1;
             conn_ctx
                 .outstanding_req
                 .lock()
@@ -276,6 +281,7 @@ impl RpcAdapterEngine {
             conn_ctx
                 .credit
                 .fetch_sub(sglist.0.len() + 1, Ordering::AcqRel);
+            self.pending_recv += sglist.0.len() + 1;
             conn_ctx.outstanding_req.lock().push_back(ReqContext {
                 call_id,
                 sg_len: sglist.0.len() + 1,
@@ -446,6 +452,7 @@ impl RpcAdapterEngine {
             let req_ctx = outstanding_req.pop_front().unwrap();
             assert_eq!(call_id, req_ctx.call_id);
             conn_ctx.credit.fetch_add(req_ctx.sg_len, Ordering::AcqRel);
+            self.pending_recv -= req_ctx.sg_len;
             drop(outstanding_req);
         }
         // timer.tick();

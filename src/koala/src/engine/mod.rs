@@ -20,6 +20,8 @@ pub(crate) mod future;
 pub(crate) mod channel;
 pub(crate) mod flavors;
 
+pub(crate) mod group;
+
 pub(crate) trait Engine: Upgradable + Vertex + Send {
     /// The type of value produced on completion.
     type Future: Future<Output = EngineResult> + Send + 'static;

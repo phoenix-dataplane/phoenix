@@ -87,6 +87,7 @@ impl RpcAdapterEngineBuilder {
             odp_mr: None,
             tls: Box::new(TlStorage { ops: self.ops }),
             local_buffer: VecDeque::new(),
+            pending_recv: 0,
             node: self.node,
             cmd_rx: self.cmd_rx,
             cmd_tx: self.cmd_tx,

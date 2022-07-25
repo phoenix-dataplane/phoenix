@@ -18,6 +18,7 @@ use crate::config::Config;
 use crate::engine::channel::ChannelFlavor;
 use crate::engine::container::EngineContainer;
 use crate::engine::graph::create_channel;
+use crate::engine::group::EngineGroup;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
@@ -113,7 +114,20 @@ impl Control {
         Ok(())
     }
 
-    fn build_internal_queues(&mut self, mode: SchedulingMode) -> Vec<Node> {
+    /// Helper function.
+    /// Query whether two nodes are in the same group.
+    fn same_group(&self, node1: &str, node2: &str) -> bool {
+        for g in &self.config.group.groups {
+            if g.iter().find(|s| s.as_str() == node1).is_some()
+                && g.iter().find(|s| s.as_str() == node2).is_some()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn build_internal_queues(&mut self) -> Vec<Node> {
         // create a node for each vertex in the graph
         let mut nodes: Vec<Node> = self
             .config
@@ -124,13 +138,10 @@ impl Control {
         // build all internal queues
         for e in &self.config.edges.egress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let flavor = match mode {
-                SchedulingMode::Dedicate | SchedulingMode::Spread => {
-                    ChannelFlavor::Concurrent
-                }
-                SchedulingMode::Compact => {
-                    ChannelFlavor::Sequential
-                }
+            let flavor = if self.same_group(&e[0], &e[1]) {
+                ChannelFlavor::Sequential
+            } else {
+                ChannelFlavor::Concurrent
             };
             let (sender, receiver) = create_channel(flavor);
             nodes
@@ -148,13 +159,10 @@ impl Control {
         }
         for e in &self.config.edges.ingress {
             assert_eq!(e.len(), 2, "e: {:?}", e);
-            let flavor = match mode {
-                SchedulingMode::Dedicate | SchedulingMode::Spread => {
-                    ChannelFlavor::Concurrent
-                }
-                SchedulingMode::Compact => {
-                    ChannelFlavor::Sequential
-                }
+            let flavor = if self.same_group(&e[0], &e[1]) {
+                ChannelFlavor::Sequential
+            } else {
+                ChannelFlavor::Concurrent
             };
             let (sender, receiver) = create_channel(flavor);
             nodes
@@ -180,9 +188,9 @@ impl Control {
         mode: SchedulingMode,
         cred: &UCred,
     ) -> anyhow::Result<()> {
-        let mode = SchedulingMode::Compact;
+        // let mode = SchedulingMode::Compact;
         // build internal queues
-        let nodes = self.build_internal_queues(mode);
+        let nodes = self.build_internal_queues();
 
         // build all engines from nodes
         let mut engines: Vec<EngineContainer> = Vec::new();
@@ -201,7 +209,7 @@ impl Control {
                 EngineType::RpcAdapterAcceptor => panic!(),
                 EngineType::TcpTransport => panic!(),
                 EngineType::Mrpc => {
-                    self.mrpc.handle_new_client(
+                    let e = self.mrpc.create_engine(
                         &self.sock,
                         &client_path,
                         mode,
@@ -210,6 +218,7 @@ impl Control {
                         tx.take().unwrap(),
                         rx2.take().unwrap(),
                     )?;
+                    engines.push(EngineContainer::new(e));
                 }
                 EngineType::Salloc => {
                     panic!("salloc engine should not appear in the graph, koala will handle it specially");
@@ -230,10 +239,14 @@ impl Control {
                 EngineType::Overload => unimplemented!(),
             };
         }
+
         // submit engines to runtime
+        let mut engine_group = EngineGroup::empty(SchedulingMode::Dedicate);
         for e in engines {
-            self.runtime_manager.submit(e, mode);
+            engine_group.add(e);
         }
+        self.runtime_manager.submit_group(engine_group);
+
         Ok(())
     }
 
