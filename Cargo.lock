@@ -1093,6 +1093,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-mrpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "crossbeam",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "itertools",
+ "koala",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "koala-rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-rdma",
+ "lazy_static",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "koala-salloc"
 version = "0.1.0"
 dependencies = [
@@ -1107,8 +1167,10 @@ dependencies = [
  "memmap-fixed",
  "mrpc-marshal",
  "nix 0.23.1",
+ "serde",
  "spin",
  "thiserror",
+ "toml",
  "tracing",
  "uuid",
 ]
@@ -1116,6 +1178,26 @@ dependencies = [
 [[package]]
 name = "koala-transport-rdma"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "lazy_static",
+ "memoffset",
+ "mio 0.7.14",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "koala-utils"
@@ -1124,6 +1206,10 @@ dependencies = [
  "bincode",
  "interface",
  "ipc",
+ "lazy_static",
+ "serde",
+ "structopt",
+ "toml",
  "uuid",
 ]
 

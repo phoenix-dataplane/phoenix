@@ -23,7 +23,7 @@ pub enum Error {
 pub struct SharedRegion {
     mmap: MmapFixed,
     memfd: Memfd,
-    align: usize,
+    _align: usize,
 }
 
 impl Deref for SharedRegion {
@@ -64,11 +64,15 @@ impl SharedRegion {
         let target_addr = ADDRESS_MEDIATOR.allocate(layout);
         let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
 
-        Ok(Self { mmap, memfd, align })
+        Ok(Self { 
+            mmap,
+            memfd,
+            _align: align
+        })
     }
 
     #[inline]
-    pub(crate) fn memfd(&self) -> &Memfd {
+    pub fn memfd(&self) -> &Memfd {
         &self.memfd
     }
 }

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
@@ -10,13 +9,13 @@ use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, dp};
 
-use koala::engine::EngineType;
-use koala::envelop::ResourceDowncast;
+use koala::engine::{EngineType, EnginePair};
 use koala::module::{KoalaModule, ModuleDowncast};
 use koala::module::{ModuleCollection, NewEngineRequest, Service, Version};
 use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
+use crate::config::SallocConfig;
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
 
@@ -25,7 +24,7 @@ pub(crate) type CustomerType =
 
 pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
-    client_pid: Pid,
+    _client_pid: Pid,
     _mode: SchedulingMode,
     shared: Arc<Shared>,
 }
@@ -39,7 +38,7 @@ impl SallocEngineBuilder {
     ) -> Self {
         SallocEngineBuilder {
             customer,
-            client_pid,
+            _client_pid: client_pid,
             _mode: mode,
             shared,
         }
@@ -58,21 +57,31 @@ impl SallocEngineBuilder {
 }
 
 pub struct SallocModule {
-    pub(crate) stage_mgr: SharedStateManager<Shared>,
+    config: SallocConfig,
+    pub state_mgr: SharedStateManager<Shared>,
+}
+
+impl SallocModule {
+    pub(crate) fn new(config: SallocConfig) -> Self {
+        SallocModule {
+            config,
+            state_mgr: SharedStateManager::new(),
+        }
+    }
 }
 
 impl KoalaModule for SallocModule {
     fn service(&self) -> (Service, EngineType) {
-        let service = koala::module::Service(String::from("Salloc"));
-        let etype = koala::engine::EngineType("Salloc".to_string());
+        let service = Service(String::from("Salloc"));
+        let etype = EngineType("SallocEngine".to_string());
         (service, etype)
     }
 
-    fn engines(&self) -> Vec<koala::engine::EngineType> {
-        vec![koala::engine::EngineType("Salloc".to_string())]
+    fn engines(&self) -> Vec<EngineType> {
+        vec![EngineType("SallocEngine".to_string())]
     }
 
-    fn dependencies(&self) -> Vec<koala::engine::EnginePair> {
+    fn dependencies(&self) -> Vec<EnginePair> {
         vec![]
     }
 
@@ -80,9 +89,22 @@ impl KoalaModule for SallocModule {
         true
     }
 
+    fn decompose(self: Box<Self>) -> ResourceCollection {
+        let module = *self;
+        let mut collections = ResourceCollection::new();
+        collections.insert("state_mgr".to_string(), Box::new(module.state_mgr));
+        collections.insert("config".to_string(), Box::new(module.config));
+        collections
+    }
+
     fn migrate(&mut self, prev_module: Box<dyn KoalaModule>) {
+        // NOTE(wyj): If Shared state is not upgraded, just transfer the previous module's state_mgr
+        // Otherwise, there is no need to transfer.
+        // Everything must be built from ground up
+
+        // NOTE(wyj): we may better call decompose here, in case we change SallocModule type
         let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
-        self.stage_mgr = prev_concrete.stage_mgr;
+        self.state_mgr = prev_concrete.state_mgr;
     }
 
     fn create_engine(
@@ -92,13 +114,13 @@ impl KoalaModule for SallocModule {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
-    ) -> Result<Box<dyn koala::engine::Engine>> {
-        if &ty.0 != "Salloc" {
+    ) -> Result<Option<Box<dyn koala::engine::Engine>>> {
+        if &ty.0 != "SallocEngine" {
             bail!("invalid engine type {:?}", ty)
         }
         if let NewEngineRequest::Service {
             sock,
-            client_path: cleint_path,
+            client_path ,
             mode,
             cred,
         } = request
@@ -107,52 +129,46 @@ impl KoalaModule for SallocModule {
             let uuid = Uuid::new_v4();
 
             // let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-            let instance_name = format!("sallocv2-{}.sock", uuid);
-            let engine_path = PathBuf::from("/tmp/koala").join(instance_name);
-
+            let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
+            let engine_path = self.config.prefix.join(instance_name);
+            
             // 2. create customer stub
             let customer =
-                Customer::from_shm(ShmCustomer::accept(sock, cleint_path, mode, engine_path)?);
+                Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
 
             // 3. the following part are expected to be done in the Engine's constructor.
             // the transport module is responsible for initializing and starting the transport engines
             let client_pid = Pid::from_raw(cred.pid.unwrap());
 
-            let shared = self.stage_mgr.get_or_create(client_pid)?;
+            let shared = self.state_mgr.get_or_create(client_pid)?;
             let builder = SallocEngineBuilder::new(customer, client_pid, mode, shared);
             let engine = builder.build()?;
 
-            Ok(Box::new(engine))
+            Ok(Some(Box::new(engine)))
         } else {
-            panic!()
+            bail!("invalid request type");
         }
     }
 
     fn restore_engine(
         &mut self,
         ty: &EngineType,
-        mut local: ResourceCollection,
-        _shared: &mut SharedStorage,
-        _global: &mut ResourceCollection,
-        _plugged: &ModuleCollection,
-        _prev_version: Version,
+        local: ResourceCollection,
+        shared: &mut SharedStorage,
+        global: &mut ResourceCollection,
+        plugged: &ModuleCollection,
+        prev_version: Version,
     ) -> Result<Box<dyn koala::engine::Engine>> {
-        if &ty.0 != "Salloc" {
+        if &ty.0 != "SallocEngine" {
             bail!("invalid engine type {:?}", ty)
         }
-        tracing::trace!("restoring salloc engine");
-        let customer = unsafe {
-            *local
-                .remove("customer")
-                .unwrap()
-                .downcast_unchecked::<CustomerType>()
-        };
-        let state = unsafe { *local.remove("state").unwrap().downcast_unchecked::<State>() };
-        let engine = SallocEngine {
-            customer,
-            indicator: None,
-            state,
-        };
+        let engine = SallocEngine::restore(
+            local,
+            shared,
+            global,
+            plugged,
+            prev_version
+        )?;
         Ok(Box::new(engine))
     }
 }

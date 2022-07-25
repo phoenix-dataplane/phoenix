@@ -2,19 +2,24 @@
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
 
-use module::SallocModule;
 use std::{alloc::LayoutError, path::Path};
+
 use thiserror::Error;
 
+use koala::module::KoalaModule;
+use koala::resource::Error as ResourceError;
+
 pub(crate) mod engine;
+pub(crate) mod config;
 pub mod module;
 pub mod region;
 pub mod state;
 
-use koala::{module::KoalaModule, resource::Error as ResourceError, state_mgr::SharedStateManager};
+use config::SallocConfig;
+use module::SallocModule;
 
 #[derive(Error, Debug)]
-pub(crate) enum ControlPathError {
+pub enum ControlPathError {
     // Below are errors that return to the user.
     #[error("Resource error: {0}")]
     Resource(#[from] ResourceError),
@@ -45,7 +50,12 @@ impl<T> From<SendError<T>> for ControlPathError {
 }
 
 #[no_mangle]
-pub fn init_module(_config_path: &Path) -> Box<dyn KoalaModule> {
-    let stage_mgr = SharedStateManager::new();
-    Box::new(SallocModule { stage_mgr })
+pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
+    let config = if let Some(path) = config_path {
+        SallocConfig::from_path(path).unwrap()
+    } else {
+        SallocConfig::default()
+    };
+    let module = SallocModule::new(config);
+    Box::new(module)
 }

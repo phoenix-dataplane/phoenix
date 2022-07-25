@@ -1,4 +1,6 @@
+use std::env;
 use std::io;
+use std::path::PathBuf;
 
 use memfd::Memfd;
 use thiserror::Error;
@@ -9,6 +11,21 @@ use ipc::service::ShmService;
 
 const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
 const DEFAULT_KOALA_CONTROL: &str = "control.sock";
+
+lazy_static::lazy_static! {
+    pub static ref KOALA_PREFIX: PathBuf = {
+        env::var("KOALA_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+            let path = PathBuf::from(p);
+            assert!(path.is_dir(), "{:?} is not a directly", path);
+            path
+        })
+    };
+
+    pub static ref KOALA_CONTROL_SOCK: PathBuf = {
+        env::var("KOALA_CONTROL")
+            .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
+    };
+}
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
@@ -54,8 +71,8 @@ pub(crate) struct SAContext {
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
         let service = ShmService::register(
-            &*DEFAULT_KOALA_PREFIX,
-            &*DEFAULT_KOALA_CONTROL,
+            KOALA_PREFIX.as_path(),
+            KOALA_CONTROL_SOCK.as_path(),
             EngineType::SallocV2,
         )?;
         Ok(Self { service })
@@ -78,7 +95,7 @@ fn allocate_shm(len: usize) -> Result<usize, Error> {
         assert!(file_len >= len);
 
         match ctx.service.recv_comp().unwrap().0 {
-            Ok(cmd::CompletionKind::AllocShm(remote_addr, file_off)) => Ok(remote_addr),
+            Ok(cmd::CompletionKind::AllocShm(remote_addr, _file_off)) => Ok(remote_addr),
             Err(e) => Err(Error::Interface("AllocShm", e)),
             otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
         }
@@ -88,9 +105,8 @@ fn allocate_shm(len: usize) -> Result<usize, Error> {
 fn dealloc_shm(remote_addr: usize) {
     SA_CTX.with(|ctx| {
         let req = cmd::Command::DeallocShm(remote_addr);
-        ctx.service.send_cmd(req);
-        // TODO(wyj): do we really need to wait for completion here?
-        rx_recv_impl!(ctx.service, cmd::CompletionKind::DeallocShm);
+        ctx.service.send_cmd(req).expect("fail to dealloc");
+        rx_recv_impl!(ctx.service, cmd::CompletionKind::DeallocShm).expect("fail to dealloc");
     })
 }
 

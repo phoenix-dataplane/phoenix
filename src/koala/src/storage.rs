@@ -51,6 +51,18 @@ impl DataPathBroker {
 }
 
 impl CommandPathBroker {
+    pub fn put_sender<T: AnyMessage>(
+        &mut self,
+        engine: EngineType,
+        sender: CommandSender<T>
+    ) -> Result<(), Error> {
+        if self.senders.contains_key(&engine) {
+            return Err(Error::AlreadyExists)
+        }
+        self.senders.insert(engine, AnyCommandSender(Box::new(sender)));
+        Ok(())
+    }
+
     /// Attemp to downcast the sender
     pub fn get_sender<T: AnyMessage>(
         &mut self,
@@ -92,6 +104,18 @@ impl CommandPathBroker {
         Ok(cloned)
     }
 
+    pub fn put_receiver<T: AnyMessage>(
+        &mut self,
+        engine: EngineType,
+        receiver: CommandReceiver<T>
+    ) -> Result<(), Error> {
+        if self.receivers.contains_key(&engine) {
+            return Err(Error::AlreadyExists)
+        }
+        self.receivers.insert(engine, AnyCommandReceiver(Box::new(receiver)));
+        Ok(())
+    }
+
     pub fn get_receiver<T: AnyMessage>(
         &mut self,
         engine: &EngineType,
@@ -113,6 +137,18 @@ impl CommandPathBroker {
 }
 
 impl DataPathBroker {
+    pub fn put_sender<T: AnyMessage>(
+        &mut self,
+        pair: EnginePair,
+        sender: DataSender<T>
+    ) -> Result<(), Error> {
+        if self.senders.contains_key(&pair) {
+            return Err(Error::AlreadyExists)
+        }
+        self.senders.insert(pair, AnyDataSender(Box::new(sender)));
+        Ok(())
+    }
+
     /// Attemp to downcast the sender
     pub fn get_sender<T: AnyMessage>(&mut self, pair: &EnginePair) -> Result<DataSender<T>, Error> {
         let sender = self.senders.remove(pair).ok_or(Error::NotFound)?;
@@ -129,6 +165,18 @@ impl DataPathBroker {
         let sender = self.senders.remove(pair).ok_or(Error::NotFound)?;
         let concrete = sender.downcast_unchecked();
         Ok(concrete)
+    }
+
+    pub fn put_receiver<T: AnyMessage>(
+        &mut self,
+        pair: EnginePair,
+        receiver: DataReceiver<T>
+    ) -> Result<(), Error> {
+        if self.receivers.contains_key(&pair) {
+            return Err(Error::AlreadyExists)
+        }
+        self.receivers.insert(pair, AnyDataReceiver(Box::new(receiver)));
+        Ok(())
     }
 
     pub fn get_receiver<T: AnyMessage>(

@@ -45,7 +45,6 @@ impl<T: Any> TypeTagged for T {
 }
 
 pub trait AnyResource: TypeTagged + Send + Sync + 'static {}
-
 impl<T: TypeTagged + Send + Sync + 'static> AnyResource for T {}
 
 impl dyn AnyResource {
@@ -126,8 +125,9 @@ impl ResourceDowncast for Box<dyn AnyResource> {
 }
 
 pub trait AnyMessage: Send + 'static {}
+impl<T: Send + 'static> AnyMessage for T {}
 
-pub struct AnyCommandSender(Box<dyn AnyResource>);
+pub struct AnyCommandSender(pub Box<dyn AnyResource>);
 
 impl AnyCommandSender {
     pub fn new<T: AnyMessage>(sender: CommandSender<T>) -> Self {
@@ -170,10 +170,10 @@ impl AnyCommandSender {
     }
 }
 
-pub struct AnyCommandReceiver(Box<dyn AnyResource>);
+pub struct AnyCommandReceiver(pub Box<dyn AnyResource>);
 
-pub struct AnyDataSender(Box<dyn AnyResource>);
-pub struct AnyDataReceiver(Box<dyn AnyResource>);
+pub struct AnyDataSender(pub Box<dyn AnyResource>);
+pub struct AnyDataReceiver(pub Box<dyn AnyResource>);
 
 macro_rules! channel_impl {
     ($wrapper:ident, $chan:ident) => {

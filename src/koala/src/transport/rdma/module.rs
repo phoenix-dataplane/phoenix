@@ -52,7 +52,7 @@ fn create_cm_engine(
     let shared = state_mgr.get_or_create(client_pid)?;
 
     // only create one cm_engine for a client process
-    // if refcnt > 1, then there is already a CmEngine running0
+    // if refcnt > 1, then there is already a CmEngine running
     if Arc::strong_count(&shared) > 1 {
         return Ok(());
     }

@@ -82,13 +82,18 @@ impl Control {
             mode,
             cred,
         };
-        let engine = module.create_engine(
-            service_engine_type,
-            request,
-            &mut shared,
-            global.value_mut(),
-            &self.plugins.modules,
-        )?;
+        let engine = module
+            .create_engine(
+                service_engine_type,
+                request,
+                &mut shared,
+                global.value_mut(),
+                &self.plugins.modules,
+            )?
+            .ok_or(anyhow!(
+                "service engine must always be created, engine_type={:?}",
+                service_engine_type
+            ))?;
         // Submit service engine to runtime manager
         let container =
             EngineContainer::new_v2(engine, service_engine_type.clone(), module.version());
@@ -107,9 +112,11 @@ impl Control {
                 &&self.plugins.modules,
             )?;
             // submit auxiliary to runtime manager
-            let container =
-                EngineContainer::new_v2(engine, aux_engine_type.clone(), module.version());
-            self.runtime_manager.submit(pid, gid, container, mode);
+            if let Some(engine) = engine {
+                let container =
+                    EngineContainer::new_v2(engine, aux_engine_type.clone(), module.version());
+                self.runtime_manager.submit(pid, gid, container, mode);
+            }
         }
         Ok(())
     }

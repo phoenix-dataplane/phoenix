@@ -42,4 +42,13 @@ impl<S: ProcessShared> SharedStateManager<S> {
             }
         }
     }
+
+    #[inline]
+    pub fn contains(&self, pid: Pid) -> bool {
+        if let Some(state) = self.states.get(&pid) {
+            state.strong_count() > 0
+        } else {
+            false
+        }
+    }
 }

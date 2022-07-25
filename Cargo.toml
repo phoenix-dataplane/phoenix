@@ -4,6 +4,8 @@ members = [
   "src/koala",
   "src/koala-salloc",
   "src/koala-transport-rdma",
+  "src/koala-rpc_adapter",
+  "src/koala-mrpc",
   "src/koala-utils",
   "src/mrpc-derive",
   "src/mrpc-marshal",

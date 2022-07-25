@@ -47,11 +47,10 @@ impl EngineGraph {
     pub fn get_engine_dependencies(&self, service: &EngineType) -> Vec<EngineType> {
         let visit = DfsPostOrder::new(&self.graph, self.index[service]);
         let post_order = visit.iter(&self.graph).collect::<Vec<_>>();
-        let topo_order = post_order
+        let rev_topo_order = post_order
             .iter()
-            .rev()
             .map(|node| self.graph[*node].clone())
             .collect();
-        topo_order
+        rev_topo_order
     }
 }

@@ -17,7 +17,7 @@ use super::{EngineContainer, EngineLocalStorage, EngineResult, Indicator};
 
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
-    pub(crate) static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
+    pub static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
 }
 
 #[allow(unused)]

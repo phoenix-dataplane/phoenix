@@ -14,7 +14,7 @@ type IResult<T> = Result<T, interface::Error>;
 pub struct PluginDescriptor {
     pub name: String,
     pub lib_path: PathBuf,
-    pub config_path: PathBuf,
+    pub config_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,11 +2,14 @@ use std::alloc::Layout;
 use std::os::unix::io::AsRawFd;
 use std::pin::Pin;
 
+use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use ipc::salloc::cmd;
 
 use koala::engine::{future, Unload};
+use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 use koala::engine::{Engine, EngineResult, Indicator};
 use koala::storage::{ResourceCollection, SharedStorage};
 
@@ -45,19 +48,68 @@ impl Engine for SallocEngine {
 }
 
 impl Unload for SallocEngine {
-    fn detach(&mut self) {}
+    #[inline]
+    fn detach(&mut self) {
+        // NOTE(wyj): nothing need to be done
+        // in current implementation
+    }
 
     fn unload(
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
     ) -> ResourceCollection {
+        // NOTE(wyj): If we want to upgrade the type of SallocState,
+        // we should decompose the states into atomic components
+        // e.g., recv_mr_addr_map, recv_mr_table, ...
+        // If state's type needs to be upgraded,
+        // all engines that uses SallocState (or Shared)
+        // needs to be upgraded at the same time
+        // the last engine to detach & unload will decompose the Arc in shared
+        // and put the shared resource into global resources (`global`)
         let engine = *self;
-        let mut collections = ResourceCollection::new();
-        tracing::trace!("dumping salloc engine states...");
+        let mut collections = ResourceCollection::with_capacity(2);
+        tracing::trace!("dumping Salloc engine states...");
         collections.insert("customer".to_string(), Box::new(engine.customer));
+        // NOTE(wyj): to upgrade state, do the following instead
+        // if Arc::strong_count(&engine.state.shared) == 1 {
+        //     let shared = Arc::try_unwrap(engine.state.shared).unwrap();
+        //     collections.insert("shared-pid".to_string(), Box::new(shared.pid));
+        //     collections.insert("shared-resource-recv_mr_addr_map".to_string(), Box::new(shared.resource.recv_mr_addr_map));
+        //     collections.insert("shared-resource-recv_mr_table".to_string(), Box::new(shared.resource.recv_mr_table));
+        //     collections.insert("shared-resource-mr_table".to_string(), Box::new(shared.resource.mr_table));
+        // }
         collections.insert("state".to_string(), Box::new(engine.state));
         collections
+    }
+}
+
+impl SallocEngine {
+    pub(crate) fn restore(
+        mut local: ResourceCollection,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+        _plugged: &ModuleCollection,
+        _prev_version: Version,
+    ) -> Result<Self> {
+        tracing::trace!("restoring Salloc engine");
+        let customer = *local
+            .remove("customer")
+            .unwrap()
+            .downcast::<CustomerType>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let state = *local
+            .remove("state")
+            .unwrap()
+            .downcast::<SallocState>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+
+        let engine = SallocEngine {
+            customer,
+            indicator: None,
+            state,
+        };
+        Ok(engine)
     }
 }
 

@@ -63,12 +63,25 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// `curr` contains the version after upgrade.
     fn check_compatibility(&self, prev: Option<&Version>, curr: &HashMap<&str, Version>) -> bool;
 
+    /// Decompose (dump) the module to raw resources,
+    /// e.g., dump configs, state manager into resource collection
+    fn decompose(self: Box<Self>) -> ResourceCollection;
+
     /// Migrate states / resources from older version of the module
     /// e.g., shared state manager
     /// prev version can be obtained from version() method of `prev_module`
+    /// the implementation may also call `decompose`
+    /// to decompose `prev_module` into raw resources,
+    /// depending on prev version
     fn migrate(&mut self, prev_module: Box<dyn KoalaModule>);
 
     /// Create a new engine
+    /// Upon success, returns an Option
+    /// Some indicates a newly created engine
+    /// None indicates the action is canceled,
+    /// no additional engine needed to be created.
+    /// For instance, only one CmEngine in RdmaTransport
+    /// should be created for each client application process
     /// * `shared`:
     ///     Message brokers and resources shared among a service
     ///     that serves the same user thread
@@ -83,7 +96,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
         plugged: &ModuleCollection,
-    ) -> Result<Box<dyn Engine>>;
+    ) -> Result<Option<Box<dyn Engine>>>;
 
     /// Restore and upgrade an engine from dumped states
     /// * `local`: The engine's local states
@@ -146,6 +159,36 @@ impl dyn KoalaModule {
 
         // Compare both TypeTags on equality
         t == concrete
+    }
+
+    #[inline]
+    pub fn downcast_ref<T: KoalaModule>(&self) -> Option<&T> {
+        if self.is::<T>() {
+            unsafe { Some(self.downcast_ref_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn downcast_mut<T: KoalaModule>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            unsafe { Some(self.downcast_mut_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub unsafe fn downcast_ref_unchecked<T: KoalaModule>(&self) -> &T {
+        debug_assert!(self.is::<T>());
+        &*(self as *const dyn KoalaModule as *const T)
+    }
+
+    #[inline]
+    pub unsafe fn downcast_mut_unchecked<T: KoalaModule>(&mut self) -> &mut T {
+        debug_assert!(self.is::<T>());
+        &mut *(self as *mut dyn KoalaModule as *mut T)
     }
 }
 

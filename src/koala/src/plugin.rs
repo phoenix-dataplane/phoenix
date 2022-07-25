@@ -14,7 +14,7 @@ use crate::engine::EngineType;
 use crate::module::KoalaModule;
 use crate::module::Service;
 
-pub type InitFn = fn(&Path) -> Box<dyn KoalaModule>;
+pub type InitFn = fn(Option<&Path>) -> Box<dyn KoalaModule>;
 
 pub struct Plugin {
     lib: libloading::Library,
@@ -27,7 +27,7 @@ impl Plugin {
         Plugin { lib, _old: None }
     }
 
-    pub fn init_module(&self, config_path: &Path) -> Box<dyn KoalaModule> {
+    pub fn init_module(&self, config_path: Option<&Path>) -> Box<dyn KoalaModule> {
         let func = unsafe { self.lib.get::<InitFn>(b"init_module").unwrap() };
         let module = func(config_path);
         module
@@ -101,7 +101,8 @@ impl PluginCollection {
                     .insert(descriptor.name.clone(), Plugin::new(&descriptor.lib_path));
             }
             let new_plugin = self.plugins.get_mut(&descriptor.name).unwrap();
-            let new_module = new_plugin.init_module(descriptor.config_path.as_ref());
+            let config_path = descriptor.config_path.as_ref().map(|x| x.as_path());
+            let new_module = new_plugin.init_module(config_path);
             new_versions.insert(&descriptor.name[..], new_module.version());
             new_modules.insert(&descriptor.name[..], new_module);
         }

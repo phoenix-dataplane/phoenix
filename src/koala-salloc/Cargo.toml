@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["lib", "dylib"]
 
 [dependencies]
 interface = { path = "../interface" }
@@ -24,3 +24,5 @@ thiserror = "1.0.31"
 spin = "0.9.3"
 libc = "0.2.103"
 futures = "0.3.21"
+serde = { version = "1.0.130", features = ["derive"] }
+toml = { version = "0.5.8", features = ["preserve_order"] }
