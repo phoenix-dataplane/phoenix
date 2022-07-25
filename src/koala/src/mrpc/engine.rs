@@ -367,7 +367,6 @@ impl MrpcEngine {
         }
     }
 
-    // fn check_new_incoming_connection(&mut self) -> Result<Status, Error> {
     fn check_input_cmd_queue(&mut self) -> Result<Status, Error> {
         use ipc::mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;

@@ -40,10 +40,10 @@ fn create_acceptor_engine(
     let node = Node::new(EngineType::RpcAdapterAcceptor);
     let acceptor_engine = AcceptorEngine::new(node, state, Box::new(TlStorage { ops }));
 
-    // always submit the engine to a dedicate runtime
+    // submit non-performance-critical engine to compact runtime
     runtime_manager.submit(
         EngineContainer::new(acceptor_engine),
-        SchedulingMode::Dedicate,
+        SchedulingMode::Compact,
     );
     Ok(())
 }
