@@ -139,16 +139,18 @@ impl RpcAdapterEngine {
             }
             // timer.tick();
 
-            // check input command queue, ~50ns
-            match self.check_input_cmd_queue().await? {
-                Progress(n) => work += n,
-                Status::Disconnected => return Ok(()),
-            }
-            // timer.tick();
+            if fastrand::usize(..1000) < 1 {
+                // check input command queue, ~50ns
+                match self.check_input_cmd_queue().await? {
+                    Progress(n) => work += n,
+                    Status::Disconnected => return Ok(()),
+                }
+                // timer.tick();
 
-            // TODO(cjr): check incoming connect request, ~200ns
-            self.check_incoming_connection().await?;
-            // timer.tick();
+                // TODO(cjr): check incoming connect request, ~200ns
+                self.check_incoming_connection().await?;
+                // timer.tick();
+            }
 
             // If there's pending receives, there will always be future work to do.
             self.indicator

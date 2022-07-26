@@ -87,15 +87,19 @@ impl MrpcEngine {
             }
             // timer.tick();
 
-            // 80-100ns, sometimes 200ns
-            if let Status::Disconnected = self.check_cmd().await? {
-                break;
-            }
-            // timer.tick();
+            if fastrand::usize(..1000) < 1 {
 
-            // 50ns
-            // self.check_new_incoming_connection()?;
-            self.check_input_cmd_queue()?;
+                // 80-100ns, sometimes 200ns
+                if let Status::Disconnected = self.check_cmd().await? {
+                    break;
+                }
+                // timer.tick();
+
+                // 50ns
+                // self.check_new_incoming_connection()?;
+                self.check_input_cmd_queue()?;
+            }
+
             self.indicator.as_ref().unwrap().set_nwork(nwork);
             // timer.tick();
             // log::info!("mrpc mainloop: {}", timer);
