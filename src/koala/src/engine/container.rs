@@ -97,7 +97,6 @@ impl EngineContainer {
         }
     }
 
-    ///
     #[inline]
     pub(crate) fn future(&mut self) -> Pin<&mut dyn Future<Output = EngineResult>> {
         self.future.as_mut()
@@ -120,6 +119,11 @@ impl EngineContainer {
         self.els
     }
 
+    #[inline]
+    pub(crate) fn set_els(&self) {
+        self.engine.set_els();
+    }
+    
     #[inline]
     pub(crate) fn engine_type(&self) -> &EngineType {
         &self.ty

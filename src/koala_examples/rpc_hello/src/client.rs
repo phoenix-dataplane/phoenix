@@ -9,7 +9,7 @@ use rpc_hello::HelloRequest;
 use mrpc::stub::RpcMessage;
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-    let client = GreeterClient::connect("rdma0.danyang-06:5000")?;
+    let client = GreeterClient::connect("rdma0.danyang-03:5000")?;
     let req = RpcMessage::new(HelloRequest {
         name: "mRPC".into(),
     });

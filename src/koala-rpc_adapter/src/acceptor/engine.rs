@@ -4,27 +4,29 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use koala::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Unload};
+use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
 use koala::envelop::ResourceDowncast;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
-use super::super::engine::TlStorage;
+use transport_rdma::ops::Ops;
+
+use crate::ulib;
 use super::super::state::State;
 use super::super::ControlPathError;
 
 pub struct AcceptorEngine {
     pub(crate) indicator: Option<Indicator>,
     pub(crate) state: State,
-    pub(crate) tls: Box<TlStorage>,
+    pub(crate) ops: Box<Ops>,
 }
 
 impl AcceptorEngine {
-    pub(crate) fn new(state: State, tls: Box<TlStorage>) -> Self {
+    pub(crate) fn new(state: State, ops: Box<Ops>) -> Self {
         Self {
             indicator: None,
             state,
-            tls,
+            ops,
         }
     }
 }
@@ -42,7 +44,7 @@ impl Unload for AcceptorEngine {
         let mut collections = ResourceCollection::with_capacity(2);
         tracing::trace!("dumping RpcAdapter-AcceptorEngine states...");
         collections.insert("state".to_string(), Box::new(engine.state));
-        collections.insert("tls".to_string(), Box::new(engine.tls));
+        collections.insert("ops".to_string(), Box::new(engine.ops));
         collections
     }
 }
@@ -60,16 +62,16 @@ impl AcceptorEngine {
             .unwrap()
             .downcast::<State>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let tls = *local
-            .remove("tls")
+        let ops = *local
+            .remove("ops")
             .unwrap()
-            .downcast::<Box<TlStorage>>()
+            .downcast::<Box<Ops>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = AcceptorEngine {
             indicator: None,
             state,
-            tls,
+            ops,
         };
         Ok(engine)
     }
@@ -98,10 +100,11 @@ impl Engine for AcceptorEngine {
         self.indicator = Some(indicator);
     }
 
-    #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn set_els(&self) {
+        let ops_ptr = self.ops.as_ref() as *const _;
+        ulib::OPS.with(|ops| {
+            *ops.borrow_mut() = unsafe { Some(&*ops_ptr) }
+        })
     }
 }
 

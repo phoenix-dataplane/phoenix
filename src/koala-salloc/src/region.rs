@@ -47,7 +47,7 @@ impl AsHandle for SharedRegion {
 }
 
 impl SharedRegion {
-    pub(crate) fn new<'ctx>(layout: Layout) -> Result<Self, Error> {
+    pub(crate) fn new<'ctx>(layout: Layout, addr_mediator: &AddressMediator) -> Result<Self, Error> {
         let nbytes = layout.size();
         let align = layout.align().max(page_size());
         let hugetlb_size = None;
@@ -61,9 +61,8 @@ impl SharedRegion {
         let memfd = opts.create(name)?;
         memfd.as_file().set_len(nbytes as u64)?;
 
-        let target_addr = ADDRESS_MEDIATOR.allocate(layout);
+        let target_addr = addr_mediator.allocate(layout);
         let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
-
         Ok(Self {
             mmap,
             memfd,
@@ -92,29 +91,25 @@ impl AsRef<SharedRegion> for SharedRegion {
 ///
 /// Similar to memory allocation, it takes an `Layout` as input and returns an address that follows
 /// the alignment requirement.
-struct AddressMediator {
+pub struct AddressMediator {
     current: spin::Mutex<usize>,
 }
 
 impl AddressMediator {
     const STARTING_ADDRESS: usize = 0x600000000000;
 
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             current: spin::Mutex::new(Self::STARTING_ADDRESS),
         }
     }
 
-    fn allocate(&self, layout: Layout) -> usize {
+    pub(crate) fn allocate(&self, layout: Layout) -> usize {
         let mut current = self.current.lock();
         let next = current.next_multiple_of(layout.align());
         *current = next + layout.size();
         next
     }
-}
-
-lazy_static::lazy_static! {
-    static ref ADDRESS_MEDIATOR: AddressMediator = AddressMediator::new();
 }
 
 fn page_size() -> usize {

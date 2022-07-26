@@ -6,26 +6,59 @@ use std::sync::Arc;
 use interface::AsHandle;
 use nix::unistd::Pid;
 
+use crate::region::AddressMediator;
+
 use super::region::SharedRegion;
 use super::ControlPathError;
 use koala::engine::EngineLocalStorage;
 use koala::resource::{Error as ResourceError, ResourceTable};
 use koala::state_mgr::ProcessShared;
 
-pub(crate) struct State {
+pub struct State {
     pub(crate) shared: Arc<Shared>,
+    pub(crate) addr_mediator: Arc<AddressMediator>,
 }
 
 impl State {
-    pub(crate) fn new(shared: Arc<Shared>) -> Self {
-        State { shared }
+    pub fn new(shared: Arc<Shared>, mediator: Arc<AddressMediator>) -> Self {
+        State { 
+            shared,
+            addr_mediator: mediator
+        }
     }
 }
 
 impl State {
     #[inline]
-    pub(crate) fn resource(&self) -> &Resource {
+    pub fn resource(&self) -> &Resource {
         &self.shared.resource
+    }
+
+    pub fn allocate_recv_mr(&self, size: usize) -> Result<Arc<SharedRegion>, ControlPathError> {
+        // TODO(cjr): update this
+        let align = 8 * 1024 * 1024;
+        let layout = Layout::from_size_align(size, align)?;
+        let region = SharedRegion::new(layout, &self.addr_mediator)?;
+        let handle = region.as_handle();
+        self.shared.resource.recv_mr_table.insert(handle, region)?;
+        let ret = self.shared.resource.recv_mr_table.get(&handle)?;
+        Ok(ret) 
+    }
+
+    pub fn insert_addr_map(
+        &self,
+        local_addr: usize,
+        remote_buf: mrpc_marshal::ShmRecvMr,
+    ) -> Result<(), ResourceError> {
+        // SAFETY: it is the caller's responsibility to ensure the ShmMr is power-of-two aligned.
+
+        // NOTE(wyj): local_addr is actually the pointer to the start of the recv_mr on backend side
+        // the recv_mr on app side has the same length as the backend side
+        // the length is logged in remote_buf
+        self.shared.resource.recv_mr_addr_map
+            .lock()
+            .insert(local_addr, remote_buf)
+            .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
     }
 }
 
@@ -70,32 +103,5 @@ impl Resource {
             recv_mr_table: ResourceTable::default(),
             mr_table: spin::Mutex::new(BTreeMap::default()),
         }
-    }
-
-    pub fn allocate_recv_mr(&self, size: usize) -> Result<Arc<SharedRegion>, ControlPathError> {
-        // TODO(cjr): update this
-        let align = 8 * 1024 * 1024;
-        let layout = Layout::from_size_align(size, align)?;
-        let region = SharedRegion::new(layout)?;
-        let handle = region.as_handle();
-        self.recv_mr_table.insert(handle, region)?;
-        let ret = self.recv_mr_table.get(&handle)?;
-        Ok(ret)
-    }
-
-    pub fn insert_addr_map(
-        &self,
-        local_addr: usize,
-        remote_buf: mrpc_marshal::ShmRecvMr,
-    ) -> Result<(), ResourceError> {
-        // SAFETY: it is the caller's responsibility to ensure the ShmMr is power-of-two aligned.
-
-        // NOTE(wyj): local_addr is actually the pointer to the start of the recv_mr on backend side
-        // the recv_mr on app side has the same length as the backend side
-        // the length is logged in remote_buf
-        self.recv_mr_addr_map
-            .lock()
-            .insert(local_addr, remote_buf)
-            .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))
     }
 }

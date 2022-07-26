@@ -188,6 +188,7 @@ impl Runtime {
                     // through to make sure they implement it correctly.
                     *els.borrow_mut() = unsafe { engine.borrow().els() };
                 });
+                engine.borrow_mut().set_els();
 
                 // bind to a variable first (otherwise engine is borrowed in the match expression)
                 let ret = engine.borrow_mut().future().poll(&mut cx);

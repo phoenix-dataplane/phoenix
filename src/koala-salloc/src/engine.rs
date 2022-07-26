@@ -154,7 +154,7 @@ impl SallocEngine {
                 // TODO(wyj): implement backend heap allocator to properly handle align
                 // tracing::trace!("AllocShm, size: {}", size);
                 let layout = Layout::from_size_align(size, align)?;
-                let region = SharedRegion::new(layout)?;
+                let region = SharedRegion::new(layout, &self.state.addr_mediator)?;
                 // mr's addr on backend side
                 let local_addr = region.as_ptr().expose_addr();
                 let file_off = 0;
@@ -174,7 +174,7 @@ impl SallocEngine {
                 // TODO(wyj): will shm dealloc when app exits?
                 // app may not dealloc all the created shm regions due to lazy_static and potential misbehave
                 self.state
-                    .resource()
+                    .resource() 
                     .mr_table
                     .lock()
                     .remove(&addr)
@@ -195,7 +195,6 @@ impl SallocEngine {
                         align: 8 * 1024 * 1024,
                     };
                     self.state
-                        .resource()
                         .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
                 }
                 Ok(CompletionKind::NewMappedAddrs)

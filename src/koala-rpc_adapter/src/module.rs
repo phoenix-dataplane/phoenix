@@ -11,6 +11,8 @@ use ipc::mrpc::cmd;
 use mrpc::message::{EngineRxMessage, EngineTxMessage};
 use salloc::module::SallocModule;
 use salloc::state::Shared as SallocShared;
+use salloc::state::State as SallocState;
+use salloc::region::AddressMediator;
 use transport_rdma::module::RdmaTransportModule;
 use transport_rdma::ops::Ops;
 
@@ -22,7 +24,7 @@ use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::acceptor::engine::AcceptorEngine;
-use crate::engine::{RpcAdapterEngine, TlStorage};
+use crate::engine::RpcAdapterEngine;
 use crate::state::{Shared, State};
 
 pub(crate) struct AcceptorEngineBuilder {
@@ -42,7 +44,7 @@ impl AcceptorEngineBuilder {
 
     fn build(self) -> Result<AcceptorEngine> {
         let state = State::new(self.shared);
-        let engine = AcceptorEngine::new(state, Box::new(TlStorage { ops: self.ops }));
+        let engine = AcceptorEngine::new(state, Box::new(self.ops));
         Ok(engine)
     }
 }
@@ -57,6 +59,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     ops: Ops,
     shared: Arc<Shared>,
     salloc_shared: Arc<SallocShared>,
+    addr_mediator: Arc<AddressMediator>,
 }
 
 impl RpcAdapterEngineBuilder {
@@ -70,6 +73,7 @@ impl RpcAdapterEngineBuilder {
         ops: Ops,
         shared: Arc<Shared>,
         salloc_shared: Arc<SallocShared>,
+        addr_mediator: Arc<AddressMediator>,
     ) -> Self {
         RpcAdapterEngineBuilder {
             _client_pid: client_pid,
@@ -81,17 +85,19 @@ impl RpcAdapterEngineBuilder {
             ops,
             shared,
             salloc_shared,
+            addr_mediator,
         }
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
         let state = State::new(self.shared);
+        let salloc_state = SallocState::new(self.salloc_shared, self.addr_mediator);
 
         Ok(RpcAdapterEngine {
             state,
             odp_mr: None,
-            tls: Box::new(TlStorage { ops: self.ops }),
-            salloc: self.salloc_shared,
+            ops: Box::new(self.ops),
+            salloc: salloc_state,
             local_buffer: VecDeque::new(),
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
@@ -294,7 +300,9 @@ impl RpcAdapterModule {
         let ops = rdma_transport.create_ops(client_pid)?;
         let shared = self.state_mgr.get_or_create(client_pid)?;
         // Get salloc state
+        eprintln!("Salloc already created = {}", salloc.state_mgr.contains(client_pid));
         let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
+        let addr_mediator = salloc.get_addr_mediator();
 
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
@@ -306,6 +314,7 @@ impl RpcAdapterModule {
             ops,
             shared,
             salloc_shared,
+            addr_mediator,
         );
         let engine = builder.build()?;
         Ok(engine)

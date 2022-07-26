@@ -21,10 +21,10 @@ use mrpc::message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx
 use mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use mrpc::unpack::UnpackFromSgE;
 use salloc::region::SharedRegion;
-use salloc::state::Shared as SallocShared;
+use salloc::state::State as SallocState;
 use transport_rdma::ops::Ops;
 
-use koala::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator, Unload};
+use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
 use koala::envelop::ResourceDowncast;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
@@ -34,29 +34,14 @@ use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 
-pub(crate) struct TlStorage {
-    pub(crate) ops: Ops,
-}
-
-/// WARNING(cjr): This this not true! I unafely mark Sync for TlStorage to cheat the compiler. I
-/// have to do this because runtime.running_engines[i].els() exposes a &EngineLocalStorage, and
-/// runtimes are shared between two threads, so EngineLocalStorage must be Sync.
-unsafe impl Sync for TlStorage {}
-
-unsafe impl EngineLocalStorage for TlStorage {
-    #[inline]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
 
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
     pub(crate) odp_mr: Option<ulib::uverbs::MemoryRegion<u8>>,
-    pub(crate) tls: Box<TlStorage>,
+    pub(crate) ops: Box<Ops>,
 
-    pub(crate) salloc: Arc<SallocShared>,
+    pub(crate) salloc: SallocState,
 
     // shared completion queue model
     pub(crate) local_buffer: VecDeque<RpcMessageTx>,
@@ -100,7 +85,7 @@ impl Unload for RpcAdapterEngine {
         let mut collections = ResourceCollection::with_capacity(12);
         tracing::trace!("dumping RpcAdapterEngine states...");
         collections.insert("state".to_string(), Box::new(engine.state));
-        collections.insert("tls".to_string(), Box::new(engine.tls));
+        collections.insert("ops".to_string(), Box::new(engine.ops));
         collections.insert("mode".to_string(), Box::new(engine._mode));
         collections.insert("odp_mr".to_string(), Box::new(engine.odp_mr));
         collections.insert("salloc".to_string(), Box::new(engine.salloc));
@@ -132,10 +117,10 @@ impl RpcAdapterEngine {
             .unwrap()
             .downcast::<State>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let tls = *local
-            .remove("tls")
+        let ops = *local
+            .remove("ops")
             .unwrap()
-            .downcast::<Box<TlStorage>>()
+            .downcast::<Box<Ops>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let mode = *local
             .remove("mode")
@@ -150,7 +135,7 @@ impl RpcAdapterEngine {
         let salloc = *local
             .remove("salloc")
             .unwrap()
-            .downcast::<Arc<SallocShared>>()
+            .downcast::<SallocState>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let local_buffer = *local
             .remove("local_buffer")
@@ -191,7 +176,7 @@ impl RpcAdapterEngine {
         let engine = RpcAdapterEngine {
             state,
             odp_mr,
-            tls,
+            ops,
             salloc,
             local_buffer,
             recv_mr_usage,
@@ -228,10 +213,11 @@ impl Engine for RpcAdapterEngine {
         self.indicator = Some(indicator);
     }
 
-    #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn set_els(&self) {
+        let ops_ptr = self.ops.as_ref() as *const _;
+        ulib::OPS.with(|ops| {
+            *ops.borrow_mut() = unsafe { Some(&*ops_ptr) }
+        })
     }
 }
 
@@ -296,7 +282,7 @@ impl RpcAdapterEngine {
             // TODO(cjr): we currently by default use the first ibv_context.
             let pd_list = ulib::uverbs::get_default_pds().unwrap();
             let pd = &pd_list[0];
-            let odp_mr = self.tls.ops.create_mr_on_demand_paging(&pd.inner).unwrap();
+            let odp_mr = self.ops.create_mr_on_demand_paging(&pd.inner).unwrap();
             self.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
         }
         self.odp_mr.as_mut().unwrap()
@@ -555,7 +541,7 @@ impl RpcAdapterEngine {
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
-            addr_arbiter: &self.salloc.resource.recv_mr_addr_map,
+            addr_arbiter: &self.salloc.resource().recv_mr_addr_map,
         };
 
         let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
@@ -675,7 +661,7 @@ impl RpcAdapterEngine {
         mr_handles: &[Handle],
     ) -> Result<(), DatapathError> {
         for handle in mr_handles {
-            let recv_mr = self.salloc.resource.recv_mr_table.get(handle)?;
+            let recv_mr = self.salloc.resource().recv_mr_table.get(handle)?;
             let off = recv_mr.as_ptr().expose_addr();
             let len = recv_mr.len();
 
@@ -730,7 +716,7 @@ impl RpcAdapterEngine {
         let mut recv_mrs = Vec::new();
         for _ in 0..128 {
             let recv_mr: Arc<SharedRegion> =
-                self.salloc.resource.allocate_recv_mr(8 * 1024 * 1024)?;
+                self.salloc.allocate_recv_mr(8 * 1024 * 1024)?;
             recv_mrs.push(recv_mr);
         }
         // for _ in 0..128 {

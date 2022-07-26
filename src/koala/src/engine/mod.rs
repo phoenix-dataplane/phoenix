@@ -57,6 +57,8 @@ pub trait Engine: Unload + Send + Unpin + 'static {
     unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
         None
     }
+
+    fn set_els(&self) { }
 }
 
 pub type EngineResult = Result<(), Box<dyn std::error::Error>>;

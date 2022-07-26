@@ -18,6 +18,7 @@ use koala::storage::{ResourceCollection, SharedStorage};
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
 use crate::config::SallocConfig;
+use crate::region::AddressMediator;
 
 pub(crate) type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -27,6 +28,7 @@ pub(crate) struct SallocEngineBuilder {
     _client_pid: Pid,
     _mode: SchedulingMode,
     shared: Arc<Shared>,
+    addr_mediator: Arc<AddressMediator>,
 }
 
 impl SallocEngineBuilder {
@@ -35,18 +37,20 @@ impl SallocEngineBuilder {
         client_pid: Pid,
         mode: SchedulingMode,
         shared: Arc<Shared>,
+        addr_mediator: Arc<AddressMediator>,
     ) -> Self {
         SallocEngineBuilder {
             customer,
             _client_pid: client_pid,
             _mode: mode,
             shared,
+            addr_mediator,
         }
     }
 
     fn build(self) -> Result<SallocEngine> {
         // share the state with rpc adapter
-        let salloc_state = State::new(self.shared);
+        let salloc_state = State::new(self.shared, self.addr_mediator);
 
         Ok(SallocEngine {
             customer: self.customer,
@@ -59,6 +63,7 @@ impl SallocEngineBuilder {
 pub struct SallocModule {
     config: SallocConfig,
     pub state_mgr: SharedStateManager<Shared>,
+    addr_mediator: Arc<AddressMediator>,
 }
 
 impl SallocModule {
@@ -66,7 +71,15 @@ impl SallocModule {
         SallocModule {
             config,
             state_mgr: SharedStateManager::new(),
+            addr_mediator: Arc::new(AddressMediator::new()),
         }
+    }
+}
+
+impl SallocModule {
+    #[inline]
+    pub fn get_addr_mediator(&self) -> Arc<AddressMediator> {
+        Arc::clone(&self.addr_mediator)
     }
 }
 
@@ -94,6 +107,7 @@ impl KoalaModule for SallocModule {
         let mut collections = ResourceCollection::new();
         collections.insert("state_mgr".to_string(), Box::new(module.state_mgr));
         collections.insert("config".to_string(), Box::new(module.config));
+        collections.insert("addr_mediator".to_string(), Box::new(module.addr_mediator));
         collections
     }
 
@@ -105,6 +119,7 @@ impl KoalaModule for SallocModule {
         // NOTE(wyj): we may better call decompose here, in case we change SallocModule type
         let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
         self.state_mgr = prev_concrete.state_mgr;
+        self.addr_mediator = prev_concrete.addr_mediator;
     }
 
     fn create_engine(
@@ -141,7 +156,14 @@ impl KoalaModule for SallocModule {
             let client_pid = Pid::from_raw(cred.pid.unwrap());
 
             let shared = self.state_mgr.get_or_create(client_pid)?;
-            let builder = SallocEngineBuilder::new(customer, client_pid, mode, shared);
+            let builder = SallocEngineBuilder::new(
+                customer,
+                client_pid,
+                mode,
+                shared,
+                Arc::clone(&self.addr_mediator)
+            );
+
             let engine = builder.build()?;
 
             Ok(Some(Box::new(engine)))
