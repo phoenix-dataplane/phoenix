@@ -11,9 +11,9 @@ use koala::storage::{ResourceCollection, SharedStorage};
 
 use transport_rdma::ops::Ops;
 
-use crate::ulib;
 use super::super::state::State;
 use super::super::ControlPathError;
+use crate::ulib;
 
 pub struct AcceptorEngine {
     pub(crate) indicator: Option<Indicator>,
@@ -102,9 +102,7 @@ impl Engine for AcceptorEngine {
 
     fn set_els(&self) {
         let ops_ptr = self.ops.as_ref() as *const _;
-        ulib::OPS.with(|ops| {
-            *ops.borrow_mut() = unsafe { Some(&*ops_ptr) }
-        })
+        ulib::OPS.with(|ops| *ops.borrow_mut() = unsafe { Some(&*ops_ptr) })
     }
 }
 

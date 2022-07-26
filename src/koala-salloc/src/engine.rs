@@ -174,7 +174,7 @@ impl SallocEngine {
                 // TODO(wyj): will shm dealloc when app exits?
                 // app may not dealloc all the created shm regions due to lazy_static and potential misbehave
                 self.state
-                    .resource() 
+                    .resource()
                     .mr_table
                     .lock()
                     .remove(&addr)

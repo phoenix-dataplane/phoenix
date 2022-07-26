@@ -58,7 +58,7 @@ pub trait Engine: Unload + Send + Unpin + 'static {
         None
     }
 
-    fn set_els(&self) { }
+    fn set_els(&self) {}
 }
 
 pub type EngineResult = Result<(), Box<dyn std::error::Error>>;

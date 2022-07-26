@@ -70,12 +70,15 @@ impl Control {
             .entry(pid)
             .or_insert_with(ResourceCollection::new);
 
-
         // crate auxiliary engines in (reverse) topological order
         for aux_engine_type in engine_types.split_last().unwrap().1 {
             let module_name = self.plugins.engine_registry.get(aux_engine_type).unwrap();
             let mut module = self.plugins.modules.get_mut(module_name.value()).unwrap();
-            eprintln!("create engine {:?}, module {:?}", aux_engine_type, module.key());
+            eprintln!(
+                "creating engine {:?}, module {:?}...",
+                aux_engine_type,
+                module.key()
+            );
             let request = NewEngineRequest::Auxiliary { pid, mode };
             let engine = module.create_engine(
                 aux_engine_type,
@@ -91,8 +94,8 @@ impl Control {
                 self.runtime_manager.submit(pid, gid, container, mode);
             }
         }
-        
-        // finally, create service engine 
+
+        // finally, create service engine
         let service_engine_type = engine_types.last().unwrap();
         let module_name = self
             .plugins
@@ -106,7 +109,11 @@ impl Control {
             mode,
             cred,
         };
-        eprintln!("create engine {:?}", service_engine_type);
+        eprintln!(
+            "creating engine {:?}, module {:?}...",
+            service_engine_type,
+            module.key()
+        );
         let engine = module
             .create_engine(
                 service_engine_type,
@@ -333,7 +340,6 @@ impl Control {
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
             control::Request::NewClient(mode, engine_type) => {
-                eprintln!("New client request");
                 let client_path = sender
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
@@ -356,7 +362,6 @@ impl Control {
                     }
                     EngineType::Mrpc => {
                         // self.build_graph(client_path, mode, cred)?;
-                        eprintln!("Get request: MRPC");
                         let service = Service(String::from("Mrpc"));
                         self.create_service(&service, client_path, mode, cred)?;
                     }

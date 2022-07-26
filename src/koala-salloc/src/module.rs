@@ -161,7 +161,7 @@ impl KoalaModule for SallocModule {
                 client_pid,
                 mode,
                 shared,
-                Arc::clone(&self.addr_mediator)
+                Arc::clone(&self.addr_mediator),
             );
 
             let engine = builder.build()?;

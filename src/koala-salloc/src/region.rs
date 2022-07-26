@@ -47,7 +47,10 @@ impl AsHandle for SharedRegion {
 }
 
 impl SharedRegion {
-    pub(crate) fn new<'ctx>(layout: Layout, addr_mediator: &AddressMediator) -> Result<Self, Error> {
+    pub(crate) fn new<'ctx>(
+        layout: Layout,
+        addr_mediator: &AddressMediator,
+    ) -> Result<Self, Error> {
         let nbytes = layout.size();
         let align = layout.align().max(page_size());
         let hugetlb_size = None;

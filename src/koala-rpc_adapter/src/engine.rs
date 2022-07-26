@@ -34,7 +34,6 @@ use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 
-
 pub(crate) struct RpcAdapterEngine {
     // NOTE(cjr): The drop order here is important. objects in ulib first, objects in transport later.
     pub(crate) state: State,
@@ -215,9 +214,7 @@ impl Engine for RpcAdapterEngine {
 
     fn set_els(&self) {
         let ops_ptr = self.ops.as_ref() as *const _;
-        ulib::OPS.with(|ops| {
-            *ops.borrow_mut() = unsafe { Some(&*ops_ptr) }
-        })
+        ulib::OPS.with(|ops| *ops.borrow_mut() = unsafe { Some(&*ops_ptr) })
     }
 }
 
@@ -715,8 +712,7 @@ impl RpcAdapterEngine {
         // state.
         let mut recv_mrs = Vec::new();
         for _ in 0..128 {
-            let recv_mr: Arc<SharedRegion> =
-                self.salloc.allocate_recv_mr(8 * 1024 * 1024)?;
+            let recv_mr: Arc<SharedRegion> = self.salloc.allocate_recv_mr(8 * 1024 * 1024)?;
             recv_mrs.push(recv_mr);
         }
         // for _ in 0..128 {

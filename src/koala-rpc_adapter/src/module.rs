@@ -10,9 +10,9 @@ use ipc::mrpc::cmd;
 
 use mrpc::message::{EngineRxMessage, EngineTxMessage};
 use salloc::module::SallocModule;
+use salloc::region::AddressMediator;
 use salloc::state::Shared as SallocShared;
 use salloc::state::State as SallocState;
-use salloc::region::AddressMediator;
 use transport_rdma::module::RdmaTransportModule;
 use transport_rdma::ops::Ops;
 
@@ -300,7 +300,10 @@ impl RpcAdapterModule {
         let ops = rdma_transport.create_ops(client_pid)?;
         let shared = self.state_mgr.get_or_create(client_pid)?;
         // Get salloc state
-        eprintln!("Salloc already created = {}", salloc.state_mgr.contains(client_pid));
+        eprintln!(
+            "Salloc already created = {}",
+            salloc.state_mgr.contains(client_pid)
+        );
         let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
         let addr_mediator = salloc.get_addr_mediator();
 

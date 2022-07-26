@@ -102,6 +102,7 @@ async fn upgrade_client(
                             EngineContainer::new_v2(engine, engine_type.clone(), version);
                         rm.submit(pid, new_gid, container, mode);
                         tracing::trace!("Engine (pid={:?}, prev_eid={:?}, prev_gid={:?}, type: {:?}) restored and submit to runtime manager", pid, eid, gid, engine_type);
+                        eprintln!("Engine (pid={:?}, prev_eid={:?}, prev_gid={:?}, type: {:?}) restored and submit to runtime manager", pid, eid, gid, engine_type);
                     }
                     Err(_) => {
                         log::warn!(

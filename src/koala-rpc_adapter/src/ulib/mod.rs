@@ -40,11 +40,7 @@ thread_local! {
     pub(crate) static OPS: RefCell<Option<&'static Ops>> = RefCell::new(None);
 }
 
-
 #[inline]
 fn get_ops() -> &'static Ops {
-    OPS.with(|els| {
-        els.borrow()
-            .unwrap()
-    })
+    OPS.with(|els| els.borrow().unwrap())
 }

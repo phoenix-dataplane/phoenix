@@ -21,9 +21,9 @@ pub struct State {
 
 impl State {
     pub fn new(shared: Arc<Shared>, mediator: Arc<AddressMediator>) -> Self {
-        State { 
+        State {
             shared,
-            addr_mediator: mediator
+            addr_mediator: mediator,
         }
     }
 }
@@ -42,7 +42,7 @@ impl State {
         let handle = region.as_handle();
         self.shared.resource.recv_mr_table.insert(handle, region)?;
         let ret = self.shared.resource.recv_mr_table.get(&handle)?;
-        Ok(ret) 
+        Ok(ret)
     }
 
     pub fn insert_addr_map(
@@ -55,7 +55,9 @@ impl State {
         // NOTE(wyj): local_addr is actually the pointer to the start of the recv_mr on backend side
         // the recv_mr on app side has the same length as the backend side
         // the length is logged in remote_buf
-        self.shared.resource.recv_mr_addr_map
+        self.shared
+            .resource
+            .recv_mr_addr_map
             .lock()
             .insert(local_addr, remote_buf)
             .map_or_else(|| Ok(()), |_| Err(ResourceError::Exists))

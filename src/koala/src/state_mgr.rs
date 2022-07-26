@@ -26,10 +26,8 @@ impl<S: ProcessShared> SharedStateManager<S> {
         match self.states.entry(pid) {
             hash_map::Entry::Occupied(mut entry) => {
                 if let Some(state) = entry.get().upgrade() {
-                    eprintln!("Upgrade STATE");
                     Ok(state)
                 } else {
-                    eprintln!("Create new  STATE");
                     let state = S::new(pid)?;
                     let wrapped = Arc::new(state);
                     entry.insert(Arc::downgrade(&wrapped));
@@ -37,7 +35,6 @@ impl<S: ProcessShared> SharedStateManager<S> {
                 }
             }
             hash_map::Entry::Vacant(entry) => {
-                eprintln!("Create new  STATE");
                 let state = S::new(pid)?;
                 let wrapped = Arc::new(state);
                 entry.insert(Arc::downgrade(&wrapped));
