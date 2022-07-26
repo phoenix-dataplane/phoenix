@@ -35,6 +35,9 @@ extern "C" fn handle_sigint(sig: i32) {
 
 #[derive(Debug, StructOpt)]
 struct Opt {
+    /// Process ID
+    #[structopt(long, default_value = "0")]
+    process_id: usize,
     /// Test milliseconds
     #[structopt(long)]
     test_ms: u64,
@@ -219,7 +222,9 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                 // frameworks (establishing connections to a particular server thread).
                 let stub = MasstreeAnalyticsClient::connect((
                     opt.server_addr.as_deref().unwrap_or("127.0.0.1"),
-                    opt.server_port + (tid % opt.num_server_fg_threads) as u16,
+                    opt.server_port
+                        + ((opt.process_id * opt.num_client_threads + tid)
+                            % opt.num_server_fg_threads) as u16,
                 ))?;
                 log::info!("main: Thread {}: Connected. Sending requests.", tid);
 
@@ -295,6 +300,8 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         };
                     }
 
+                    client.point_latency.reset();
+                    client.range_latency.reset();
                     Result::<(), mrpc::Status>::Ok(())
                 }))
             }));

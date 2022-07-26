@@ -88,7 +88,6 @@ impl MrpcEngine {
             // timer.tick();
 
             if fastrand::usize(..1000) < 1 {
-
                 // 80-100ns, sometimes 200ns
                 if let Status::Disconnected = self.check_cmd().await? {
                     break;
