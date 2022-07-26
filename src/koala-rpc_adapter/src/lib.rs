@@ -1,11 +1,10 @@
 #![feature(ptr_internals)]
 #![feature(strict_provenance)]
 
-use std::path::Path;
-
 use thiserror::Error;
 
-use koala::module::KoalaModule;
+// Re-export KoalaModule
+pub use koala::module::KoalaModule;
 use koala::resource::Error as ResourceError;
 
 use salloc::ControlPathError as SallocError;
@@ -16,8 +15,6 @@ pub mod module;
 pub(crate) mod serialization;
 pub mod state;
 pub(crate) mod ulib;
-
-use module::RpcAdapterModule;
 
 #[derive(Error, Debug)]
 #[error("rpc-adapter control path error")]
@@ -59,10 +56,4 @@ pub(crate) enum DatapathError {
     Resource(#[from] ResourceError),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
-}
-
-#[no_mangle]
-pub fn init_module(_config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let module = RpcAdapterModule::new();
-    Box::new(module)
 }

@@ -62,7 +62,7 @@ pub struct SallocModule {
 }
 
 impl SallocModule {
-    pub(crate) fn new(config: SallocConfig) -> Self {
+    pub fn new(config: SallocConfig) -> Self {
         SallocModule {
             config,
             state_mgr: SharedStateManager::new(),

@@ -45,6 +45,7 @@ impl EngineGraph {
     }
 
     pub fn get_engine_dependencies(&self, service: &EngineType) -> Vec<EngineType> {
+        eprintln!("service type {:?}", service);
         let visit = DfsPostOrder::new(&self.graph, self.index[service]);
         let post_order = visit.iter(&self.graph).collect::<Vec<_>>();
         let rev_topo_order = post_order

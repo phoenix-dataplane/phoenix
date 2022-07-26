@@ -93,7 +93,7 @@ pub struct MrpcModule {
 }
 
 impl MrpcModule {
-    pub(crate) fn new(config: MrpcConfig) -> Self {
+    pub fn new(config: MrpcConfig) -> Self {
         MrpcModule {
             config,
             state_mgr: SharedStateManager::new(),

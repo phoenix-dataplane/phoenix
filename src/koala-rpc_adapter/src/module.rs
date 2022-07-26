@@ -110,7 +110,7 @@ pub struct RpcAdapterModule {
 }
 
 impl RpcAdapterModule {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         RpcAdapterModule {
             state_mgr: SharedStateManager::new(),
         }

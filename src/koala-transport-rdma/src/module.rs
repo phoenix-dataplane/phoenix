@@ -83,7 +83,7 @@ pub struct RdmaTransportModule {
 }
 
 impl RdmaTransportModule {
-    pub(crate) fn new(config: RdmaTransportConfig) -> Self {
+    pub fn new(config: RdmaTransportConfig) -> Self {
         RdmaTransportModule {
             config,
             state_mgr: SharedStateManager::new(),
@@ -107,7 +107,7 @@ impl KoalaModule for RdmaTransportModule {
     fn dependencies(&self) -> Vec<EnginePair> {
         let p1 = (
             EngineType(String::from("RdmaTransportEngine")),
-            EngineType(String::from("CmEngine")),
+            EngineType(String::from("RdmaCmEngine")),
         );
         vec![p1]
     }

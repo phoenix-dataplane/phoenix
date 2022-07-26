@@ -1125,6 +1125,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-mrpc-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-mrpc",
+]
+
+[[package]]
 name = "koala-rpc_adapter"
 version = "0.1.0"
 dependencies = [
@@ -1153,6 +1160,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-rpc_adapter-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-rpc_adapter",
+]
+
+[[package]]
 name = "koala-salloc"
 version = "0.1.0"
 dependencies = [
@@ -1173,6 +1187,13 @@ dependencies = [
  "toml",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "koala-salloc-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-salloc",
 ]
 
 [[package]]
@@ -1197,6 +1218,13 @@ dependencies = [
  "toml",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "koala-transport-rdma-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-transport-rdma",
 ]
 
 [[package]]

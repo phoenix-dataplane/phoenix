@@ -77,5 +77,17 @@ ingress = [
 
 [[plugin]]
 name = "Salloc"
-lib = "/tmp/koala/plugins/libkoala_salloc.so"
-config = "/tmp/koala/configs/salloc.toml"
+lib_path = "/tmp/koala/plugins/libkoala_salloc_plugin.so"
+
+[[plugin]]
+name = "RdmaTransport"
+lib_path = "/tmp/koala/plugins/libkoala_transport_rdma_plugin.so"
+
+[[plugin]]
+name = "Mrpc"
+lib_path = "/tmp/koala/plugins/libkoala_mrpc_plugin.so"
+
+
+[[plugin]]
+name = "RpcAdapter"
+lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"

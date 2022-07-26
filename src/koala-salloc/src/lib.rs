@@ -2,21 +2,18 @@
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
 
-use std::{alloc::LayoutError, path::Path};
+use std::alloc::LayoutError;
 
 use thiserror::Error;
 
-use koala::module::KoalaModule;
+pub use koala::module::KoalaModule;
 use koala::resource::Error as ResourceError;
 
-pub(crate) mod config;
+pub mod config;
 pub(crate) mod engine;
 pub mod module;
 pub mod region;
 pub mod state;
-
-use config::SallocConfig;
-use module::SallocModule;
 
 #[derive(Error, Debug)]
 pub enum ControlPathError {
@@ -47,15 +44,4 @@ impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {
         Self::SendCommand
     }
-}
-
-#[no_mangle]
-pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let config = if let Some(path) = config_path {
-        SallocConfig::from_path(path).unwrap()
-    } else {
-        SallocConfig::default()
-    };
-    let module = SallocModule::new(config);
-    Box::new(module)
 }

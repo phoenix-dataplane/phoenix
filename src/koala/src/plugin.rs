@@ -92,7 +92,7 @@ impl PluginCollection {
         for descriptor in descriptors.iter() {
             let old = self.plugins.remove(&descriptor.name);
             if let Some((_, old)) = old {
-                let old_ver = self.modules.get(&descriptor.name).unwrap().version();
+                let old_ver = new_versions.get(&descriptor.name[..]).unwrap().clone();
                 old_verions.insert(&descriptor.name[..], old_ver);
                 self.plugins
                     .insert(descriptor.name.clone(), old.upgrade(&descriptor.lib_path));
@@ -125,29 +125,40 @@ impl PluginCollection {
             bail!("New plugins are not compatible with existing ones");
         }
 
+        std::mem::drop(modules_guard);
         // if compatible, finish upgrade
         let mut graph_guard = self.graph.lock().unwrap();
         let mut upgraded_engine_types = HashSet::new();
+        eprintln!("loading new moduels {:?}", new_modules.keys());
         for (name, mut module) in new_modules.into_iter() {
             if let Some((_, old_module)) = self.modules.remove(name) {
                 // migrate any states/resources from old module
+                eprintln!("migrate... from old engine");
                 module.migrate(old_module);
             }
             let engines = module.engines();
             upgraded_engine_types.extend(engines.iter().cloned());
             graph_guard.add_engines(&engines[..]);
+            eprintln!("migrate...");
             for engine in engines {
                 self.engine_registry
                     .insert(engine.clone(), name.to_string());
             }
+            eprintln!("engine added...");
 
             let edges = module.dependencies();
             graph_guard.add_dependency(&edges[..]);
 
-            let (service_name, service_engine) = module.service();
-            self.add_service(service_name.clone(), service_engine.clone());
-
             self.modules.insert(name.to_string(), module);
+        }
+
+
+        for descriptor in descriptors.iter()  {
+            let module = self.modules.get(&descriptor.name).unwrap();
+            let (service_name, service_engine) = module.service();
+            let dependencies = graph_guard.get_engine_dependencies(&service_engine);
+            eprintln!("dependency added..., service={:?}, deps={:?}", service_name, dependencies);
+            self.service_registry.insert(service_name, dependencies);
         }
         Ok(upgraded_engine_types)
     }
@@ -159,8 +170,8 @@ impl PluginCollection {
         }
     }
 
-    fn add_service(&self, service: Service, engine: EngineType) {
-        let dependencies = self.graph.lock().unwrap().get_engine_dependencies(&engine);
-        self.service_registry.insert(service, dependencies);
-    }
+    // fn add_service(&self, service: Service, engine: EngineType) {
+    //     let dependencies = self.graph.lock().unwrap().get_engine_dependencies(&engine);
+    //     self.service_registry.insert(service, dependencies);
+    // }
 }

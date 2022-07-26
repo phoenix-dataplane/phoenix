@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct RdmaTransportConfig {
+pub struct RdmaTransportConfig {
     pub prefix: PathBuf,
     pub engine_basename: String,
     pub datapath_wq_depth: usize,
@@ -25,7 +25,7 @@ impl Default for RdmaTransportConfig {
 }
 
 impl RdmaTransportConfig {
-    pub(crate) fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config = toml::from_str(&content)?;
         Ok(config)

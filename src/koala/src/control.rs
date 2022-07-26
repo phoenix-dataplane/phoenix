@@ -53,6 +53,7 @@ impl Control {
     ) -> anyhow::Result<()> {
         let pid = Pid::from_raw(cred.pid.unwrap());
         if self.upgrader.is_upgrading(pid) {
+            eprintln!("upgrading in progress");
             bail!("client {} still upgrading", pid);
         }
         let gid = self.runtime_manager.get_new_group_id(pid, service.clone());
@@ -69,7 +70,30 @@ impl Control {
             .entry(pid)
             .or_insert_with(ResourceCollection::new);
 
-        let service_engine_type = engine_types.first().unwrap();
+
+        // crate auxiliary engines in (reverse) topological order
+        for aux_engine_type in engine_types.split_last().unwrap().1 {
+            let module_name = self.plugins.engine_registry.get(aux_engine_type).unwrap();
+            let mut module = self.plugins.modules.get_mut(module_name.value()).unwrap();
+            eprintln!("create engine {:?}, module {:?}", aux_engine_type, module.key());
+            let request = NewEngineRequest::Auxiliary { pid, mode };
+            let engine = module.create_engine(
+                aux_engine_type,
+                request,
+                &mut shared,
+                global.value_mut(),
+                &&self.plugins.modules,
+            )?;
+            // submit auxiliary to runtime manager
+            if let Some(engine) = engine {
+                let container =
+                    EngineContainer::new_v2(engine, aux_engine_type.clone(), module.version());
+                self.runtime_manager.submit(pid, gid, container, mode);
+            }
+        }
+        
+        // finally, create service engine 
+        let service_engine_type = engine_types.last().unwrap();
         let module_name = self
             .plugins
             .engine_registry
@@ -82,6 +106,7 @@ impl Control {
             mode,
             cred,
         };
+        eprintln!("create engine {:?}", service_engine_type);
         let engine = module
             .create_engine(
                 service_engine_type,
@@ -99,25 +124,6 @@ impl Control {
             EngineContainer::new_v2(engine, service_engine_type.clone(), module.version());
         self.runtime_manager.submit(pid, gid, container, mode);
 
-        // crate auxiliary engines in topological order
-        for aux_engine_type in engine_types.iter().skip(1) {
-            let module_name = self.plugins.engine_registry.get(aux_engine_type).unwrap();
-            let mut module = self.plugins.modules.get_mut(module_name.value()).unwrap();
-            let request = NewEngineRequest::Auxiliary { pid, mode };
-            let engine = module.create_engine(
-                aux_engine_type,
-                request,
-                &mut shared,
-                global.value_mut(),
-                &&self.plugins.modules,
-            )?;
-            // submit auxiliary to runtime manager
-            if let Some(engine) = engine {
-                let container =
-                    EngineContainer::new_v2(engine, aux_engine_type.clone(), module.version());
-                self.runtime_manager.submit(pid, gid, container, mode);
-            }
-        }
         Ok(())
     }
 
@@ -154,7 +160,9 @@ impl Control {
         plugins
             .load_or_upgrade_plugins(&config.plugin)
             .expect("failed to load initial plugins");
+        eprintln!("all plugins loaded");
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
+        eprintln!("init upgrader...");
 
         Control {
             sock,
@@ -325,6 +333,7 @@ impl Control {
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
             control::Request::NewClient(mode, engine_type) => {
+                eprintln!("New client request");
                 let client_path = sender
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
@@ -346,11 +355,16 @@ impl Control {
                         )?;
                     }
                     EngineType::Mrpc => {
-                        self.build_graph(client_path, mode, cred)?;
+                        // self.build_graph(client_path, mode, cred)?;
+                        eprintln!("Get request: MRPC");
+                        let service = Service(String::from("Mrpc"));
+                        self.create_service(&service, client_path, mode, cred)?;
                     }
                     EngineType::Salloc => {
-                        self.salloc
-                            .handle_new_client(&self.sock, &client_path, mode, cred)?;
+                        let service = Service(String::from("Salloc"));
+                        self.create_service(&service, client_path, mode, cred)?;
+                        // self.salloc
+                        //     .handle_new_client(&self.sock, &client_path, mode, cred)?;
                     }
                     EngineType::SallocV2 => {
                         let service = Service(String::from("Salloc"));

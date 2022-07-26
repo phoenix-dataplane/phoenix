@@ -1,24 +1,19 @@
 #![feature(ptr_internals)]
 #![feature(peer_credentials_unix_socket)]
 
-use std::path::Path;
-
 use thiserror::Error;
 
-use koala::module::KoalaModule;
+pub use koala::module::KoalaModule;
 use koala::resource::Error as ResourceError;
 
 pub mod builder;
-pub(crate) mod config;
+pub mod config;
 pub(crate) mod engine;
 pub mod message;
 pub mod meta_pool;
 pub mod module;
 pub mod state;
 pub mod unpack;
-
-use config::MrpcConfig;
-use module::MrpcModule;
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -70,15 +65,4 @@ impl<T> From<SendError<T>> for DatapathError {
     fn from(_other: SendError<T>) -> Self {
         DatapathError::InternalQueueSend
     }
-}
-
-#[no_mangle]
-pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let config = if let Some(path) = config_path {
-        MrpcConfig::from_path(path).unwrap()
-    } else {
-        MrpcConfig::default()
-    };
-    let module = MrpcModule::new(config);
-    Box::new(module)
 }

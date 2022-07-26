@@ -1,21 +1,19 @@
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
 
-use std::{io, path::Path};
+use std::io;
 
 use thiserror::Error;
 
-use koala::{module::KoalaModule, resource::Error as ResourceError};
+pub use koala::module::KoalaModule;
+use koala::resource::Error as ResourceError;
 
 pub(crate) mod cm;
-pub(crate) mod config;
+pub mod config;
 pub(crate) mod engine;
 pub mod module;
 pub mod ops;
 pub mod state;
-
-use config::RdmaTransportConfig;
-use module::RdmaTransportModule;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -117,15 +115,4 @@ impl DatapathError {
             Self::Ibv(e) => e.raw_os_error().unwrap() as u32,
         }
     }
-}
-
-#[no_mangle]
-pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let config = if let Some(path) = config_path {
-        RdmaTransportConfig::from_path(path).unwrap()
-    } else {
-        RdmaTransportConfig::default()
-    };
-    let module = RdmaTransportModule::new(config);
-    Box::new(module)
 }
