@@ -5,13 +5,47 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use spin::Mutex;
+use nix::unistd::Pid;
 
-use interface::engine::SchedulingMode;
+use interface::engine::{EngineType, SchedulingMode};
 
 use super::container::EngineContainer;
 use super::group::EngineGroup;
 use super::runtime::{self, Runtime};
 use crate::config::Config;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EngineId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RuntimeId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GroupId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GraphId(u64);
+
+/// Additional information affiliated with an Engine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineInfo {
+    /// Application process PID that this engine serves
+    pub(crate) pid: Pid,
+    /// Runtime ID the engine is running on
+    pub(crate) rid: RuntimeId,
+    /// Which group the engine belongs to
+    pub(crate) group_id: GroupId,
+    /// Which graph the engine belongs to
+    pub(crate) graph_id: GraphId,
+    /// The type of the engine
+    pub(crate) engine_type: EngineType,
+    /// Scheduling mode
+    pub(crate) scheduling_mode: SchedulingMode,
+}
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,

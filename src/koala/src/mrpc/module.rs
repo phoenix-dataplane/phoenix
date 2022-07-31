@@ -75,7 +75,7 @@ impl MrpcEngineBuilder {
             _mode: self.mode,
             dispatch_build_cache: self.serializer_build_cache,
             transport_type: None,
-            indicator: None,
+            indicator: Default::default(),
             wr_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }

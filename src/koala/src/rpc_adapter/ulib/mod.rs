@@ -37,9 +37,9 @@ use crate::transport::rdma::ops;
 
 #[inline]
 fn get_ops() -> &'static ops::Ops {
-    use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_LS;
-    ENGINE_LS.with(|els| {
+    use crate::engine::EngineLocalStorage;
+    use super::engine::{TlStorage, ELS};
+    ELS.with(|els| {
         &els.borrow()
             .as_ref()
             .unwrap()

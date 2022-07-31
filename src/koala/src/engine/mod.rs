@@ -29,14 +29,18 @@ pub(crate) trait Engine: Upgradable + Vertex + Send {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult>;
 
     /// Set the shared progress tracker.
-    fn set_tracker(&mut self, indicator: Indicator);
+    // fn set_tracker(&mut self, indicator: Indicator);
 
     /// Returns a text description of the engine.
-    fn description(&self) -> String;
+    fn description(self: Pin<&Self>) -> String;
 
+    /// Returns the progress tracker, which implies the future work.
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator;
+
+    /// Asks the engine to updates its local storage pointer.
     #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        None
+    fn set_els(self: Pin<&mut Self>) {
+        // empty default impl
     }
 }
 

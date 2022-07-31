@@ -1,9 +1,9 @@
-use std::pin::Pin;
 use std::collections::VecDeque;
+use std::pin::Pin;
 
 use futures::future::BoxFuture;
 
-use super::super::engine::TlStorage;
+use super::super::engine::{TlStorage, ELS};
 use super::super::state::State;
 use super::super::ControlPathError;
 use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator};
@@ -11,7 +11,7 @@ use crate::node::Node;
 
 pub struct AcceptorEngine {
     pub(crate) node: Node,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
     pub(crate) state: State,
     pub(crate) tls: Box<TlStorage>,
 }
@@ -20,7 +20,7 @@ impl AcceptorEngine {
     pub(crate) fn new(node: Node, state: State, tls: Box<TlStorage>) -> Self {
         Self {
             node,
-            indicator: None,
+            indicator: Default::default(),
             state,
             tls,
         }
@@ -38,15 +38,16 @@ crate::unimplemented_ungradable!(AcceptorEngine);
 crate::impl_vertex_for_engine!(AcceptorEngine, node);
 
 impl Engine for AcceptorEngine {
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!(
             "rpc_adapter::acceptor::AcceptorEngine, user: {}",
-            self.state.shared.pid
+            self.get_ref().state.shared.pid
         )
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -54,9 +55,10 @@ impl Engine for AcceptorEngine {
     }
 
     #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn set_els(self: Pin<&mut Self>) {
+        let tls = self.get_mut().tls.as_ref() as *const TlStorage;
+        // TODO(cjr): add doc
+        ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 }
 
@@ -67,10 +69,10 @@ impl AcceptorEngine {
             let Progress(n) = self.check_new_incoming_connection().await?;
             nwork += n;
             if self.state.acceptor_should_stop() {
-                log::debug!("{} is stopping", self.description());
+                log::debug!("{} is stopping", Pin::new(self).as_ref().description());
                 return Ok(());
             }
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             future::yield_now().await;
         }
     }

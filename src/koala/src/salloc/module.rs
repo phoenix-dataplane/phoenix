@@ -52,7 +52,7 @@ impl SallocEngineBuilder {
         Ok(SallocEngine {
             customer: self.customer,
             node,
-            indicator: None,
+            indicator: Default::default(),
             state: salloc_state,
         })
     }

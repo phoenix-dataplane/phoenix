@@ -82,7 +82,7 @@ impl TransportEngineBuilder {
         Ok(TransportEngine {
             customer: self.customer,
             node,
-            indicator: None,
+            indicator: Default::default(),
             _mode: self.mode,
             ops: self.ops,
             cq_err_buffer: VecDeque::new(),

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
@@ -31,6 +32,11 @@ use crate::node::Node;
 use crate::transport::rdma::ops::Ops;
 
 pub(crate) const MAX_INLINE_DATA: usize = 128;
+
+thread_local! {
+    /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
+    pub(crate) static ELS: RefCell<Option<&'static TlStorage>> = RefCell::new(None);
+}
 
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
@@ -74,7 +80,7 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
 
     // work completion read buffer
     pub(crate) wc_read_buffer: Vec<interface::WorkCompletion>,
@@ -92,12 +98,8 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
-    fn description(&self) -> String {
-        format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
-    }
-
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    fn description(self: Pin<&Self>) -> String {
+        format!("RcpAdapterEngine, user: {:?}", self.get_ref().state.shared.pid)
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -105,18 +107,24 @@ impl Engine for RpcAdapterEngine {
     }
 
     #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
+    }
+
+    #[inline]
+    fn set_els(self: Pin<&mut Self>) {
+        let tls = self.get_mut().tls.as_ref() as *const TlStorage;
+        // TODO(cjr): add doc
+        ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 }
 
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
-        let desc = self.description().to_owned();
-        log::debug!("{} is being dropped", desc);
+        // let desc = Pin::new(self).as_ref().description();
+        // log::debug!("{} is being dropped", desc);
         self.state.stop_acceptor(true);
-        log::debug!("stop acceptor bit set");
+        // log::debug!("stop acceptor bit set");
     }
 }
 
@@ -152,10 +160,7 @@ impl RpcAdapterEngine {
             }
 
             // If there's pending receives, there will always be future work to do.
-            self.indicator
-                .as_ref()
-                .unwrap()
-                .set_nwork(work + self.pending_recv);
+            self.indicator.set_nwork(work + self.pending_recv);
 
             // log::info!("RpcAdapter mainloop: {}", timer);
             future::yield_now().await;

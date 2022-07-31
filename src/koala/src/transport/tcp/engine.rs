@@ -42,7 +42,7 @@ pub struct TransportEngine {
 
     // bufferred control path request
     pub(crate) cmd_buffer: Option<cmd::Command>,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
 }
 
 crate::unimplemented_ungradable!(TransportEngine);
@@ -57,12 +57,13 @@ enum Status {
 use Status::Progress;
 
 impl Engine for TransportEngine {
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!("TCP TransportEngine, user pid: update me")
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -89,7 +90,7 @@ impl TransportEngine {
                 self.check_cm_event()?;
             }
 
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             future::yield_now().await;
         }
     }

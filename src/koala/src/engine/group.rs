@@ -45,7 +45,11 @@ impl EngineGroup {
 
 impl fmt::Debug for EngineGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let engine_names: Vec<&str> = self.engines.iter().map(|e| e.description()).collect();
+        let engine_names: Vec<String> = self
+            .engines
+            .iter()
+            .map(|e| e.engine().description())
+            .collect();
         f.debug_struct("EngineGroup")
             .field("mode", &self.mode)
             .field("engines", &engine_names)

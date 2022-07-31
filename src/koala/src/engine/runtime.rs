@@ -13,20 +13,14 @@ use thiserror::Error;
 use super::group::EngineGroup;
 use super::{EngineContainer, EngineLocalStorage, EngineResult};
 
-thread_local! {
-    /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
-    pub(crate) static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
-}
+// thread_local! {
+//     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
+//     pub(crate) static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
+// }
 
 /// This indicates the runtime of an engine's status.
 #[derive(Debug)]
-pub(crate) struct Indicator(pub(crate) Arc<AtomicUsize>);
-
-impl Clone for Indicator {
-    fn clone(&self) -> Self {
-        Indicator(Arc::clone(&self.0))
-    }
-}
+pub(crate) struct Indicator(pub(crate) AtomicUsize);
 
 impl Default for Indicator {
     fn default() -> Self {
@@ -40,7 +34,7 @@ impl Indicator {
 
     #[inline]
     pub(crate) fn new(x: usize) -> Self {
-        Indicator(Arc::new(AtomicUsize::new(x)))
+        Indicator(AtomicUsize::new(x))
     }
 
     #[inline]
@@ -83,7 +77,7 @@ pub enum Error {
 unsafe impl Sync for Runtime {}
 
 pub(crate) struct Runtime {
-    /// engine id
+    /// Runtime id
     pub(crate) id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
@@ -193,39 +187,51 @@ impl Runtime {
 
             // drive each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
-                // TODO(cjr): Set engine's local storage here before poll
-                ENGINE_LS.with(|els| {
-                    // Safety: The purpose here is to emulate thread-local storage for Engine.
-                    // Different engines can expose different types of TLS. The TLS will only be
-                    // used during the runtime of an engine. Thus, the TLS should always be valid
-                    // when it is referred to. However, there is no known way (for me) to express
-                    // this lifetime constraint. Ultimately, the solution is to force the lifetime
-                    // of the TLS of an engine to be 'static, and the programmer needs to think
-                    // through to make sure they implement it correctly.
-                    *els.borrow_mut() = unsafe { engine.borrow().els() };
-                });
+                // // TODO(cjr): Set engine's local storage here before poll
+                // ENGINE_LS.with(|els| {
+                //     // Safety: The purpose here is to emulate thread-local storage for Engine.
+                //     // Different engines can expose different types of TLS. The TLS will only be
+                //     // used during the runtime of an engine. Thus, the TLS should always be valid
+                //     // when it is referred to. However, there is no known way (for me) to express
+                //     // this lifetime constraint. Ultimately, the solution is to force the lifetime
+                //     // of the TLS of an engine to be 'static, and the programmer needs to think
+                //     // through to make sure they implement it correctly.
+                //     *els.borrow_mut() = unsafe { engine.borrow().els() };
+                // });
+                // Set engine's local storage here before poll
+                engine.borrow_mut().engine_mut().set_els();
 
                 // bind to a variable first (otherwise engine is borrowed in the match expression)
                 let ret = engine.borrow_mut().future().poll(&mut cx);
+                let mut engine = engine.borrow_mut();
                 match ret {
                     Poll::Pending => {
-                        engine.borrow().with_indicator(|indicator| {
-                            // whatever the number reads here does not affect correctness
-                            let n = indicator.0.load(Ordering::Relaxed);
-                            if n > 0 {
-                                last_event_ts = Instant::now();
-                            }
-                        });
+                        // engine.borrow().with_indicator(|indicator| {
+                        //     // whatever the number reads here does not affect correctness
+                        //     let n = indicator.0.load(Ordering::Relaxed);
+                        //     if n > 0 {
+                        //         last_event_ts = Instant::now();
+                        //     }
+                        // });
+                        let tracker = engine.engine_mut().tracker();
+                        if tracker.0.load(Ordering::Relaxed) > 0 {
+                            last_event_ts = Instant::now();
+                        }
+                        tracker.0.store(0, Ordering::Release);
                     }
                     Poll::Ready(EngineResult::Ok(())) => {
                         log::info!(
                             "Engine [{}] completed, shutting down...",
-                            engine.borrow().description()
+                            engine.engine().description()
                         );
                         shutdown.push(index);
                     }
                     Poll::Ready(EngineResult::Err(e)) => {
-                        log::error!("Engine [{}] error: {}", engine.borrow().description(), e);
+                        log::error!(
+                            "Engine [{}] error: {}",
+                            engine.engine().description(),
+                            e
+                        );
                         shutdown.push(index);
                     }
                 }
@@ -234,7 +240,10 @@ impl Runtime {
             // garbage collect every several rounds, maybe move to another thread.
             for index in shutdown.drain(..).rev() {
                 let engine = self.running.borrow_mut().swap_remove(index);
-                let desc = engine.borrow().description().to_owned();
+                let desc = {
+                    let borrow = engine.borrow();
+                    borrow.engine().description()
+                };
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
             }

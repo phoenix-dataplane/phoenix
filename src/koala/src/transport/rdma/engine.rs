@@ -23,7 +23,7 @@ use crate::node::Node;
 pub(crate) struct TransportEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
     pub(crate) _mode: SchedulingMode,
 
     pub(crate) ops: Ops,
@@ -43,22 +43,20 @@ enum Status {
 use Status::Progress;
 
 impl Engine for TransportEngine {
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!(
             "RDMA TransportEngine, user: {:?}",
             self.ops.state.shared.pid
         )
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        assert!(
-            self.indicator.replace(indicator).is_none(),
-            "already has a progress tracker"
-        );
-    }
-
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
         Box::pin(async move { self.get_mut().mainloop().await })
+    }
+
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 }
 
@@ -74,7 +72,7 @@ impl TransportEngine {
                 return Ok(());
             }
 
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             future::yield_now().await;
         }
     }

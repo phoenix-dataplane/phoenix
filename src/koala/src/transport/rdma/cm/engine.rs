@@ -9,7 +9,7 @@ use crate::node::Node;
 
 pub struct CmEngine {
     pub(crate) node: Node,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
     pub(crate) state: State,
 }
 
@@ -17,7 +17,7 @@ impl CmEngine {
     pub(crate) fn new(node: Node, state: State) -> Self {
         Self {
             node,
-            indicator: None,
+            indicator: Default::default(),
             state,
         }
     }
@@ -34,12 +34,13 @@ crate::unimplemented_ungradable!(CmEngine);
 crate::impl_vertex_for_engine!(CmEngine, node);
 
 impl Engine for CmEngine {
-    fn description(&self) -> String {
-        format!("RDMA CmEngine, user: {:?}", self.state.shared.pid)
+    fn description(self: Pin<&Self>) -> String {
+        format!("RDMA CmEngine, user: {:?}", self.get_ref().state.shared.pid)
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -58,7 +59,7 @@ impl CmEngine {
                 return Ok(());
             }
 
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             future::yield_now().await;
         }
     }

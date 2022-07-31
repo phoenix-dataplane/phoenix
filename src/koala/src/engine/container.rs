@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 
 use futures::future::BoxFuture;
 
+// use super::manager::EngineInfo;
 use super::runtime::Indicator;
 use super::{Engine, EngineLocalStorage, EngineResult};
 
@@ -32,9 +33,11 @@ pub(crate) struct EngineContainer {
     /// `Pending::Ready`).
     engine: Pin<Box<dyn Engine>>,
 
-    indicator: Indicator,
-    desc: String,
-    els: Option<&'static dyn EngineLocalStorage>,
+    // info: EngineInfo,
+
+    // indicator: Indicator,
+    // desc: String,
+    // els: Option<&'static dyn EngineLocalStorage>,
 }
 
 /// Extending the future's lifetime from 'a to 'static.
@@ -49,17 +52,17 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
-    pub(crate) fn new<E: Engine + 'static>(mut engine: E) -> Self {
-        let indicator = Indicator::new(0);
-        engine.set_tracker(indicator.clone());
+    pub(crate) fn new<E: Engine + 'static>(engine: E) -> Self {
+        // let indicator = Indicator::new(0);
+        // engine.set_tracker(indicator.clone());
 
-        let desc = engine.description();
+        // let desc = engine.description();
         // SAFETY: apparently EngineLocalStorage cannot be 'static,
         // The caller must ensure that the els() is called within an engine.
         // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
         // It points to some states attatched to the engine
         // hence in reality its lifetime is bound by engine (future) s lifetime
-        let els = unsafe { engine.els() };
+        // let els = unsafe { engine.els() };
 
         let mut pinned = Box::pin(engine);
         let future = {
@@ -75,9 +78,9 @@ impl EngineContainer {
         Self {
             future,
             engine: pinned,
-            indicator,
-            desc,
-            els,
+            // indicator,
+            // desc,
+            // els,
         }
     }
 
@@ -87,19 +90,29 @@ impl EngineContainer {
     }
 
     #[inline]
-    pub(crate) fn with_indicator<T, F: FnOnce(&Indicator) -> T>(&self, f: F) -> T {
-        let ret = f(&self.indicator);
-        self.indicator.0.store(0, Ordering::Release);
-        ret
+    pub(crate) fn engine(&self) -> Pin<&dyn Engine> {
+        self.engine.as_ref()
     }
 
     #[inline]
-    pub(crate) fn description(&self) -> &str {
-        &self.desc
+    pub(crate) fn engine_mut(&mut self) -> Pin<&mut dyn Engine> {
+        self.engine.as_mut()
     }
 
-    #[inline]
-    pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        self.els
-    }
+    // #[inline]
+    // pub(crate) fn with_indicator<T, F: FnOnce(&Indicator) -> T>(&self, f: F) -> T {
+    //     let ret = f(&self.indicator);
+    //     self.indicator.0.store(0, Ordering::Release);
+    //     ret
+    // }
+
+    // #[inline]
+    // pub(crate) fn description(&self) -> &str {
+    //     &self.desc
+    // }
+
+    // #[inline]
+    // pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
+    //     self.els
+    // }
 }
