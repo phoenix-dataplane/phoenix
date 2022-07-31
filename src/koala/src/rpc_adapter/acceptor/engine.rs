@@ -6,7 +6,7 @@ use futures::future::BoxFuture;
 use super::super::engine::{TlStorage, ELS};
 use super::super::state::State;
 use super::super::ControlPathError;
-use crate::engine::{future, Engine, EngineLocalStorage, EngineResult, Indicator};
+use crate::engine::{future, Engine, EngineResult, Indicator};
 use crate::node::Node;
 
 pub struct AcceptorEngine {
@@ -57,7 +57,8 @@ impl Engine for AcceptorEngine {
     #[inline]
     fn set_els(self: Pin<&mut Self>) {
         let tls = self.get_mut().tls.as_ref() as *const TlStorage;
-        // TODO(cjr): add doc
+        // SAFETY: This is fine here because ELS is only used while the engine is running.
+        // As long as we do not move out or drop self.tls, we are good.
         ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 }

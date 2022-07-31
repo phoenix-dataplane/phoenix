@@ -1,12 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
 
 use futures::future::BoxFuture;
 
 // use super::manager::EngineInfo;
-use super::runtime::Indicator;
-use super::{Engine, EngineLocalStorage, EngineResult};
+use super::{Engine, EngineResult};
 
 /// A container that bundles a `Box<dyn Engine>` and its `Future` object so that the caller of this
 /// type can use both the methods provided by the `Engine` trait and poll the future.
@@ -32,7 +30,6 @@ pub(crate) struct EngineContainer {
     /// (impossible with pinned Box) while the future is still in use (not returning
     /// `Pending::Ready`).
     engine: Pin<Box<dyn Engine>>,
-
     // info: EngineInfo,
 
     // indicator: Indicator,
@@ -98,21 +95,4 @@ impl EngineContainer {
     pub(crate) fn engine_mut(&mut self) -> Pin<&mut dyn Engine> {
         self.engine.as_mut()
     }
-
-    // #[inline]
-    // pub(crate) fn with_indicator<T, F: FnOnce(&Indicator) -> T>(&self, f: F) -> T {
-    //     let ret = f(&self.indicator);
-    //     self.indicator.0.store(0, Ordering::Release);
-    //     ret
-    // }
-
-    // #[inline]
-    // pub(crate) fn description(&self) -> &str {
-    //     &self.desc
-    // }
-
-    // #[inline]
-    // pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-    //     self.els
-    // }
 }

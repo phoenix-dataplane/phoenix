@@ -24,7 +24,7 @@ use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
 use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
+    future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex,
 };
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
@@ -38,20 +38,9 @@ thread_local! {
     pub(crate) static ELS: RefCell<Option<&'static TlStorage>> = RefCell::new(None);
 }
 
+// Must be `Send`.
 pub(crate) struct TlStorage {
     pub(crate) ops: Ops,
-}
-
-/// WARNING(cjr): This this not true! I unafely mark Sync for TlStorage to cheat the compiler. I
-/// have to do this because runtime.running_engines[i].els() exposes a &EngineLocalStorage, and
-/// runtimes are shared between two threads, so EngineLocalStorage must be Sync.
-unsafe impl Sync for TlStorage {}
-
-unsafe impl EngineLocalStorage for TlStorage {
-    #[inline]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 pub(crate) struct RpcAdapterEngine {
@@ -99,7 +88,10 @@ use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
     fn description(self: Pin<&Self>) -> String {
-        format!("RcpAdapterEngine, user: {:?}", self.get_ref().state.shared.pid)
+        format!(
+            "RcpAdapterEngine, user: {:?}",
+            self.get_ref().state.shared.pid
+        )
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -114,17 +106,19 @@ impl Engine for RpcAdapterEngine {
     #[inline]
     fn set_els(self: Pin<&mut Self>) {
         let tls = self.get_mut().tls.as_ref() as *const TlStorage;
-        // TODO(cjr): add doc
+        // SAFETY: This is fine here because ELS is only used while the engine is running.
+        // As long as we do not move out or drop self.tls, we are good.
         ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 }
 
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
-        // let desc = Pin::new(self).as_ref().description();
-        // log::debug!("{} is being dropped", desc);
-        self.state.stop_acceptor(true);
-        // log::debug!("stop acceptor bit set");
+        let this = Pin::new(self);
+        let desc = this.as_ref().description();
+        log::debug!("{} is being dropped", desc);
+        this.get_mut().state.stop_acceptor(true);
+        log::debug!("stop acceptor bit set");
     }
 }
 
