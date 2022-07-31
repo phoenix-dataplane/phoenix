@@ -207,11 +207,7 @@ impl Runtime {
                         shutdown.push(index);
                     }
                     Poll::Ready(EngineResult::Err(e)) => {
-                        log::error!(
-                            "Engine [{}] error: {}",
-                            engine.engine().description(),
-                            e
-                        );
+                        log::error!("Engine [{}] error: {}", engine.engine().description(), e);
                         shutdown.push(index);
                     }
                 }

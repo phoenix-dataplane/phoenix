@@ -1,7 +1,7 @@
-use std::pin::Pin;
 use std::collections::VecDeque;
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::pin::Pin;
 
 use futures::future::BoxFuture;
 

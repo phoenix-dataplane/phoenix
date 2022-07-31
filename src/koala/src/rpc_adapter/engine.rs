@@ -23,9 +23,7 @@ use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
-use crate::engine::{
-    future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex,
-};
+use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;

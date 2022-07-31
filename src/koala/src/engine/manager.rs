@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
-use spin::Mutex;
 use nix::unistd::Pid;
+use spin::Mutex;
 
 use interface::engine::{EngineType, SchedulingMode};
 
