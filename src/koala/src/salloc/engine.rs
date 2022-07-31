@@ -1,6 +1,8 @@
 use std::alloc::Layout;
-use std::future::Future;
 use std::os::unix::io::AsRawFd;
+use std::pin::Pin;
+
+use futures::future::BoxFuture;
 
 use ipc::salloc::cmd;
 
@@ -32,8 +34,6 @@ crate::unimplemented_ungradable!(SallocEngine);
 crate::impl_vertex_for_engine!(SallocEngine, node);
 
 impl Engine for SallocEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         "SallocEngine".to_owned()
     }
@@ -42,8 +42,8 @@ impl Engine for SallocEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 

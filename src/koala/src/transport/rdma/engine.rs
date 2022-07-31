@@ -1,9 +1,11 @@
 use std::collections::VecDeque;
-use std::future::Future;
 use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
+use std::pin::Pin;
 use std::slice;
+
+use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
@@ -41,8 +43,6 @@ enum Status {
 use Status::Progress;
 
 impl Engine for TransportEngine {
-    type Future = impl Future<Output = EngineResult> + 'static;
-
     fn description(&self) -> String {
         format!(
             "RDMA TransportEngine, user: {:?}",
@@ -57,8 +57,8 @@ impl Engine for TransportEngine {
         );
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 

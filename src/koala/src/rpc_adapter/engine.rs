@@ -1,12 +1,13 @@
 use std::collections::VecDeque;
-use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
+use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
@@ -91,8 +92,6 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
     }
@@ -101,8 +100,8 @@ impl Engine for RpcAdapterEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 
     #[inline]

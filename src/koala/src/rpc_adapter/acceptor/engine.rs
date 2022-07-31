@@ -1,5 +1,7 @@
+use std::pin::Pin;
 use std::collections::VecDeque;
-use std::future::Future;
+
+use futures::future::BoxFuture;
 
 use super::super::engine::TlStorage;
 use super::super::state::State;
@@ -36,8 +38,6 @@ crate::unimplemented_ungradable!(AcceptorEngine);
 crate::impl_vertex_for_engine!(AcceptorEngine, node);
 
 impl Engine for AcceptorEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         format!(
             "rpc_adapter::acceptor::AcceptorEngine, user: {}",
@@ -49,8 +49,8 @@ impl Engine for AcceptorEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 
     #[inline]

@@ -1,4 +1,6 @@
-use std::future::Future;
+use std::pin::Pin;
+
+use futures::future::BoxFuture;
 
 use super::super::state::State;
 use super::super::ApiError;
@@ -32,8 +34,6 @@ crate::unimplemented_ungradable!(CmEngine);
 crate::impl_vertex_for_engine!(CmEngine, node);
 
 impl Engine for CmEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         format!("RDMA CmEngine, user: {:?}", self.state.shared.pid)
     }
@@ -42,8 +42,8 @@ impl Engine for CmEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 

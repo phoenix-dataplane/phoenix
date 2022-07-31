@@ -1,7 +1,9 @@
+use std::pin::Pin;
 use std::collections::VecDeque;
-use std::future::Future;
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, RawFd};
+
+use futures::future::BoxFuture;
 
 use interface::{AsHandle, Handle};
 use ipc::customer::Customer;
@@ -55,8 +57,6 @@ enum Status {
 use Status::Progress;
 
 impl Engine for TransportEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         format!("TCP TransportEngine, user pid: update me")
     }
@@ -65,8 +65,8 @@ impl Engine for TransportEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 

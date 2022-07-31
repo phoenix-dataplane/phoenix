@@ -1,4 +1,6 @@
-use std::future::Future;
+use std::pin::Pin;
+
+use futures::future::BoxFuture;
 
 pub mod manager;
 
@@ -23,11 +25,8 @@ pub(crate) mod flavors;
 pub(crate) mod group;
 
 pub(crate) trait Engine: Upgradable + Vertex + Send {
-    /// The type of value produced on completion.
-    type Future: Future<Output = EngineResult> + Send + 'static;
-
     /// Turn the Engine into an executable `Future`
-    fn entry(self) -> Self::Future;
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult>;
 
     /// Set the shared progress tracker.
     fn set_tracker(&mut self, indicator: Indicator);

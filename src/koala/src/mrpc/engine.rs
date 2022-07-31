@@ -1,6 +1,8 @@
-use std::future::Future;
+use std::pin::Pin;
 use std::mem;
 use std::path::PathBuf;
+
+use futures::future::BoxFuture;
 
 use interface::rpc::{MessageErased, RpcId};
 
@@ -50,8 +52,6 @@ enum Status {
 use Status::Progress;
 
 impl Engine for MrpcEngine {
-    type Future = impl Future<Output = EngineResult>;
-
     fn description(&self) -> String {
         format!("MrpcEngine, todo show more information")
     }
@@ -60,8 +60,8 @@ impl Engine for MrpcEngine {
         self.indicator = Some(indicator);
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 
