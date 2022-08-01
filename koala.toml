@@ -89,4 +89,4 @@ lib_path = "/tmp/koala/plugins/libkoala_mrpc_plugin.so"
 
 [[plugin]]
 name = "RpcAdapter"
-lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin_v1.so"

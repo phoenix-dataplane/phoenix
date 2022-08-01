@@ -1,0 +1,35 @@
+[package]
+name = "koala-rpc_adapter-v2"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+interface = { path = "../../interface" }
+ipc = { path = "../../ipc" }
+koala = { path = "../../koala" }
+rdma = { path = "../../rdma", features = ["koala"] }
+transport_rdma = { path = "../../koala-transport-rdma", package = "koala-transport-rdma" }
+salloc = { path = "../../koala-salloc", package = "koala-salloc" }
+mrpc = { path = "../../koala-mrpc", package = "koala-mrpc" }
+mrpc-marshal = { path = "../../mrpc-marshal" } 
+
+crossbeam = "0.8.1"
+fnv = "1.0.7"
+anyhow = "1.0.58"
+tokio = { version = "1.18.2", features = ["sync"] }
+lazy_static = "1.4.0"
+thiserror = "1.0.31"
+nix = "0.23.0"
+tracing = "0.1"
+futures = "0.3.21"
+dashmap = "5.3.4"
+spin = "0.9.3"
+libloading = "0.7.3"
+serde = { version = "1.0.130", features = ["derive"] }
+toml = { version = "0.5.8", features = ["preserve_order"] }
+static_assertions = "1.1.0"

@@ -1167,6 +1167,78 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-rpc_adapter-plugin-v1"
+version = "0.1.0"
+dependencies = [
+ "koala-rpc_adapter-v1",
+]
+
+[[package]]
+name = "koala-rpc_adapter-plugin-v2"
+version = "0.1.0"
+dependencies = [
+ "koala-rpc_adapter-v2",
+]
+
+[[package]]
+name = "koala-rpc_adapter-v1"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-rdma",
+ "lazy_static",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "static_assertions",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "koala-rpc_adapter-v2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-rdma",
+ "lazy_static",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "static_assertions",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "koala-salloc"
 version = "0.1.0"
 dependencies = [

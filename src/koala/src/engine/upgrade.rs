@@ -118,10 +118,11 @@ async fn upgrade_client(
         }
     }
 
-    indicator.remove(&pid);
-    if indicator.is_empty() {
-        plugins.upgrade_cleanup();
-    }
+    // TODO(wyj): figure out why?
+    // indicator.remove(&pid);
+    // if indicator.is_empty() {
+    //     plugins.upgrade_cleanup();
+    // }
 }
 
 impl EngineUpgrader {
