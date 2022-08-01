@@ -22,7 +22,7 @@ use crate::engine::group::SchedulingGroup;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
-    mrpc, rpc_adapter, salloc,
+    mrpc, policy, rpc_adapter, salloc,
     transport::{rdma, tcp},
 };
 
@@ -236,12 +236,21 @@ impl Control {
                     )?;
                     engines.push(EngineContainer::new(e1));
                 }
+                EngineType::RateLimit => {
+                    let conf = self
+                        .config
+                        .ratelimit
+                        .clone()
+                        .expect("RateLimitConfig not found");
+                    let e1 = policy::ratelimit::module::RateLimitModule::create_engine(n, conf)?;
+                    engines.push(EngineContainer::new(e1));
+                }
                 EngineType::Overload => unimplemented!(),
             };
         }
 
         // submit engines to runtime
-        let mut scheduling_group = SchedulingGroup::empty(SchedulingMode::Dedicate);
+        let mut scheduling_group = SchedulingGroup::empty(mode);
         for e in engines {
             scheduling_group.add(e);
         }

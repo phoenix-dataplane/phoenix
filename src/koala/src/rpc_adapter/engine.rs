@@ -373,26 +373,29 @@ impl RpcAdapterEngine {
         }
 
         match self.tx_inputs()[0].try_recv() {
-            Ok(msg) => match msg {
-                EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
-                EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
-                    // let mut timer = crate::timer::Timer::new();
-                    let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
-                    let cmid = &conn_ctx.cmid;
-                    // timer.tick();
+            Ok(msg) => {
+                match msg {
+                    EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
+                    EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                        // let mut timer = crate::timer::Timer::new();
+                        let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
+                        let cmid = &conn_ctx.cmid;
+                        // timer.tick();
 
-                    // TODO(cjr): only handle the first element, fix it later
-                    for call_id in &call_ids[..1] {
-                        let recv_buffer_handles = self
-                            .recv_mr_usage
-                            .remove(&RpcId(conn_id, *call_id))
-                            .expect("invalid WR identifier");
-                        self.reclaim_recv_buffers(cmid, &recv_buffer_handles)?;
+                        // TODO(cjr): only handle the first element, fix it later
+                        for call_id in &call_ids[..1] {
+                            let recv_buffer_handles = self
+                                .recv_mr_usage
+                                .remove(&RpcId(conn_id, *call_id))
+                                .expect("invalid WR identifier");
+                            self.reclaim_recv_buffers(cmid, &recv_buffer_handles)?;
+                        }
+                        // timer.tick();
+                        // log::info!("ReclaimRecvBuf: {}", timer);
                     }
-                    // timer.tick();
-                    // log::info!("ReclaimRecvBuf: {}", timer);
                 }
-            },
+                return Ok(Progress(1));
+            }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }

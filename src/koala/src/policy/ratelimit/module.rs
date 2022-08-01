@@ -1,84 +1,67 @@
 use std::collections::VecDeque;
-use std::future::Future;
+use std::os::unix::net::{SocketAddr, UCred};
 
-use fnv::FnvHashMap;
+use anyhow::anyhow;
+use anyhow::Result;
+use minstant::Instant;
 
-use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
-use interface::{AsHandle, Handle};
+use interface::engine::EngineType;
+use ipc;
+use ipc::transport::rdma::control_plane;
+use ipc::unix::DomainSocket;
 
-use super::{ControlPathError, DatapathError};
-use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
-};
+use super::engine::RateLimitEngine;
+use crate::config::RateLimitConfig;
 use crate::node::Node;
 
-pub(crate) struct RateLimitEngine {
-    pub(crate) node: Node,
-
-    pub(crate) _mode: SchedulingMode,
-    pub(crate) indicator: Option<Indicator>,
+pub(crate) struct RateLimitEngineBuilder {
+    node: Node,
+    config: RateLimitConfig,
 }
 
-crate::unimplemented_ungradable!(RateLimitEngine);
-crate::impl_vertex_for_engine!(RateLimitEngine, node);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Status {
-    Progress(usize),
-    Disconnected,
-}
-
-use Status::Progress;
-
-impl Engine for RateLimitEngine {
-    type Future = impl Future<Output = EngineResult>;
-
-    fn description(&self) -> String {
-        format!("RateLimitEngine")
+impl RateLimitEngineBuilder {
+    fn new(node: Node, config: RateLimitConfig) -> Self {
+        RateLimitEngineBuilder { node, config }
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
-    }
+    fn build(self) -> Result<RateLimitEngine> {
+        assert_eq!(self.node.engine_type, EngineType::RateLimit);
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+        Ok(RateLimitEngine {
+            node: self.node,
+            indicator: Default::default(),
+            requests_per_sec: self.config.requests_per_sec,
+            last_ts: Instant::now(),
+            num_tokens: 0,
+            queue: VecDeque::new(),
+        })
     }
 }
 
-impl RateLimitEngine {
-    async fn mainloop(&mut self) -> EngineResult {
-        loop {
-            let mut work = 0;
-            // check input queue, ~100ns
-            match self.check_input_queue()? {
-                Progress(n) => work += n,
-                Status::Disconnected => return Ok(()),
-            }
+pub struct RateLimitModule;
 
-            // If there's pending receives, there will always be future work to do.
-            self.indicator
-                .as_ref()
-                .unwrap()
-                .set_nwork(work);
-
-            future::yield_now().await;
+impl RateLimitModule {
+    #[allow(dead_code)]
+    pub fn handle_request(
+        &mut self,
+        // NOTE(cjr): Why I am using rdma's control_plane request
+        req: &control_plane::Request,
+        _sock: &DomainSocket,
+        sender: &SocketAddr,
+        _cred: &UCred,
+    ) -> Result<()> {
+        let _client_path = sender
+            .as_pathname()
+            .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
+        match req {
+            _ => unreachable!("unknown req: {:?}", req),
         }
     }
-}
 
-impl RateLimitEngine {
-    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use crate::engine::graph::TryRecvError;
+    pub(crate) fn create_engine(n: Node, config: RateLimitConfig) -> Result<RateLimitEngine> {
+        let builder = RateLimitEngineBuilder::new(n, config);
+        let engine = builder.build()?;
 
-        // match self.tx_inputs()[0].try_recv() {
-        //     Ok(msg) => {}
-        //     Err(TryRecvError::Empty) => {}
-        //     Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
-        // }
-
-        Ok(Progress(0))
+        Ok(engine)
     }
 }

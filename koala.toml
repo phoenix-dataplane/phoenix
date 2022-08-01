@@ -51,6 +51,10 @@ datapath_wq_depth = 32
 datapath_cq_depth = 32
 command_max_interval_ms = 1000
 
+[ratelimit]
+# filter = ["rpc_hello.Greeter.SayHello"]
+requests_per_sec = 1000
+
 [[node]]
 id = "mrpc.0"
 type = "Mrpc"
@@ -60,12 +64,17 @@ type = "Mrpc"
 # type = "Overload"
 
 [[node]]
+id = "ratelimit"
+type = "RateLimit"
+
+[[node]]
 id = "rpc-adapter"
 type = "RpcAdapter"
 
 [edges]
 egress = [
-  ["mrpc.0", "rpc-adapter"],
+  ["mrpc.0", "ratelimit"],
+  ["ratelimit", "rpc-adapter"],
 ]
 # egress = [
 #   ["mrpc.0", "overload"],
@@ -78,5 +87,5 @@ ingress = [
 # Packaged engines
 [group]
 groups = [
-  ["rpc-adapter", "mrpc.0"],
+  ["rpc-adapter", "ratelimit", "mrpc.0"],
 ]

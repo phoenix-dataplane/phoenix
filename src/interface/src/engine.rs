@@ -17,5 +17,6 @@ pub enum EngineType {
     RpcAdapter,
     RpcAdapterAcceptor,
     Overload,
+    RateLimit,
     Salloc,
 }
