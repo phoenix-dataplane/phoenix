@@ -156,9 +156,10 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             // println!("{stats}");
 
             println!(
-                "dura: {:?}, speed: {:?}",
+                "duration: {:?}, bandwidth: {:?}, rate: {:.5} Mrps",
                 dura,
-                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
+                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64(),
+                1e-6 * args.total_iters as f64 / dura.as_secs_f64(),
             );
 
             // print latencies
@@ -167,7 +168,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             println!(
                 "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
                 dura,
-                dura / starts.len() as u32,
+                latencies.iter().copied().sum::<Duration>() / starts.len() as u32,
                 latencies[0],
                 latencies[cnt / 2],
                 latencies[(cnt as f64 * 0.95) as usize],

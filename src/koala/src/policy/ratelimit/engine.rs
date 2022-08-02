@@ -1,11 +1,15 @@
 use std::collections::VecDeque;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
+use atomic::Atomic;
 use futures::future::BoxFuture;
 use minstant::Instant;
 
 use super::DatapathError;
+use crate::config::RateLimitConfig;
 use crate::engine::graph::{EngineTxMessage, RpcMessageTx};
 use crate::engine::{future, Engine, EngineResult, Indicator, Vertex};
 use crate::node::Node;
@@ -19,7 +23,7 @@ pub(crate) struct RateLimitEngine {
     // TODO(cjr): maybe put this filter in a separate engine like FilterEngine/ClassiferEngine.
     // pub(crate) filter: FnvHashSet<u32>,
     // Number of tokens to add for each seconds.
-    pub(crate) requests_per_sec: u64,
+    pub(crate) config: Arc<Atomic<RateLimitConfig>>,
     // The most recent timestamp we add the token to the bucket.
     pub(crate) last_ts: Instant,
     // The number of available tokens in the token bucket algorithm.
@@ -79,9 +83,9 @@ impl RateLimitEngine {
     fn add_tokens(&mut self) {
         let now = Instant::now();
         let dura = now - self.last_ts;
-        if dura * self.requests_per_sec as u32 >= Duration::from_secs(1) {
-            self.num_tokens +=
-                (dura.as_nanos() as f64 * self.requests_per_sec as f64 / 1e9) as usize;
+        let requests_per_sec = self.config.load(Ordering::Relaxed).requests_per_sec;
+        if dura * requests_per_sec as u32 >= Duration::from_secs(1) {
+            self.num_tokens += (dura.as_secs_f64() * requests_per_sec as f64) as usize;
             self.last_ts = now;
         }
     }

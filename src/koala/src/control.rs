@@ -34,6 +34,7 @@ pub struct Control {
     tcp_transport: tcp::module::TransportModule,
     mrpc: mrpc::module::MrpcModule,
     salloc: salloc::module::SallocModule,
+    ratelimit: Option<policy::ratelimit::module::RateLimitModule>,
 }
 
 impl Control {
@@ -64,6 +65,13 @@ impl Control {
         let mrpc_config = config.mrpc.clone().unwrap();
         assert!(config.salloc.is_some());
         let salloc_config = config.salloc.clone().unwrap();
+        let ratelimit = if let Some(ratelimit_config) = config.ratelimit {
+            Some(policy::ratelimit::module::RateLimitModule::new(
+                ratelimit_config,
+            ))
+        } else {
+            None
+        };
 
         Control {
             sock,
@@ -79,6 +87,7 @@ impl Control {
             ),
             mrpc: mrpc::module::MrpcModule::new(mrpc_config, Arc::clone(&runtime_manager)),
             salloc: salloc::module::SallocModule::new(salloc_config, Arc::clone(&runtime_manager)),
+            ratelimit,
         }
     }
 
@@ -237,12 +246,7 @@ impl Control {
                     engines.push(EngineContainer::new(e1));
                 }
                 EngineType::RateLimit => {
-                    let conf = self
-                        .config
-                        .ratelimit
-                        .clone()
-                        .expect("RateLimitConfig not found");
-                    let e1 = policy::ratelimit::module::RateLimitModule::create_engine(n, conf)?;
+                    let e1 = self.ratelimit.as_ref().unwrap().create_engine(n)?;
                     engines.push(EngineContainer::new(e1));
                 }
                 EngineType::Overload => unimplemented!(),
@@ -307,6 +311,11 @@ impl Control {
                 .tcp_transport
                 .handle_request(&req, &self.sock, sender, cred),
             control::Request::Mrpc(req) => self.mrpc.handle_request(&req, &self.sock, sender, cred),
+            control::Request::RateLimit(req) => self
+                .ratelimit
+                .as_mut()
+                .unwrap()
+                .handle_request(&req, &self.sock, sender, cred),
         }
     }
 }

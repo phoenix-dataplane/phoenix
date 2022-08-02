@@ -1,0 +1,90 @@
+# overwrite with env KOALA_LOG
+log_level = "debug"
+
+# modules = ["transport-rdma", "transport-tcp", "mrpc", "rpc-adapter", "overload"]
+modules = ["Mrpc", "RpcAdapter", "Overload"]
+
+[tracing]
+# overwrite with env KOALA_TRACING
+enable = false
+# this will log messages level lower than specified into file
+# e.g., min_event_level="debug" will log events of "trace" and "debug" to file
+# overwrite with env KOALA_TRACING_EVENT
+min_event_level = "trace"
+# overwrite with env KOALA_TRACING_SPAN
+span_level = "info"
+# overwrite with env KOALA_TRACING_DIR
+output_dir = "/tmp/koala-trace"
+
+[profiling]
+# overwrite with env KOALA_PROFILING_ENABLE_ON_NEW_CLIENT
+enable_on_new_client = true
+# overwrite with env KOALA_PROFILING_DURATION_MS
+duration_ms = 1000
+
+# [runtime]
+# max_dedicate = 10
+
+[control]
+# overwrite with KOALA_PREFIX
+prefix = "/tmp/koala"
+# overwrite with KOALA_CONTROL
+path = "control.sock"
+
+[mrpc]
+prefix = "/tmp/koala"
+engine_basename = "mrpc-engine"
+build_cache = "/tmp/koala/build-cache"
+
+[salloc]
+prefix = "/tmp/koala"
+engine_basename = "salloc"
+
+[transport-tcp]
+prefix = "/tmp/koala"
+engine_basename = "transport-engine-tcp"
+
+[transport-rdma]
+prefix = "/tmp/koala"
+engine_basename = "transport-engine-rdma"
+datapath_wq_depth = 32
+datapath_cq_depth = 32
+command_max_interval_ms = 1000
+
+[ratelimit]
+# filter = ["rpc_hello.Greeter.SayHello"]
+requests_per_sec = 1000
+
+[[node]]
+id = "mrpc.0"
+type = "Mrpc"
+
+# [[node]]
+# id = "overload"
+# type = "Overload"
+
+# [[node]]
+# id = "ratelimit"
+# type = "RateLimit"
+
+[[node]]
+id = "rpc-adapter"
+type = "RpcAdapter"
+
+[edges]
+egress = [
+  ["mrpc.0", "rpc-adapter"],
+]
+# egress = [
+#   ["mrpc.0", "overload"],
+#   ["overload", "rpc-adapter"],
+# ]
+ingress = [
+  ["rpc-adapter", "mrpc.0"],
+]
+
+# Packaged engines
+[group]
+groups = [
+  ["rpc-adapter", "ratelimit", "mrpc.0"],
+]

@@ -67,7 +67,7 @@ pub struct RdmaTransportConfig {
     pub command_max_interval_ms: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     pub requests_per_sec: u64,

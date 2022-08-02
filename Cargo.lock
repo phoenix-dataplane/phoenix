@@ -177,6 +177,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b88d82667eca772c4aa12f0f1348b3ae643424c8876448f3f7bd5787032e234c"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "atomic-traits"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1116,6 +1125,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "anyhow",
+ "atomic",
  "bincode",
  "bitvec",
  "chrono",
@@ -1166,6 +1176,20 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "version",
+]
+
+[[package]]
+name = "koalactl"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "serde",
+ "structopt",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
