@@ -52,6 +52,7 @@ async fn upgrade_client(
                         .entry(info.gid)
                         .or_insert_with(SharedStorage::new);
                     let prev_version = container.version();
+                    container.set_els();
                     let engine = container.detach();
                     let state = engine.unload(shared, global_resource.value_mut());
                     rm.register_engine_shutdown(*eid);
@@ -100,6 +101,7 @@ async fn upgrade_client(
                     Ok(engine) => {
                         let container =
                             EngineContainer::new_v2(engine, engine_type.clone(), version);
+                        container.set_els();
                         rm.submit(pid, new_gid, container, mode);
                         tracing::trace!("Engine (pid={:?}, prev_eid={:?}, prev_gid={:?}, type: {:?}) restored and submit to runtime manager", pid, eid, gid, engine_type);
                         eprintln!("Engine (pid={:?}, prev_eid={:?}, prev_gid={:?}, type: {:?}) restored and submit to runtime manager", pid, eid, gid, engine_type);
@@ -118,11 +120,10 @@ async fn upgrade_client(
         }
     }
 
-    // TODO(wyj): figure out why?
-    // indicator.remove(&pid);
-    // if indicator.is_empty() {
-    //     plugins.upgrade_cleanup();
-    // }
+    indicator.remove(&pid);
+    if indicator.is_empty() {
+        plugins.upgrade_cleanup();
+    }
 }
 
 impl EngineUpgrader {
@@ -136,7 +137,7 @@ impl EngineUpgrader {
         }
     }
 
-    pub fn upgrade(&mut self, engine_types: HashSet<EngineType>) -> anyhow::Result<()> {
+    pub fn upgrade(&mut self, mut engine_types: HashSet<EngineType>) -> anyhow::Result<()> {
         if !self.upgrade_indicator.is_empty() {
             bail!("there is already an ongoing upgrade")
         }

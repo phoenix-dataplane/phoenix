@@ -2182,6 +2182,8 @@ dependencies = [
  "mrpc",
  "mrpc-build",
  "prost",
+ "serde",
+ "serde_json",
  "smol",
  "structopt",
  "tracing",

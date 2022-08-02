@@ -3,7 +3,8 @@ use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use fnv::FnvHashMap as HashMap;
+// use fnv::FnvHashMap as HashMap;
+use std::collections::HashMap;
 use thiserror::Error;
 
 use interface::Handle;

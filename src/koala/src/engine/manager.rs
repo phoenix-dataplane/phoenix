@@ -100,9 +100,10 @@ impl Inner {
         // NOTE(wyj): iterating over HashMap should be fine
         // as submitting a new engine is not on fast path
         // Moreover, there are only limited number of runtimes
+        const CORE_OFFSET: usize = 5;
         let rid = match self.runtimes.iter().find(|(_i, r)| r.is_empty()) {
             Some((rid, _runtime)) => *rid,
-            None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
+            None => self.start_runtime(self.runtime_counter as usize + CORE_OFFSET, Arc::clone(rm)),
         };
 
         let engine_id = EngineId(self.engine_counter);
@@ -189,7 +190,7 @@ impl RuntimeManager {
 }
 
 impl Inner {
-    fn start_runtime(&mut self, _core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
+    fn start_runtime(&mut self, core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
         let runtime_id = RuntimeId(self.runtime_counter);
         self.runtime_counter = self.runtime_counter.checked_add(1).unwrap();
         let runtime = Arc::new(Runtime::new(runtime_id, rm));
@@ -199,15 +200,16 @@ impl Inner {
             .name(format!("Runtime {}", runtime_id.0))
             .spawn(move || {
                 // check core id
-                // let num_cpus = num_cpus::get();
-                // if core >= num_cpus {
-                //     return Err(runtime::Error::InvalidId(core));
-                // }
+                let num_cpus = num_cpus::get();
+                if core >= num_cpus {
+                    return Err(runtime::Error::InvalidId(core));
+                }
+                // NOTE(wyj): readd set affinity here to decrease variance across multiple runs.
                 // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
                 // does not run on the hyperthread core pair. Since we cannot expect that we always
                 // have hyperthread core pair available, not setting affinity turns out to be better.
-                // scheduler::set_self_affinity(scheduler::CpuSet::single(core))
-                //     .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
+                scheduler::set_self_affinity(scheduler::CpuSet::single(core))
+                    .map_err(|_| runtime::Error::SetAffinity(std::io::Error::last_os_error()))?;
                 runtime.mainloop()
             })
             .unwrap_or_else(|e| panic!("failed to spawn new threads: {}", e));

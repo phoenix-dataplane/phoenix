@@ -1,3 +1,5 @@
+#![feature(int_roundings)]
+
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -40,7 +42,7 @@ pub struct Args {
     pub log_dir: Option<PathBuf>,
 
     /// Request size.
-    #[structopt(short, long, default_value = "1000000")]
+    #[structopt(short, long, default_value = "2048")]
     pub req_size: usize,
 
     /// The maximal number of concurrenty outstanding requests.
@@ -48,13 +50,16 @@ pub struct Args {
     pub concurrency: usize,
 
     /// Total number of iterations.
-    #[structopt(short, long, default_value = "16384")]
+    #[structopt(short, long, default_value = "10000000")]
     pub total_iters: usize,
 
     /// The number of messages to provision. Must be a positive number. The test will repeatedly
     /// sending the provisioned message.
     #[structopt(long, default_value = "128")]
     pub provision_count: usize,
+
+    #[structopt(long, default_value = "100000")]
+    pub bandwidth_measure_interval: usize,
 }
 
 async fn run_bench(
@@ -62,38 +67,51 @@ async fn run_bench(
     client: &GreeterClient,
     reqs: &[RpcMessage<HelloRequest>],
     warmup: bool,
-) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
+) -> Result<std::vec::Vec<f64>, mrpc::Status> {
     let mut response_count = 0;
     let mut reply_futures = FuturesUnordered::new();
-    let mut starts = Vec::with_capacity(args.total_iters);
-    let mut latencies = Vec::with_capacity(args.total_iters);
-
+    let mut throughputs =
+        std::vec::Vec::with_capacity(args.total_iters.div_ceil(args.bandwidth_measure_interval));
+    let mut last = Instant::now();
     // start sending
     for i in 0..args.total_iters {
-        starts.push(Instant::now());
         let fut = client.say_hello(&reqs[i % args.provision_count]);
         reply_futures.push(fut);
         if reply_futures.len() >= args.concurrency {
             let _resp = reply_futures.next().await.unwrap()?;
-            if warmup {
-                eprintln!("warmup: resp {} received", response_count);
-                response_count += 1;
+            response_count += 1;
+            if response_count >= args.bandwidth_measure_interval {
+                let now = Instant::now();
+                let dura = now - last;
+                last = now;
+                let throughput = 8e-9 * (args.bandwidth_measure_interval * args.req_size) as f64
+                    / dura.as_secs_f64();
+                throughputs.push(throughput);
+                response_count = 0;
             }
-            latencies.push(starts[latencies.len()].elapsed());
         }
     }
 
     // draining the remaining futures
     while !reply_futures.is_empty() {
         let _response = reply_futures.next().await.unwrap()?;
-        latencies.push(starts[latencies.len()].elapsed());
-        if warmup {
-            eprintln!("warmup: resp {} received", response_count);
-            response_count += 1;
+        response_count += 1;
+        if response_count >= args.bandwidth_measure_interval {
+            let now = Instant::now();
+            let dura = now - last;
+            last = now;
+            let throughput = 8e-9 * (args.bandwidth_measure_interval * args.req_size) as f64
+                / dura.as_secs_f64();
+            throughputs.push(throughput);
+            response_count = 0;
         }
     }
 
-    Ok(std::iter::zip(starts, latencies).collect())
+    if warmup {
+        eprintln!("warmup finished");
+    }
+
+    Ok(throughputs)
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
@@ -140,9 +158,8 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             let _ = run_bench(&args, &client, &reqs, true).await?;
 
             let start = Instant::now();
-            let stats = run_bench(&args, &client, &reqs, false).await?;
+            let throughputs = run_bench(&args, &client, &reqs, false).await?;
             let dura = start.elapsed();
-            let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
 
             // print stats
             println!(
@@ -151,22 +168,14 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
                 8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
             );
 
-            // print latencies
-            latencies.sort();
-            let cnt = latencies.len();
-            println!(
-                "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-                dura,
-                dura / starts.len() as u32,
-                latencies[0],
-                latencies[cnt / 2],
-                latencies[(cnt as f64 * 0.95) as usize],
-                latencies[(cnt as f64 * 0.99) as usize],
-                latencies[cnt - 1]
-            );
+            std::fs::write(
+                "rpc_bench_throughput.json",
+                serde_json::to_string_pretty(&throughputs).unwrap(),
+            )?;
 
             Result::<(), mrpc::Status>::Ok(())
-        }).unwrap();
+        })
+        .unwrap();
     }
     Ok(())
 }
