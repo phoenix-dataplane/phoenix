@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use hdrhistogram::Histogram;
 use minstant::Instant;
 use structopt::StructOpt;
 
@@ -11,8 +13,8 @@ use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    // mrpc::include_proto!("rpc_hello");
-    include!("../../../mrpc/src/codegen.rs");
+    mrpc::include_proto!("rpc_hello");
+    // include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
@@ -27,10 +29,6 @@ pub struct Args {
     /// The port number to use.
     #[structopt(short, long, default_value = "5000")]
     pub port: u16,
-
-    /// Blocking or not?
-    #[structopt(short = "b", long)]
-    pub blocking: bool,
 
     /// Log level for tracing.
     #[structopt(short = "l", long, default_value = "error")]
@@ -52,6 +50,18 @@ pub struct Args {
     #[structopt(short, long, default_value = "16384")]
     pub total_iters: usize,
 
+    /// Number of warmup iterations.
+    #[structopt(short, long, default_value = "1000")]
+    pub warmup: usize,
+
+    /// Run test for a customized period of seconds.
+    #[structopt(short = "D", long)]
+    pub duration: Option<f64>,
+
+    /// Seconds between periodic throughput reports.
+    #[structopt(short, long)]
+    pub interval: Option<f64>,
+
     /// The number of messages to provision. Must be a positive number. The test will repeatedly
     /// sending the provisioned message.
     #[structopt(long, default_value = "128")]
@@ -66,119 +76,127 @@ async fn run_bench(
     args: &Args,
     client: &GreeterClient,
     reqs: &[WRef<HelloRequest>],
-    warmup: bool,
-) -> Result<Vec<(Instant, Duration)>, mrpc::Status> {
+) -> Result<Histogram<u64>, mrpc::Status> {
+    let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
+
+    let mut starts = Vec::with_capacity(args.concurrency);
+    let now = Instant::now();
+    starts.resize(starts.capacity(), now);
+
     let mut response_count = 0;
     let mut reply_futures = FuturesUnordered::new();
-    let mut starts = Vec::with_capacity(args.total_iters);
-    let mut latencies = Vec::with_capacity(args.total_iters);
+
+    let (total_iters, timeout) = if let Some(dura) = args.duration {
+        (usize::MAX / 2, Duration::from_secs_f64(dura))
+    } else {
+        (args.total_iters, Duration::from_millis(u64::MAX))
+    };
+
+    // report the rps every several milliseconds
+    let tput_interval = args.interval.map(Duration::from_secs_f64);
 
     // start sending
-    for i in 0..args.total_iters {
-        starts.push(Instant::now());
-        let fut = client.say_hello(&reqs[i % args.provision_count]);
+    let mut last_ts = Instant::now();
+    let start = Instant::now();
+
+    let mut scnt = 0;
+    let mut rcnt = 0;
+    let mut last_rcnt = 0;
+    while scnt < args.concurrency && scnt < args.total_iters + args.warmup {
+        let slot = scnt;
+        starts[slot] = Instant::now();
+        let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
+        req.set_token(mrpc::Token(slot));
+        let fut = client.say_hello(req);
         reply_futures.push(fut);
-        if reply_futures.len() >= args.concurrency {
-            let _resp = reply_futures.next().await.unwrap()?;
-            if warmup {
-                eprintln!("warmup: resp {} received", response_count);
-                response_count += 1;
+        scnt += 1;
+    }
+
+    loop {
+        select! {
+            resp = reply_futures.next() => {
+                if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
+                    break;
+                }
+                let resp = resp.unwrap()?;
+                let slot = resp.token().0 % args.concurrency;
+                if rcnt >= args.warmup {
+                    let dura = starts[slot].elapsed();
+                    let _ = hist.record(dura.as_nanos() as u64);
+                }
+                rcnt += 1;
+                if scnt < total_iters + args.warmup {
+                    starts[slot] = Instant::now();
+                    let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
+                    req.set_token(mrpc::Token(slot));
+                    let fut = client.say_hello(req);
+                    reply_futures.push(fut);
+                    scnt += 1;
+                }
             }
-            latencies.push(starts[latencies.len()].elapsed());
+            complete => break,
+            default => {
+                if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
+                    break;
+                }
+                // no futures is ready
+                let last_dura = last_ts.elapsed();
+                if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
+                    let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
+                    println!("{}", rps);
+                    last_ts = Instant::now();
+                    last_rcnt = rcnt;
+                }
+            }
         }
     }
 
-    // draining the remaining futures
-    while !reply_futures.is_empty() {
-        let _resp = reply_futures.next().await.unwrap()?;
-        latencies.push(starts[latencies.len()].elapsed());
-        if warmup {
-            eprintln!("warmup: resp {} received", response_count);
-            response_count += 1;
-        }
-    }
-
-    Ok(std::iter::zip(starts, latencies).collect())
+    Ok(hist)
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let args = Args::from_args();
+    eprintln!("args: {:?}", args);
     let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
     let client = GreeterClient::connect((args.ip.as_str(), args.port))?;
     eprintln!("connection setup");
 
-    if args.blocking {
-        smol::block_on(async {
+    smol::block_on(async {
+        // provision
+        let mut reqs = Vec::new();
+        for i in 0..args.provision_count {
             let mut name = Vec::with_capacity(args.req_size);
             name.resize(args.req_size, 42);
-            let req = WRef::new(HelloRequest { name });
+            let req = WRef::with_token(mrpc::Token(i), HelloRequest { name });
+            reqs.push(req);
+        }
 
-            for i in 0..args.total_iters {
-                let _resp = client.say_hello(&req).await.unwrap();
-                eprintln!("resp {} received", i);
-            }
+        let start = Instant::now();
+        let hist = run_bench(&args, &client, &reqs).await?;
+        let dura = start.elapsed();
 
-            let start = Instant::now();
-            for _i in 0..args.total_iters {
-                let _resp = client.say_hello(&req).await.unwrap();
-            }
+        println!(
+            "duration: {:?}, bandwidth: {:?}, rate: {:.5} Mrps",
+            dura,
+            8e-9 * (hist.len() as usize * args.req_size) as f64 / dura.as_secs_f64(),
+            1e-6 * hist.len() as f64 / dura.as_secs_f64(),
+        );
+        // print latencies
+        println!(
+            "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+            dura,
+            Duration::from_nanos(hist.mean() as u64),
+            Duration::from_nanos(hist.min()),
+            Duration::from_nanos(hist.value_at_percentile(50.0)),
+            Duration::from_nanos(hist.value_at_percentile(95.0)),
+            Duration::from_nanos(hist.value_at_percentile(99.0)),
+            Duration::from_nanos(hist.max()),
+        );
 
-            let dura = start.elapsed();
-            eprintln!(
-                "dura: {:?}, speed: {:?}",
-                dura,
-                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64()
-            );
-        });
-    } else {
-        smol::block_on(async {
-            // provision
-            let mut reqs = Vec::new();
-            for i in 0..args.provision_count {
-                let mut name = Vec::with_capacity(args.req_size);
-                name.resize(args.req_size, 42);
-                let req = WRef::with_token(mrpc::Token(i), HelloRequest { name });
-                reqs.push(req);
-            }
-
-            // warm up
-            let _ = run_bench(&args, &client, &reqs, true).await?;
-            // let _ = BenchApp::new(&args, &client, &reqs, true).await?;
-
-            let start = Instant::now();
-            let stats = run_bench(&args, &client, &reqs, false).await?;
-            // let stats = BenchApp::new(&args, &client, &reqs, false).await?;
-            let dura = start.elapsed();
-            let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
-
-            // print stats
-            // println!("{stats}");
-
-            println!(
-                "duration: {:?}, bandwidth: {:?}, rate: {:.5} Mrps",
-                dura,
-                8e-9 * (args.total_iters * args.req_size) as f64 / dura.as_secs_f64(),
-                1e-6 * args.total_iters as f64 / dura.as_secs_f64(),
-            );
-
-            // print latencies
-            latencies.sort();
-            let cnt = latencies.len();
-            println!(
-                "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-                dura,
-                latencies.iter().copied().sum::<Duration>() / starts.len() as u32,
-                latencies[0],
-                latencies[cnt / 2],
-                latencies[(cnt as f64 * 0.95) as usize],
-                latencies[(cnt as f64 * 0.99) as usize],
-                latencies[cnt - 1]
-            );
-
-            Result::<(), mrpc::Status>::Ok(())
-        }).unwrap();
-    }
+        Result::<(), mrpc::Status>::Ok(())
+    })
+    .unwrap();
     Ok(())
 }
 

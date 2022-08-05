@@ -63,9 +63,9 @@ type = "Mrpc"
 # id = "overload"
 # type = "Overload"
 
-[[node]]
-id = "ratelimit"
-type = "RateLimit"
+# [[node]]
+# id = "ratelimit"
+# type = "RateLimit"
 
 [[node]]
 id = "rpc-adapter"
@@ -73,8 +73,7 @@ type = "RpcAdapter"
 
 [edges]
 egress = [
-  ["mrpc.0", "ratelimit"],
-  ["ratelimit", "rpc-adapter"],
+  ["mrpc.0", "rpc-adapter"],
 ]
 # egress = [
 #   ["mrpc.0", "overload"],

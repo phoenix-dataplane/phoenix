@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::os::unix::net::{SocketAddr, UCred};
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -24,10 +24,7 @@ pub(crate) struct RateLimitEngineBuilder {
 
 impl RateLimitEngineBuilder {
     fn new(node: Node, config: Arc<Atomic<RateLimitConfig>>) -> Self {
-        RateLimitEngineBuilder {
-            node,
-            config,
-        }
+        RateLimitEngineBuilder { node, config }
     }
 
     fn build(self) -> Result<RateLimitEngine> {
