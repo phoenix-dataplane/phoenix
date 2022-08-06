@@ -76,14 +76,14 @@ async fn run_bench(
     args: &Args,
     client: &GreeterClient,
     reqs: &[WRef<HelloRequest>],
-) -> Result<Histogram<u64>, mrpc::Status> {
+) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
 
+    let mut rpc_size = vec![0; args.concurrency];
     let mut starts = Vec::with_capacity(args.concurrency);
     let now = Instant::now();
     starts.resize(starts.capacity(), now);
 
-    let mut response_count = 0;
     let mut reply_futures = FuturesUnordered::new();
 
     let (total_iters, timeout) = if let Some(dura) = args.duration {
@@ -99,9 +99,14 @@ async fn run_bench(
     let mut last_ts = Instant::now();
     let start = Instant::now();
 
+    let mut warmup_end = Instant::now();
+    let mut nbytes = 0;
+    let mut last_nbytes = 0;
+
     let mut scnt = 0;
     let mut rcnt = 0;
     let mut last_rcnt = 0;
+
     while scnt < args.concurrency && scnt < args.total_iters + args.warmup {
         let slot = scnt;
         starts[slot] = Instant::now();
@@ -118,15 +123,25 @@ async fn run_bench(
                 if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
                     break;
                 }
+
                 let resp = resp.unwrap()?;
                 let slot = resp.token().0 % args.concurrency;
+
                 if rcnt >= args.warmup {
                     let dura = starts[slot].elapsed();
                     let _ = hist.record(dura.as_nanos() as u64);
+                    nbytes += rpc_size[slot];
                 }
+
                 rcnt += 1;
+
+                if rcnt == args.warmup {
+                    warmup_end = Instant::now();
+                }
+
                 if scnt < total_iters + args.warmup {
                     starts[slot] = Instant::now();
+                    rpc_size[slot] = args.req_size;
                     let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
                     req.set_token(mrpc::Token(slot));
                     let fut = client.say_hello(req);
@@ -136,22 +151,24 @@ async fn run_bench(
             }
             complete => break,
             default => {
+                // no futures is ready
                 if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
                     break;
                 }
-                // no futures is ready
                 let last_dura = last_ts.elapsed();
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
-                    println!("{}", rps);
+                    let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
+                    println!("{} rps, {} Gb/s", rps, bw);
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
+                    last_nbytes = nbytes;
                 }
             }
         }
     }
 
-    Ok(hist)
+    Ok((warmup_end.elapsed(), nbytes, rcnt, hist))
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
@@ -172,15 +189,13 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             reqs.push(req);
         }
 
-        let start = Instant::now();
-        let hist = run_bench(&args, &client, &reqs).await?;
-        let dura = start.elapsed();
+        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs).await?;
 
         println!(
             "duration: {:?}, bandwidth: {:?}, rate: {:.5} Mrps",
             dura,
-            8e-9 * (hist.len() as usize * args.req_size) as f64 / dura.as_secs_f64(),
-            1e-6 * hist.len() as f64 / dura.as_secs_f64(),
+            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+            1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
         );
         // print latencies
         println!(
