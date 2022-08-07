@@ -107,7 +107,7 @@ async fn run_bench(
     let mut rcnt = 0;
     let mut last_rcnt = 0;
 
-    while scnt < args.concurrency && scnt < args.total_iters + args.warmup {
+    while scnt < args.concurrency && scnt < total_iters + args.warmup {
         let slot = scnt;
         starts[slot] = Instant::now();
         let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
@@ -168,7 +168,8 @@ async fn run_bench(
         }
     }
 
-    Ok((warmup_end.elapsed(), nbytes, rcnt, hist))
+    let dura = warmup_end.elapsed();
+    Ok((dura, nbytes, rcnt, hist))
 }
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {

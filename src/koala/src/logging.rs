@@ -111,6 +111,7 @@ pub fn init_log(
     if config.tracing.enable {
         Some(init_tracing(
             &config.tracing.min_event_level,
+            &config.tracing.max_event_level,
             &config.tracing.span_level,
             &config.tracing.output_dir,
             registry,
@@ -123,7 +124,8 @@ pub fn init_log(
 }
 
 fn init_tracing<L>(
-    default_event_level: &str,
+    default_min_event_level: &str,
+    default_max_event_level: &str,
     default_span_level: &str,
     output_dir: &str,
     registry: L,
@@ -136,20 +138,22 @@ where
 {
     use tracing_subscriber::prelude::*;
 
-    const EVENT_FILTER_ENV: &str = "KOALA_TRACING_EVENT";
+    const MIN_EVENT_FILTER_ENV: &str = "KOALA_MIN_TRACING_EVENT";
+    const MAX_EVENT_FILTER_ENV: &str = "KOALA_MAX_TRACING_EVENT";
     const SPAN_FILTER_ENV: &str = "KOALA_TRACING_SPAN";
 
     // save events to output_dir
     let file_appender = tracing_appender::rolling::minutely(output_dir, "event.log");
     let (non_blocking, appender_guard) = tracing_appender::non_blocking(file_appender);
 
+    // get min_event_level
     let min_tracing_env_filter = EnvFilter::builder()
         .with_default_directive(
-            default_event_level
+            default_min_event_level
                 .parse()
                 .expect("invalid default tracing level"),
         )
-        .with_env_var(EVENT_FILTER_ENV)
+        .with_env_var(MIN_EVENT_FILTER_ENV)
         .from_env_lossy();
 
     let min_event_level = min_tracing_env_filter
@@ -158,9 +162,30 @@ where
         .into_level()
         .expect("{min_tracing_env_filter}");
 
+    // get max_event_level
+    let max_tracing_env_filter = EnvFilter::builder()
+        .with_default_directive(
+            default_max_event_level
+                .parse()
+                .expect("invalid default tracing level"),
+        )
+        .with_env_var(MAX_EVENT_FILTER_ENV)
+        .from_env_lossy();
+
+    let max_event_level = max_tracing_env_filter
+        .max_level_hint()
+        .expect("{max_tracing_env_filter}")
+        .into_level()
+        .expect("{max_tracing_env_filter}");
+
+    // construct fmt layer
     let tracing_fmt_layer = tracing_subscriber::fmt::layer()
         .event_format(KoalaFormatter { ansi: false })
-        .with_writer(non_blocking.with_min_level(min_event_level))
+        .with_writer(
+            non_blocking
+                .with_min_level(min_event_level)
+                .with_max_level(max_event_level),
+        )
         .with_filter(EnvFilter::new("trace"));
 
     let span_env_filter = EnvFilter::builder()

@@ -21,17 +21,13 @@ pub struct Args {
     #[structopt(short, long, default_value = "5000")]
     pub port: u16,
 
-    /// Blocking or not?
-    #[structopt(short = "b", long)]
-    pub blocking: bool,
-
     #[structopt(short = "l", long, default_value = "error")]
     pub log_level: String,
 
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
 
-    #[structopt(long, default_value = "0")]
+    #[structopt(long, default_value = "8")]
     pub reply_size: usize,
 
     #[structopt(long, default_value = "128")]
@@ -61,50 +57,28 @@ impl Greeter for MyGreeter {
     }
 }
 
-#[derive(Debug)]
-struct MyGreeterBlocking {
-    reply: WRef<HelloReply>,
-}
-
-#[mrpc::async_trait]
-impl Greeter for MyGreeterBlocking {
-    async fn say_hello<'s>(
-        &self,
-        _request: RRef<'s, HelloRequest>,
-    ) -> Result<WRef<HelloReply>, mrpc::Status> {
-        Ok(WRef::clone(&self.reply))
-    }
-}
-
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     smol::block_on(async {
         let args = Args::from_args();
+        eprintln!("args: {:?}", args);
         let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-        if args.blocking {
-            let message = Vec::new();
+        let mut replies = Vec::new();
+        for _ in 0..args.provision_count {
+            let mut message = Vec::new();
+            message.resize(args.reply_size, 43);
             let msg = WRef::new(HelloReply { message });
-            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-                .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
-                .serve()
-                .await?;
-        } else {
-            let mut replies = Vec::new();
-            for _ in 0..args.provision_count {
-                let mut message = Vec::new();
-                message.resize(args.reply_size, 43);
-                let msg = WRef::new(HelloReply { message });
-                replies.push(msg);
-            }
-            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-                .add_service(GreeterServer::new(MyGreeter {
-                    replies,
-                    count: AtomicUsize::new(0),
-                    args,
-                }))
-                .serve()
-                .await?;
+            replies.push(msg);
         }
+
+        let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+            .add_service(GreeterServer::new(MyGreeter {
+                replies,
+                count: AtomicUsize::new(0),
+                args,
+            }))
+            .serve()
+            .await?;
 
         Ok(())
     })

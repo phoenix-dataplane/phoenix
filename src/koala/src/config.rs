@@ -78,6 +78,7 @@ pub struct RateLimitConfig {
 pub struct TracingConfig {
     pub enable: bool,
     pub min_event_level: String,
+    pub max_event_level: String,
     pub span_level: String,
     pub output_dir: String,
 }
