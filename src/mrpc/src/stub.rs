@@ -597,10 +597,29 @@ impl Server {
         &mut self,
         msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let replies = msg_buffer.drain(..);
-        for reply in replies {
-            self.post_reply(reply)?;
-        }
+        // let replies = msg_buffer.drain(..);
+        // for reply in replies {
+        //     self.post_reply(reply)?;
+        // }
+
+        let num = msg_buffer.len();
+        let mut sent = 0;
+        MRPC_CTX.with(|ctx| {
+            while sent < num {
+                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                    let to_send = (num - sent).min(count);
+                    for i in 0..to_send {
+                        let wr = dp::WorkRequest::Reply(msg_buffer[sent + i]);
+                        ptr.add(i).cast::<dp::WorkRequest>().write(wr);
+                    }
+                    sent += to_send;
+                    to_send
+                })?;
+            }
+            Result::<(), Error>::Ok(())
+        })?;
+
+        msg_buffer.clear();
         Ok(())
     }
 
