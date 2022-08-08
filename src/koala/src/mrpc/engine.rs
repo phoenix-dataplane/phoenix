@@ -72,10 +72,10 @@ impl MrpcEngine {
             // let mut timer = crate::timer::Timer::new();
             let mut nwork = 0;
 
-            // 400-900ns ->
-            // no work: 40ns
-            // has work: 1400-1900ns
+            // no work 80ns
+            // has work: <1us for a batch of 30
             loop {
+                // no work: 40ns
                 if let Progress(n) = self.check_customer()? {
                     nwork += n;
                     if n == 0 {
@@ -86,7 +86,7 @@ impl MrpcEngine {
             // timer.tick();
 
             // no work: 20ns
-            // has work: 1500ns
+            // has work: <2us for a batch of 30
             loop {
                 match self.check_input_queue()? {
                     Progress(0) => break,

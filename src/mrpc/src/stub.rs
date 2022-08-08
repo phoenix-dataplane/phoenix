@@ -94,7 +94,7 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
         let this = self.get_mut();
 
         match check_completion_queue() {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(Error::Disconnect(_)) => {}
             Err(e) => return Poll::Ready(Err(e.into())),
         }
@@ -139,10 +139,13 @@ thread_local! {
     static TIMER: RefCell<Timer> = RefCell::new(Timer::new());
 }
 
-pub(crate) fn check_completion_queue() -> Result<(), Error> {
+pub(crate) fn check_completion_queue() -> Result<usize, Error> {
     MRPC_CTX.with(|ctx| {
         COMP_READ_BUFFER.with_borrow_mut(|buffer| {
-            buffer.clear();
+            // SAFETY: dp::Completion is Copy and zerocopy
+            unsafe {
+                buffer.set_len(0);
+            }
 
             ctx.service
                 .dequeue_wc_with(|ptr, count| unsafe {
@@ -153,6 +156,8 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                     count
                 })
                 .map_err(Error::Service)?;
+
+            let cnt = buffer.len();
 
             for c in buffer {
                 match c {
@@ -225,7 +230,7 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                     }
                 }
             }
-            Ok(())
+            Ok(cnt)
         })
     })
 }
@@ -604,7 +609,7 @@ impl Server {
         msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match check_completion_queue() {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(Error::Disconnect(conn_id)) => {
                 // close the connection and free the related resources
                 self.close_connection(conn_id)?;

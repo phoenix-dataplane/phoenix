@@ -126,8 +126,10 @@ impl RpcAdapterEngine {
             // let mut timer = crate::timer::Timer::new();
             let mut work = 0;
             // let mut work2 = 0;
-            // check input queue, no work 10ns, otherwise 250-350ns
+            // no work: 10-100ns
+            // has work: ~150-180ns each req on avg
             loop {
+                // check input queue, no work 10ns, otherwise 250-350ns
                 match self.check_input_queue()? {
                     Progress(0) => break,
                     Progress(n) => work += n,
@@ -136,11 +138,13 @@ impl RpcAdapterEngine {
             }
             // timer.tick();
 
-            // ibv_poll_cq, no work: 100-150ns, otherwise 400ns
+            // no work: 80-130ns
+            // has work: ~320ns each wc on avg
             loop {
+                // ibv_poll_cq, no work: 100-150ns, otherwise 400ns
                 if let Progress(n) = self.check_transport_service()? {
                     work += n;
-                    // work2 = n;
+                    // work2 += n;
                     if n == 0 {
                         break;
                     }
@@ -503,12 +507,10 @@ impl RpcAdapterEngine {
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
-        // TODO(cjr): update this
-        // let mut comps = Vec::with_capacity(32);
 
         let cq = self.state.get_or_init_cq();
-        // cq.poll(&mut comps)?;
-        // self.wc_read_buffer.clear();
+
+        // SAFETY: dp::WorkRequest is Copy and zerocopy
         unsafe {
             self.wc_read_buffer.set_len(0);
         }
