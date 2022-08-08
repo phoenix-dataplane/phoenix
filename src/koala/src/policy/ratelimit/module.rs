@@ -64,12 +64,13 @@ impl RateLimitModule {
             .as_pathname()
             .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
         match req {
-            control_plane::Request::NewRate(new_rate) => {
+            control_plane::Request::NewConfig(new_rate, new_bucket_size) => {
                 log::info!("Updating the requests_per_sec to {}", *new_rate);
-                assert!(Atomic::<RateLimitConfig>::is_lock_free());
+                // assert!(Atomic::<RateLimitConfig>::is_lock_free());
                 self.config.store(
                     RateLimitConfig {
                         requests_per_sec: *new_rate,
+                        bucket_size: *new_bucket_size,
                     },
                     Ordering::Relaxed,
                 );

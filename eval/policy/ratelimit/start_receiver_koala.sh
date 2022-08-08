@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-KOALA_LOG=info cargo rr --bin koala -- --config ./koala-receiver.toml
+KOALA_LOG=info numactl -N 0 -m 0 cargo rr --bin koala -- --config ./koala-receiver.toml

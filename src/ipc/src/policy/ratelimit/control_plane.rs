@@ -4,7 +4,7 @@ type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
-    NewRate(u64),
+    NewConfig(u64, u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

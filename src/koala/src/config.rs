@@ -71,6 +71,7 @@ pub struct RdmaTransportConfig {
 #[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     pub requests_per_sec: u64,
+    pub bucket_size: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

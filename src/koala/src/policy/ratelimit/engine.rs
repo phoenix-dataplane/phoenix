@@ -63,9 +63,12 @@ impl RateLimitEngine {
         loop {
             let mut work = 0;
             // check input queue, ~100ns
-            match self.check_input_queue()? {
-                Progress(n) => work += n,
-                Status::Disconnected => return Ok(()),
+            loop {
+                match self.check_input_queue()? {
+                    Progress(0) => break,
+                    Progress(n) => work += n,
+                    Status::Disconnected => return Ok(()),
+                }
             }
 
             self.add_tokens();
@@ -84,8 +87,12 @@ impl RateLimitEngine {
         let now = Instant::now();
         let dura = now - self.last_ts;
         let requests_per_sec = self.config.load(Ordering::Relaxed).requests_per_sec;
+        let bucket_size = self.config.load(Ordering::Relaxed).bucket_size as usize;
         if dura * requests_per_sec as u32 >= Duration::from_secs(1) {
             self.num_tokens += (dura.as_secs_f64() * requests_per_sec as f64) as usize;
+            if self.num_tokens > bucket_size {
+                self.num_tokens = bucket_size;
+            }
             self.last_ts = now;
         }
     }

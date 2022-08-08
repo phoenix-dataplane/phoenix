@@ -36,6 +36,9 @@ struct Opts {
     /// New rate
     #[structopt(short, long)]
     new_rate: u64,
+    /// New bucket size
+    #[structopt(long)]
+    new_bucket_size: u64,
 }
 
 fn main() {
@@ -52,8 +55,9 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    let req = Request::RateLimit(ipc::policy::ratelimit::control_plane::Request::NewRate(
+    let req = Request::RateLimit(ipc::policy::ratelimit::control_plane::Request::NewConfig(
         opts.new_rate,
+        opts.new_bucket_size,
     ));
     let buf = bincode::serialize(&req).unwrap();
     assert!(buf.len() < MAX_MSG_LEN);

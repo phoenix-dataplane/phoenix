@@ -9,8 +9,10 @@ modules = ["Mrpc", "RpcAdapter", "Overload"]
 enable = false
 # this will log messages level lower than specified into file
 # e.g., min_event_level="debug" will log events of "trace" and "debug" to file
-# overwrite with env KOALA_TRACING_EVENT
+# overwrite with env KOALA_MIN_TRACING_EVENT
 min_event_level = "trace"
+# KOALA_MAX_TRACING_EVENT, this should be equal or more verbose than min_event_level
+max_event_level = "trace"
 # overwrite with env KOALA_TRACING_SPAN
 span_level = "info"
 # overwrite with env KOALA_TRACING_DIR
@@ -54,6 +56,7 @@ command_max_interval_ms = 1000
 [ratelimit]
 # filter = ["rpc_hello.Greeter.SayHello"]
 requests_per_sec = 1000
+bucket_size = 1000
 
 [[node]]
 id = "mrpc.0"

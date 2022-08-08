@@ -56,6 +56,7 @@ command_max_interval_ms = 1000
 [ratelimit]
 # filter = ["rpc_hello.Greeter.SayHello"]
 requests_per_sec = 1000
+bucket_size = 1000
 
 [[node]]
 id = "mrpc.0"
