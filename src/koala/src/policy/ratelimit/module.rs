@@ -35,7 +35,7 @@ impl RateLimitEngineBuilder {
             indicator: Default::default(),
             config: Arc::clone(&self.config),
             last_ts: Instant::now(),
-            num_tokens: 0,
+            num_tokens: self.config.load(Ordering::Relaxed).bucket_size as _,
             queue: VecDeque::new(),
         })
     }

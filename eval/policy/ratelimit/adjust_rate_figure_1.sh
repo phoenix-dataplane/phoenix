@@ -4,11 +4,14 @@ trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM SIGHUP EXIT
 
 rates=(
 1000
-50000
+# 50000
 100000
-200000
-350000
+# 200000
+# 350000
+300000
 500000
+700000
+900000
 )
 
 for rate in ${rates[@]}; do

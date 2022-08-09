@@ -6,10 +6,10 @@ timeout_secs = 60
 [[worker]]
 host = "danyang-06"
 bin = "rpc_bench_server"
-args = ""
+args = "--port 5002"
 
 [[worker]]
 host = "danyang-05"
 bin = "rpc_bench_client"
-args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32 --duration 50 -i 0.5"
+args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32 --duration 50 -i 0.5 --port 5002"
 dependencies = [0]
