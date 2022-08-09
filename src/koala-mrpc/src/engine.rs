@@ -9,14 +9,17 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use ipc::mrpc::{cmd, control_plane, dp};
 
+use koala::engine::datapath::graph::Vertex;
+use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::builder::build_serializer_lib;
-use super::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
-use super::meta_pool::MetaBufferPool;
+use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use koala::engine::datapath::meta_pool::MetaBufferPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
@@ -28,8 +31,7 @@ pub struct MrpcEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
 
-    pub(crate) dp_tx: crossbeam::channel::Sender<EngineTxMessage>,
-    pub(crate) dp_rx: crossbeam::channel::Receiver<EngineRxMessage>,
+    pub(crate) node: DataPathNode,
 
     // mRPC private buffer pools
     /// Buffer pool for meta and eager message
@@ -45,6 +47,8 @@ pub struct MrpcEngine {
     pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
+impl_vertex_for_engine!(MrpcEngine, node);
+
 impl Unload for MrpcEngine {
     #[inline]
     fn detach(&mut self) {
@@ -57,7 +61,7 @@ impl Unload for MrpcEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
         let engine = *self;
@@ -69,8 +73,6 @@ impl Unload for MrpcEngine {
         collections.insert("state".to_string(), Box::new(engine._state));
         collections.insert("cmd_tx".to_string(), Box::new(engine.cmd_tx));
         collections.insert("cmd_rx".to_string(), Box::new(engine.cmd_rx));
-        collections.insert("dp_tx".to_string(), Box::new(engine.dp_tx));
-        collections.insert("dp_rx".to_string(), Box::new(engine.dp_rx));
         collections.insert("meta_buf_pool".to_string(), Box::new(engine.meta_buf_pool));
         collections.insert(
             "dispatch_build_cache".to_string(),
@@ -84,7 +86,7 @@ impl Unload for MrpcEngine {
             "wr_read_buffer".to_string(),
             Box::new(engine.wr_read_buffer),
         );
-        collections
+        (collections, engine.node)
     }
 }
 
@@ -94,6 +96,7 @@ impl MrpcEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring MrpcEngine states...");
@@ -158,8 +161,7 @@ impl MrpcEngine {
             customer,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
+            node,
             meta_buf_pool,
             _mode: mode,
             dispatch_build_cache,
@@ -242,7 +244,7 @@ impl MrpcEngine {
     async fn wait_outstanding_complete(&mut self) -> Result<(), DatapathError> {
         use crossbeam::channel::TryRecvError;
         while !self.meta_buf_pool.is_full() {
-            match self.dp_rx.try_recv() {
+            match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => match msg {
                     EngineRxMessage::Ack(rpc_id, _status) => {
                         // release the buffer whatever the status is.
@@ -424,7 +426,7 @@ impl MrpcEngine {
                         };
                         // if access to message's data fields are desired,
                         // typed message can be conjured up here via matching func_id
-                        self.dp_tx.send(EngineTxMessage::RpcMessage(msg))?;
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     _ => unimplemented!(),
                 }
@@ -452,13 +454,13 @@ impl MrpcEngine {
                             addr_backend: erased.shm_addr_backend,
                         };
                         // if access to message's data
-                        self.dp_tx.send(EngineTxMessage::RpcMessage(msg))?;
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     _ => unimplemented!(),
                 }
             }
             WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
-                self.dp_tx
+                self.tx_outputs()[0]
                     .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
             }
         }
@@ -470,7 +472,7 @@ impl MrpcEngine {
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use crossbeam::channel::TryRecvError;
-        match self.dp_rx.try_recv() {
+        match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::RpcMessage(msg) => {

@@ -4,8 +4,10 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
+use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
@@ -14,17 +16,21 @@ use crate::ApiError;
 
 pub(crate) struct CmEngine {
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) node: DataPathNode,
     pub(crate) state: State,
 }
 
 impl CmEngine {
-    pub(crate) fn new(state: State) -> Self {
+    pub(crate) fn new(state: State, node: DataPathNode) -> Self {
         Self {
             indicator: None,
+            node,
             state,
         }
     }
 }
+
+impl_vertex_for_engine!(CmEngine, node);
 
 impl Unload for CmEngine {
     #[inline]
@@ -34,12 +40,12 @@ impl Unload for CmEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         let engine = *self;
         let mut collections = ResourceCollection::with_capacity(1);
         tracing::trace!("dumping RdmaTransport-CmEngine states...");
         collections.insert("state".to_string(), Box::new(engine.state));
-        collections
+        (collections, engine.node)
     }
 }
 
@@ -49,6 +55,7 @@ impl CmEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring RdmaTransport-CmEngine states...");
@@ -60,6 +67,7 @@ impl CmEngine {
 
         let engine = CmEngine {
             indicator: None,
+            node,
             state,
         };
         Ok(engine)

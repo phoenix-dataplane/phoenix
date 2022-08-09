@@ -19,18 +19,13 @@ pub mod control;
 pub mod engine;
 pub mod envelop;
 pub mod module;
-pub mod mrpc;
 pub mod plugin;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;
+pub mod addon;
 
 pub(crate) mod dependency;
-
-pub(crate) mod node;
-pub(crate) mod rpc_adapter;
-pub(crate) mod salloc;
-pub(crate) mod transport;
 
 #[allow(unused)]
 pub(crate) mod timer;

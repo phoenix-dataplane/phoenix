@@ -7,9 +7,11 @@ use futures::future::BoxFuture;
 
 use ipc::salloc::cmd;
 
+use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Unload};
 use koala::engine::{Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
@@ -22,6 +24,7 @@ use super::state::State as SallocState;
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) node: DataPathNode,
     pub(crate) state: SallocState,
 }
 
@@ -47,6 +50,8 @@ impl Engine for SallocEngine {
     }
 }
 
+impl_vertex_for_engine!(SallocEngine, node);
+
 impl Unload for SallocEngine {
     #[inline]
     fn detach(&mut self) {
@@ -58,7 +63,7 @@ impl Unload for SallocEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): If we want to upgrade the type of SallocState,
         // we should decompose the states into atomic components
         // e.g., recv_mr_addr_map, recv_mr_table, ...
@@ -80,7 +85,7 @@ impl Unload for SallocEngine {
         //     collections.insert("shared-resource-mr_table".to_string(), Box::new(shared.resource.mr_table));
         // }
         collections.insert("state".to_string(), Box::new(engine.state));
-        collections
+        (collections, engine.node)
     }
 }
 
@@ -90,6 +95,7 @@ impl SallocEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring Salloc engine");
@@ -107,6 +113,7 @@ impl SallocEngine {
         let engine = SallocEngine {
             customer,
             indicator: None,
+            node,
             state,
         };
         Ok(engine)

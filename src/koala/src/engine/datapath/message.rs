@@ -1,12 +1,10 @@
 use std::ptr::Unique;
 
-use crossbeam;
-use crossbeam::channel::{Receiver, Sender};
-
 use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
 use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
+// use crate::mrpc::meta_pool::MetaBufferPtr;
 use super::meta_pool::MetaBufferPtr;
 
 #[derive(Debug)]
@@ -33,8 +31,4 @@ pub struct RpcMessageRx {
 pub enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
     Ack(RpcId, TransportStatus),
-}
-
-pub fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
-    crossbeam::channel::unbounded()
 }

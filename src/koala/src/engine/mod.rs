@@ -6,15 +6,14 @@ use futures::future::BoxFuture;
 
 pub(crate) mod container;
 pub mod future;
-pub(crate) mod graph;
 pub(crate) mod lb;
 pub mod manager;
 pub(crate) mod runtime;
 pub mod unload;
 pub(crate) mod upgrade;
-
+pub mod datapath;
+pub(crate) use datapath::graph::Vertex;
 pub(crate) use container::EngineContainer;
-pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
 pub use runtime::ENGINE_LS;
 pub use unload::Unload;
 
@@ -40,7 +39,7 @@ impl Default for Indicator {
     }
 }
 
-pub trait Engine: Unload + Send + Unpin + 'static {
+pub trait Engine: Unload + Send + Vertex + Unpin + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,

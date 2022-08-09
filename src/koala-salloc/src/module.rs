@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
+use koala::engine::datapath::node::DataPathNode;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -27,6 +28,7 @@ pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
     _client_pid: Pid,
     _mode: SchedulingMode,
+    node: DataPathNode,
     shared: Arc<Shared>,
     addr_mediator: Arc<AddressMediator>,
 }
@@ -36,6 +38,7 @@ impl SallocEngineBuilder {
         customer: CustomerType,
         client_pid: Pid,
         mode: SchedulingMode,
+        node: DataPathNode,
         shared: Arc<Shared>,
         addr_mediator: Arc<AddressMediator>,
     ) -> Self {
@@ -43,6 +46,7 @@ impl SallocEngineBuilder {
             customer,
             _client_pid: client_pid,
             _mode: mode,
+            node,
             shared,
             addr_mediator,
         }
@@ -55,6 +59,7 @@ impl SallocEngineBuilder {
         Ok(SallocEngine {
             customer: self.customer,
             indicator: None,
+            node: self.node,
             state: salloc_state,
         })
     }
@@ -128,6 +133,7 @@ impl KoalaModule for SallocModule {
         request: NewEngineRequest,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
+        node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn koala::engine::Engine>>> {
         if &ty.0 != "SallocEngine" {
@@ -160,6 +166,7 @@ impl KoalaModule for SallocModule {
                 customer,
                 client_pid,
                 mode,
+                node,
                 shared,
                 Arc::clone(&self.addr_mediator),
             );
@@ -178,13 +185,22 @@ impl KoalaModule for SallocModule {
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> Result<Box<dyn koala::engine::Engine>> {
         if &ty.0 != "SallocEngine" {
             bail!("invalid engine type {:?}", ty)
         }
-        let engine = SallocEngine::restore(local, shared, global, plugged, prev_version)?;
+        let engine = SallocEngine::restore(local, shared, global, plugged, node, prev_version)?;
         Ok(Box::new(engine))
+    }
+
+    fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new() 
+    }
+
+    fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new() 
     }
 }

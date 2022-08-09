@@ -15,10 +15,13 @@ use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd;
+use koala::engine::datapath::graph::Vertex;
+use koala::engine::datapath::node::DataPathNode;
+use koala::impl_vertex_for_engine;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use mrpc::message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx};
-use mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
+use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx};
+use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
 use mrpc::unpack::UnpackFromSgE;
 use salloc::region::SharedRegion;
 use salloc::state::State as SallocState;
@@ -57,12 +60,12 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Completion>,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Command>,
 
-    pub(crate) dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-    pub(crate) dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
+    pub(crate) node: DataPathNode,
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Option<Indicator>,
 }
+impl_vertex_for_engine!(RpcAdapterEngine, node);
 
 impl Unload for RpcAdapterEngine {
     #[inline]
@@ -76,7 +79,7 @@ impl Unload for RpcAdapterEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
         let engine = *self;
@@ -96,9 +99,7 @@ impl Unload for RpcAdapterEngine {
         );
         collections.insert("cmd_tx".to_string(), Box::new(engine.cmd_tx));
         collections.insert("cmd_rx".to_string(), Box::new(engine.cmd_rx));
-        collections.insert("dp_tx".to_string(), Box::new(engine.dp_tx));
-        collections.insert("dp_rx".to_string(), Box::new(engine.dp_rx));
-        collections
+        (collections, engine.node)
     }
 }
 
@@ -108,6 +109,7 @@ impl RpcAdapterEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring RpcAdapterEngine states...");
@@ -182,8 +184,7 @@ impl RpcAdapterEngine {
             serialization_engine,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
+            node,
             _mode: mode,
             indicator: None,
         };
@@ -464,7 +465,7 @@ impl RpcAdapterEngine {
             return Ok(status);
         }
 
-        match self.dp_rx.try_recv() {
+        match self.tx_inputs()[0].try_recv() {
             Ok(msg) => match msg {
                 EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
                 EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
@@ -555,7 +556,7 @@ impl RpcAdapterEngine {
         };
         // timer.tick();
 
-        self.dp_tx.send(EngineRxMessage::RpcMessage(msg)).unwrap();
+        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg)).unwrap();
 
         // timer.tick();
         // tracing::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);
@@ -581,7 +582,7 @@ impl RpcAdapterEngine {
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                                 let rpc_id = RpcId::decode_u64(wc.wr_id);
-                                self.dp_tx
+                                self.rx_outputs()[0]
                                     .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                     .unwrap();
                             }
@@ -641,7 +642,7 @@ impl RpcAdapterEngine {
                     // TODO(cjr): bubble up the error, close the connection, and return an error
                     // to the user.
                     let rpc_id = RpcId::decode_u64(wc.wr_id);
-                    self.dp_tx
+                    self.rx_outputs()[0]
                         .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code)))
                         .unwrap();
                 }

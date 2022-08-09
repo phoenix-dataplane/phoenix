@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use koala::engine::datapath::node::DataPathNode;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -8,7 +9,6 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
-use mrpc::message::{EngineRxMessage, EngineTxMessage};
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use salloc::state::Shared as SallocShared;
@@ -30,21 +30,23 @@ use crate::state::{Shared, State};
 pub(crate) struct AcceptorEngineBuilder {
     _client_pid: Pid,
     shared: Arc<Shared>,
+    node: DataPathNode,
     ops: Ops,
 }
 
 impl AcceptorEngineBuilder {
-    fn new(shared: Arc<Shared>, ops: Ops, client_pid: Pid) -> Self {
+    fn new(shared: Arc<Shared>, ops: Ops, client_pid: Pid, node: DataPathNode) -> Self {
         AcceptorEngineBuilder {
             _client_pid: client_pid,
             shared,
+            node,
             ops,
         }
     }
 
     fn build(self) -> Result<AcceptorEngine> {
         let state = State::new(self.shared);
-        let engine = AcceptorEngine::new(state, Box::new(self.ops));
+        let engine = AcceptorEngine::new(state, Box::new(self.ops), self.node);
         Ok(engine)
     }
 }
@@ -54,8 +56,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
-    dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-    dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
+    node: DataPathNode,
     ops: Ops,
     shared: Arc<Shared>,
     salloc_shared: Arc<SallocShared>,
@@ -68,8 +69,7 @@ impl RpcAdapterEngineBuilder {
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
-        dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
+        node: DataPathNode,
         ops: Ops,
         shared: Arc<Shared>,
         salloc_shared: Arc<SallocShared>,
@@ -80,8 +80,7 @@ impl RpcAdapterEngineBuilder {
             mode,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
+            node,
             ops,
             shared,
             salloc_shared,
@@ -101,8 +100,7 @@ impl RpcAdapterEngineBuilder {
             local_buffer: VecDeque::new(),
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
-            dp_tx: self.dp_tx,
-            dp_rx: self.dp_rx,
+            node: self.node,
             _mode: self.mode,
             indicator: None,
             recv_mr_usage: fnv::FnvHashMap::default(),
@@ -177,6 +175,7 @@ impl KoalaModule for RpcAdapterModule {
         request: NewEngineRequest,
         shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
         let mut rdma_transport_module = plugged
@@ -199,7 +198,7 @@ impl KoalaModule for RpcAdapterModule {
                     mode: _,
                 } = request
                 {
-                    let engine = self.create_acceptor_engine(client_pid, rdma_transport)?;
+                    let engine = self.create_acceptor_engine(client_pid, rdma_transport, node)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -223,13 +222,6 @@ impl KoalaModule for RpcAdapterModule {
                     let mrpc_ty = tx_edge.0.clone();
                     let rpc_adapter_ty = tx_edge.1.clone();
 
-                    let (dp_tx_edge_sender, dp_tx_edge_receiver) = mrpc::message::create_channel();
-                    shared.data_path.put_sender(tx_edge, dp_tx_edge_sender)?;
-                    let (dp_rx_edge_sender, dp_rx_edge_receiver) = mrpc::message::create_channel();
-                    shared
-                        .data_path
-                        .put_receiver(rx_edge, dp_rx_edge_receiver)?;
-
                     let (adapter_cmd_sender, adapter_cmd_receiver) =
                         tokio::sync::mpsc::unbounded_channel();
                     shared
@@ -246,8 +238,7 @@ impl KoalaModule for RpcAdapterModule {
                         client_pid,
                         mrpc_comp_sender,
                         adapter_cmd_receiver,
-                        dp_rx_edge_sender,
-                        dp_tx_edge_receiver,
+                        node,
                         salloc,
                         rdma_transport,
                     )?;
@@ -266,21 +257,30 @@ impl KoalaModule for RpcAdapterModule {
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
         match ty.0.as_str() {
             "RpcAcceptorEngine" => {
-                let engine = AcceptorEngine::restore(local, shared, global, plugged, prev_version)?;
+                let engine = AcceptorEngine::restore(local, shared, global, plugged, node, prev_version)?;
                 Ok(Box::new(engine))
             }
             "RpcAdapterEngine" => {
                 let engine =
-                    RpcAdapterEngine::restore(local, shared, global, plugged, prev_version)?;
+                    RpcAdapterEngine::restore(local, shared, global, plugged, node, prev_version)?;
                 Ok(Box::new(engine))
             }
             _ => bail!("invalid engine type {:?}", ty),
         }
+    }
+
+    fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new()
+    }
+
+    fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new()
     }
 }
 
@@ -291,8 +291,7 @@ impl RpcAdapterModule {
         client_pid: Pid,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Command>,
-        dp_tx: crossbeam::channel::Sender<EngineRxMessage>,
-        dp_rx: crossbeam::channel::Receiver<EngineTxMessage>,
+        node: DataPathNode,
         salloc: &mut SallocModule,
         rdma_transport: &mut RdmaTransportModule,
     ) -> Result<RpcAdapterEngine> {
@@ -312,8 +311,7 @@ impl RpcAdapterModule {
             mode,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
+            node,
             ops,
             shared,
             salloc_shared,
@@ -327,6 +325,7 @@ impl RpcAdapterModule {
         &mut self,
         client_pid: Pid,
         rdma_transport: &mut RdmaTransportModule,
+        node: DataPathNode,
     ) -> Result<Option<AcceptorEngine>> {
         let ops = rdma_transport.create_ops(client_pid)?;
 
@@ -336,7 +335,7 @@ impl RpcAdapterModule {
             return Ok(None);
         }
 
-        let builder = AcceptorEngineBuilder::new(shared, ops, client_pid);
+        let builder = AcceptorEngineBuilder::new(shared, ops, client_pid, node);
         let engine = builder.build()?;
 
         Ok(Some(engine))

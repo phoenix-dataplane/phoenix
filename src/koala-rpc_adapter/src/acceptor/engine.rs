@@ -4,8 +4,10 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
+use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Engine, EngineResult, Indicator, Unload};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
@@ -17,19 +19,23 @@ use crate::ulib;
 
 pub struct AcceptorEngine {
     pub(crate) indicator: Option<Indicator>,
+    pub(crate) node: DataPathNode,
     pub(crate) state: State,
     pub(crate) ops: Box<Ops>,
 }
 
 impl AcceptorEngine {
-    pub(crate) fn new(state: State, ops: Box<Ops>) -> Self {
+    pub(crate) fn new(state: State, ops: Box<Ops>, node: DataPathNode) -> Self {
         Self {
             indicator: None,
+            node,
             state,
             ops,
         }
     }
 }
+
+impl_vertex_for_engine!(AcceptorEngine, node);
 
 impl Unload for AcceptorEngine {
     #[inline]
@@ -39,13 +45,13 @@ impl Unload for AcceptorEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         let engine = *self;
         let mut collections = ResourceCollection::with_capacity(2);
         tracing::trace!("dumping RpcAdapter-AcceptorEngine states...");
         collections.insert("state".to_string(), Box::new(engine.state));
         collections.insert("ops".to_string(), Box::new(engine.ops));
-        collections
+        (collections, engine.node)
     }
 }
 
@@ -55,6 +61,7 @@ impl AcceptorEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         let state = *local
@@ -70,6 +77,7 @@ impl AcceptorEngine {
 
         let engine = AcceptorEngine {
             indicator: None,
+            node,
             state,
             ops,
         };

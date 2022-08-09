@@ -12,6 +12,8 @@ use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
+use koala::engine::datapath::node::DataPathNode;
+use koala::impl_vertex_for_engine;
 use rdma::ibv;
 use rdma::rdmacm;
 
@@ -29,6 +31,7 @@ pub(crate) struct TransportEngine {
     pub(crate) indicator: Option<Indicator>,
     pub(crate) _mode: SchedulingMode,
 
+    pub(crate) node: DataPathNode,
     pub(crate) ops: Ops,
     pub(crate) cq_err_buffer: VecDeque<dp::Completion>, // TODO(cjr): limit the length of the queue
     pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
@@ -42,7 +45,7 @@ impl Unload for TransportEngine {
         self: Box<Self>,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
-    ) -> ResourceCollection {
+    ) -> (ResourceCollection, DataPathNode) {
         let engine = *self;
         let mut collections = ResourceCollection::with_capacity(5);
         tracing::trace!("dumping RdmaTransport-TransportEngine states...");
@@ -54,9 +57,11 @@ impl Unload for TransportEngine {
             "wr_read_buffer".to_string(),
             Box::new(engine.wr_read_buffer),
         );
-        collections
+        (collections, engine.node)
     }
 }
+
+impl_vertex_for_engine!(TransportEngine, node);
 
 impl TransportEngine {
     pub(crate) fn restore(
@@ -64,6 +69,7 @@ impl TransportEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
         _plugged: &ModuleCollection,
+        node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring RdmaTransport-TransportEngine states...");
@@ -97,6 +103,7 @@ impl TransportEngine {
             customer,
             indicator: None,
             _mode: mode,
+            node,
             ops,
             cq_err_buffer,
             wr_read_buffer,

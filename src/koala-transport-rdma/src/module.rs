@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
+use koala::engine::datapath::node::DataPathNode;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -30,34 +31,38 @@ pub type CustomerType =
 
 pub(crate) struct CmEngineBuilder {
     _client_pid: Pid,
+    node: DataPathNode,
     shared: Arc<Shared>,
 }
 
 impl CmEngineBuilder {
-    fn new(shared: Arc<Shared>, client_pid: Pid) -> Self {
+    fn new(shared: Arc<Shared>, client_pid: Pid, node: DataPathNode) -> Self {
         CmEngineBuilder {
             _client_pid: client_pid,
+            node,
             shared,
         }
     }
 
     fn build(self) -> Result<CmEngine> {
         let state = State::new(self.shared);
-        let engine = CmEngine::new(state);
+        let engine = CmEngine::new(state, self.node);
         Ok(engine)
     }
 }
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
+    node: DataPathNode,
     mode: SchedulingMode,
     ops: Ops,
 }
 
 impl TransportEngineBuilder {
-    fn new(customer: CustomerType, mode: SchedulingMode, ops: Ops) -> Self {
+    fn new(customer: CustomerType, node: DataPathNode, mode: SchedulingMode, ops: Ops) -> Self {
         TransportEngineBuilder {
             customer,
+            node,
             mode,
             ops,
         }
@@ -70,6 +75,7 @@ impl TransportEngineBuilder {
             customer: self.customer,
             indicator: None,
             _mode: self.mode,
+            node: self.node,
             ops: self.ops,
             cq_err_buffer: VecDeque::new(),
             wr_read_buffer: Vec::with_capacity(BUF_LEN),
@@ -136,6 +142,7 @@ impl KoalaModule for RdmaTransportModule {
         request: NewEngineRequest,
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
+        node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
         match ty.0.as_str() {
@@ -145,7 +152,7 @@ impl KoalaModule for RdmaTransportModule {
                     mode: _,
                 } = request
                 {
-                    let engine = self.create_cm_engine(client_pid)?;
+                    let engine = self.create_cm_engine(client_pid, node)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -160,7 +167,7 @@ impl KoalaModule for RdmaTransportModule {
                     cred,
                 } = request
                 {
-                    let engine = self.create_transport_engine(sock, client_path, mode, cred)?;
+                    let engine = self.create_transport_engine(sock, client_path, mode, node, cred)?;
                     Ok(Some(Box::new(engine)))
                 } else {
                     bail!("invalid request type")
@@ -176,21 +183,30 @@ impl KoalaModule for RdmaTransportModule {
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
         match ty.0.as_str() {
             "RdmaCmEngine" => {
-                let engine = CmEngine::restore(local, shared, global, plugged, prev_version)?;
+                let engine = CmEngine::restore(local, shared, global, plugged, node, prev_version)?;
                 Ok(Box::new(engine))
             }
             "RdmaTransportEngine" => {
                 let engine =
-                    TransportEngine::restore(local, shared, global, plugged, prev_version)?;
+                    TransportEngine::restore(local, shared, global, plugged, node, prev_version)?;
                 Ok(Box::new(engine))
             }
             _ => bail!("invalid engine type {:?}", ty),
         }
+    }
+
+    fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new()
+    }
+
+    fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        Vec::new()
     }
 }
 
@@ -200,6 +216,7 @@ impl RdmaTransportModule {
         sock: &DomainSocket,
         client_path: &Path,
         mode: SchedulingMode,
+        node: DataPathNode,
         cred: &UCred,
     ) -> Result<TransportEngine> {
         let uuid = Uuid::new_v4();
@@ -217,12 +234,12 @@ impl RdmaTransportModule {
         let ops = self.create_ops(client_pid)?;
 
         // 4. create the engine
-        let builder = TransportEngineBuilder::new(customer, mode, ops);
+        let builder = TransportEngineBuilder::new(customer, node, mode, ops);
         let engine = builder.build()?;
         Ok(engine)
     }
 
-    fn create_cm_engine(&mut self, client_pid: Pid) -> Result<Option<CmEngine>> {
+    fn create_cm_engine(&mut self, client_pid: Pid, node: DataPathNode) -> Result<Option<CmEngine>> {
         let shared = self.state_mgr.get_or_create(client_pid)?;
 
         // only create one cm_engine for a client process
@@ -231,7 +248,7 @@ impl RdmaTransportModule {
             return Ok(None);
         }
 
-        let builder = CmEngineBuilder::new(shared, client_pid);
+        let builder = CmEngineBuilder::new(shared, client_pid, node);
         let engine = builder.build()?;
 
         Ok(Some(engine))

@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
+use koala::engine::datapath::graph::ChannelDescriptor;
+use koala::engine::datapath::node::DataPathNode;
 use nix::unistd::Pid;
 use uuid::Uuid;
 
@@ -19,9 +21,8 @@ use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::config::MrpcConfig;
 
+use koala::engine::datapath::meta_pool::MetaBufferPool;
 use super::engine::MrpcEngine;
-use super::message::{EngineRxMessage, EngineTxMessage};
-use super::meta_pool::MetaBufferPool;
 use super::state::{Shared, State};
 
 pub type CustomerType =
@@ -33,8 +34,7 @@ pub(crate) struct MrpcEngineBuilder {
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-    dp_tx: crossbeam::channel::Sender<EngineTxMessage>,
-    dp_rx: crossbeam::channel::Receiver<EngineRxMessage>,
+    node: DataPathNode,
     serializer_build_cache: PathBuf,
     shared: Arc<Shared>,
 }
@@ -46,8 +46,7 @@ impl MrpcEngineBuilder {
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-        dp_tx: crossbeam::channel::Sender<EngineTxMessage>,
-        dp_rx: crossbeam::channel::Receiver<EngineRxMessage>,
+        node: DataPathNode,
         serializer_build_cache: PathBuf,
         shared: Arc<Shared>,
     ) -> Self {
@@ -55,8 +54,7 @@ impl MrpcEngineBuilder {
             customer,
             cmd_tx,
             cmd_rx,
-            dp_tx,
-            dp_rx,
+            node,
             _client_pid: client_pid,
             mode,
             serializer_build_cache,
@@ -75,8 +73,7 @@ impl MrpcEngineBuilder {
             customer: self.customer,
             cmd_tx: self.cmd_tx,
             cmd_rx: self.cmd_rx,
-            dp_tx: self.dp_tx,
-            dp_rx: self.dp_rx,
+            node: self.node,
             meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             _mode: self.mode,
             dispatch_build_cache: self.serializer_build_cache,
@@ -144,6 +141,7 @@ impl KoalaModule for MrpcModule {
         request: NewEngineRequest,
         shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
+        node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn koala::engine::Engine>>> {
         if &ty.0 != "MrpcEngine" {
@@ -183,8 +181,6 @@ impl KoalaModule for MrpcModule {
                 EngineType("RpcAdapterEngine".to_string()),
                 EngineType("MrpcEngine".to_string()),
             );
-            let dp_tx = shared.data_path.get_sender(&tx_edge)?;
-            let dp_rx = shared.data_path.get_receiver(&rx_edge)?;
             let cmd_tx = shared.command_path.get_sender(&tx_edge.1)?;
             let cmd_rx = shared.command_path.get_receiver(&tx_edge.0)?;
 
@@ -194,8 +190,7 @@ impl KoalaModule for MrpcModule {
                 mode,
                 cmd_tx,
                 cmd_rx,
-                dp_tx,
-                dp_rx,
+                node,
                 self.config.build_cache.clone(),
                 shared_state,
             );
@@ -213,13 +208,26 @@ impl KoalaModule for MrpcModule {
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> Result<Box<dyn koala::engine::Engine>> {
         if &ty.0 != "MrpcEngine" {
             bail!("invalid engine type {:?}", ty)
         }
-        let engine = MrpcEngine::restore(local, shared, global, plugged, prev_version)?;
+        let engine = MrpcEngine::restore(local, shared, global, plugged, node, prev_version)?;
         Ok(Box::new(engine))
+    }
+
+    fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        let mut tx_edges = Vec::new();
+        tx_edges.push(ChannelDescriptor(EngineType(String::from("MrpcEngine")), EngineType(String::from("RpcAdapterEngine")), 0, 0));
+        tx_edges
+    }
+
+    fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
+        let mut rx_edges = Vec::new();
+        rx_edges.push(ChannelDescriptor(EngineType(String::from("RpcAdapterEngine")), EngineType(String::from("MrpcEngine")), 0, 0));
+        rx_edges
     }
 }

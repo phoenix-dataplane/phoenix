@@ -34,40 +34,8 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
-    // TODO(wyj): remove this function
-    pub(crate) fn new<E: Engine>(mut engine: E) -> Self {
-        let indicator = Indicator::new(0);
-        engine.set_tracker(indicator.clone());
-        let desc = engine.description();
-        // SAFETY: apparently EngineLocalStorage cannot be 'static,
-        // The caller must ensure that the els() is called within an engine.
-        // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
-        // It points to some states attatched to the engine
-        // hence in reality its lifetime is bound by engine (future) s lifetime
-        let els = unsafe { engine.els() };
-
-        let mut pinned = Box::pin(engine);
-        let future = {
-            let engine_mut = pinned.as_mut();
-            // SAFETY: manaually extend
-            let fut = engine_mut.activate();
-            unsafe { extend_lifetime(fut) }
-        };
-
-        let dummy_version = Version::parse("1.0").unwrap();
-        Self {
-            future,
-            engine: pinned,
-            indicator,
-            desc,
-            version: dummy_version,
-            ty: EngineType(String::from("DEFAULT")),
-            els,
-        }
-    }
-
     /// Spin up a new engine
-    pub(crate) fn new_v2(mut engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
+    pub(crate) fn new(mut engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
         let indicator = Indicator::new(0);
         engine.set_tracker(indicator.clone());
         let desc = engine.description();
@@ -137,7 +105,7 @@ impl EngineContainer {
     /// Detach current engine in prepare for upgrade
     /// Some preparatory work is done during this step
     /// e.g., flush inter-engine shared queues
-    ///There is no need to call this function if only moves
+    /// There is no need to call this function if only moves
     pub(crate) fn detach(self) -> Box<dyn Engine> {
         std::mem::drop(self.future);
         let engine = self.engine;

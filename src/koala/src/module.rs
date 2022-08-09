@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::{os::unix::ucred::UCred, path::Path};
 
-pub use anyhow::Result;
 use dashmap::DashMap;
 use interface::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
+pub use anyhow::Result;
 pub use semver::Version;
 
+use crate::engine::datapath::graph::ChannelDescriptor;
+use crate::engine::datapath::node::DataPathNode;
 use crate::engine::{Engine, EnginePair, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::{ResourceCollection, SharedStorage};
@@ -56,6 +58,12 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// and managed by the corresponding module's state_mgr
     fn dependencies(&self) -> Vec<EnginePair>;
 
+    /// Default data path tx channels between engines
+    fn tx_channels(&self) -> Vec<ChannelDescriptor>;
+    
+    /// Default data path rx channels between engines
+    fn rx_channels(&self) -> Vec<ChannelDescriptor>;
+
     /// Check whether the upgrade is compatible,
     /// provide with previous verion of current module,
     /// and all currently loaded modules' versions.
@@ -95,6 +103,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
         request: NewEngineRequest,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>>;
 
@@ -120,6 +129,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
+        node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>>;

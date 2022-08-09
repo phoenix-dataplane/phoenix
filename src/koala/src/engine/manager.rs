@@ -11,6 +11,7 @@ use interface::engine::SchedulingMode;
 use nix::unistd::Pid;
 
 use super::container::EngineContainer;
+use super::datapath::graph::DataPathGraph;
 use super::runtime::{self, Runtime};
 use super::EngineType;
 use crate::config::Config;
@@ -43,6 +44,12 @@ pub struct EngineInfo {
     pub(crate) scheduling_mode: SchedulingMode,
 }
 
+pub(crate) struct ServiceSubscription {
+    pub(crate) service: Service,
+    pub(crate) addons: Vec<EngineType>,
+    pub(crate) graph: DataPathGraph,
+}
+
 pub(crate) struct GlobalResourceManager {
     pub(crate) resource: DashMap<Pid, ResourceCollection>,
     /// Number of active engine groups for each application process
@@ -58,7 +65,7 @@ impl GlobalResourceManager {
     }
 
     #[inline]
-    fn register_group_shutdown(&self, pid: Pid) {
+    pub(crate) fn register_group_shutdown(&self, pid: Pid) {
         let removed = self.active_cnt.remove_if_mut(&pid, |_, cnt| {
             *cnt -= 1;
             *cnt == 0
@@ -77,7 +84,7 @@ pub struct RuntimeManager {
     pub(crate) engine_subscriptions: DashMap<EngineId, EngineInfo>,
     /// The service each engine group is running,
     /// and the number of active engines in that group
-    pub(crate) service_subscriptions: DashMap<(Pid, GroupId), (Service, usize)>,
+    pub(crate) service_subscriptions: DashMap<(Pid, GroupId), (ServiceSubscription, usize)>,
     pub(crate) global_resource_mgr: GlobalResourceManager,
 }
 
@@ -164,10 +171,10 @@ impl RuntimeManager {
     }
 
     #[inline]
-    pub(crate) fn get_new_group_id(&self, pid: Pid, service: Service) -> GroupId {
+    pub(crate) fn new_group(&self, pid: Pid, subscription: ServiceSubscription) -> GroupId {
         let mut counter = self.group_counter.entry(pid).or_insert(0);
         let gid = GroupId(*counter);
-        self.service_subscriptions.insert((pid, gid), (service, 0));
+        self.service_subscriptions.insert((pid, gid), (subscription, 0));
         *self.global_resource_mgr.active_cnt.entry(pid).or_insert(0) += 1;
         *counter = counter.checked_add(1).unwrap();
         gid
