@@ -43,6 +43,7 @@ macro_rules! impl_vertex_for_engine {
 #[derive(Debug, Clone)]
 pub struct ChannelDescriptor(pub EngineType, pub EngineType, pub usize, pub usize);
 
+#[derive(Debug)]
 pub struct DataPathGraph {
     // the engines on the sender end for `tx_inputs` on each engine's DataPathNode
     // type of the engine, and the index in the sender engine's `tx_outputs`

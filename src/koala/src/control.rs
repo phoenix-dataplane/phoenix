@@ -15,6 +15,7 @@ use ipc::unix::DomainSocket;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
+use crate::engine::datapath::node::DataPathNode;
 use crate::engine::datapath::node::create_datapath_channels;
 use crate::engine::manager::RuntimeManager;
 use crate::engine::manager::ServiceSubscription;
@@ -47,13 +48,15 @@ impl Control {
             bail!("client {} still upgrading", pid);
         }
         let service_registry = self
-            .plugins.
-            service_registry
+            .plugins
+            .service_registry
             .get(service)
             .ok_or(anyhow!("service {:?} not found in the registry", service))?;
         let tx_channels = service_registry.tx_channels.clone();
         let rx_channels = service_registry.rx_channels.clone();
         let (mut nodes, graph) = create_datapath_channels(tx_channels, rx_channels)?;
+
+        eprintln!("service={:?}, dep graph: {:?}", service, service_registry.engines);
         let subscription = ServiceSubscription {
             service: service.clone(),
             addons: Vec::new(),
@@ -82,7 +85,7 @@ impl Control {
                 aux_engine_type,
                 module.key()
             );
-            let node = nodes.remove(aux_engine_type).unwrap();
+            let node = nodes.remove(aux_engine_type).unwrap_or(DataPathNode::new());
             let request = NewEngineRequest::Auxiliary { pid, mode };
             let engine = module.create_engine(
                 aux_engine_type,
@@ -119,7 +122,7 @@ impl Control {
             service_engine_type,
             module.key()
         );
-        let node = nodes.remove(service_engine_type).unwrap();
+        let node = nodes.remove(service_engine_type).unwrap_or(DataPathNode::new());
         let engine = module
             .create_engine(
                 service_engine_type,

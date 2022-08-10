@@ -34,6 +34,17 @@ pub struct DataPathNode {
     pub rx_outputs: Vec<RxOQueue>,
 }
 
+impl DataPathNode {
+    pub(crate) fn new() -> Self {
+        DataPathNode { 
+            tx_inputs: Vec::new(), 
+            tx_outputs: Vec::new() ,
+            rx_inputs: Vec::new(),
+            rx_outputs: Vec::new(), 
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum EndpointType {
     TxInput,

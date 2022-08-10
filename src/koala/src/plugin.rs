@@ -170,7 +170,8 @@ impl PluginCollection {
         // if compatible, finish upgrade
         let mut graph_guard = self.dependency_graph.lock().unwrap();
         let mut upgraded_engine_types = HashSet::new();
-        for ((name, mut module), plugin) in new_modules.into_iter().zip(plugins.iter()) {
+        for (name, mut module) in new_modules.into_iter() {
+            let plugin = Plugin::Module(name.to_string());
             if let Some((_, old_module)) = self.modules.remove(name) {
                 // migrate any states/resources from old module
                 module.migrate(old_module);
@@ -193,6 +194,7 @@ impl PluginCollection {
             let module = self.modules.get(&descriptor.name).unwrap();
             let (service_name, service_engine) = module.service();
             let dependencies = graph_guard.get_engine_dependencies(&service_engine);
+            eprintln!("Service={:?}, Dependencies {:?}", service_name, dependencies);
             let group_engines = dependencies.iter().cloned().collect::<HashSet<_>>();
             let tx_channels = module.tx_channels();
             let rx_channels = module.rx_channels(); 
