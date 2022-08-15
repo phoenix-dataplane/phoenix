@@ -1,9 +1,9 @@
-use crate::storage::{ResourceCollection, SharedStorage};
 use super::datapath::node::DataPathNode;
+use crate::storage::{ResourceCollection, SharedStorage};
 
 pub trait Unload {
     /// Perform preparatory work before decompose the engine,
-    /// e.g., flush data and command queues 
+    /// e.g., flush data and command queues
     fn detach(&mut self);
 
     /// Decompose the engines to compositional states,

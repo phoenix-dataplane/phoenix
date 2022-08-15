@@ -167,7 +167,8 @@ impl KoalaModule for RdmaTransportModule {
                     cred,
                 } = request
                 {
-                    let engine = self.create_transport_engine(sock, client_path, mode, node, cred)?;
+                    let engine =
+                        self.create_transport_engine(sock, client_path, mode, node, cred)?;
                     Ok(Some(Box::new(engine)))
                 } else {
                     bail!("invalid request type")
@@ -239,7 +240,11 @@ impl RdmaTransportModule {
         Ok(engine)
     }
 
-    fn create_cm_engine(&mut self, client_pid: Pid, node: DataPathNode) -> Result<Option<CmEngine>> {
+    fn create_cm_engine(
+        &mut self,
+        client_pid: Pid,
+        node: DataPathNode,
+    ) -> Result<Option<CmEngine>> {
         let shared = self.state_mgr.get_or_create(client_pid)?;
 
         // only create one cm_engine for a client process

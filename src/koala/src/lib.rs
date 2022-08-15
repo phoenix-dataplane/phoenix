@@ -14,6 +14,7 @@ extern crate tracing;
 // alias
 extern crate tracing as log;
 
+pub mod addon;
 pub mod config;
 pub mod control;
 pub mod engine;
@@ -23,7 +24,6 @@ pub mod plugin;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;
-pub mod addon;
 
 pub(crate) mod dependency;
 

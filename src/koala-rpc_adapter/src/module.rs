@@ -263,7 +263,8 @@ impl KoalaModule for RpcAdapterModule {
     ) -> Result<Box<dyn Engine>> {
         match ty.0.as_str() {
             "RpcAcceptorEngine" => {
-                let engine = AcceptorEngine::restore(local, shared, global, plugged, node, prev_version)?;
+                let engine =
+                    AcceptorEngine::restore(local, shared, global, plugged, node, prev_version)?;
                 Ok(Box::new(engine))
             }
             "RpcAdapterEngine" => {

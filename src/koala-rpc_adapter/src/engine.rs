@@ -20,7 +20,9 @@ use koala::engine::datapath::node::DataPathNode;
 use koala::impl_vertex_for_engine;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx};
+use koala::engine::datapath::message::{
+    EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
+};
 use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
 use mrpc::unpack::UnpackFromSgE;
 use salloc::region::SharedRegion;
@@ -70,9 +72,10 @@ impl_vertex_for_engine!(RpcAdapterEngine, node);
 impl Unload for RpcAdapterEngine {
     #[inline]
     fn detach(&mut self) {
-        // NOTE(wyj): currently we do nothing
-        // In the future, if command/data queue types needs to be ugpraded
-        // then we should flush shared queues
+        // each call to `check_input_queue()` receives at most one message
+        while !self.tx_inputs()[0].is_empty() {
+            self.check_input_queue().unwrap();
+        }
     }
 
     fn unload(
@@ -162,16 +165,6 @@ impl RpcAdapterEngine {
             .remove("cmd_rx")
             .unwrap()
             .downcast::<tokio::sync::mpsc::UnboundedReceiver<cmd::Command>>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let dp_tx = *local
-            .remove("dp_tx")
-            .unwrap()
-            .downcast::<crossbeam::channel::Sender<EngineRxMessage>>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let dp_rx = *local
-            .remove("dp_rx")
-            .unwrap()
-            .downcast::<crossbeam::channel::Receiver<EngineTxMessage>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = RpcAdapterEngine {
@@ -556,7 +549,9 @@ impl RpcAdapterEngine {
         };
         // timer.tick();
 
-        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg)).unwrap();
+        self.rx_outputs()[0]
+            .send(EngineRxMessage::RpcMessage(msg))
+            .unwrap();
 
         // timer.tick();
         // tracing::info!("dura1: {:?}, dura2: {:?}", dura1, dura2 - dura1);

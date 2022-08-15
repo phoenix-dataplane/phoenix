@@ -21,9 +21,9 @@ use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::config::MrpcConfig;
 
-use koala::engine::datapath::meta_pool::MetaBufferPool;
 use super::engine::MrpcEngine;
 use super::state::{Shared, State};
+use koala::engine::datapath::meta_pool::MetaBufferPool;
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -221,13 +221,23 @@ impl KoalaModule for MrpcModule {
 
     fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
         let mut tx_edges = Vec::new();
-        tx_edges.push(ChannelDescriptor(EngineType(String::from("MrpcEngine")), EngineType(String::from("RpcAdapterEngine")), 0, 0));
+        tx_edges.push(ChannelDescriptor(
+            EngineType(String::from("MrpcEngine")),
+            EngineType(String::from("RpcAdapterEngine")),
+            0,
+            0,
+        ));
         tx_edges
     }
 
     fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
         let mut rx_edges = Vec::new();
-        rx_edges.push(ChannelDescriptor(EngineType(String::from("RpcAdapterEngine")), EngineType(String::from("MrpcEngine")), 0, 0));
+        rx_edges.push(ChannelDescriptor(
+            EngineType(String::from("RpcAdapterEngine")),
+            EngineType(String::from("MrpcEngine")),
+            0,
+            0,
+        ));
         rx_edges
     }
 }

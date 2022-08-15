@@ -4,6 +4,7 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,8 +16,8 @@ use ipc::unix::DomainSocket;
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;
-use crate::engine::datapath::node::DataPathNode;
 use crate::engine::datapath::node::create_datapath_channels;
+use crate::engine::datapath::node::DataPathNode;
 use crate::engine::manager::RuntimeManager;
 use crate::engine::manager::ServiceSubscription;
 use crate::engine::upgrade::EngineUpgrader;
@@ -56,7 +57,10 @@ impl Control {
         let rx_channels = service_registry.rx_channels.clone();
         let (mut nodes, graph) = create_datapath_channels(tx_channels, rx_channels)?;
 
-        eprintln!("service={:?}, dep graph: {:?}", service, service_registry.engines);
+        eprintln!(
+            "service={:?}, dep graph: {:?}",
+            service, service_registry.engines
+        );
         let subscription = ServiceSubscription {
             service: service.clone(),
             addons: Vec::new(),
@@ -76,7 +80,7 @@ impl Control {
         for aux_engine_type in service_registry.engines.split_last().unwrap().1 {
             let plugin = self.plugins.engine_registry.get(aux_engine_type).unwrap();
             let module_name = match plugin.value() {
-                Plugin::Module(module) => module, 
+                Plugin::Module(module) => module,
                 Plugin::Addon(_) => panic!("service auxiliary engine {:?}", service),
             };
             let mut module = self.plugins.modules.get_mut(module_name).unwrap();
@@ -105,9 +109,13 @@ impl Control {
 
         // finally, create service engine
         let service_engine_type = service_registry.engines.last().unwrap();
-        let plugin = self.plugins.engine_registry.get(service_engine_type).unwrap();
+        let plugin = self
+            .plugins
+            .engine_registry
+            .get(service_engine_type)
+            .unwrap();
         let module_name = match plugin.value() {
-            Plugin::Module(module) => module, 
+            Plugin::Module(module) => module,
             Plugin::Addon(_) => panic!("service auxiliary engine {:?}", service),
         };
         let mut module = self.plugins.modules.get_mut(module_name).unwrap();
@@ -122,7 +130,9 @@ impl Control {
             service_engine_type,
             module.key()
         );
-        let node = nodes.remove(service_engine_type).unwrap_or(DataPathNode::new());
+        let node = nodes
+            .remove(service_engine_type)
+            .unwrap_or(DataPathNode::new());
         let engine = module
             .create_engine(
                 service_engine_type,
@@ -137,8 +147,7 @@ impl Control {
                 service_engine_type
             ))?;
         // Submit service engine to runtime manager
-        let container =
-            EngineContainer::new(engine, service_engine_type.clone(), module.version());
+        let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
         containers_to_submit.push(container);
         let gid = self.runtime_manager.new_group(pid, subscription);
         for container in containers_to_submit {
@@ -182,6 +191,14 @@ impl Control {
             .load_or_upgrade_plugins(&config.plugin)
             .expect("failed to load initial plugins");
         eprintln!("all plugins loaded");
+
+        let addon = ipc::control::PluginDescriptor {
+            name: String::from("RateLimit"),
+            lib_path: PathBuf::from("/tmp/koala/plugins/libkoala_policy_plugin.so"),
+            config_path: None,
+        };
+        plugins.load_or_upgrade_addon(&addon).unwrap();
+
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
         eprintln!("init upgrader...");
 
@@ -253,7 +270,7 @@ impl Control {
                 // let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&descriptors)?;
                 // self.upgrader.upgrade(engines_to_upgrade)?;
                 Ok(())
-            },
+            }
             _ => {
                 todo!()
             }

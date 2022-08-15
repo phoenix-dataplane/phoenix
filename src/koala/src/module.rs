@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::{os::unix::ucred::UCred, path::Path};
 
+pub use anyhow::Result;
 use dashmap::DashMap;
 use interface::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
-pub use anyhow::Result;
 pub use semver::Version;
 
 use crate::engine::datapath::graph::ChannelDescriptor;
@@ -60,7 +60,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
 
     /// Default data path tx channels between engines
     fn tx_channels(&self) -> Vec<ChannelDescriptor>;
-    
+
     /// Default data path rx channels between engines
     fn rx_channels(&self) -> Vec<ChannelDescriptor>;
 
@@ -201,5 +201,3 @@ impl dyn KoalaModule {
         &mut *(self as *mut dyn KoalaModule as *mut T)
     }
 }
-
-pub struct ModulePlugin {}

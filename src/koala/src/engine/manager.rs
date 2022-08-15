@@ -174,7 +174,8 @@ impl RuntimeManager {
     pub(crate) fn new_group(&self, pid: Pid, subscription: ServiceSubscription) -> GroupId {
         let mut counter = self.group_counter.entry(pid).or_insert(0);
         let gid = GroupId(*counter);
-        self.service_subscriptions.insert((pid, gid), (subscription, 0));
+        self.service_subscriptions
+            .insert((pid, gid), (subscription, 0));
         *self.global_resource_mgr.active_cnt.entry(pid).or_insert(0) += 1;
         *counter = counter.checked_add(1).unwrap();
         gid

@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -10,8 +10,8 @@ use ipc::control::PluginDescriptor;
 
 use crate::addon::Addon;
 use crate::dependency::EngineGraph;
-use crate::engine::EngineType;
 use crate::engine::datapath::graph::ChannelDescriptor;
+use crate::engine::EngineType;
 use crate::module::KoalaModule;
 use crate::module::Service;
 
@@ -98,18 +98,34 @@ impl PluginCollection {
         }
     }
 
-    pub fn load_or_upgrade_addon(
-        &self,
-        addon: PluginDescriptor
-    ) {
-
-        let plugin = Plugin::Addon(addon.name);
+    pub fn load_or_upgrade_addon(&self, addon: &PluginDescriptor) -> anyhow::Result<()> {
+        let old_ver = self.addons.get(&addon.name).map(|x| x.value().version());
+        let plugin = Plugin::Addon(addon.name.clone());
         let old_dylib = self.libraries.remove(&plugin);
-        if let Some((_, old)) = old_dylib {
-
+        let dylib = if let Some((_, old)) = old_dylib {
+            old.upgrade(&addon.lib_path)
+        } else {
+            DynamicLibrary::new(&addon.lib_path)
+        };
+        let config_path = addon.config_path.as_ref().map(|x| x.as_path());
+        let mut new_addon = dylib.init_addon(config_path);
+        self.libraries.insert(plugin.clone(), dylib);
+        if !new_addon.check_compatibility(old_ver.as_ref()) {
+            self.libraries.get_mut(&plugin).unwrap().rollback();
+            bail!("New addon is not compatible with old version");
         }
 
+        if let Some((_, old_addon)) = self.addons.remove(&addon.name) {
+            // migrate any states/resources from old module
+            new_addon.migrate(old_addon);
+        };
+        let engines = new_addon.engines();
+        for engine in engines {
+            self.engine_registry.insert(engine.clone(), plugin.clone());
+        }
 
+        self.addons.insert(addon.name.clone(), new_addon);
+        Ok(())
     }
 
     /// Load or upgrade plugins
@@ -118,7 +134,8 @@ impl PluginCollection {
         &self,
         descriptors: &Vec<PluginDescriptor>,
     ) -> anyhow::Result<HashSet<EngineType>> {
-        let plugins = descriptors.iter()
+        let plugins = descriptors
+            .iter()
             .map(|x| Plugin::Module(x.name.clone()))
             .collect::<Vec<_>>();
 
@@ -163,7 +180,7 @@ impl PluginCollection {
             for plugin in plugins.iter() {
                 self.libraries.get_mut(plugin).unwrap().rollback();
             }
-            bail!("New plugins are not compatible with existing ones");
+            bail!("New modules are not compatible with existing ones");
         }
 
         std::mem::drop(modules_guard);
@@ -180,8 +197,7 @@ impl PluginCollection {
             upgraded_engine_types.extend(engines.iter().cloned());
             graph_guard.add_engines(&engines[..]);
             for engine in engines {
-                self.engine_registry
-                    .insert(engine.clone(), plugin.clone());
+                self.engine_registry.insert(engine.clone(), plugin.clone());
             }
 
             let edges = module.dependencies();
@@ -194,10 +210,13 @@ impl PluginCollection {
             let module = self.modules.get(&descriptor.name).unwrap();
             let (service_name, service_engine) = module.service();
             let dependencies = graph_guard.get_engine_dependencies(&service_engine);
-            eprintln!("Service={:?}, Dependencies {:?}", service_name, dependencies);
+            eprintln!(
+                "Service={:?}, Dependencies {:?}",
+                service_name, dependencies
+            );
             let group_engines = dependencies.iter().cloned().collect::<HashSet<_>>();
             let tx_channels = module.tx_channels();
-            let rx_channels = module.rx_channels(); 
+            let rx_channels = module.rx_channels();
             for channel in tx_channels.iter().chain(rx_channels.iter()) {
                 if !group_engines.contains(&channel.0) || !group_engines.contains(&channel.1) {
                     bail!("Channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph", channel.0, channel.1, service_name);

@@ -2,6 +2,8 @@
 members = [
   "src/experimental",
   "src/koala",
+  "src/koala-policy",
+  "src/koala-policy/plugin",
   "src/koala-salloc",
   "src/koala-salloc/plugin",
   "src/koala-transport-rdma",

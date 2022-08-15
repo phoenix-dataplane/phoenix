@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crossbeam::channel::{Sender, Receiver};
+use crossbeam::channel::{Receiver, Sender};
 
-use super::message::{EngineTxMessage, EngineRxMessage};
+use super::message::{EngineRxMessage, EngineTxMessage};
 use crate::engine::EngineType;
 
 pub type TxIQueue = Receiver<EngineTxMessage>;
@@ -82,11 +82,8 @@ impl DataPathGraph {
         self.rx_inputs.insert(engine.clone(), rx_inputs);
         self.rx_outputs.insert(engine, rx_outputs);
     }
-    
-    pub(crate) fn remove_node(
-        &mut self,
-        engine: &EngineType,
-    ) {
+
+    pub(crate) fn remove_node(&mut self, engine: &EngineType) {
         self.tx_inputs.remove(engine);
         self.tx_outputs.remove(engine);
         self.rx_inputs.remove(engine);

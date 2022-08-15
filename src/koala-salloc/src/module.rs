@@ -197,10 +197,10 @@ impl KoalaModule for SallocModule {
     }
 
     fn tx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
-        Vec::new() 
+        Vec::new()
     }
 
     fn rx_channels(&self) -> Vec<koala::engine::datapath::graph::ChannelDescriptor> {
-        Vec::new() 
+        Vec::new()
     }
 }

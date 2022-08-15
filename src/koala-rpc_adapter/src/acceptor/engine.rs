@@ -137,6 +137,9 @@ impl AcceptorEngine {
 impl AcceptorEngine {
     async fn check_new_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
         let table = self.state.resource().listener_table.inner().lock();
+        if table.is_empty() {
+            return Ok(Status::Progress(0));
+        }
         for entry in table.values() {
             let listener = entry.data();
             if let Some(mut builder) = listener.1.try_get_request()? {

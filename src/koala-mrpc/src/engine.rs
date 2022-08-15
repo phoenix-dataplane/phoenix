@@ -18,11 +18,11 @@ use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use super::builder::build_serializer_lib;
-use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
-use koala::engine::datapath::meta_pool::MetaBufferPool;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
+use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use koala::engine::datapath::meta_pool::MetaBufferPool;
 
 pub struct MrpcEngine {
     pub(crate) _state: State,
@@ -52,9 +52,12 @@ impl_vertex_for_engine!(MrpcEngine, node);
 impl Unload for MrpcEngine {
     #[inline]
     fn detach(&mut self) {
-        // NOTE(wyj): currently we do nothing
-        // In the future, if command/data queue types needs to be ugpraded
-        // then we should flush shared queues
+        // mRPC engine has a single receiver on data path,
+        // i.e., rx_inputs()[0]
+        // each call to `check_input_queue()` processes at most one message
+        while !self.rx_inputs()[0].is_empty() {
+            self.check_input_queue().unwrap();
+        }
     }
 
     fn unload(
@@ -62,8 +65,10 @@ impl Unload for MrpcEngine {
         _shared: &mut SharedStorage,
         _global: &mut ResourceCollection,
     ) -> (ResourceCollection, DataPathNode) {
-        // NOTE(wyj): if command/data queue types need to be upgraded
+        // NOTE(wyj): if command queue types need to be upgraded
         // then the channels must be recreated
+        // if the DataPathNode is not flushed,
+        // upgraded engine must properly handle the remaining messages in the queues
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(10);
@@ -124,16 +129,6 @@ impl MrpcEngine {
             .remove("cmd_rx")
             .unwrap()
             .downcast::<tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let dp_tx = *local
-            .remove("dp_tx")
-            .unwrap()
-            .downcast::<crossbeam::channel::Sender<EngineTxMessage>>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let dp_rx = *local
-            .remove("dp_rx")
-            .unwrap()
-            .downcast::<crossbeam::channel::Receiver<EngineRxMessage>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let meta_buf_pool = *local
             .remove("meta_buf_pool")

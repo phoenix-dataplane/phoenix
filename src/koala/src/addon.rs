@@ -1,12 +1,11 @@
-use nix::unistd::Pid;
 pub use anyhow::Result;
+use nix::unistd::Pid;
 pub use semver::Version;
 
-use crate::envelop::TypeTagged;
-use crate::engine::{Engine, EngineType};
 use crate::engine::datapath::node::DataPathNode;
+use crate::engine::{Engine, EngineType};
+use crate::envelop::TypeTagged;
 use crate::storage::ResourceCollection;
-
 
 pub trait Addon: TypeTagged + Send + Sync + 'static {
     /// The version of the addon
@@ -43,8 +42,76 @@ pub trait Addon: TypeTagged + Send + Sync + 'static {
     /// it only dumps and restores from local states
     fn restore_engine(
         &mut self,
+        ty: &EngineType,
         local: ResourceCollection,
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>>;
+}
+
+pub trait AddonDowncast: Sized {
+    fn downcast<T: Addon>(self) -> Result<Box<T>, Self>;
+    unsafe fn downcast_unchecked<T: Addon>(self) -> Box<T>;
+}
+
+impl AddonDowncast for Box<dyn Addon> {
+    #[inline]
+    fn downcast<T: Addon>(self) -> Result<Box<T>, Self> {
+        if self.is::<T>() {
+            unsafe { Ok(self.downcast_unchecked()) }
+        } else {
+            Err(self)
+        }
+    }
+
+    #[inline]
+    unsafe fn downcast_unchecked<T: Addon>(self) -> Box<T> {
+        debug_assert!(self.is::<T>());
+        let raw: *mut dyn Addon = Box::into_raw(self);
+        Box::from_raw(raw as *mut T)
+    }
+}
+
+impl dyn Addon {
+    #[inline]
+    pub fn is<T: Addon>(&self) -> bool {
+        // Get TypeTag of the type this function is instantiated with
+        let t = <T as TypeTagged>::type_tag_();
+
+        // Get TypeTag of the type in the trait object
+        let concrete = self.type_tag();
+
+        // Compare both TypeTags on equality
+        t == concrete
+    }
+
+    #[inline]
+    pub fn downcast_ref<T: Addon>(&self) -> Option<&T> {
+        if self.is::<T>() {
+            unsafe { Some(self.downcast_ref_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn downcast_mut<T: Addon>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            unsafe { Some(self.downcast_mut_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub unsafe fn downcast_ref_unchecked<T: Addon>(&self) -> &T {
+        debug_assert!(self.is::<T>());
+        &*(self as *const dyn Addon as *const T)
+    }
+
+    #[inline]
+    pub unsafe fn downcast_mut_unchecked<T: Addon>(&mut self) -> &mut T {
+        debug_assert!(self.is::<T>());
+        &mut *(self as *mut dyn Addon as *mut T)
+    }
 }

@@ -5,17 +5,17 @@ use std::sync::Arc;
 use anyhow::bail;
 use dashmap::DashSet;
 use futures::executor::{ThreadPool, ThreadPoolBuilder};
-use semver::Version;
 use nix::unistd::Pid;
+use semver::Version;
 
 use interface::engine::SchedulingMode;
 
 use super::datapath::graph::ChannelDescriptor;
-use super::datapath::node::{DataPathNode, refactor_channels_add_plugin};
-use super::manager::{EngineId, EngineInfo, RuntimeManager, GroupId};
+use super::datapath::node::{refactor_channels_add_plugin, DataPathNode};
+use super::manager::{EngineId, EngineInfo, GroupId, RuntimeManager};
 use super::runtime::SuspendResult;
 use super::{EngineContainer, EngineType};
-use crate::plugin::{PluginCollection, Plugin};
+use crate::plugin::{Plugin, PluginCollection};
 use crate::storage::{ResourceCollection, SharedStorage};
 
 pub struct EngineUpgrader {
@@ -66,7 +66,9 @@ async fn add_plugin(
                     rm.register_engine_shutdown(*eid);
                 }
                 false
-            } else { true }
+            } else {
+                true
+            }
         });
     }
 
@@ -80,28 +82,42 @@ async fn add_plugin(
     }
 
     let mut tx_edges = Vec::new();
-    tx_edges.push(ChannelDescriptor(EngineType(String::from("MrpcEngine")), EngineType(String::from("RateLimitEngine")), 0, 0));
-    tx_edges.push(ChannelDescriptor(EngineType(String::from("RateLimitEngine")), EngineType(String::from("RpcAdapterEngine")), 0, 0));
+    tx_edges.push(ChannelDescriptor(
+        EngineType(String::from("MrpcEngine")),
+        EngineType(String::from("RateLimitEngine")),
+        0,
+        0,
+    ));
+    tx_edges.push(ChannelDescriptor(
+        EngineType(String::from("RateLimitEngine")),
+        EngineType(String::from("RpcAdapterEngine")),
+        0,
+        0,
+    ));
 
     let rx_edges = Vec::new();
     let node = refactor_channels_add_plugin(
-        &mut detached_engines, 
-        &mut subscription.graph, 
+        &mut detached_engines,
+        &mut subscription.graph,
         EngineType(String::from("RateLimitEngine")),
         tx_edges,
         rx_edges,
-    ).unwrap();
+    )
+    .unwrap();
 
+    eprintln!("new data node created");
     let mut containers_resubmit = Vec::new();
-    let mut rate_limiter = plugins.addons.get_mut("Policy").unwrap();
+    let mut rate_limiter = plugins.addons.get_mut("RateLimit").unwrap();
     let engine_type = EngineType(String::from("RateLimitEngine"));
-    let addon_engine = rate_limiter.create_engine(
-        &engine_type,
-        pid,
-        node
-    ).unwrap();
+    eprintln!("prepare to create rate limiter");
+    let addon_engine = rate_limiter
+        .value_mut()
+        .create_engine(&engine_type, pid, node)
+        .unwrap();
+    eprintln!("new addon engine created");
 
-    let container = EngineContainer::new(addon_engine, engine_type, Version::parse("0.1.0").unwrap());
+    let container =
+        EngineContainer::new(addon_engine, engine_type, Version::parse("0.1.0").unwrap());
     containers_resubmit.push(container);
 
     for (ty, engine) in detached_engines {
@@ -111,10 +127,13 @@ async fn add_plugin(
 
     let new_gid = rm.new_group(pid, subscription);
     for container in containers_resubmit {
+        eprintln!(
+            "submit container to runtime, engine ty={:?}",
+            container.engine_type()
+        );
         rm.submit(pid, new_gid, container, SchedulingMode::Dedicate);
     }
     rm.global_resource_mgr.register_group_shutdown(pid);
-
 }
 
 async fn upgrade_client(
@@ -151,7 +170,8 @@ async fn upgrade_client(
                         // if an engine is successfully suspended from runtime
                         // then the corresponding entry about its group
                         // must still be valid in `rm.service_subscriptions`
-                        let (subscription, _) = rm.service_subscriptions.remove(&(pid, info.gid)).unwrap().1;
+                        let (subscription, _) =
+                            rm.service_subscriptions.remove(&(pid, info.gid)).unwrap().1;
                         entry.insert(subscription);
                     }
                     rm.register_engine_shutdown(*eid);
@@ -161,7 +181,9 @@ async fn upgrade_client(
                 // if the group is the last active group for pid,
                 // the entry in `rm.global_resource_mgr` has also been removed.
                 false
-            } else { true }
+            } else {
+                true
+            }
         });
         others.retain(|(eid, info)| {
             let runtime = guard.runtimes.get(&info.rid).unwrap();
@@ -170,13 +192,16 @@ async fn upgrade_client(
                     let group = others_containers.entry(info.gid).or_insert_with(Vec::new);
                     group.push((container, info.scheduling_mode));
                     if let Entry::Vacant(entry) = service_subscriptions.entry(info.gid) {
-                        let (subscription, _) = rm.service_subscriptions.remove(&(pid, info.gid)).unwrap().1;
+                        let (subscription, _) =
+                            rm.service_subscriptions.remove(&(pid, info.gid)).unwrap().1;
                         entry.insert(subscription);
-                    } 
+                    }
                     rm.register_engine_shutdown(*eid);
                 }
                 false
-            } else { true }
+            } else {
+                true
+            }
         });
     }
 
@@ -191,11 +216,9 @@ async fn upgrade_client(
         .resource
         .entry(pid)
         .or_insert_with(ResourceCollection::new);
-    
+
     for (gid, containers) in upgrade_containers {
-        let shared = shared_storage
-            .entry(gid)
-            .or_insert_with(SharedStorage::new);
+        let shared = shared_storage.entry(gid).or_insert_with(SharedStorage::new);
         for (container, mode) in containers {
             let prev_version = container.version();
             let engine_type = container.engine_type().clone();
@@ -221,7 +244,7 @@ async fn upgrade_client(
 
     for (gid, subscription) in service_subscriptions {
         // TODO: later, when we change EngineType to &'static str,
-        // we also need to make sure to change subscription 
+        // we also need to make sure to change subscription
         // to ensure there is not static str pointed to the old library
 
         // Koala control and runtime manager's implementation ensures that we can always find the corresponding service.
@@ -258,31 +281,36 @@ async fn upgrade_client(
                             let mut addon = plugins.addons.get_mut(addon_name).unwrap();
                             let version = addon.version();
                             let engine = addon.restore_engine(
-                                dumped.local_states, 
+                                &engine_type,
+                                dumped.local_states,
                                 dumped.node,
                                 dumped.prev_version,
                             );
-                            (engine, version) 
+                            (engine, version)
                         }
                     };
                     match engine {
                         Ok(engine) => {
-                            let container = EngineContainer::new(engine, engine_type.clone(), version);
+                            let container =
+                                EngineContainer::new(engine, engine_type.clone(), version);
                             containers_to_submit.push((container, dumped.mode));
                             tracing::trace!(
-                                "Engine (pid={:?}, (prev) gid={:?}, type={:?}) restored", 
-                                pid, 
-                                gid, 
+                                "Engine (pid={:?}, (prev) gid={:?}, type={:?}) restored",
+                                pid,
+                                gid,
                                 engine_type
                             );
                             // TODO: remove
-                            eprintln!("Engine (pid={:?}, (prev) gid={:?}, type={:?}) restored", pid, gid, engine_type);
+                            eprintln!(
+                                "Engine (pid={:?}, (prev) gid={:?}, type={:?}) restored",
+                                pid, gid, engine_type
+                            );
                         }
                         Err(err) => {
                             tracing::error!(
-                                "Failed to restore engine (pid={:?}, (prev) gid={:?}, type={:?})", 
-                                pid, 
-                                gid, 
+                                "Failed to restore engine (pid={:?}, (prev) gid={:?}, type={:?})",
+                                pid,
+                                gid,
                                 engine_type
                             );
                             resubmit = false;
@@ -292,7 +320,7 @@ async fn upgrade_client(
                 }
             }
         }
-        
+
         if resubmit {
             // create a new group
             let new_gid = rm.new_group(pid, subscription);
@@ -322,16 +350,18 @@ impl EngineUpgrader {
     }
 
     pub fn add_addon(&mut self) {
-        assert_eq!(self.runtime_manager.service_subscriptions.len(), 1);
+        assert_eq!(self.runtime_manager.service_subscriptions.len(), 2);
         let mut pid = None;
         let mut gid = None;
         for client in self.runtime_manager.service_subscriptions.iter() {
-            pid = Some(client.key().0);
-            gid = Some(client.key().1) 
+            if &client.value().0.service.0 == "Mrpc" {
+                pid = Some(client.key().0);
+                gid = Some(client.key().1)
+            }
         }
         let pid = pid.unwrap();
         let gid = gid.unwrap();
-        
+
         let fut = add_plugin(self.runtime_manager.clone(), self.plugins.clone(), pid, gid);
         self.executor.spawn_ok(fut);
     }
@@ -364,16 +394,16 @@ impl EngineUpgrader {
             .runtime_manager
             .engine_subscriptions
             .iter()
-            .filter(|e| 
-                !engine_types.contains(&e.engine_type) && groups_to_upgrade.contains(&(e.pid, e.gid))
-            )
+            .filter(|e| {
+                !engine_types.contains(&e.engine_type)
+                    && groups_to_upgrade.contains(&(e.pid, e.gid))
+            })
         {
             let client = engines_to_suspend
                 .entry(engine.pid)
                 .or_insert_with(Vec::new);
             client.push((*engine.key(), engine.value().clone()));
         }
-
 
         for (pid, to_upgrade) in engines_to_upgrade {
             let to_suspend = if let Some(engines) = engines_to_suspend.remove(&pid) {
@@ -384,12 +414,12 @@ impl EngineUpgrader {
             let rm = Arc::clone(&self.runtime_manager);
             let plugins = Arc::clone(&self.plugins);
             let fut = upgrade_client(
-                rm, 
+                rm,
                 plugins,
-                pid, 
-                to_upgrade, 
-                to_suspend, 
-                self.upgrade_indicator.clone()
+                pid,
+                to_upgrade,
+                to_suspend,
+                self.upgrade_indicator.clone(),
             );
             self.executor.spawn_ok(fut);
         }

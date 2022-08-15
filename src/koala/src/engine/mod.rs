@@ -5,15 +5,15 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 pub(crate) mod container;
+pub mod datapath;
 pub mod future;
 pub(crate) mod lb;
 pub mod manager;
 pub(crate) mod runtime;
 pub mod unload;
 pub(crate) mod upgrade;
-pub mod datapath;
-pub(crate) use datapath::graph::Vertex;
 pub(crate) use container::EngineContainer;
+pub(crate) use datapath::graph::Vertex;
 pub use runtime::ENGINE_LS;
 pub use unload::Unload;
 
