@@ -26,6 +26,8 @@ pub use interface::{QpCapability, QpType, RemoteKey};
 lazy_static! {
     pub static ref DEFAULT_PDS: Vec<ProtectionDomain> =
         get_default_pds().expect("Failed to get default PDs");
+    pub static ref DEFAULT_VERBS_CONTEXTS: Vec<VerbsContext> =
+        get_default_verbs_contexts().expect("Failed to get default verbs contexts");
 }
 
 fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
@@ -40,6 +42,54 @@ fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
                 .collect::<Result<Vec<_>, Error>>()
         })
     })
+}
+
+fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
+    KL_CTX.with(|ctx| {
+        let req = Command::GetDefaultContexts;
+        ctx.service.send_cmd(req)?;
+        rx_recv_impl!(ctx.service, CompletionKind::GetDefaultContexts, ctx_list, {
+            ctx_list
+                .into_iter()
+                .map(|ctx| VerbsContext::new(ctx))
+                .collect::<Result<Vec<_>, Error>>()
+        })
+    })
+}
+
+#[derive(Debug)]
+pub struct VerbsContext {
+    pub(crate) inner: interface::VerbsContext,
+}
+
+// Default verbs contexts are 'static, no need to drop and open them
+
+impl VerbsContext {
+    #[inline]
+    pub(crate) fn new(verbs: returned::VerbsContext) -> Result<Self, Error> {
+        Ok(VerbsContext {
+            inner: verbs.handle,
+        })
+    }
+
+    pub fn create_cq(
+        &self,
+        min_cq_entries: i32,
+        cq_context: u64,
+    ) -> Result<CompletionQueue, Error> {
+        KL_CTX.with(|ctx| {
+            let req = Command::CreateCq(self.inner, min_cq_entries, cq_context);
+            ctx.service.send_cmd(req)?;
+            rx_recv_impl!(ctx.service, CompletionKind::CreateCq, cq, {
+                Ok(CompletionQueue::open(cq)?)
+            })
+        })
+    }
+
+    #[inline]
+    pub fn default_verbs_contexts() -> &'static [VerbsContext] {
+        &DEFAULT_VERBS_CONTEXTS
+    }
 }
 
 #[derive(Debug)]

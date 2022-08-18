@@ -1,0 +1,49 @@
+// See https://github.com/erpc-io/eRPC/blob/v0.2/apps/masstree_analytics/masstree_analytics.h
+
+syntax = "proto3";
+
+package masstree_analytics;
+
+// The masstree analytics service definition.
+service MasstreeAnalytics {
+  // Process a point query.
+  rpc query_point (PointRequest) returns (PointResponse) {}
+  // Process a range query.
+  rpc query_range (RangeRequest) returns (RangeResponse) {}
+}
+
+// The result for whether the key of a query is found.
+enum QueryResult {
+  // 0 is used as the default value.
+  NOT_FOUND = 0;
+  FOUND = 1;
+}
+
+// The request message containing the key for point query.
+message PointRequest {
+  uint64 key = 1;
+}
+
+// The response message containing the point query result.
+message PointResponse {
+  // Found the key or not.
+  QueryResult result = 1;
+  // The value for point GETs.
+  uint64 value = 2;
+}
+
+// The request message for a range query request.
+message RangeRequest {
+  // The start key for the range query.
+  uint64 key = 1;
+  // The max nubmer of keys after key to sum up.
+  uint64 range = 2;
+}
+
+// The response message for a range query result.
+message RangeResponse {
+  // Found the key or not.
+  QueryResult result = 1;
+  // The range sum for range queries.
+  uint64 range_count = 2;
+}

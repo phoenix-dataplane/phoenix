@@ -40,10 +40,10 @@ fn create_acceptor_engine(
     let node = Node::new(EngineType::RpcAdapterAcceptor);
     let acceptor_engine = AcceptorEngine::new(node, state, Box::new(TlStorage { ops }));
 
-    // always submit the engine to a dedicate runtime
+    // submit non-performance-critical engine to compact runtime
     runtime_manager.submit(
         EngineContainer::new(acceptor_engine),
-        SchedulingMode::Dedicate,
+        SchedulingMode::Compact,
     );
     Ok(())
 }
@@ -77,17 +77,18 @@ impl RpcAdapterEngineBuilder {
     }
 
     fn build(self) -> Result<RpcAdapterEngine> {
+        const BUF_LEN: usize = 32;
         // create or get the state of the process
         let state = STATE_MGR.get_or_create_state(self.client_pid)?;
-        let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
+        // let salloc_state = crate::salloc::module::STATE_MGR.get_or_create_state(self.client_pid)?;
         assert_eq!(self.node.engine_type, EngineType::RpcAdapter);
 
         Ok(RpcAdapterEngine {
             state,
             odp_mr: None,
             tls: Box::new(TlStorage { ops: self.ops }),
-            salloc: salloc_state,
             local_buffer: VecDeque::new(),
+            pending_recv: 0,
             node: self.node,
             cmd_rx: self.cmd_rx,
             cmd_tx: self.cmd_tx,
@@ -95,6 +96,7 @@ impl RpcAdapterEngineBuilder {
             indicator: None,
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
+            wc_read_buffer: Vec::with_capacity(BUF_LEN),
         })
     }
 }

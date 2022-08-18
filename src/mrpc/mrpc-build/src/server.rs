@@ -70,7 +70,7 @@ pub fn generate<T: Service>(
 
                 pub fn new(inner: T) -> Self {
                     // TODO: handle error here
-                    Self::update_protos().unwrap();;
+                    Self::update_protos().unwrap();
                     Self { inner }
                 }
             }
@@ -84,12 +84,10 @@ pub fn generate<T: Service>(
             impl<T: #server_trait> Service for #server_service<T> {
                 async fn call(
                     &self,
-                    req: ::mrpc::MessageErased,
+                    req_opaque: ::mrpc::MessageErased,
                     read_heap: &::mrpc::salloc::ReadHeap,
                 ) -> ::mrpc::MessageErased {
-                    let conn_id = req.meta.conn_id;
-                    let call_id = req.meta.call_id;
-                    let func_id = req.meta.func_id;
+                    let func_id = req_opaque.meta.func_id;
 
                     match func_id {
                         #methods
@@ -167,11 +165,11 @@ fn generate_methods<T: Service>(
         let match_branch = quote::quote! {
             #func_id => {
                 // let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                let req = ::mrpc::RRef::new(&req, read_heap);
+                let req = ::mrpc::RRef::new(&req_opaque, read_heap);
                 let res = self.inner.#func_ident(req).await;
                 match res {
                     Ok(reply) => {
-                        ::mrpc::stub::service_post_handler(reply, conn_id, Self::SERVICE_ID, #func_id, call_id)
+                        ::mrpc::stub::service_post_handler(reply, &req_opaque)
                     }
                     Err(_status) => {
                         todo!();

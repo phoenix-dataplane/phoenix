@@ -1,14 +1,14 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
 
 use dashmap::DashMap;
-use fnv::FnvHashMap;
+use fnv::FnvHashMap as HashMap;
 
 use interface::rpc::{RpcId, TransportStatus};
 use interface::{AsHandle, Handle};
-use ipc::mrpc::cmd::{Command, CompletionKind};
+use ipc::mrpc::cmd::{Command, CompletionKind, ConnectResponse};
 use ipc::mrpc::dp;
 use libkoala::_rx_recv_impl as rx_recv_impl;
 
@@ -19,7 +19,6 @@ pub use ipc::mrpc::control_plane::TransportType;
 use crate::rref::RRef;
 use crate::salloc::gc::CS_STUB_ID_COUNTER;
 use crate::salloc::ReadHeap;
-use crate::salloc::SA_CTX;
 use crate::wref::{WRef, WRefOpaque};
 use crate::{Error, Status, MRPC_CTX};
 
@@ -65,9 +64,11 @@ lazy_static::lazy_static! {
 
 thread_local! {
     // map reply from conn_id + call_id to MessageErased
-    pub(crate) static RECV_REPLY_CACHE: RefCell<FnvHashMap<RpcId, Result<MessageErased, TransportStatus>>> = RefCell::new(FnvHashMap::default());
+    pub(crate) static RECV_REPLY_CACHE: RefCell<HashMap<RpcId, Result<MessageErased, TransportStatus>>> = RefCell::new(HashMap::default());
     // map conn_id to server stub
-    pub(crate) static CONN_SERVER_STUB_MAP: RefCell<FnvHashMap<Handle, u64>> = RefCell::new(FnvHashMap::default());
+    pub(crate) static CONN_SERVER_STUB_MAP: RefCell<HashMap<Handle, u64>> = RefCell::new(HashMap::default());
+    // conn_id -> Error
+    pub(crate) static CONN_ERROR_BUFFER: RefCell<HashMap<Handle, VecDeque<Error>>> = RefCell::new(HashMap::default());
 }
 
 // We can make RpcData a private trait, and only mark it for compiler generated types.
@@ -91,19 +92,35 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        // handle the warning here
-        let _ = check_completion_queue();
 
-        tracing::trace!(
-            "ReqFuture receive reply from mRPC engine, rpc_id={:?}",
-            this.rpc_id
-        );
+        match check_completion_queue() {
+            Ok(()) => {}
+            Err(Error::Disconnect(_)) => {}
+            Err(e) => return Poll::Ready(Err(e.into())),
+        }
+
+        let conn_id = this.rpc_id.0;
+
+        // TODO(cjr): For client, you only need to check your own position. No need to read a
+        // hashmap each time. This a newly introduced overhead.
+        if let Some(err) = CONN_ERROR_BUFFER.with_borrow_mut(|m| {
+            m.entry(conn_id)
+                .or_insert_with(|| VecDeque::new())
+                .pop_front()
+        }) {
+            return Poll::Ready(Err(err.into()));
+        }
+
         match RECV_REPLY_CACHE.with(|cache| cache.borrow_mut().remove(&this.rpc_id)) {
             None => {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
             Some(Ok(erased)) => {
+                tracing::trace!(
+                    "ReqFuture receive reply from mRPC engine, rpc_id={:?}",
+                    this.rpc_id
+                );
                 let reply = RRef::new(&erased, this.read_heap);
                 Poll::Ready(Ok(reply))
             }
@@ -112,31 +129,44 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
     }
 }
 
+#[cfg(feature = "timing")]
+use crate::timing::{SampleKind, Timer};
+
 thread_local! {
     static COMP_READ_BUFFER: RefCell<Vec<dp::Completion>> = RefCell::new(Vec::with_capacity(32));
+
+    #[cfg(feature = "timing")]
+    static TIMER: RefCell<Timer> = RefCell::new(Timer::new());
 }
 
-pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
+pub(crate) fn check_completion_queue() -> Result<(), Error> {
     MRPC_CTX.with(|ctx| {
         COMP_READ_BUFFER.with_borrow_mut(|buffer| {
             buffer.clear();
 
-            ctx.service.dequeue_wc_with(|ptr, count| unsafe {
-                for i in 0..count {
-                    let c = ptr.add(i).cast::<dp::Completion>().read();
-                    buffer.push(c);
-                }
-                count
-            })?;
+            ctx.service
+                .dequeue_wc_with(|ptr, count| unsafe {
+                    for i in 0..count {
+                        let c = ptr.add(i).cast::<dp::Completion>().read();
+                        buffer.push(c);
+                    }
+                    count
+                })
+                .map_err(Error::Service)?;
 
             for c in buffer {
                 match c {
-                    dp::Completion::Incoming(msg, status) => {
+                    dp::Completion::Incoming(msg) => {
                         let conn_id = msg.meta.conn_id;
                         let call_id = msg.meta.call_id;
                         match msg.meta.msg_type {
                             RpcMsgType::Request => {
                                 // server receives requests
+                                #[cfg(feature = "timing")]
+                                TIMER.with_borrow_mut(|timer| {
+                                    timer
+                                        .sample(RpcId(conn_id, call_id), SampleKind::ServerRequest);
+                                });
                                 let stub_id = CONN_SERVER_STUB_MAP
                                     .with(|map| map.borrow().get(&conn_id).map(|x| *x));
                                 if let Some(stub_id) = stub_id {
@@ -146,18 +176,21 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                                 }
                             }
                             RpcMsgType::Response => {
+                                #[cfg(feature = "timing")]
+                                TIMER.with_borrow_mut(|timer| {
+                                    timer.sample(RpcId(conn_id, call_id), SampleKind::ClientReply);
+                                });
                                 // client receives responses
-                                RECV_REPLY_CACHE.with_borrow_mut(|cache| match *status {
-                                    TransportStatus::Success => {
-                                        cache.insert(RpcId(conn_id, call_id), Ok(*msg));
-                                    }
-                                    TransportStatus::Error(_e) => {
-                                        cache.insert(RpcId(conn_id, call_id), Err(*status));
-                                    }
-                                })
+                                RECV_REPLY_CACHE.with_borrow_mut(|cache| {
+                                    cache.insert(RpcId(conn_id, call_id), Ok(*msg))
+                                });
                             }
                         }
                     }
+                    // NOTE(cjr): The term Outgoing might be misleading.
+                    // If the backend encounters any transport error, the backend also reports the
+                    // error through this branch.
+                    // Maybe rewrite this.
                     dp::Completion::Outgoing(rpc_id, status) => {
                         PENDING_WREF.remove(rpc_id);
 
@@ -168,6 +201,28 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
                                 .with_borrow_mut(|cache| cache.insert(*rpc_id, Err(*status)));
                         }
                     }
+                    dp::Completion::RecvError(conn_id, status) => {
+                        // On recv error, the peer probably disconnects.
+                        // The server/client should release the related resources of this
+                        // connection.
+                        // log::debug!("RecvError conn_id: {:?}, status: {:?}", conn_id, status);
+                        log::debug!(
+                            "Connection {:?} disconnected, status: {:?}",
+                            conn_id,
+                            status
+                        );
+                        CONN_ERROR_BUFFER.with_borrow_mut(|m| {
+                            m.entry(*conn_id)
+                                .or_insert_with(|| VecDeque::new())
+                                .push_back(Error::Disconnect(*conn_id))
+                        });
+
+                        #[cfg(feature = "timing")]
+                        TIMER.with_borrow(|timer| {
+                            println!("{}", timer);
+                        });
+                        return Err(Error::Disconnect(*conn_id));
+                    }
                 }
             }
             Ok(())
@@ -175,12 +230,38 @@ pub(crate) fn check_completion_queue() -> Result<(), super::Error> {
     })
 }
 
+/// A connection resource is a Handle plus a ReadHeap
 #[derive(Debug)]
-pub struct ClientStub {
+struct Connection {
     // mRPC connection handle
     handle: Handle,
-    #[allow(unused)]
     read_heap: ReadHeap,
+}
+
+impl PartialEq for Connection {
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl Eq for Connection {}
+
+impl std::hash::Hash for Connection {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.handle.hash(state)
+    }
+}
+
+impl Connection {
+    #[inline]
+    fn new(handle: Handle, read_heap: ReadHeap) -> Self {
+        Self { handle, read_heap }
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientStub {
+    conn: Connection,
 }
 
 impl ClientStub {
@@ -203,7 +284,7 @@ impl ClientStub {
             service_id,
             func_id,
             call_id,
-            len: 0,
+            token: req.token().0 as u64,
             msg_type: RpcMsgType::Request,
         };
 
@@ -211,7 +292,7 @@ impl ClientStub {
 
         ReqFuture {
             rpc_id: RpcId(conn_id, call_id),
-            read_heap: &self.read_heap,
+            read_heap: &self.conn.read_heap,
             _marker: PhantomData,
         }
     }
@@ -220,7 +301,7 @@ impl ClientStub {
 impl ClientStub {
     #[inline]
     pub fn get_handle(&self) -> Handle {
-        self.handle
+        self.conn.handle
     }
 
     pub fn set_transport(transport_type: TransportType) -> Result<(), Error> {
@@ -251,6 +332,14 @@ impl ClientStub {
             shm_addr_app: ptr_app.addr().get(),
             shm_addr_backend: ptr_backend.addr().get(),
         };
+
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow_mut(|timer| {
+            timer.sample(
+                RpcId::new(meta.conn_id, meta.call_id),
+                SampleKind::ClientRequest,
+            );
+        });
 
         let req = dp::WorkRequest::Call(erased);
         MRPC_CTX.with(|ctx| {
@@ -291,20 +380,13 @@ impl ClientStub {
                     .collect();
 
                 // return the mapped addr back
-                SA_CTX.with(|sa_ctx| {
-                    let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
-                    sa_ctx.service.send_cmd(req)?;
-                    // COMMENT(cjr): must wait for the reply!
-                    rx_recv_impl!(
-                        sa_ctx.service,
-                        ipc::salloc::cmd::CompletionKind::NewMappedAddrs
-                    )?;
-                    Result::<(), Error>::Ok(())
-                })?;
+                let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                ctx.service.send_cmd(req)?;
+                // wait for the reply!
+                rx_recv_impl!(ctx.service, CompletionKind::NewMappedAddrs)?;
 
                 Ok(Self {
-                    handle: conn_handle,
-                    read_heap,
+                    conn: Connection::new(conn_handle, read_heap),
                 })
             })
         })
@@ -316,7 +398,12 @@ impl !Sync for ClientStub {}
 
 impl Drop for ClientStub {
     fn drop(&mut self) {
-        PENDING_WREF.erase_by_connection(self.handle);
+        PENDING_WREF.erase_by_connection(self.get_handle());
+
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow(|timer| {
+            println!("{}", timer);
+        });
     }
 }
 
@@ -324,10 +411,7 @@ pub struct Server {
     stub_id: u64,
     #[allow(unused)]
     listener_handle: Handle,
-    handles: HashSet<Handle>,
-    // conn -> ReadHeap
-    read_heaps: HashMap<Handle, ReadHeap>,
-    // service_id -> Service
+    connections: HashMap<Handle, Connection>,
     routes: HashMap<u32, Box<dyn Service>>,
 }
 
@@ -349,8 +433,9 @@ impl Server {
                 Ok(Self {
                     stub_id,
                     listener_handle,
-                    handles: HashSet::default(),
-                    read_heaps: Default::default(),
+                    connections: HashMap::default(),
+                    // handles: HashSet::default(),
+                    // read_heaps: Default::default(),
                     routes: HashMap::default(),
                 })
             })
@@ -369,50 +454,107 @@ impl Server {
     pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut msg_buffer = Vec::with_capacity(32);
         loop {
-            // check new incoming connections
-            self.check_new_incoming_connection()?;
+            // TODO(cjr): change this to check_cm_event(); cm event contains new connections
+            // establishment and destruction; read heap scaling.
+            self.check_cm_event()?;
             // check new requests
             self.poll_requests(&mut msg_buffer).await?;
             self.post_replies(&mut msg_buffer)?;
         }
+
+        // use futures::select;
+        // use futures::stream::UnorderedFutures;
+        // let mut running = UnorderedFutures::new();
+        // loop {
+        //     select! {
+        //         reply_erased = running.next() => {
+        //             msg_buffer.push(reply_erased);
+        //         }
+        //         completed => {}
+        //         default => {
+        //             // no futures is ready
+        //             self.check_cm_event()?;
+        //             // check new requests
+        //             // self.poll_requests(&mut msg_buffer).await?;
+        //             self.poll_requests(&mut running)?;
+        //             if !msg_buffer.is_empty() {
+        //                 self.post_replies(&mut msg_buffer)?;
+        //             }
+        //         }
+        //     }
+        // }
     }
 
-    fn check_new_incoming_connection(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        MRPC_CTX.with(|ctx| {
-            match ctx.service.try_recv_fd() {
-                Ok(fds) => {
-                    let mut vaddrs = Vec::new();
-                    rx_recv_impl!(ctx.service, CompletionKind::NewConnection, conn_resp, {
-                        let conn_handle = conn_resp.conn_handle;
-                        assert_eq!(fds.len(), conn_resp.read_regions.len());
-                        assert!(self.handles.insert(conn_handle));
-                        // setup recv cache
-                        CONN_SERVER_STUB_MAP
-                            .with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
+    fn handle_new_connection(
+        &mut self,
+        conn_resp: ConnectResponse,
+        ctx: &crate::Context,
+    ) -> Result<(), Error> {
+        match ctx.service.recv_fd() {
+            Ok(fds) => {
+                let conn_handle = conn_resp.conn_handle;
+                assert_eq!(fds.len(), conn_resp.read_regions.len());
+                // setup recv cache
+                CONN_SERVER_STUB_MAP.with(|map| map.borrow_mut().insert(conn_handle, self.stub_id));
 
-                        let read_heap = ReadHeap::new(&conn_resp, &fds);
-                        vaddrs = read_heap
-                            .rbufs
-                            .iter()
-                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
-                            .collect();
-                        self.read_heaps.insert(conn_handle, read_heap);
-                        Ok(())
-                    })?;
-                    // return the mapped addr back
-                    SA_CTX.with(|sa_ctx| {
-                        let req = ipc::salloc::cmd::Command::NewMappedAddrs(vaddrs);
-                        sa_ctx.service.send_cmd(req)?;
-                        // COMMENT(cjr): must wait for the reply!
-                        rx_recv_impl!(
-                            sa_ctx.service,
-                            ipc::salloc::cmd::CompletionKind::NewMappedAddrs
-                        )?;
-                        Result::<(), Error>::Ok(())
-                    })?;
-                }
-                Err(ipc::Error::TryRecvFd(ipc::TryRecvError::Empty)) => {}
+                let read_heap = ReadHeap::new(&conn_resp, &fds);
+                let vaddrs = read_heap
+                    .rbufs
+                    .iter()
+                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                    .collect();
+                // self.read_heaps.insert(conn_handle, read_heap);
+
+                assert_eq!(
+                    self.connections
+                        .insert(conn_handle, Connection::new(conn_handle, read_heap)),
+                    None
+                );
+
+                // update backend addr mapping
+                let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                ctx.service.send_cmd(req)?;
+                // NO NEED TO WAIT
+                Ok(())
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    fn close_connection(&mut self, conn_id: Handle) -> Result<(), Error> {
+        // handles
+        // read_heaps
+        // CONN_SERVER_STUB_MAP
+        // RECV_REQUEST_CACHE
+        // PENDING_WREF
+        self.connections.remove(&conn_id);
+
+        CONN_SERVER_STUB_MAP.with_borrow_mut(|map| {
+            map.remove(&conn_id);
+        });
+
+        // remove all outstanding RPC releated to this client/server stub
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.contains_key(&rpc_id.0));
+        Ok(())
+    }
+
+    fn check_cm_event(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        MRPC_CTX.with(|ctx| {
+            match ctx.service.try_recv_comp().map(|comp| comp.0) {
+                Err(ipc::Error::TryRecv(ipc::TryRecvError::Empty)) => {}
                 Err(e) => return Err(e.into()),
+                Ok(compkind) => {
+                    match compkind {
+                        Ok(CompletionKind::NewConnection(conn_resp)) => {
+                            self.handle_new_connection(conn_resp, ctx)?;
+                        }
+                        Ok(CompletionKind::NewMappedAddrs) => {
+                            // do nothing, just consume the completion
+                        }
+                        Err(e) => return Err(e.into()),
+                        otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
+                    }
+                }
             }
             Ok(())
         })
@@ -423,6 +565,14 @@ impl Server {
             "client post reply to mRPC engine, call_id={}",
             erased.meta.call_id
         );
+
+        #[cfg(feature = "timing")]
+        TIMER.with_borrow_mut(|timer| {
+            timer.sample(
+                RpcId::new(erased.meta.conn_id, erased.meta.call_id),
+                SampleKind::ServerReply,
+            );
+        });
 
         let wr = dp::WorkRequest::Reply(erased);
         MRPC_CTX.with(|ctx| {
@@ -453,18 +603,32 @@ impl Server {
         &mut self,
         msg_buffer: &mut Vec<MessageErased>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        check_completion_queue()?;
+        match check_completion_queue() {
+            Ok(()) => {}
+            Err(Error::Disconnect(conn_id)) => {
+                // close the connection and free the related resources
+                self.close_connection(conn_id)?;
+            }
+            Err(e) => return Err(e.into()),
+        }
 
         for request in RECV_REQUEST_CACHE.get_mut(&self.stub_id).unwrap().drain(..) {
             let service_id = request.meta.service_id;
-            let read_heap = &self.read_heaps[&request.meta.conn_id];
             match self.routes.get_mut(&service_id) {
                 Some(s) => {
-                    let reply_erased = s.call(request, read_heap).await;
-                    msg_buffer.push(reply_erased);
+                    match self.connections.get(&request.meta.conn_id) {
+                        Some(conn) => {
+                            let read_heap = &conn.read_heap;
+                            let reply_erased = s.call(request, read_heap).await;
+                            msg_buffer.push(reply_erased);
+                        }
+                        None => {
+                            // the connection has disappeared, do nothing
+                        }
+                    }
                 }
                 None => {
-                    eprintln!("unrecognized request: {:?}", request);
+                    log::warn!("unrecognized request: {:?}", request);
                 }
             }
         }
@@ -479,17 +643,16 @@ impl !Sync for Server {}
 impl Drop for Server {
     fn drop(&mut self) {
         // clear recv cache setup
-        CONN_SERVER_STUB_MAP.with(|map| {
-            let mut borrow = map.borrow_mut();
-            for conn_id in self.handles.iter() {
-                borrow.remove(conn_id);
+        CONN_SERVER_STUB_MAP.with_borrow_mut(|map| {
+            for conn_id in self.connections.keys() {
+                map.remove(conn_id);
             }
         });
 
         RECV_REQUEST_CACHE.remove(&self.stub_id);
 
         // remove all outstanding RPC releated to this client/server stub
-        PENDING_WREF.erase_by(|rpc_id, _| self.handles.contains(&rpc_id.0));
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.contains_key(&rpc_id.0));
     }
 }
 
@@ -513,23 +676,16 @@ pub fn service_pre_handler<'a, T: Unpin>(
 
 pub fn service_post_handler<T: RpcData>(
     reply: WRef<T>,
-    conn_id: Handle,
-    service_id: u32,
-    func_id: u32,
-    call_id: u32,
+    req_opaque: &MessageErased,
 ) -> MessageErased {
     // construct meta
     let meta = MessageMeta {
-        conn_id,
-        service_id,
-        func_id,
-        call_id,
-        len: 0,
         msg_type: RpcMsgType::Response,
+        ..req_opaque.meta
     };
 
     // track the msg as pending
-    PENDING_WREF.insert(RpcId::new(conn_id, func_id), WRef::clone(&reply));
+    PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.func_id), WRef::clone(&reply));
 
     let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {

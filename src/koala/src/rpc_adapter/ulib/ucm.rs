@@ -326,19 +326,16 @@ impl AsHandle for CmId {
 }
 
 impl CmId {
-    pub(crate) async fn disconnect(&self) -> Result<(), Error> {
-        get_ops().disconnect(&self.inner.handle).await?;
+    pub(crate) fn disconnect(&self) -> Result<(), Error> {
+        get_ops().disconnect(&self.inner.handle)?;
         Ok(())
     }
 }
 
 impl Drop for CmId {
     fn drop(&mut self) {
-        futures::executor::block_on(async {
-            self.disconnect()
-                .await
-                .unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
-        });
+        self.disconnect()
+            .unwrap_or_else(|e| eprintln!("Disconnecting CmId: {}", e));
     }
 }
 
@@ -400,10 +397,10 @@ unsafe impl Sync for Inner {}
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        log::warn!("dropping CmId Inner");
+        log::debug!("dropping CmId Inner, Please drop QP first");
         // TODO(cjr): drop QP first
         let _ = DropCmId(self.handle);
-        log::warn!("dropped CmId Inner");
+        log::debug!("dropped CmId Inner");
     }
 }
 

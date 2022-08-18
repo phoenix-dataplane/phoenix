@@ -17,12 +17,14 @@ members = [
   "src/koala_examples/alltoall",
   "src/koala_examples/rpc_hello",
   "src/koala_examples/rpc_bench",
+  "src/koala_examples/masstree_analytics",
   "src/memmap-fixed",
   "benchmark",
 ]
 exclude = [
   "src/3rdparty/prost",
 ]
+resolver = "2"
 
 [profile.release]
 debug = true

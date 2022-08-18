@@ -13,6 +13,9 @@ pub enum Command {
     SetTransport(TransportType),
     Connect(SocketAddr),
     Bind(SocketAddr),
+    // The app notifies the backend with its mapped addresses
+    // conn_handle, [mr_handle, addr]
+    NewMappedAddrs(interface::Handle, Vec<(interface::Handle, usize)>),
     UpdateProtos(Vec<String>),
     UpdateProtosInner(PathBuf),
 }
@@ -43,6 +46,8 @@ pub enum CompletionKind {
     // TODO(wyj): pass align
     NewConnectionInternal(ConnectResponse, Vec<RawFd>),
     NewConnection(ConnectResponse),
+    // the acknowledgement
+    NewMappedAddrs,
     UpdateProtos,
 }
 

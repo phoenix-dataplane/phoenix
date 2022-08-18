@@ -54,8 +54,8 @@ fn create_cm_engine(runtime_manager: &RuntimeManager, client_pid: Pid) -> Result
     let node = Node::new(EngineType::RdmaConnMgmt);
     let cm_engine = CmEngine::new(node, state);
 
-    // always submit the engine to a dedicate runtime
-    runtime_manager.submit(EngineContainer::new(cm_engine), SchedulingMode::Dedicate);
+    // submit non-performance-critical engine to compact runtime
+    runtime_manager.submit(EngineContainer::new(cm_engine), SchedulingMode::Compact);
     Ok(())
 }
 

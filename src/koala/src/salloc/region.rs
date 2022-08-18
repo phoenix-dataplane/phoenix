@@ -11,7 +11,7 @@ use thiserror::Error;
 use interface::{AsHandle, Handle};
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("Memfd: {0}.")]
     Memfd(#[from] memfd::Error),
     #[error("IO: {0}.")]
@@ -19,7 +19,7 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub struct SharedRegion {
+pub(crate) struct SharedRegion {
     mmap: MmapFixed,
     memfd: Memfd,
     align: usize,
@@ -74,6 +74,11 @@ impl SharedRegion {
     #[inline]
     pub(crate) fn memfd(&self) -> &Memfd {
         &self.memfd
+    }
+
+    #[inline]
+    pub(crate) fn align(&self) -> usize {
+        self.align
     }
 }
 

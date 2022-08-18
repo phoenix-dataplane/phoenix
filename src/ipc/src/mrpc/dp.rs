@@ -24,8 +24,10 @@ pub type CompletionSlot = [u8; 64];
 #[repr(C, align(64))]
 #[derive(Debug)]
 pub enum Completion {
-    Incoming(MessageErased, TransportStatus),
+    Incoming(MessageErased),
     Outgoing(RpcId, TransportStatus),
+    // (conn_id, status)
+    RecvError(Handle, TransportStatus),
 }
 
 mod sa {

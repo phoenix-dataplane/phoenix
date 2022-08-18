@@ -6,6 +6,20 @@ use serde::{Deserialize, Serialize};
 use crate::Handle;
 
 #[repr(C)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
+pub struct Token(pub usize);
+
+// User must explicitly construct Token from usize.
+
+impl From<Token> for usize {
+    fn from(val: Token) -> usize {
+        val.0
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RpcMsgType {
     Request,
@@ -73,11 +87,19 @@ impl TransportStatus {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageMeta {
+    /// Connection handle.
     pub conn_id: Handle,
+    /// Service identifier.
     pub service_id: u32,
+    /// Function identifier. A hash of full-qualified path.
     pub func_id: u32,
+    /// Identifier for each unique RPC invocation.
     pub call_id: u32,
-    pub len: u64,
+    /// User associated token. The token will be carried throughout the lifetime of the RPC.
+    /// The token can be used to associate RPC reply with its request, or be used as an extra piece
+    /// of information passed to the server.
+    pub token: u64,
+    /// Whether the message is a request or a response.
     pub msg_type: RpcMsgType,
 }
 
@@ -85,6 +107,7 @@ pub struct MessageMeta {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MessageErased {
     pub meta: MessageMeta,
+    // It is fine to use usize here because these two addresses are machine-local.
     pub shm_addr_app: usize,
     pub shm_addr_backend: usize,
 }
@@ -94,6 +117,7 @@ mod sa {
     use static_assertions::const_assert_eq;
     use std::mem::size_of;
 
+    const_assert_eq!(size_of::<Token>(), size_of::<usize>());
     const_assert_eq!(size_of::<TransportStatus>(), 4);
     const_assert_eq!(size_of::<RpcId>(), 8);
     const_assert_eq!(size_of::<MessageMeta>(), 32);

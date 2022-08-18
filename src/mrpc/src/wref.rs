@@ -3,6 +3,7 @@ use std::mem;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use interface::rpc::Token;
 use ipc::ptr::ShmNonNull;
 
 use crate::alloc::Box as ShmBox;
@@ -146,18 +147,56 @@ impl<T: RpcData> IntoWRef<T> for WRef<T> {
 
 impl<T: RpcData> IntoWRef<T> for &WRef<T> {
     fn into_wref(self) -> WRef<T> {
-        WRef::clone(self)
+        WRef::clone(&self)
     }
 }
 
-// TODO(cjr): consider moving refcnt to ShmBox.
 #[derive(Debug)]
-pub struct WRef<T: RpcData>(Arc<ShmBox<T>>);
+struct WRefInner<T> {
+    ptr: ShmBox<T>,
+}
+
+// TODO(cjr): consider moving refcnt to ShmBox.
+/// A thread-safe reference-couting pointer to the writable shared memory heap.
+#[derive(Debug)]
+pub struct WRef<T: RpcData> {
+    token: Token,
+    inner: Arc<WRefInner<T>>,
+}
 
 impl<T: RpcData> WRef<T> {
+    /// Constructs a `WRef<T>` from the given user message on the writable shared memory
+    /// heap. The associated token is set to default.
+    #[must_use]
     #[inline]
     pub fn new(msg: T) -> Self {
-        WRef(Arc::new(ShmBox::new(msg)))
+        Self::with_token(Token::default(), msg)
+    }
+
+    /// Constructs a `WRef<T>` from a user token and the given user message on the
+    /// writable shared memory heap.
+    #[must_use]
+    #[inline]
+    pub fn with_token(token: Token, msg: T) -> Self {
+        WRef {
+            token,
+            inner: Arc::new(WRefInner {
+                ptr: ShmBox::new(msg),
+            }),
+        }
+    }
+
+    /// Returns the user associated token.
+    #[must_use]
+    #[inline]
+    pub fn token(&self) -> Token {
+        self.token
+    }
+
+    /// Set the token.
+    #[inline]
+    pub fn set_token(&mut self, token: Token) {
+        self.token = token;
     }
 
     #[inline]
@@ -167,14 +206,14 @@ impl<T: RpcData> WRef<T> {
 
     #[inline]
     pub(crate) fn into_shmptr(self) -> ShmNonNull<T> {
-        let (ptr_app, ptr_backend) = ShmBox::to_raw_parts(self.0.deref());
+        let (ptr_app, ptr_backend) = ShmBox::to_raw_parts(&self.inner.ptr);
         // SAFETY: both ptrs are non-null because they just came from ShmBox::to_raw_parts.
         unsafe { ShmNonNull::new_unchecked(ptr_app.as_ptr(), ptr_backend.as_ptr()) }
     }
 
     #[inline]
-    fn into_raw(this: Self) -> *const ShmBox<T> {
-        Arc::into_raw(this.0)
+    fn into_raw(this: Self) -> *const WRefInner<T> {
+        Arc::into_raw(this.inner)
     }
 
     /// Constructs a `WRef<T>` from a raw pointer.
@@ -187,14 +226,20 @@ impl<T: RpcData> WRef<T> {
     /// [`mem::transmute`][transmute] for more information on what
     /// restrictions apply in this case.
     #[inline]
-    unsafe fn from_raw(ptr: *const ShmBox<T>) -> Self {
-        WRef(Arc::from_raw(ptr))
+    unsafe fn from_raw(ptr: *const WRefInner<T>) -> Self {
+        WRef {
+            token: Token::default(),
+            inner: Arc::from_raw(ptr),
+        }
     }
 }
 
 impl<T: RpcData> Clone for WRef<T> {
     fn clone(&self) -> Self {
-        WRef(self.0.clone())
+        WRef {
+            token: self.token,
+            inner: Arc::clone(&self.inner),
+        }
     }
 }
 
@@ -202,15 +247,15 @@ impl<T: RpcData> Deref for WRef<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
+        self.inner.ptr.as_ref()
     }
 }
 
 impl<T: RpcData> WRef<T> {
     #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
-        match Arc::get_mut(&mut this.0) {
-            Some(shmbox) => Some(shmbox.as_mut()),
+        match Arc::get_mut(&mut this.inner) {
+            Some(inner) => Some(inner.ptr.as_mut()),
             None => None,
         }
     }
@@ -220,7 +265,7 @@ impl<T: RpcData> WRef<T> {
         // We are careful to *not* create a reference covering the "count" fields, as
         // this would alias with concurrent access to the reference counts (e.g. by `Weak`).
         // unsafe { &mut (*this.ptr.as_ptr()).data }
-        Arc::get_mut_unchecked(&mut this.0).as_mut()
+        Arc::get_mut_unchecked(&mut this.inner).ptr.as_mut()
     }
 }
 

@@ -9,6 +9,7 @@ use spin::Mutex;
 use interface::engine::SchedulingMode;
 
 use super::container::EngineContainer;
+use super::group::EngineGroup;
 use super::runtime::{self, Runtime};
 use crate::config::Config;
 
@@ -23,7 +24,7 @@ struct Inner {
 }
 
 impl Inner {
-    fn schedule_dedicate(&mut self, engine: EngineContainer) {
+    fn schedule_dedicate(&mut self, engine_group: EngineGroup) {
         // find a spare runtime
         let rid = match self
             .runtimes
@@ -44,7 +45,37 @@ impl Inner {
             }
         };
 
-        self.runtimes[rid].add_engine(engine);
+        self.runtimes[rid].add_engine(engine_group, true);
+
+        // a runtime will not be parked when having pending engines, so in theory, we can check
+        // whether the runtime and only unpark it when it's in parked state.
+        self.handles[rid].thread().unpark();
+    }
+
+    fn schedule_compact(&mut self, engine_group: EngineGroup) {
+        // find the first non-dedicated runtime or start a new runtime
+        // TODO(cjr): monitor the load of a runtime, use new runtime when existing runtimes' load
+        // is high.
+        let rid = match self
+            .runtimes
+            .iter()
+            .enumerate()
+            .find(|(_i, r)| r.is_empty() || !r.is_dedicated())
+        {
+            Some((rid, _runtime)) => rid,
+            None => {
+                // if there's no spare runtime, and there are available resources (e.g. cpus),
+                // spawn a new one.
+
+                // find the next available CPU and start a runtime on it.
+                let rid = self.next_core;
+                self.start_runtime(self.next_core);
+                self.next_core += 1;
+                rid
+            }
+        };
+
+        self.runtimes[rid].add_engine(engine_group, false);
 
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
@@ -64,15 +95,21 @@ impl RuntimeManager {
         }
     }
 
-    pub(crate) fn submit(&self, engine: EngineContainer, mode: SchedulingMode) {
+    pub(crate) fn submit_group(&self, engine_group: EngineGroup) {
         let mut inner = self.inner.lock();
-        match mode {
+        match engine_group.mode {
             SchedulingMode::Dedicate => {
-                inner.schedule_dedicate(engine);
+                inner.schedule_dedicate(engine_group);
             }
-            SchedulingMode::Compact => unimplemented!(),
+            SchedulingMode::Compact => {
+                inner.schedule_compact(engine_group);
+            }
             SchedulingMode::Spread => unimplemented!(),
         }
+    }
+
+    pub(crate) fn submit(&self, engine: EngineContainer, mode: SchedulingMode) {
+        self.submit_group(EngineGroup::singleton(mode, engine))
     }
 }
 

@@ -1,8 +1,9 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use minstant::Instant;
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
@@ -10,8 +11,8 @@ use mrpc::WRef;
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
+    // mrpc::include_proto!("rpc_hello");
+    include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
@@ -89,7 +90,7 @@ async fn run_bench(
 
     // draining the remaining futures
     while !reply_futures.is_empty() {
-        let _response = reply_futures.next().await.unwrap()?;
+        let _resp = reply_futures.next().await.unwrap()?;
         latencies.push(starts[latencies.len()].elapsed());
         if warmup {
             eprintln!("warmup: resp {} received", response_count);
@@ -134,10 +135,10 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         smol::block_on(async {
             // provision
             let mut reqs = Vec::new();
-            for _ in 0..args.provision_count {
+            for i in 0..args.provision_count {
                 let mut name = Vec::with_capacity(args.req_size);
                 name.resize(args.req_size, 42);
-                let req = WRef::new(HelloRequest { name });
+                let req = WRef::with_token(mrpc::Token(i), HelloRequest { name });
                 reqs.push(req);
             }
 
@@ -152,6 +153,8 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             let (starts, mut latencies): (Vec<_>, Vec<_>) = stats.into_iter().unzip();
 
             // print stats
+            // println!("{stats}");
+
             println!(
                 "dura: {:?}, speed: {:?}",
                 dura,

@@ -52,14 +52,14 @@ macro_rules! impl_vertex_for_engine {
             fn tx_inputs(&mut self) -> &mut Vec<crate::engine::TxIQueue> {
                 &mut self.$node.tx_input
             }
-            fn tx_outputs(&self) -> &Vec<crate::engine::TxOQueue> {
-                &self.$node.tx_output
+            fn tx_outputs(&mut self) -> &mut Vec<crate::engine::TxOQueue> {
+                &mut self.$node.tx_output
             }
             fn rx_inputs(&mut self) -> &mut Vec<crate::engine::RxIQueue> {
                 &mut self.$node.rx_input
             }
-            fn rx_outputs(&self) -> &Vec<crate::engine::RxOQueue> {
-                &self.$node.rx_output
+            fn rx_outputs(&mut self) -> &mut Vec<crate::engine::RxOQueue> {
+                &mut self.$node.rx_output
             }
         }
     };

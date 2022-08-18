@@ -82,7 +82,7 @@ impl SallocEngine {
     }
 
     fn process_cmd(&mut self, req: cmd::Command) -> Result<cmd::CompletionKind, ControlPathError> {
-        use cmd::{Command, CompletionKind};
+        use cmd::Command;
         match req {
             Command::AllocShm(size, align) => {
                 // TODO(wyj): implement backend heap allocator to properly handle align
@@ -114,25 +114,6 @@ impl SallocEngine {
                     .remove(&addr)
                     .map_or_else(|| Err(ResourceError::NotFound), |_| Ok(()))?;
                 Ok(cmd::CompletionKind::DeallocShm)
-            }
-            Command::NewMappedAddrs(app_vaddrs) => {
-                // TODO(wyj): rewrite
-                let mut ret = Vec::new();
-                for (mr_handle, app_vaddr) in app_vaddrs.iter() {
-                    let mr = self.state.resource().recv_mr_table.get(mr_handle)?;
-                    ret.push((mr.as_ptr() as usize, *app_vaddr as usize, mr.len()));
-                    let mr_local_addr = mr.as_ptr().expose_addr();
-                    let mr_remote_mapped = mrpc_marshal::ShmRecvMr {
-                        ptr: *app_vaddr,
-                        len: mr.len(),
-                        // TODO(cjr): update this
-                        align: 8 * 1024 * 1024,
-                    };
-                    self.state
-                        .resource()
-                        .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
-                }
-                Ok(CompletionKind::NewMappedAddrs)
             }
         }
     }

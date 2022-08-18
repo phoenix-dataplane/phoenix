@@ -16,7 +16,6 @@ use ipc::unix::DomainSocket;
 use super::engine::MrpcEngine;
 use super::state::State;
 use crate::config::MrpcConfig;
-use crate::engine::container::EngineContainer;
 use crate::engine::manager::RuntimeManager;
 use crate::mrpc::meta_pool::MetaBufferPool;
 use crate::node::Node;
@@ -84,6 +83,7 @@ impl MrpcEngineBuilder {
 
 pub struct MrpcModule {
     config: MrpcConfig,
+    #[allow(unused)]
     runtime_manager: Arc<RuntimeManager>,
 }
 
@@ -113,7 +113,7 @@ impl MrpcModule {
         }
     }
 
-    pub fn handle_new_client<P: AsRef<Path>>(
+    pub fn create_engine<P: AsRef<Path>>(
         &mut self,
         sock: &DomainSocket,
         client_path: P,
@@ -122,7 +122,7 @@ impl MrpcModule {
         node: Node,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
-    ) -> Result<()> {
+    ) -> Result<MrpcEngine> {
         // 1. generate a path and bind a unix domain socket to it
         let uuid = Uuid::new_v4();
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
@@ -149,10 +149,10 @@ impl MrpcModule {
 
         let engine = builder.build()?;
 
-        // 5. submit the engine to a runtime
-        self.runtime_manager
-            .submit(EngineContainer::new(engine), mode);
+        // // 5. submit the engine to a runtime
+        // self.runtime_manager
+        //     .submit(EngineContainer::new(engine), mode);
 
-        Ok(())
+        Ok(engine)
     }
 }

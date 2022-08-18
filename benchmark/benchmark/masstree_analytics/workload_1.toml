@@ -1,0 +1,29 @@
+name = "masstree_analytics/workload_1"
+description = "Masstree analytics workload 1"
+group = "masstree_analytics"
+timeout_secs = 15
+
+[[worker]]
+host = "danyang-06"
+bin = "masstree_analytics_server"
+args = """\
+  --num-keys 1000000 \
+  --num-server-fg-threads 14 \
+  --num-server-bg-threads 2 \
+  --server-port 5000 \
+"""
+
+[[worker]]
+host = "danyang-05"
+bin = "masstree_analytics_client"
+args = """\
+  --test-ms 10000 \
+  --num-client-threads 8 \
+  --req-window 2 \
+  --num-keys 1000000 \
+  --range-size 128 \
+  --range-req-percent 1 \
+  --server-port 5000 \
+  --server-addr rdma0.danyang-06 \
+  --num-server-fg-threads 14 \
+"""

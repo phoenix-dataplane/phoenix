@@ -45,6 +45,9 @@ fn main() -> Result<(), Error> {
             num: args.num,
             warmup: args.warmup,
             size: args.size,
+            num_qp: 1,
+            num_client_threads: 1,
+            num_server_threads: 1,
         },
         Test::LAT,
     );

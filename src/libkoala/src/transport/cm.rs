@@ -231,6 +231,10 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Drop for CmIdListener<'pd, 'ctx, 'scq, 'rcq, '
 }
 
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+    pub fn builder() -> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+        CmIdBuilder::new()
+    }
+
     pub fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         CmIdBuilder::new().bind(addr)
     }
@@ -315,6 +319,7 @@ impl Drop for CmId {
     fn drop(&mut self) {
         (|| {
             KL_CTX.with(|ctx| {
+                // TODO(cjr): Disconnect should not block
                 let req = Command::Disconnect(self.inner.handle);
                 ctx.service.send_cmd(req)?;
                 rx_recv_impl!(ctx.service, CompletionKind::Disconnect)?;
@@ -326,6 +331,10 @@ impl Drop for CmId {
 }
 
 impl CmId {
+    pub fn builder<'pd, 'ctx, 'scq, 'rcq, 'srq>() -> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
+        CmIdBuilder::new()
+    }
+
     pub fn resolve_route<'pd, 'ctx, 'scq, 'rcq, 'srq, A: ToSocketAddrs>(
         addr: A,
     ) -> Result<CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>, Error> {

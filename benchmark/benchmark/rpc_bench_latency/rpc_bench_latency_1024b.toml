@@ -1,4 +1,4 @@
-name = "benchmark/rpc_bench_latency_1024b"
+name = "benchmark/rpc_bench_latency/rpc_bench_latency_1024b"
 description = "Run rpc_bench benchmark"
 group = "rpc_bench_latency"
 timeout_secs = 10
@@ -12,3 +12,4 @@ args = ""
 host = "danyang-05"
 bin = "rpc_bench_client"
 args = "-c rdma0.danyang-06 --concurrency 1 --req-size 1024"
+dependencies = [0]

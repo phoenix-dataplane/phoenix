@@ -3,6 +3,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::slice;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use interface::{returned, AsHandle, Handle};
@@ -11,7 +12,7 @@ use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use super::state::{Resource, State};
+use super::state::{EventChannel, Resource, State};
 use super::{ApiError, DatapathError};
 use crate::engine::future;
 
@@ -264,7 +265,7 @@ impl Ops {
         &self,
         port_space: interface::addrinfo::PortSpace,
     ) -> Result<(returned::CmId, returned::EventChannel)> {
-        let returned_cmid = self.create_id(port_space).await?;
+        let returned_cmid = self.create_id(port_space)?;
         let cmid = self.resource().cmid_table.get(&returned_cmid.handle.0)?;
         let ec_handle = cmid.event_channel().as_handle();
         Ok((
@@ -275,12 +276,8 @@ impl Ops {
         ))
     }
 
-    pub(crate) async fn create_id(
-        &self,
-        port_space: interface::addrinfo::PortSpace,
-    ) -> Result<returned::CmId> {
-        log::debug!("CreateId, port_space: {:?}", port_space);
-
+    // Helper function
+    fn create_and_register_event_channel(&self) -> Result<(Handle, rdmacm::EventChannel)> {
         // create a new event channel for each cmid
         let channel = rdmacm::EventChannel::create_event_channel().map_err(ApiError::RdmaCm)?;
 
@@ -288,8 +285,19 @@ impl Ops {
         channel.set_nonblocking(true).map_err(ApiError::RdmaCm)?;
         let channel_handle = channel.as_handle();
 
-        self.register_event_channel(channel_handle, &channel)
-            .await?;
+        self.register_event_channel(channel_handle, &channel)?;
+
+        Ok((channel_handle, channel))
+    }
+
+    pub(crate) fn create_id(
+        &self,
+        port_space: interface::addrinfo::PortSpace,
+    ) -> Result<returned::CmId> {
+        log::debug!("CreateId, port_space: {:?}", port_space);
+
+        // prepare an event channel
+        let (channel_handle, channel) = self.create_and_register_event_channel()?;
 
         // TODO(cjr): this is safe because event_channel will be stored in the
         // ResourceTable
@@ -301,10 +309,17 @@ impl Ops {
         // operations? How to safely/correctly rollback?
         self.resource()
             .event_channel_table
-            .insert(channel_handle, channel)?;
+            .insert(channel_handle, EventChannel::new(channel))?;
 
         // insert cmid after event_channel is inserted
         let new_cmid_handle = self.resource().insert_cmid(cmid)?;
+
+        log::debug!(
+            "CreateId, returned CmId Handle: {:?}, EventChannel Handle: {:?}",
+            new_cmid_handle,
+            channel_handle
+        );
+
         Ok(returned::CmId {
             handle: interface::CmId(new_cmid_handle),
             qp: None,
@@ -323,8 +338,14 @@ impl Ops {
         Ok(())
     }
 
+    // Helper function.
     fn handle_connect_request(&self, event: rdmacm::CmEvent) -> Result<returned::CmId> {
         let (new_cmid, new_qp) = event.get_request();
+
+        // Create event channel for the new_cmid and migrate
+        let (channel_handle, channel) = self.create_and_register_event_channel()?;
+
+        new_cmid.migrate_id(&channel).map_err(ApiError::RdmaCm)?;
 
         let ret_qp = if let Some(qp) = new_qp {
             let handles = self.resource().insert_qp(qp)?;
@@ -332,7 +353,21 @@ impl Ops {
         } else {
             None
         };
+
+        // insert event_channel
+        self.resource()
+            .event_channel_table
+            .insert(channel_handle, EventChannel::new(channel))?;
+
+        // insert cmid
         let new_cmid_handle = self.resource().insert_cmid(new_cmid)?;
+
+        log::debug!(
+            "(Try)GetRequest, returned CmId Handle: {:?}, EventChannel Handle: {:?}",
+            new_cmid_handle,
+            channel_handle
+        );
+
         Ok(returned::CmId {
             handle: interface::CmId(new_cmid_handle),
             qp: ret_qp,
@@ -355,7 +390,7 @@ impl Ops {
         &self,
         listener_handle: Handle,
     ) -> Result<Option<returned::CmId>> {
-        log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
+        // log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
         let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
@@ -611,25 +646,62 @@ impl Ops {
     // NOTE(cjr): We should not wait for RDMA_CM_EVENT_DISCONNECTED because in a client/server
     // architecture, the server won't actively call disconnect. This causes the client
     // to stuck at waiting for the disconnected event to happen.
-    pub(crate) async fn disconnect(&self, cmid: &interface::CmId) -> Result<()> {
+    pub(crate) fn disconnect(&self, cmid: &interface::CmId) -> Result<()> {
         log::debug!("Disconnect, cmid: {:?}", cmid);
 
         let cmid_handle = cmid.0;
         let cmid = self.resource().cmid_table.get(&cmid_handle)?;
-        cmid.disconnect().map_err(ApiError::RdmaCm)?;
+        // use the context to distinguish if the connection is disconnected
+        if let Ok(0) =
+            unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+        {
+            cmid.disconnect().map_err(ApiError::RdmaCm)?;
+        }
 
-        let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED;
-        let ec_handle = cmid.event_channel().as_handle();
-        let _event = self.wait_cm_event(&ec_handle, event_type).await?;
+        // No need to wait
+        // let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_DISCONNECTED;
+        // let ec_handle = cmid.event_channel().as_handle();
+        // let _event = self.wait_cm_event(&ec_handle, event_type).await?;
 
-        log::warn!("Disconnect returned, cmid: {:?}", cmid);
+        log::debug!("Disconnect returned, cmid: {:?}", cmid);
         Ok(())
     }
 
     pub(crate) fn destroy_id(&self, cmid: &interface::CmId) -> Result<()> {
         log::debug!("DestroyId, cmid: {:?}", cmid);
-        self.resource().cmid_table.close_resource(&cmid.0)?;
-        log::warn!("DestroyId returned, cmid: {:?}", cmid);
+        // NOTE(cjr): Must drop the buffer in event_channel first to rdma_ack_cm_event. Otherwise,
+        // the dropping of CmId will be blocked. This will block multiple engines including
+        // rpc_adapter::AcceptorEngine and CmEngine.
+        let maybe_id = self.resource().cmid_table.close_resource(&cmid.0)?;
+
+        // NOTE(cjr): This code following is very ugly. Ultimately the goal is to drop CmEvents
+        // before destroying CmId before dropping EventChannel
+        // If EventChannel is dropped before CmId, this is immediately UB.
+        // TODO(cjr): refactor the following code
+
+        let ec = if let Some(cmid) = maybe_id.as_ref() {
+            let ec_handle = cmid.event_channel().as_handle();
+            log::debug!("destroy_id: before ec_handle: {:?}", ec_handle);
+            let event_channel = self
+                .resource()
+                .event_channel_table
+                .close_resource(&ec_handle)?;
+            assert!(
+                event_channel.is_some(),
+                "Please ensure event_channel is dropped before dropping CmId"
+            );
+
+            let event_channel = event_channel.unwrap();
+            event_channel.clear_event_queue();
+            log::debug!("destroy_id: after ec_handle: {:?}", ec_handle);
+            Some(event_channel)
+        } else {
+            None
+        };
+
+        drop(maybe_id);
+        drop(ec);
+        log::debug!("DestroyId returned, cmid: {:?}", cmid);
         Ok(())
     }
 
@@ -746,7 +818,8 @@ impl Ops {
         })
     }
 
-    async fn register_event_channel(
+    // Helper function. TODO(cjr): this function may block up to 1 milliseconds.
+    fn register_event_channel(
         &self,
         channel_handle: Handle,
         channel: &rdmacm::EventChannel,
@@ -754,23 +827,9 @@ impl Ops {
         self.state
             .shared
             .cm_manager
-            .lock()
-            .await
+            .blocking_lock()
             .register_event_channel(channel_handle, channel)?;
         Ok(())
-    }
-
-    fn get_one_cm_event(
-        &self,
-        event_channel_handle: &Handle,
-        event_type: rdma::ffi::rdma_cm_event_type::Type,
-    ) -> Option<rdmacm::CmEvent> {
-        self.state
-            .shared
-            .cm_manager
-            .try_lock()
-            .ok()
-            .and_then(|mut manager| manager.get_one_cm_event(event_channel_handle, event_type))
     }
 
     fn pop_first_cm_error(&self) -> Option<ApiError> {
@@ -792,7 +851,15 @@ impl Ops {
         //     event_channel_handle,
         //     event_type
         // );
-        if let Some(cm_event) = self.get_one_cm_event(event_channel_handle, event_type) {
+        let event_channel = match self
+            .resource()
+            .event_channel_table
+            .get(event_channel_handle)
+        {
+            Ok(ec) => ec,
+            Err(e) => return Some(Err(e.into())),
+        };
+        if let Some(cm_event) = event_channel.get_one_cm_event(event_type) {
             log::debug!(
                 "try_get_cm_event got, ec_handle: {:?}, cm_event: {:?}",
                 event_channel_handle,

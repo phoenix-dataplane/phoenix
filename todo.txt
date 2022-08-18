@@ -31,6 +31,7 @@ Other major tasks
 
 Real Applications
 - eRPC maastree
+- thpt is 10x lower than eRPC, why, increase req-window?
 - DeathStarBench seems to be running in containers. How to deal with
   this situation?
 
@@ -50,12 +51,18 @@ Security
   only this way r/o permission can be enforced
 
 RPC
+- too many different things called recv_mr
+- *reduce the default 128 buffers to 1 big buffer*
+- server cannot have too many connections, this becomes a problem for
+  eRPC's test (both fd recycle and maximal number of fds need fixed)
+- server cannot specify runtime (or thread pool)
+- need a multi-threaded throughput test (see if tput can scale linearly)
+- mrpc::stub::Server is not Send
 - merge mrpc::Error into mrpc::Status
 - *shared buffer among connections*
-- reduce the default 128 buffers to 1 big buffer
 - remove the dependencies in thread_local
-- change connect to async too
-- Change MessageErased to MessageOpaque
+- Make connect async too
+- Rename MessageErased to MessageOpaque
 - adding ReclaimRecvBuf back, but in another way
 - add a IoReactor in userland
 - credit implementation has issues
@@ -109,6 +116,7 @@ Engine Framework
 - SchedulingMode::Bundled
 
 Misc
+- prune unused features and unused dependencies
 - Properly garbage collect CmEngine
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
 -[x] *UDP socket send/recv fd must be nonblocking*
@@ -208,6 +216,8 @@ Transport Trait
 - Implement a socket datapath
 
 Performance & CPU efficiency
+- run latency test for more interations and use eRPC::Latency util
+- try enum_dispatch
 - Measure the time spent in userland
 - *Packaged scheduling policy*
 - *optimize userland latency*

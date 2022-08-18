@@ -1,4 +1,4 @@
-name = "benchmark/rpc_bench_tput_512b"
+name = "benchmark/rpc_bench_tput/rpc_bench_tput_512b"
 description = "Run rpc_bench benchmark"
 group = "rpc_bench_tput"
 timeout_secs = 10

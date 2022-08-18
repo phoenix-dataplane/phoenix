@@ -1,13 +1,15 @@
 use std::ptr::Unique;
 
 // use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use crossbeam::channel::{Receiver, Sender};
+// use crossbeam::channel::{Receiver, Sender};
 
 use interface::engine::EngineType;
 use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
 use ipc::mrpc::dp::RECV_RECLAIM_BS;
 
+pub(crate) use super::channel::create_channel;
+use super::channel::{Receiver, Sender};
 use crate::mrpc::meta_pool::MetaBufferPtr;
 
 // pub(crate) type IQueue = Receiver<Box<dyn RpcMessage>>;
@@ -38,15 +40,17 @@ pub(crate) struct RpcMessageRx {
 pub(crate) enum EngineRxMessage {
     RpcMessage(RpcMessageRx),
     Ack(RpcId, TransportStatus),
+    // (conn_id, status), we cannot know which rpc_id the receive corresponds
+    RecvError(Handle, TransportStatus),
 }
 
 pub(crate) trait Vertex {
     fn id(&self) -> &str;
     fn engine_type(&self) -> EngineType;
     fn tx_inputs(&mut self) -> &mut Vec<TxIQueue>;
-    fn tx_outputs(&self) -> &Vec<TxOQueue>;
+    fn tx_outputs(&mut self) -> &mut Vec<TxOQueue>;
     fn rx_inputs(&mut self) -> &mut Vec<RxIQueue>;
-    fn rx_outputs(&self) -> &Vec<RxOQueue>;
+    fn rx_outputs(&mut self) -> &mut Vec<RxOQueue>;
 }
 
 pub(crate) type TxIQueue = Receiver<EngineTxMessage>;
@@ -55,10 +59,12 @@ pub(crate) type TxOQueue = Sender<EngineTxMessage>;
 pub(crate) type RxIQueue = Receiver<EngineRxMessage>;
 pub(crate) type RxOQueue = Sender<EngineRxMessage>;
 
-pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
-    // tokio::sync::mpsc::unbounded_channel();
-    crossbeam::channel::unbounded()
-}
+// pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
+//     // tokio::sync::mpsc::unbounded_channel();
+//     crossbeam::channel::unbounded()
+// }
 
-pub(crate) type SendError<T> = crossbeam::channel::SendError<T>;
-pub(crate) type TryRecvError = crossbeam::channel::TryRecvError;
+// pub(crate) type SendError<T> = crossbeam::channel::SendError<T>;
+// pub(crate) type TryRecvError = crossbeam::channel::TryRecvError;
+pub(crate) type SendError<T> = super::channel::SendError<T>;
+pub(crate) type TryRecvError = super::channel::TryRecvError;

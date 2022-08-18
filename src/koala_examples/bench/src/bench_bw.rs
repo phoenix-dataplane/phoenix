@@ -23,20 +23,35 @@ pub struct Args {
     pub port: u16,
 
     /// Total number of iterations.
-    #[structopt(short = "n", long = "num", default_value = "5000")]
+    #[structopt(short, long, default_value = "5000")]
     pub num: usize,
 
     /// Number of warmup iterations.
-    #[structopt(short = "w", long = "warmup", default_value = "100")]
+    #[structopt(short, long, default_value = "100")]
     pub warmup: usize,
 
     /// Message size.
-    #[structopt(short = "s", long = "size", default_value = "65536")]
+    #[structopt(short, long, default_value = "65536")]
     pub size: usize,
+
+    /// Number of QPs in each thread.
+    #[structopt(long, default_value = "1")]
+    pub num_qp: usize,
+
+    /// Number of client threads. Map num_client_threads to num_server_threads
+    #[structopt(long, default_value = "1")]
+    pub num_client_threads: usize,
+
+    /// Number of server threads.
+    #[structopt(long, default_value = "1")]
+    pub num_server_threads: usize,
 }
 
 fn main() -> Result<(), Error> {
     let args = Args::from_args();
+
+    assert!(args.num_client_threads % args.num_server_threads == 0);
+
     let ctx = Context::new(
         Opts {
             verb: args.verb,
@@ -45,6 +60,9 @@ fn main() -> Result<(), Error> {
             num: args.num,
             warmup: args.warmup,
             size: args.size,
+            num_qp: args.num_qp,
+            num_client_threads: args.num_client_threads,
+            num_server_threads: args.num_server_threads,
         },
         Test::BW,
     );

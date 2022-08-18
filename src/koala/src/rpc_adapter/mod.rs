@@ -1,12 +1,16 @@
 //! this engine translate RPC messages into transport-level work requests / completions
+use std::alloc::LayoutError;
+
 use thiserror::Error;
 
 use crate::resource::Error as ResourceError;
-use crate::salloc::ControlPathError as SallocError;
+use crate::salloc::region;
 
 pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod module;
+#[allow(unused)]
+pub(crate) mod pool;
 pub(crate) mod serialization;
 pub(crate) mod state;
 pub(crate) mod ulib;
@@ -19,8 +23,12 @@ pub(crate) enum ControlPathError {
     Ulib(#[from] ulib::Error),
     #[error("Resource error: {0}")]
     Resource(#[from] ResourceError),
-    #[error("Salloc error: {0}")]
-    Salloc(#[from] SallocError),
+    #[error("Invalid layout: {0}")]
+    Layout(#[from] LayoutError),
+    #[error("SharedRegion allocate error: {0}")]
+    SharedRegion(#[from] region::Error),
+    #[error("{0}")]
+    InsertAddrMap(#[from] mrpc_marshal::AddressExists),
 
     // Below are errors that does not return to the user.
     #[error("Send command error")]

@@ -10,6 +10,7 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
+use super::group::EngineGroup;
 use super::{EngineContainer, EngineLocalStorage, EngineResult};
 
 thread_local! {
@@ -83,10 +84,13 @@ unsafe impl Sync for Runtime {}
 
 pub(crate) struct Runtime {
     /// engine id
-    pub(crate) _id: usize,
+    pub(crate) id: usize,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<RefCell<EngineContainer>>>,
+
+    // Whether the engine is dedicated or shared.
+    pub(crate) dedicated: AtomicBool,
 
     pub(crate) new_pending: AtomicBool,
     pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
@@ -95,8 +99,9 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn new(id: usize) -> Self {
         Runtime {
-            _id: id,
+            id,
             running: RefCell::new(Vec::new()),
+            dedicated: AtomicBool::new(false),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
         }
@@ -114,18 +119,40 @@ impl Runtime {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
-    pub(crate) fn add_engine(&self, engine: EngineContainer) {
-        self.pending.lock().push(RefCell::new(engine));
+    #[inline]
+    pub(crate) fn is_dedicated(&self) -> bool {
+        self.dedicated.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    // pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
+    pub(crate) fn add_engine(&self, engine_group: EngineGroup, dedicated: bool) {
+        // TODO(cjr): FIXME
+        // immediate update the dedicate bit
+        self.dedicated.fetch_or(dedicated, Ordering::Release);
+
+        log::info!("Runtime {}, adding {:?}", self.id, engine_group);
+
+        // adding the engines
+        // TODO(cjr): Also record the engine_group.id so that when moving engines around runtime,
+        // we can know which engines should be moved together.
+        let mut pending = self.pending.lock();
+        for engine in engine_group.engines {
+            pending.push(RefCell::new(engine));
+        }
         self.new_pending.store(true, Ordering::Release);
     }
 
     #[inline]
     fn save_energy_or_shutdown(&self, last_event_ts: Instant) {
-        // goes into sleep mode after 100 us
-        const SLEEP_THRESHOLD: Duration = Duration::from_micros(100);
+        // THRES:DURA = 20:1 will lose around 10% bandwidth which is unacceptable,
+        // 200:1 looks good so far.
+
+        // goes into sleep mode after 1000 us
+        const SLEEP_THRESHOLD: Duration = Duration::from_micros(1000);
         const SLEEP_DURATION: Duration = Duration::from_micros(5);
-        // goes into deep sleep after 1 ms
-        const DEEP_SLEEP_THRESHOLD: Duration = Duration::from_millis(1);
+        // goes into deep sleep after 10 ms
+        const DEEP_SLEEP_THRESHOLD: Duration = Duration::from_millis(10);
         const DEEP_SLEEP_DURATION: Duration = Duration::from_micros(50);
         // shutdown after idle for 1 second
         const SHUTDOWN_THRESHOLD: Duration = Duration::from_secs(1);
@@ -134,11 +161,17 @@ impl Runtime {
 
         // park the engine only then it's empty
         if dura > SHUTDOWN_THRESHOLD && self.is_empty() {
+            tracing::trace!("Runtime {} is shutting down", self.id);
             thread::park();
+            tracing::trace!("Runtime {} is restarted", self.id);
         } else if dura > DEEP_SLEEP_THRESHOLD {
+            tracing::trace!("Runtime {} is going to deep sleep", self.id);
             thread::park_timeout(DEEP_SLEEP_DURATION);
+            tracing::trace!("Runtime {} has waked from deep sleep", self.id);
         } else if dura > SLEEP_THRESHOLD {
+            tracing::trace!("Runtime {} is going to sleep", self.id);
             thread::park_timeout(SLEEP_DURATION);
+            tracing::trace!("Runtime {} has waked from sleep", self.id);
         }
     }
 
@@ -204,6 +237,10 @@ impl Runtime {
                 let desc = engine.borrow().description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
+            }
+
+            if self.is_empty() {
+                self.dedicated.store(false, Ordering::Release);
             }
 
             // move newly added runtime to the scheduling queue

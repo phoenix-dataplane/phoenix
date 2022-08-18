@@ -83,6 +83,12 @@ pub struct ProfilingConfig {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Group {
+    pub groups: Vec<Vec<String>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -100,6 +106,8 @@ pub struct Config {
     pub transport_tcp: Option<TcpTransportConfig>,
     pub node: Vec<Node>,
     pub edges: Edges,
+    #[serde(default)]
+    pub group: Group,
 }
 
 impl Config {

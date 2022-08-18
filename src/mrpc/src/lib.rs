@@ -36,6 +36,7 @@ use std::io;
 use thiserror::Error;
 
 use interface::engine::EngineType;
+use interface::Handle;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
 use libkoala::_rx_recv_impl as rx_recv_impl;
@@ -79,7 +80,6 @@ impl Context {
 
 // mRPC collections
 pub mod alloc;
-// pub mod codegen;  // use include! macro
 
 pub mod stub;
 
@@ -89,6 +89,9 @@ pub mod salloc;
 #[macro_use]
 pub mod macros;
 
+pub use interface::rpc::Token;
+
+#[doc(hidden)]
 pub use interface::rpc::MessageErased;
 
 pub mod rref;
@@ -99,6 +102,9 @@ pub use wref::{IntoWRef, WRef};
 
 pub mod status;
 pub use status::{Code, Status};
+
+#[cfg(feature = "timing")]
+pub(crate) mod timing;
 
 /// A re-export of [`async-trait`](https://docs.rs/async-trait) for use with codegen.
 pub use async_trait::async_trait;
@@ -115,4 +121,6 @@ pub enum Error {
     NoAddrResolved,
     #[error("Connect failed: {0}")]
     Connect(interface::Error),
+    #[error("Disconnected: {0:?}")]
+    Disconnect(Handle),
 }

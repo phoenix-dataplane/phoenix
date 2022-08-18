@@ -63,11 +63,9 @@ pub fn generate(
     let dispatch = quote! {
         #![feature(strict_provenance)]
 
-        use std::collections::BTreeMap;
-
         use interface::rpc::{MessageMeta, RpcMsgType};
         use mrpc_marshal::{SgList, ExcavateContext, ShmRecvMr, RpcMessage};
-        use mrpc_marshal::{MarshalError, UnmarshalError};
+        use mrpc_marshal::{MarshalError, UnmarshalError, AddressMap};
 
         mod codegen {
             include!(#include_file);
@@ -97,7 +95,7 @@ pub fn generate(
         #[no_mangle]
         pub unsafe extern "Rust" fn unmarshal(
             meta: &MessageMeta,
-            ctx: &mut ExcavateContext<spin::Mutex<BTreeMap<usize, ShmRecvMr>>>
+            ctx: &mut ExcavateContext<AddressMap>,
         ) -> Result<(usize, usize), UnmarshalError> {
             let addr_shm = match meta.msg_type {
                 RpcMsgType::Request => {

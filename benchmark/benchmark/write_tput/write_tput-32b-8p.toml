@@ -1,0 +1,92 @@
+name = "benchmark/write_tput/write_tput-32b-8p"
+description = "Run RPS benchmark for RDMA write 8 Processes"
+group = "write_tput"
+timeout_secs = 60
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5000"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5001"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5002"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5003"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5004"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5005"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5006"
+
+[[worker]]
+host = "danyang-06"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 --port 5007"
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5000"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5001"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5002"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5003"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5004"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5005"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5006"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]
+
+[[worker]]
+host = "danyang-05"
+bin = "bench_bw"
+args = "write -n 10000000 -s 32 -c rdma0.danyang-06 --port 5007"
+dependencies = [0, 1, 2, 3, 4, 5, 6, 7]

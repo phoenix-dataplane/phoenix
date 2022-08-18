@@ -2,6 +2,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::os::unix::io::AsRawFd;
 use std::path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -12,6 +13,9 @@ use serde::Deserialize;
 use structopt::StructOpt;
 
 pub mod line_reader;
+use crate::line_reader::{LineReader, NonBlockingLineReader};
+
+pub mod tee;
 
 // read from config.toml
 #[derive(Debug, Clone, Deserialize)]
@@ -33,6 +37,8 @@ struct WorkerSpec {
     host: String,
     bin: String,
     args: String,
+    #[serde(default)]
+    dependencies: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +76,14 @@ struct Opt {
     /// Output directory of log files
     #[structopt(short, long)]
     output_dir: Option<path::PathBuf>,
+
+    /// Do out print to stdout
+    #[structopt(short, long)]
+    silent: bool,
+
+    /// Dry-run. Use this option to check the configs
+    #[structopt(long)]
+    dry_run: bool,
 }
 
 fn open_with_create_append<P: AsRef<path::Path>>(path: P) -> fs::File {
@@ -89,11 +103,24 @@ fn get_command_str(cmd: &Command) -> String {
         .join(" ")
 }
 
+fn create_non_blocking_reader<R: io::Read + AsRawFd + 'static, W: io::Write + 'static>(
+    r: R,
+    writer: Option<W>,
+) -> Box<dyn NonBlockingLineReader> {
+    if let Some(w) = writer {
+        Box::new(LineReader::new(tee::TeeReader::new(r, w)))
+    } else {
+        Box::new(LineReader::new(tee::TeeReader::new(r, tee::DevNull)))
+    }
+}
+
 fn wait_command(
     mut cmd: Command,
     mut kill_cmd: Option<Command>,
     timeout: Duration,
     host: &str,
+    stdout_writer: Option<fs::File>,
+    stderr_writer: Option<fs::File>,
 ) -> io::Result<()> {
     let start = Instant::now();
     let cmd_str = get_command_str(&cmd);
@@ -103,8 +130,14 @@ fn wait_command(
         .spawn()
         .unwrap_or_else(|e| panic!("Failed to spawn '{cmd_str}' because: {e}"));
 
-    let mut stdout_reader = child.stdout.take().map(line_reader::LineReader::new);
-    let mut stderr_reader = child.stderr.take().map(line_reader::LineReader::new);
+    let mut stdout_reader = child
+        .stdout
+        .take()
+        .map(|r| create_non_blocking_reader(r, stdout_writer));
+    let mut stderr_reader = child
+        .stderr
+        .take()
+        .map(|r| create_non_blocking_reader(r, stderr_writer));
 
     loop {
         if let Some(reader) = stdout_reader.as_mut() {
@@ -167,7 +200,7 @@ fn wait_command(
             thread::sleep(Duration::from_millis(1000));
 
             if let Some(kill_cmd) = kill_cmd.take() {
-                wait_command(kill_cmd, None, Duration::from_secs(2), "")?;
+                wait_command(kill_cmd, None, Duration::from_secs(2), "", None, None)?;
             }
         }
     }
@@ -181,6 +214,7 @@ fn start_ssh(
     worker: WorkerSpec,
     config: &Config,
     envs: &[(String, String)],
+    delay: Duration,
 ) -> impl FnOnce() {
     let benchmark_name = benchmark.name.clone();
     let host = worker.host.clone();
@@ -197,12 +231,19 @@ fn start_ssh(
         Duration::from_secs(opt.global_timeout_secs)
     };
     let cargo_dir = config.workdir.clone();
+    let dry_run = opt.dry_run;
+    let silent = opt.silent;
 
     move || {
+        // using stupid timers to enforce launch order.
+        thread::sleep(delay);
+
         let (ip, port) = (&host, "22");
 
         let mut cmd = Command::new("ssh");
 
+        let mut stdout_writer = None;
+        let mut stderr_writer = None;
         if let Some(output_dir) = output_dir {
             let stdout_file = output_dir
                 .join(format!("{}_{}.log", worker.bin, ip))
@@ -213,10 +254,22 @@ fn start_ssh(
 
             let stdout = open_with_create_append(stdout_file);
             let stderr = open_with_create_append(stderr_file);
-            cmd.stdout(stdout).stderr(stderr);
+            if silent {
+                // This has less indirection and will be more efficient.
+                cmd.stdout(stdout).stderr(stderr);
+            } else {
+                stdout_writer = Some(stdout);
+                stderr_writer = Some(stderr);
+                cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            }
         } else {
             // collect the result to local stdout, similar to mpirun
             cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            if silent {
+                log::warn!(
+                    "You may want to specify `--output=<output>` to capture the running log"
+                );
+            }
         }
 
         cmd.arg("-oStrictHostKeyChecking=no")
@@ -231,7 +284,8 @@ fn start_ssh(
         let env_path = env::var("PATH").expect("failed to get PATH");
         if !debug_mode {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
+                // "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --release --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 target/release/{} {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -240,7 +294,7 @@ fn start_ssh(
             ));
         } else {
             cmd.arg(format!(
-                "export PATH={} && cd {} && {} numactl -N 0 -m 0 cargo run --bin {} -- {}",
+                "export PATH={} && cd {} && {} numactl -N 0 -m 0 target/debug/{} {}",
                 env_path,
                 cargo_dir.display(),
                 env_str,
@@ -262,8 +316,18 @@ fn start_ssh(
             .arg(ip);
         kill_cmd.arg(format!("pkill -f {}", worker.bin));
 
-        // poll command status until timeout or user Ctrl-C
-        wait_command(cmd, Some(kill_cmd), timeout, &host).unwrap();
+        if !dry_run {
+            // poll command status until timeout or user Ctrl-C
+            wait_command(
+                cmd,
+                Some(kill_cmd),
+                timeout,
+                &host,
+                stdout_writer,
+                stderr_writer,
+            )
+            .unwrap();
+        }
     }
 }
 
@@ -296,7 +360,7 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     log::debug!("building command: {}", cmd_str);
 
     let timeout_60s = Duration::from_secs(60);
-    wait_command(cargo_build_cmd, None, timeout_60s, "")?;
+    wait_command(cargo_build_cmd, None, timeout_60s, "", None, None)?;
     Ok(())
 }
 
@@ -385,7 +449,8 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
     };
 
     // bulid benchmark cases
-    let binaries: Vec<String> = spec.worker.iter().map(|s| s.bin.clone()).collect();
+    let mut binaries: Vec<String> = spec.worker.iter().map(|s| s.bin.clone()).collect();
+    binaries.dedup();
     let cargo_dir = &config.workdir;
     build_all(&binaries, cargo_dir)?;
 
@@ -397,12 +462,42 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
         spec.description
     );
 
-    // start workers
+    // calculate a start time for each worker according to their topological order
+    use std::collections::VecDeque;
+    let n = spec.worker.len();
+    let mut start_ts = vec![0; n];
+    let mut g = vec![vec![]; n];
+    let mut indegree = vec![0; n];
+    let mut queue = VecDeque::new();
+    for (i, w) in spec.worker.iter().enumerate() {
+        indegree[i] = w.dependencies.len();
+        if w.dependencies.is_empty() {
+            queue.push_back(i);
+        }
+        for &j in &w.dependencies {
+            g[j].push(i);
+        }
+    }
+    while let Some(x) = queue.pop_front() {
+        log::trace!("x: {}, start_ts[x]: {}", x, start_ts[x]);
+        for &y in &g[x] {
+            log::trace!("(x -> y): ({} -> {}), start_ts[y]: {}", x, y, start_ts[y]);
+            start_ts[y] = start_ts[y].max(start_ts[x] + 1);
+            indegree[y] -= 1;
+            if indegree[y] == 0 {
+                queue.push_back(y);
+            }
+        }
+    }
+
+    log::debug!("start_ts: {:?}", start_ts);
+
+    // start workers based on their start_ts
     let mut handles = vec![];
-    for w in &spec.worker {
-        let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs));
+    for (i, w) in spec.worker.iter().enumerate() {
+        let delay = Duration::from_millis(start_ts[i] * 1000);
+        let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs, delay));
         handles.push(h);
-        thread::sleep(Duration::from_millis(1000));
     }
 
     // join

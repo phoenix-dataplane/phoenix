@@ -1,9 +1,11 @@
-use std::collections::hash_map;
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use fnv::FnvHashMap as HashMap;
+use dashmap::mapref::entry;
+use dashmap::DashMap;
+use fnv::FnvBuildHasher;
+
 use thiserror::Error;
 
 use interface::Handle;
@@ -17,20 +19,21 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub(crate) struct ResourceTableGeneric<K, R> {
-    table: spin::Mutex<HashMap<K, Entry<R>>>,
+pub(crate) struct ResourceTableGeneric<K: Eq + std::hash::Hash, R> {
+    table: DashMap<K, Entry<R>, FnvBuildHasher>,
 }
 
 pub(crate) type ResourceTable<R> = ResourceTableGeneric<Handle, R>;
 
-impl<K, R> Default for ResourceTableGeneric<K, R> {
+impl<K: Eq + std::hash::Hash, R> Default for ResourceTableGeneric<K, R> {
     fn default() -> Self {
         ResourceTableGeneric {
-            table: spin::Mutex::new(HashMap::default()),
+            table: DashMap::default(),
         }
     }
 }
 
+// TODO(cjr): maybe remove this Entry, since DashMap already returns a Ref/RefMut.
 #[derive(Debug)]
 pub(crate) struct Entry<R> {
     refcnt: AtomicUsize,
@@ -66,54 +69,46 @@ impl<R> Entry<R> {
 }
 
 impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
-    pub(crate) fn inner(&self) -> &spin::Mutex<HashMap<K, Entry<R>>> {
+    pub(crate) fn inner(&self) -> &DashMap<K, Entry<R>, FnvBuildHasher> {
         &self.table
     }
 
     pub(crate) fn insert(&self, h: K, r: R) -> Result<(), Error> {
-        match self.table.lock().insert(h, Entry::new(r, 1)) {
+        match self.table.insert(h, Entry::new(r, 1)) {
             Some(_) => Err(Error::Exists),
             None => Ok(()),
         }
     }
 
     pub(crate) fn get(&self, h: &K) -> Result<Arc<R>, Error> {
-        self.table
-            .lock()
-            .get(h)
-            .map(|r| r.data())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.data()).ok_or(Error::NotFound)
     }
 
     pub(crate) fn get_dp(&self, h: &K) -> Result<Arc<R>, Error> {
-        self.table
-            .lock()
-            .get(h)
-            .map(|r| r.data())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.data()).ok_or(Error::NotFound)
     }
 
     /// Occupy en entry by only inserting a value but not incrementing the reference count.
     pub(crate) fn occupy_or_create_resource(&self, h: K, r: R) {
-        match self.table.lock().entry(h) {
-            hash_map::Entry::Occupied(_e) => {
+        match self.table.entry(h) {
+            entry::Entry::Occupied(_e) => {
                 // TODO(cjr): check if they have the same handle
                 mem::forget(r);
             }
-            hash_map::Entry::Vacant(e) => {
+            entry::Entry::Vacant(e) => {
                 e.insert(Entry::new(r, 0));
             }
         }
     }
 
     pub(crate) fn open_or_create_resource(&self, h: K, r: R) {
-        match self.table.lock().entry(h) {
-            hash_map::Entry::Occupied(mut e) => {
+        match self.table.entry(h) {
+            entry::Entry::Occupied(mut e) => {
                 // TODO(cjr): check if they have the same handle
                 e.get_mut().open();
                 mem::forget(r);
             }
-            hash_map::Entry::Vacant(e) => {
+            entry::Entry::Vacant(e) => {
                 e.insert(Entry::new(r, 1));
             }
         }
@@ -121,21 +116,21 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
 
     pub(crate) fn open_resource(&self, h: &K) -> Result<(), Error> {
         // increase the refcnt
-        self.table
-            .lock()
-            .get(h)
-            .map(|r| r.open())
-            .ok_or(Error::NotFound)
+        self.table.get(h).map(|r| r.open()).ok_or(Error::NotFound)
     }
 
-    pub(crate) fn close_resource(&self, h: &K) -> Result<(), Error> {
-        let mut table = self.table.lock();
-        let close = table.get(h).map(|r| r.close()).ok_or(Error::NotFound)?;
+    /// Reduces the reference counter by one. Returns the resource when it is the last instance
+    /// in the table.
+    pub(crate) fn close_resource(&self, h: &K) -> Result<Option<Arc<R>>, Error> {
+        let close = self
+            .table
+            .get(h)
+            .map(|r| r.close())
+            .ok_or(Error::NotFound)?;
         if close {
-            let r = table.remove(h).unwrap();
-            // just to make the drop explicit
-            mem::drop(r);
+            let r = self.table.remove(h).unwrap();
+            return Ok(Some(r.1.data()));
         }
-        Ok(())
+        Ok(None)
     }
 }

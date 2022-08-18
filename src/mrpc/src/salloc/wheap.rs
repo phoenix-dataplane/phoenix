@@ -158,28 +158,29 @@ pub struct SharedHeapAllocator;
 impl SharedHeapAllocator {
     #[inline]
     pub(crate) fn query_backend_addr(addr: usize, _align: usize) -> usize {
+        return addr;
         // TODO(cjr, wyj): Change to HashMap
         // align can be obtained by addr + layout through ZoneAllocator
-        let guard = SHARED_HEAP_REGIONS.lock();
-        match guard.range(0..=addr).last() {
-            Some(kv) => {
-                assert!(
-                    *kv.0 <= addr && *kv.0 + kv.1.len() > addr,
-                    "addr: {:0x}, page_addr: {:0x}, page_len: {}",
-                    addr,
-                    *kv.0,
-                    kv.1.len()
-                );
-                // retrieve offset within the mr
-                let offset = addr & (kv.1.align - 1);
-                kv.1.remote_addr() + offset
-            }
-            None => panic!(
-                "addr: {:0x} not found in allocated pages, number of pages allocated: {}",
-                addr,
-                guard.len()
-            ),
-        }
+        // let guard = SHARED_HEAP_REGIONS.lock();
+        // match guard.range(0..=addr).last() {
+        //     Some(kv) => {
+        //         assert!(
+        //             *kv.0 <= addr && *kv.0 + kv.1.len() > addr,
+        //             "addr: {:0x}, page_addr: {:0x}, page_len: {}",
+        //             addr,
+        //             *kv.0,
+        //             kv.1.len()
+        //         );
+        //         // retrieve offset within the mr
+        //         let offset = addr & (kv.1.align - 1);
+        //         kv.1.remote_addr() + offset
+        //     }
+        //     None => panic!(
+        //         "addr: {:0x} not found in allocated pages, number of pages allocated: {}",
+        //         addr,
+        //         guard.len()
+        //     ),
+        // }
     }
 }
 
@@ -331,7 +332,7 @@ impl SharedHeapAllocator {
     }
 
     pub(crate) unsafe fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
-        // backend deallocation is handled by SharedRegion's drop together with global GarbageCollector
+        // backend deallocation is handled by SharedRegion::drop together with global GarbageCollector
         use slabmalloc::Allocator;
         match layout.size() {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {

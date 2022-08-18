@@ -31,11 +31,21 @@ pub mod greeter_client {
     }
 
     impl GreeterClient {
+        // NOTE(cjr): We implement two separate `update_protos` for client and server because they
+        // may find the proto file from differnt path (even from two different machines).
+        fn update_protos() -> Result<(), ::mrpc::Error> {
+            let srcs = [include_str!(
+                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+            )];
+            ::mrpc::stub::update_protos(srcs.as_slice())
+        }
+
         pub fn connect<A: std::net::ToSocketAddrs>(dst: A) -> Result<Self, ::mrpc::Error> {
             // use the cmid builder to create a CmId.
             // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
             // cmid communicates directly to the transport engine. you need to pass your raw rpc
             // request/response to/from the rpc engine rather than the transport engine.
+            Self::update_protos()?;
             let stub = ClientStub::connect(dst).unwrap();
             Ok(Self {
                 stub,
@@ -84,7 +94,16 @@ pub mod greeter_server {
     }
 
     impl<T: Greeter> GreeterServer<T> {
+        fn update_protos() -> Result<(), ::mrpc::Error> {
+            let srcs = [include_str!(
+                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+            )];
+            ::mrpc::stub::update_protos(srcs.as_slice())
+        }
+
         pub fn new(inner: T) -> Self {
+            // TODO: handle error here
+            Self::update_protos().unwrap();
             Self { inner }
         }
     }
@@ -98,25 +117,17 @@ pub mod greeter_server {
     impl<T: Greeter> Service for GreeterServer<T> {
         async fn call(
             &self,
-            req: mrpc::MessageErased,
+            req_opaque: mrpc::MessageErased,
             read_heap: &mrpc::salloc::ReadHeap,
         ) -> mrpc::MessageErased {
-            let conn_id = req.meta.conn_id;
-            let call_id = req.meta.call_id;
-            let func_id = req.meta.func_id;
+            let func_id = req_opaque.meta.func_id;
             match func_id {
                 // TODO(cjr): fill this with the right func_id
                 3687134534u32 => {
-                    let req = mrpc::RRef::new(&req, read_heap);
+                    let req = mrpc::RRef::new(&req_opaque, read_heap);
                     let res = self.inner.say_hello(req).await;
                     match res {
-                        Ok(reply) => ::mrpc::stub::service_post_handler(
-                            reply,
-                            conn_id,
-                            Self::SERVICE_ID,
-                            func_id,
-                            call_id,
-                        ),
+                        Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),
                         Err(_status) => {
                             todo!();
                         }
