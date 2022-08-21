@@ -85,7 +85,7 @@ pub fn generate<T: Service>(
                 async fn call(
                     &self,
                     req_opaque: ::mrpc::MessageErased,
-                    read_heap: &::mrpc::salloc::ReadHeap,
+                    read_heap: std::sync::Arc<::mrpc::salloc::ReadHeap>,
                 ) -> ::mrpc::MessageErased {
                     let func_id = req_opaque.meta.func_id;
 
@@ -165,7 +165,7 @@ fn generate_methods<T: Service>(
         let match_branch = quote::quote! {
             #func_id => {
                 // let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                let req = ::mrpc::RRef::new(&req_opaque, read_heap);
+                let req = ::mrpc::RRef::new(&req_opaque, &read_heap);
                 let res = self.inner.#func_ident(req).await;
                 match res {
                     Ok(reply) => {

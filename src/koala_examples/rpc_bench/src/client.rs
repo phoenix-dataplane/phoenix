@@ -193,7 +193,7 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs).await?;
 
         println!(
-            "duration: {:?}, bandwidth: {:?}, rate: {:.5} Mrps",
+            "duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
             dura,
             8e-9 * total_bytes as f64 / dura.as_secs_f64(),
             1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),

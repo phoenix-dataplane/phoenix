@@ -23,7 +23,7 @@ mod latency;
 mod logging;
 
 // Workload params
-const APP_MAX_REQ_WINDOW: usize = 8;
+const APP_MAX_REQ_WINDOW: usize = 256;
 const PRINT_STATS_PERIOD_MS: u64 = 500;
 
 static TERMINATE: AtomicBool = AtomicBool::new(false);
@@ -117,6 +117,7 @@ fn generate_workload(opt: &Opt) -> Vec<Query> {
 
 #[derive(Debug, Clone)]
 struct Client {
+    tid: usize,
     tput_t0: Instant,
     num_resps_tot: usize,
     point_latency: latency::Latency,
@@ -124,13 +125,53 @@ struct Client {
 }
 
 impl Client {
-    fn new() -> Self {
+    fn new(tid: usize) -> Self {
         Self {
+            tid,
             tput_t0: Instant::now(),
             num_resps_tot: 0,
             point_latency: latency::Latency::new(),
             range_latency: latency::Latency::new(),
         }
+    }
+
+    fn print_stats(&mut self, stats: &[ArcSwap<CachePadded<Stats>>]) {
+        let thread_id = self.tid;
+        let dura = self.tput_t0.elapsed();
+        let tput_mrps = self.num_resps_tot as f64 / dura.as_secs_f64() / 1e6;
+        let lat_us_50 = self.point_latency.perc(0.50) as f64 / 10.0;
+        let lat_us_99 = self.point_latency.perc(0.99) as f64 / 10.0;
+        let range_lat_us_99 = self.range_latency.perc(0.99);
+
+        stats[thread_id].store(Arc::new(CachePadded::new(Stats {
+            mrps: tput_mrps,
+            lat_us_50,
+            lat_us_99,
+        })));
+
+        println!(
+            "Client {thread_id}. Tput = {tput_mrps:.03} Mrps. \
+             Point Latency (us) = {lat_us_50:.02}, {lat_us_99:.02}. \
+             Range Latency (us) = {range_lat_us_99}"
+        );
+
+        if thread_id == 0 {
+            let mut accum = Stats::new();
+            for s in stats {
+                // arc_swap::Guard -> Arc -> CachePadded -> Stats
+                accum += ***s.load();
+            }
+            accum.lat_us_50 /= stats.len() as f64;
+            accum.lat_us_99 /= stats.len() as f64;
+            // write accum to file
+            let accum_text = accum.to_row();
+            println!("{accum_text}");
+        }
+
+        self.num_resps_tot = 0;
+        self.point_latency.reset();
+        self.range_latency.reset();
+        self.tput_t0 = Instant::now();
     }
 }
 
@@ -155,50 +196,13 @@ impl Stats {
         Self::default()
     }
 
-    fn header_str() -> &'static str {
+    const fn header_str() -> &'static str {
         "mrps lat_us_50 lat_us_99"
     }
 
     fn to_row(&self) -> String {
         format!("{} {} {}", self.mrps, self.lat_us_50, self.lat_us_99)
     }
-}
-
-fn print_stats(client: &mut Client, stats: &[ArcSwap<CachePadded<Stats>>], thread_id: usize) {
-    let dura = client.tput_t0.elapsed();
-    let tput_mrps = client.num_resps_tot as f64 / dura.as_secs_f64() / 1e6;
-    let lat_us_50 = client.point_latency.perc(0.50) as f64 / 10.0;
-    let lat_us_99 = client.point_latency.perc(0.99) as f64 / 10.0;
-    let range_lat_us_99 = client.range_latency.perc(0.99);
-
-    stats[thread_id].store(Arc::new(CachePadded::new(Stats {
-        mrps: tput_mrps,
-        lat_us_50,
-        lat_us_99,
-    })));
-
-    println!(
-        "Client {thread_id}. Tput = {tput_mrps:.03} Mrps. \
-         Point Latency (us) = {lat_us_50:.02}, {lat_us_99:.02}. \
-         Range Latency (us) = {range_lat_us_99}"
-    );
-
-    if thread_id == 0 {
-        let mut accum = Stats::new();
-        for s in stats {
-            // arc_swap::Guard -> Arc -> CachePadded -> Stats
-            accum += ***s.load();
-        }
-        accum.lat_us_50 /= stats.len() as f64;
-        accum.lat_us_99 /= stats.len() as f64;
-        // write accum to file
-        println!("{}", accum.to_row());
-    }
-
-    client.num_resps_tot = 0;
-    client.point_latency.reset();
-    client.range_latency.reset();
-    client.tput_t0 = Instant::now();
 }
 
 fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
@@ -215,7 +219,11 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
             let opt = &opt;
             let stats = &stats;
             handles.push(s.spawn(move || {
-                let mut client = Client::new();
+                let mut client = Client::new(tid);
+
+                if tid == 0 {
+                    println!("{}", Stats::header_str());
+                }
 
                 // TODO(cjr): eRPC sets up a dedicate connection to a server thread from each
                 // client to balance the load. This is not a common operation in other RPC
@@ -294,7 +302,7 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 if timer.elapsed() > print_period {
                                     timer = Instant::now();
-                                    print_stats(&mut client, &stats, tid);
+                                    client.print_stats(stats);
                                 }
                             }
                         };
