@@ -3,7 +3,6 @@ use std::pin::Pin;
 
 use futures::future::BoxFuture;
 
-// use super::manager::EngineInfo;
 use super::{Engine, EngineResult};
 
 /// A container that bundles a `Box<dyn Engine>` and its `Future` object so that the caller of this
@@ -31,10 +30,6 @@ pub(crate) struct EngineContainer {
     /// `Pending::Ready`).
     engine: Pin<Box<dyn Engine>>,
     // info: EngineInfo,
-
-    // indicator: Indicator,
-    // desc: String,
-    // els: Option<&'static dyn EngineLocalStorage>,
 }
 
 /// Extending the future's lifetime from 'a to 'static.
@@ -50,17 +45,6 @@ unsafe fn extend_lifetime<'a>(
 
 impl EngineContainer {
     pub(crate) fn new<E: Engine + 'static>(engine: E) -> Self {
-        // let indicator = Indicator::new(0);
-        // engine.set_tracker(indicator.clone());
-
-        // let desc = engine.description();
-        // SAFETY: apparently EngineLocalStorage cannot be 'static,
-        // The caller must ensure that the els() is called within an engine.
-        // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
-        // It points to some states attatched to the engine
-        // hence in reality its lifetime is bound by engine (future) s lifetime
-        // let els = unsafe { engine.els() };
-
         let mut pinned = Box::pin(engine);
         let future = {
             let fut = pinned.as_mut().activate();
@@ -75,9 +59,6 @@ impl EngineContainer {
         Self {
             future,
             engine: pinned,
-            // indicator,
-            // desc,
-            // els,
         }
     }
 
