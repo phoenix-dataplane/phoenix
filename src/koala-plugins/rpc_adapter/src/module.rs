@@ -1,5 +1,4 @@
 use anyhow::{anyhow, bail, Result};
-use mrpc::module::MrpcModule;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -142,11 +141,11 @@ impl KoalaModule for RpcAdapterModule {
     }
 
     fn engines(&self) -> &[EngineType] {
-        MrpcModule::ENGINES
+        Self::ENGINES
     }
 
     fn dependencies(&self) -> &[EnginePair] {
-        MrpcModule::DEPENDENCIES
+        Self::DEPENDENCIES
     }
 
     fn check_compatibility(&self, _prev: Option<&Version>, _curr: &HashMap<&str, Version>) -> bool {

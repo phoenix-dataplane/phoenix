@@ -18,7 +18,7 @@ members = [
   "src/koala-plugins/mrpc/plugin",
   "src/koala-plugins/policy/ratelimit",
   "src/koala-plugins/policy/ratelimit/plugin",
-  "src/koala-utils",
+  "src/koalactl",
   "src/mrpc-derive",
   "src/mrpc-marshal",
   "src/rdma",

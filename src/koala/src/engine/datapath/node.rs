@@ -400,6 +400,9 @@ where
         }
         tx_inputs_await_replace.remove(&receiver_index);
         sender_tx_outputs[edge.2] = (edge.1, edge.3);
+        dbg!(edge.0);
+        dbg!(edge.1);
+        dbg!(edge.2, edge.3);
         sender_endpoint.tx_outputs()[edge.2] = sender;
 
         let receiver_endpoint = engines
@@ -468,7 +471,7 @@ where
         receiver_rx_inputs[edge.3] = (edge.0, edge.2);
         receiver_endpoint.rx_inputs()[edge.3] = receiver;
     }
-    if !rx_inputs_await_replace.is_empty() || rx_outputs_await_replace.is_empty() {
+    if !rx_inputs_await_replace.is_empty() || !rx_outputs_await_replace.is_empty() {
         return Err(Error::DanglingEndpoint);
     }
 

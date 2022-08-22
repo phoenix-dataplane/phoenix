@@ -38,9 +38,12 @@ struct Opts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Config {
-    module: Vec<PluginDescriptor>,
-    addon: Vec<PluginDescriptor>,
+    #[serde(default)]
+    modules: Vec<PluginDescriptor>,
+    #[serde(default)]
+    addons: Vec<PluginDescriptor>,
     flush: Option<bool>,
     detach_group: Option<bool>,
 }
@@ -68,13 +71,13 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    assert!(config.module.is_empty() ^ config.addon.is_empty(), "modules and addons cannot be upgraded at the same time");
-    let (plugins, ty) = if config.module.is_empty() {
-        (config.addon, PluginType::Addon)
-    } else { (config.module, PluginType::Module) };
+    assert!(config.modules.is_empty() ^ config.addons.is_empty(), "modules and addons cannot be upgraded at the same time");
+    let (plugins, ty) = if config.modules.is_empty() {
+        (config.addons, PluginType::Addon)
+    } else { (config.modules, PluginType::Module) };
 
     let flush = config.flush.unwrap_or(false);
-    let detach_group = config.detach_group.unwrap_or(false);
+    let detach_group = config.detach_group.unwrap_or(true);
 
     let upgrade_request = UpgradeRequest {
         plugins,

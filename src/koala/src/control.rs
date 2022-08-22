@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};
+use ipc::control::Response;
+use ipc::control::ResponseKind;
 use nix::unistd::Pid;
 
 use interface::engine::SchedulingMode;
@@ -272,7 +274,8 @@ impl Control {
                     };
                     subscriptions_info.push(info);
                 }
-                let mut buf = bincode::serialize(&subscriptions_info)?;
+                let response = Response(Ok(ResponseKind::ListSubscription(subscriptions_info)));
+                let mut buf = bincode::serialize(&response)?;
                 let nbytes = self.sock.send_to(buf.as_mut_slice(), &client_path)?;
                 assert_eq!(
                     nbytes,
@@ -281,6 +284,7 @@ impl Control {
                     buf.len(),
                     nbytes
                 ); 
+                tracing::info!("List subscription request completed");
                 Ok(())
             },
             control::Request::AttachAddon(mode, request) => {

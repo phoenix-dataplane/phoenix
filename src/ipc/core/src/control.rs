@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use libc::pid_t;
+pub use libc::pid_t;
 use serde::{Deserialize, Serialize};
 
 use interface::engine::SchedulingMode;

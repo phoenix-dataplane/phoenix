@@ -1302,7 +1302,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "koala-utils"
+name = "koalactl"
 version = "0.1.0"
 dependencies = [
  "bincode",

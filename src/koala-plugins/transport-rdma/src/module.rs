@@ -91,7 +91,10 @@ pub struct RdmaTransportModule {
 impl RdmaTransportModule {
     pub const RDMA_TRANSPORT_ENGINE: EngineType = EngineType("RdmaTransportEngine");
     pub const RDMA_CM_ENGINE: EngineType = EngineType("RdmaCmEngine");
-    pub const ENGINES: &'static [EngineType] = &[RdmaTransportModule::RDMA_TRANSPORT_ENGINE];
+    pub const ENGINES: &'static [EngineType] = &[
+        RdmaTransportModule::RDMA_CM_ENGINE,
+        RdmaTransportModule::RDMA_TRANSPORT_ENGINE,
+    ];
     pub const DEPENDENCIES: &'static [EnginePair] = &[
         (RdmaTransportModule::RDMA_TRANSPORT_ENGINE, RdmaTransportModule::RDMA_CM_ENGINE),
     ];
@@ -120,11 +123,11 @@ impl KoalaModule for RdmaTransportModule {
     }
 
     fn engines(&self) -> &[EngineType] {
-        RdmaTransportModule::ENGINES
+        Self::ENGINES
     }
 
     fn dependencies(&self) -> &[EnginePair] {
-        &[]
+        Self::DEPENDENCIES
     }
 
     fn check_compatibility(&self, _prev: Option<&Version>, _curr: &HashMap<&str, Version>) -> bool {

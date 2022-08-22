@@ -1,0 +1,7 @@
+addon_engine = "RateLimitEngine"
+tx_channels_replacements = [
+    ["MrpcEngine", "RateLimitEngine", 0, 0],
+    ["RateLimitEngine", "RpcAdapterEngine", 0, 0],
+]
+rx_channels_replacements = []
+op = "attach"

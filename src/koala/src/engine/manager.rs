@@ -152,7 +152,7 @@ impl RuntimeManager {
         let mut inner = self.inner.lock().unwrap();
         match mode {
             SchedulingMode::Dedicate => {
-                let engine_type = engine.engine_type().clone();
+                let engine_type = engine.engine_type();
                 let (eid, rid) = inner.schedule_dedicate(engine, self);
                 let engine_info = EngineInfo {
                     pid,
@@ -161,8 +161,8 @@ impl RuntimeManager {
                     scheduling_mode: mode,
                     engine_type,
                 };
-                self.engine_subscriptions.insert(eid, engine_info)
-                    .expect(format!("eid={:?} is already used", eid).as_str());
+                let prev = self.engine_subscriptions.insert(eid, engine_info);
+                assert!(prev.is_none(), "eid={:?} is already used", eid);
                 if register_subscription {
                     // increase active engine count for corresponding engine group
                     self.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 += 1;

@@ -186,8 +186,8 @@ impl KoalaModule for MrpcModule {
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let cmd_tx = shared.command_path.get_sender(&MrpcModule::MRPC_ENGINE)?;
-            let cmd_rx = shared.command_path.get_receiver(&EngineType("RpcAdapterEngine"))?;
+            let cmd_tx = shared.command_path.get_sender(&EngineType("RpcAdapterEngine"))?;
+            let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
 
             let builder = MrpcEngineBuilder::new(
                 customer,

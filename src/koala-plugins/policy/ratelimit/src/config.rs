@@ -11,7 +11,7 @@ pub struct RateLimitConfig {
 impl Default for RateLimitConfig {
     fn default() -> Self {
         RateLimitConfig {
-            requests_per_sec: 1000,
+            requests_per_sec: 10,
             bucket_size: 1000,
         }
     }

@@ -257,8 +257,8 @@ impl Runtime {
                     .collect::<Vec<_>>();
                 for (engine_id, engine) in engines {
                     let engine = engine.into_inner();
-                    eprintln!(
-                        "Remove engine {} from runtime",
+                    tracing::info!(
+                        "Remove engine {:?} from runtime",
                         engine.description().to_owned()
                     );
                     self.suspended

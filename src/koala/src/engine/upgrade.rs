@@ -95,6 +95,7 @@ where
         let engine_type = container.engine_type();
         let version = container.version();
         let mut engine = container.detach();
+        engine.set_els();
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the engine group
         if let Err(err) = engine.flush() {
@@ -184,6 +185,12 @@ where
             return;
         }
     }
+    tracing::info!(
+        "Addon engine {:?} created, pid={:?}, gid={:?}",
+        addon,
+        pid,
+        gid,
+    );
 
     for (ty, engine) in detached_engines.into_iter() {
         let (version, mode) = detached_meta.remove(&ty).unwrap();
@@ -194,6 +201,12 @@ where
 
     rm.service_subscriptions.insert((pid, gid), (subscription, containers_resubmit.len()));
     for (container, mode) in containers_resubmit {
+        tracing::info!(
+            "Submitting engine {:?} (pid={:?}, gid={:?}) to runtime",
+            container.engine_type(),
+            pid,
+            gid,
+        );
         rm.submit(pid, gid, container, mode, false);
     }
     indicator.remove(&pid);
@@ -264,6 +277,7 @@ where
         let engine_type = container.engine_type();
         let version = container.version();
         let mut engine = container.detach();
+        engine.set_els();
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the engine group
         if let Err(err) = engine.flush() {
@@ -294,7 +308,7 @@ where
     );
     if let Err(err) = result {
         tracing::error!(
-            "Failed to crefactor data path channels in uninstall addon {:?} for group (pid={:?}, gid={:?}), error: {:?}", 
+            "Failed to refactor data path channels in uninstall addon {:?} for group (pid={:?}, gid={:?}), error: {:?}", 
             addon,
             pid,
             gid,
@@ -314,6 +328,12 @@ where
 
     rm.service_subscriptions.insert((pid, gid), (subscription, containers_resubmit.len()));
     for (container, mode) in containers_resubmit {
+        tracing::info!(
+            "Submitting engine {:?} (pid={:?}, gid={:?}) to runtime",
+            container.engine_type(),
+            pid,
+            gid,
+        );
         rm.submit(pid, gid, container, mode, false);
     } 
     indicator.remove(&pid);
@@ -412,6 +432,7 @@ async fn upgrade_client(
             let prev_version = container.version();
             let engine_type = container.engine_type();
             let mut engine = container.detach();
+            engine.set_els();
             if flush {
                 if let Err(err) = engine.flush() {
                     tracing::warn!(
@@ -437,7 +458,7 @@ async fn upgrade_client(
                 prev_version,
                 mode,
             };
-            entry.insert(engine_type, dumped).unwrap();
+            entry.insert(engine_type, dumped);
         }
     }
 
@@ -474,21 +495,29 @@ async fn upgrade_client(
                         // but not for the addons in `ServiceSubscription`
                         *subscribed_engine_ty = engine_ty_relocated;
                     }
-                    let tx_inputs = subscription.graph.tx_inputs.remove(&engine_ty_relocated).unwrap();
-                    for (peer, index) in tx_inputs {
-                        subscription.graph.tx_outputs.get_mut(&peer).unwrap()[index].0 = engine_ty_relocated;
+                    if let Some(tx_inputs) = subscription.graph.tx_inputs.remove(&engine_ty_relocated) {
+                        for (peer, index) in tx_inputs.iter() {
+                            subscription.graph.tx_outputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                        }
+                        subscription.graph.tx_inputs.insert(engine_ty_relocated, tx_inputs);
+                    } 
+                    if let Some(tx_outputs) =  subscription.graph.tx_outputs.remove(&engine_ty_relocated) {
+                        for (peer, index) in tx_outputs.iter() {
+                            subscription.graph.tx_inputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                        }
+                        subscription.graph.tx_outputs.insert(engine_ty_relocated, tx_outputs);
                     }
-                    let tx_outputs = subscription.graph.tx_outputs.remove(&engine_ty_relocated).unwrap();
-                    for (peer, index) in tx_outputs {
-                        subscription.graph.tx_inputs.get_mut(&peer).unwrap()[index].0 = engine_ty_relocated;
-                    }
-                    let rx_inputs = subscription.graph.rx_inputs.remove(&engine_ty_relocated).unwrap();
-                    for (peer, index) in rx_inputs {
-                        subscription.graph.rx_outputs.get_mut(&peer).unwrap()[index].0 = engine_ty_relocated;
-                    }
-                    let rx_outputs = subscription.graph.rx_outputs.remove(&engine_ty_relocated).unwrap();
-                    for (peer, index) in rx_outputs {
-                        subscription.graph.rx_inputs.get_mut(&peer).unwrap()[index].0 = engine_ty_relocated;
+                    if let Some(rx_inputs) = subscription.graph.rx_inputs.remove(&engine_ty_relocated) {
+                        for (peer, index) in rx_inputs.iter() {
+                            subscription.graph.rx_outputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                        }
+                        subscription.graph.rx_inputs.insert(engine_ty_relocated, rx_inputs);
+                    } 
+                    if let Some(rx_outputs) =  subscription.graph.rx_outputs.remove(&engine_ty_relocated) {
+                        for (peer, index) in rx_outputs.iter() {
+                            subscription.graph.rx_inputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                        }
+                        subscription.graph.rx_outputs.insert(engine_ty_relocated, rx_outputs);
                     }
 
                     let (engine, new_version) = match plugin.value() {
@@ -550,6 +579,12 @@ async fn upgrade_client(
         std::mem::drop(subscription_guard);
         if resubmit {
             for (container, mode) in containers_resubmit {
+                tracing::info!(
+                    "Submitting engine {:?} (pid={:?}, gid={:?}) to runtime",
+                    container.engine_type(),
+                    pid,
+                    gid,
+                );
                 rm.submit(pid, gid, container, mode, false);
             }
         } else {
