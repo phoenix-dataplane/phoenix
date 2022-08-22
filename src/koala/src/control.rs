@@ -4,33 +4,30 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};
 use nix::unistd::Pid;
 
-use interface::engine::{EngineType, SchedulingMode};
+use interface::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
+use ipc::control::ServiceSubscriptionInfo;
 
 use crate::config::Config;
+use crate::engine::EngineType;
 use crate::engine::container::EngineContainer;
-use crate::engine::datapath::node::create_datapath_channels;
-use crate::engine::datapath::node::DataPathNode;
-use crate::engine::manager::RuntimeManager;
-use crate::engine::manager::ServiceSubscription;
+use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
+use crate::engine::datapath::create_datapath_channels;
+use crate::engine::manager::{GroupId, ServiceSubscription, RuntimeManager};
 use crate::engine::upgrade::EngineUpgrader;
-use crate::module::NewEngineRequest;
-use crate::module::Service;
-use crate::plugin::Plugin;
-use crate::plugin::PluginCollection;
+use crate::module::{Service, NewEngineRequest};
+use crate::plugin::{Plugin, PluginCollection};
 use crate::storage::ResourceCollection;
 use crate::storage::SharedStorage;
 
 pub struct Control {
     sock: DomainSocket,
-    config: Config,
     runtime_manager: Arc<RuntimeManager>,
     plugins: Arc<PluginCollection>,
     upgrader: EngineUpgrader,
@@ -39,7 +36,7 @@ pub struct Control {
 impl Control {
     fn create_service(
         &self,
-        service: &Service,
+        service: Service,
         client_path: &Path,
         mode: SchedulingMode,
         cred: &UCred,
@@ -51,16 +48,15 @@ impl Control {
         let service_registry = self
             .plugins
             .service_registry
-            .get(service)
+            .get(&service)
             .ok_or(anyhow!("service {:?} not found in the registry", service))?;
-        let tx_channels = service_registry.tx_channels.clone();
-        let rx_channels = service_registry.rx_channels.clone();
-        let (mut nodes, graph) = create_datapath_channels(tx_channels, rx_channels)?;
+        let tx_channels = service_registry.tx_channels.iter().copied();
+        let rx_channels = service_registry.rx_channels.iter().copied();
+        let (mut nodes, graph) = create_datapath_channels(
+            tx_channels,
+            rx_channels
+        )?;
 
-        eprintln!(
-            "service={:?}, dep graph: {:?}",
-            service, service_registry.engines
-        );
         let subscription = ServiceSubscription {
             service: service.clone(),
             addons: Vec::new(),
@@ -81,18 +77,19 @@ impl Control {
             let plugin = self.plugins.engine_registry.get(aux_engine_type).unwrap();
             let module_name = match plugin.value() {
                 Plugin::Module(module) => module,
-                Plugin::Addon(_) => panic!("service auxiliary engine {:?}", service),
+                Plugin::Addon(_) => panic!("service engine {:?} is an addon", aux_engine_type),
             };
             let mut module = self.plugins.modules.get_mut(module_name).unwrap();
-            eprintln!(
-                "creating engine {:?}, module {:?}...",
+            tracing::info!(
+                "Created engine {:?} of service {:?} for client pid={:?}",
                 aux_engine_type,
-                module.key()
+                service,
+                pid
             );
             let node = nodes.remove(aux_engine_type).unwrap_or(DataPathNode::new());
             let request = NewEngineRequest::Auxiliary { pid, mode };
             let engine = module.create_engine(
-                aux_engine_type,
+                *aux_engine_type,
                 request,
                 &mut shared,
                 global.value_mut(),
@@ -116,7 +113,7 @@ impl Control {
             .unwrap();
         let module_name = match plugin.value() {
             Plugin::Module(module) => module,
-            Plugin::Addon(_) => panic!("service auxiliary engine {:?}", service),
+            Plugin::Addon(_) => panic!("service engine {:?} is an addon", service_engine_type),
         };
         let mut module = self.plugins.modules.get_mut(module_name).unwrap();
         let request = NewEngineRequest::Service {
@@ -125,17 +122,12 @@ impl Control {
             mode,
             cred,
         };
-        eprintln!(
-            "creating engine {:?}, module {:?}...",
-            service_engine_type,
-            module.key()
-        );
         let node = nodes
             .remove(service_engine_type)
             .unwrap_or(DataPathNode::new());
         let engine = module
             .create_engine(
-                service_engine_type,
+                *service_engine_type,
                 request,
                 &mut shared,
                 global.value_mut(),
@@ -146,14 +138,21 @@ impl Control {
                 "service engine must always be created, engine_type={:?}",
                 service_engine_type
             ))?;
+        tracing::info!(
+            "Created engine {:?} of service {:?} for client pid={:?}",
+            service_engine_type,
+            service,
+            pid
+        );
         // Submit service engine to runtime manager
         let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
         containers_to_submit.push(container);
         let gid = self.runtime_manager.new_group(pid, subscription);
+        
+        self.runtime_manager.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 = containers_to_submit.len();
         for container in containers_to_submit {
-            self.runtime_manager.submit(pid, gid, container, mode);
+            self.runtime_manager.submit(pid, gid, container, mode, false);
         }
-
         Ok(())
     }
 
@@ -175,36 +174,22 @@ impl Control {
         sock.set_write_timeout(Some(Duration::from_millis(1)))
             .expect("set_write_timeout");
 
-        // TODO(cjr): make all modules optional
-        assert!(config.transport_rdma.is_some());
-        let rdma_transport_config = config.transport_rdma.clone().unwrap();
-        assert!(config.transport_tcp.is_some());
-        let tcp_transport_config = config.transport_tcp.clone().unwrap();
-        assert!(config.mrpc.is_some());
-        let mrpc_config = config.mrpc.clone().unwrap();
-        assert!(config.salloc.is_some());
-        let salloc_config = config.salloc.clone().unwrap();
-
         let plugins = Arc::new(PluginCollection::new());
-        log::info!("load initial plugins, plugins={:?}", config.plugin);
         plugins
-            .load_or_upgrade_plugins(&config.plugin)
-            .expect("failed to load initial plugins");
-        eprintln!("all plugins loaded");
-
-        let addon = ipc::control::PluginDescriptor {
-            name: String::from("RateLimit"),
-            lib_path: PathBuf::from("/tmp/koala/plugins/libkoala_policy_plugin.so"),
-            config_path: None,
-        };
-        plugins.load_or_upgrade_addon(&addon).unwrap();
+            .load_or_upgrade_plugins(&config.modules)
+            .expect("failed to load modules");
+        
+        for addon in config.addons.iter() {
+            plugins
+                .load_or_upgrade_addon(addon)
+                .expect("failed to load addon");
+        }
 
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
-        eprintln!("init upgrader...");
+        tracing::info!("Control plane initialized");
 
         Control {
             sock,
-            config,
             runtime_manager: Arc::clone(&runtime_manager),
             plugins,
             upgrader,
@@ -245,35 +230,137 @@ impl Control {
         use ipc::control;
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
-            control::Request::NewClient(mode, engine_type) => {
+            control::Request::NewClient(mode, service_name) => {
                 let client_path = sender
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
-                match engine_type {
-                    EngineType::Mrpc => {
-                        let service = Service(String::from("Mrpc"));
-                        self.create_service(&service, client_path, mode, cred)?;
+                let service = unsafe { transmute_service_from_str(service_name.as_str()) };
+                let service = *self.plugins.service_registry
+                    .get(&service)
+                    .ok_or(anyhow!("Service {:?} not found", sender))?
+                    .key();
+                self.create_service(service, client_path, mode, cred)?;
+                Ok(())
+            }
+            control::Request::Upgrade(request) => {
+                let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
+                self.upgrader.upgrade(
+                    engines_to_upgrade,
+                    request.flush,
+                    request.detach_group,
+                )?;
+                Ok(())
+            }
+            control::Request::ListSubscription => {
+                let client_path = sender
+                    .as_pathname()
+                    .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
+                let mut subscriptions_info = Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
+                for subscription in self.runtime_manager.service_subscriptions.iter() {
+                    let pid = subscription.key().0.as_raw();
+                    let gid = subscription.key().1.0;
+                    let service = subscription.0.service.0.to_string();
+                    let mut addons = Vec::with_capacity(subscription.0.addons.len());
+                    for addon in subscription.0.addons.iter() {
+                        addons.push(addon.0.to_string());
                     }
-                    EngineType::Salloc => {
-                        let service = Service(String::from("Salloc"));
-                        self.create_service(&service, client_path, mode, cred)?;
-                        //     .handle_new_client(&self.sock, &client_path, mode, cred)?;
-                    }
-                    _ => unimplemented!(),
+                    let info = ServiceSubscriptionInfo {
+                        pid,
+                        gid,
+                        service,
+                        addons,
+                    };
+                    subscriptions_info.push(info);
                 }
+                let mut buf = bincode::serialize(&subscriptions_info)?;
+                let nbytes = self.sock.send_to(buf.as_mut_slice(), &client_path)?;
+                assert_eq!(
+                    nbytes,
+                    buf.len(),
+                    "expect to send {} bytes, but only {} was sent",
+                    buf.len(),
+                    nbytes
+                ); 
+                Ok(())
+            },
+            control::Request::AttachAddon(mode, request) => {
+                let addon_engine = unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
+                let addon_engine = *self.plugins.engine_registry
+                    .get(&addon_engine)
+                    .ok_or(anyhow!("Addon engine type {:?} not found", request.addon_engine))?
+                    .key();
+
+                let tx_edges_replacement = self.refactor_channel_descriptors(request.tx_channels_replacements)?;
+                let rx_edges_replacement = self.refactor_channel_descriptors(request.rx_channels_replacements)?;
+
+                let pid = Pid::from_raw(request.pid);
+                let gid = GroupId(request.gid);
+                self.upgrader.attach_addon(
+                    pid, 
+                    gid,
+                    addon_engine,
+                    mode,
+                    tx_edges_replacement,
+                    rx_edges_replacement,
+                )?;
                 Ok(())
             }
-            control::Request::Upgrade(descriptors) => {
-                eprintln!("add rate limiter");
-                self.upgrader.add_addon();
-                // log::info!("upgrade koala plugins, plugins={:?}", descriptors);
-                // let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&descriptors)?;
-                // self.upgrader.upgrade(engines_to_upgrade)?;
+            control::Request::DetachAddon(request) => {
+                let addon_engine = unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
+                let addon_engine = *self.plugins.engine_registry
+                    .get(&addon_engine)
+                    .ok_or(anyhow!("Addon engine type {:?} not found", request.addon_engine))?
+                    .key();
+
+                let tx_edges_replacement = self.refactor_channel_descriptors(request.tx_channels_replacements)?;
+                let rx_edges_replacement = self.refactor_channel_descriptors(request.rx_channels_replacements)?;
+
+                let pid = Pid::from_raw(request.pid);
+                let gid = GroupId(request.gid);
+                self.upgrader.detach_addon(
+                    pid, 
+                    gid,
+                    addon_engine,
+                    tx_edges_replacement,
+                    rx_edges_replacement,
+                )?;
                 Ok(())
-            }
-            _ => {
-                todo!()
             }
         }
     }
+
+    fn refactor_channel_descriptors(
+        &self, 
+        channels: Vec<(String, String, usize, usize)>
+    ) -> anyhow::Result<Vec<ChannelDescriptor>> {
+        let mut edges = Vec::with_capacity(channels.len());
+        for (sender, receiver, sender_idx, recevier_idx) in channels.into_iter() { 
+            let sender_engine = unsafe { transmute_engine_type_from_str(sender.as_str()) };
+            let receiver_engine = unsafe { transmute_engine_type_from_str(receiver.as_str()) };
+            let sender_engine = *self.plugins.engine_registry
+                .get(&sender_engine)
+                .ok_or(anyhow!("Engine type {:?} not found", sender))?
+                .key();
+            let receiver_engine = *self.plugins.engine_registry
+                .get(&receiver_engine)
+                .ok_or(anyhow!("Engine type {:?} not found", receiver))?
+                .key();
+            edges.push(ChannelDescriptor(sender_engine, receiver_engine, sender_idx, recevier_idx));
+        }
+        Ok(edges)
+    }
+}
+
+unsafe fn transmute_engine_type_from_str(engine: &str) -> EngineType {
+    let bytes = engine.as_bytes();
+    let (ptr, len) = (bytes.as_ptr(), bytes.len());
+    let transmuted = std::str::from_utf8(std::slice::from_raw_parts(ptr, len)).unwrap();
+    EngineType(transmuted)
+}
+
+unsafe fn transmute_service_from_str(service: &str) -> Service {
+    let bytes = service.as_bytes();
+    let (ptr, len) = (bytes.as_ptr(), bytes.len());
+    let transmuted = std::str::from_utf8(std::slice::from_raw_parts(ptr, len)).unwrap();
+    Service(transmuted)
 }

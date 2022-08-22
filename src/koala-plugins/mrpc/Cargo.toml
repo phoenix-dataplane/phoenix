@@ -1,0 +1,38 @@
+[package]
+name = "koala-mrpc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+interface = { path = "../../interface" }
+ipc = { path = "../../ipc" }
+koala = { path = "../../koala" }
+prost-build = { path = "../../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
+mrpc-marshal = { path = "../../mrpc-marshal" } 
+
+tokio = { version = "1.18.2", features = ["sync"] }
+crossbeam = "0.8.1"
+anyhow = "1.0.58"
+lazy_static = "1.4.0"
+tracing = "0.1"
+fnv = "1.0.7"
+nix = "0.23.0"
+uuid = "0.8.2"
+futures = "0.3.21"
+thiserror = "1.0.31"
+itertools = "0.10.3"
+crc32fast = "1.3.2"
+syn = "1.0.98"
+quote = "1.0.20"
+proc-macro2 = "1.0.40"
+md5 = "0.7.0"
+prettyplease = "0.1.15"
+serde = { version = "1.0.130", features = ["derive"] }
+serde_json = "1.0.81"
+toml = { version = "0.5.8", features = ["preserve_order"] }
+static_assertions = "1.1.0"

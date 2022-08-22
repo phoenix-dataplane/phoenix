@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use uuid::Uuid;
 
-use ipc::control::PluginDescriptor;
+use ipc::control::{PluginDescriptor, UpgradeRequest, PluginType};
 use ipc::control::Request;
 use ipc::unix::DomainSocket;
 
@@ -39,7 +39,10 @@ struct Opts {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
-    plugin: Vec<PluginDescriptor>,
+    module: Vec<PluginDescriptor>,
+    addon: Vec<PluginDescriptor>,
+    flush: Option<bool>,
+    detach_group: Option<bool>,
 }
 
 impl Config {
@@ -65,7 +68,22 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    let req = Request::Upgrade(config.plugin);
+    assert!(config.module.is_empty() ^ config.addon.is_empty(), "modules and addons cannot be upgraded at the same time");
+    let (plugins, ty) = if config.module.is_empty() {
+        (config.addon, PluginType::Addon)
+    } else { (config.module, PluginType::Module) };
+
+    let flush = config.flush.unwrap_or(false);
+    let detach_group = config.detach_group.unwrap_or(false);
+
+    let upgrade_request = UpgradeRequest {
+        plugins,
+        ty,
+        flush,
+        detach_group,
+    };
+
+    let req = Request::Upgrade(upgrade_request);
     let buf = bincode::serialize(&req).unwrap();
     assert!(buf.len() < MAX_MSG_LEN);
 

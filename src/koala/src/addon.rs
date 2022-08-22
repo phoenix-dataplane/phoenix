@@ -7,7 +7,7 @@ use crate::engine::{Engine, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::ResourceCollection;
 
-pub trait Addon: TypeTagged + Send + Sync + 'static {
+pub trait KoalaAddon: TypeTagged + Send + Sync + 'static {
     /// The version of the addon
     fn version(&self) -> Version {
         let major = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
@@ -24,15 +24,15 @@ pub trait Addon: TypeTagged + Send + Sync + 'static {
     fn decompose(self: Box<Self>) -> ResourceCollection;
 
     /// Migrate states / resources from older version of the addon
-    fn migrate(&mut self, prev_addon: Box<dyn Addon>);
+    fn migrate(&mut self, prev_addon: Box<dyn KoalaAddon>);
 
     /// All addon engines provided in this module
-    fn engines(&self) -> Vec<EngineType>;
+    fn engines(&self) -> &[EngineType];
 
     /// Create a new addon engine
     fn create_engine(
         &mut self,
-        ty: &EngineType,
+        ty: EngineType,
         pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>>;
@@ -42,7 +42,7 @@ pub trait Addon: TypeTagged + Send + Sync + 'static {
     /// it only dumps and restores from local states
     fn restore_engine(
         &mut self,
-        ty: &EngineType,
+        ty: EngineType,
         local: ResourceCollection,
         node: DataPathNode,
         prev_version: Version,
@@ -50,13 +50,13 @@ pub trait Addon: TypeTagged + Send + Sync + 'static {
 }
 
 pub trait AddonDowncast: Sized {
-    fn downcast<T: Addon>(self) -> Result<Box<T>, Self>;
-    unsafe fn downcast_unchecked<T: Addon>(self) -> Box<T>;
+    fn downcast<T: KoalaAddon>(self) -> Result<Box<T>, Self>;
+    unsafe fn downcast_unchecked<T: KoalaAddon>(self) -> Box<T>;
 }
 
-impl AddonDowncast for Box<dyn Addon> {
+impl AddonDowncast for Box<dyn KoalaAddon> {
     #[inline]
-    fn downcast<T: Addon>(self) -> Result<Box<T>, Self> {
+    fn downcast<T: KoalaAddon>(self) -> Result<Box<T>, Self> {
         if self.is::<T>() {
             unsafe { Ok(self.downcast_unchecked()) }
         } else {
@@ -65,16 +65,16 @@ impl AddonDowncast for Box<dyn Addon> {
     }
 
     #[inline]
-    unsafe fn downcast_unchecked<T: Addon>(self) -> Box<T> {
+    unsafe fn downcast_unchecked<T: KoalaAddon>(self) -> Box<T> {
         debug_assert!(self.is::<T>());
-        let raw: *mut dyn Addon = Box::into_raw(self);
+        let raw: *mut dyn KoalaAddon = Box::into_raw(self);
         Box::from_raw(raw as *mut T)
     }
 }
 
-impl dyn Addon {
+impl dyn KoalaAddon {
     #[inline]
-    pub fn is<T: Addon>(&self) -> bool {
+    pub fn is<T: KoalaAddon>(&self) -> bool {
         // Get TypeTag of the type this function is instantiated with
         let t = <T as TypeTagged>::type_tag_();
 
@@ -86,7 +86,7 @@ impl dyn Addon {
     }
 
     #[inline]
-    pub fn downcast_ref<T: Addon>(&self) -> Option<&T> {
+    pub fn downcast_ref<T: KoalaAddon>(&self) -> Option<&T> {
         if self.is::<T>() {
             unsafe { Some(self.downcast_ref_unchecked()) }
         } else {
@@ -95,7 +95,7 @@ impl dyn Addon {
     }
 
     #[inline]
-    pub fn downcast_mut<T: Addon>(&mut self) -> Option<&mut T> {
+    pub fn downcast_mut<T: KoalaAddon>(&mut self) -> Option<&mut T> {
         if self.is::<T>() {
             unsafe { Some(self.downcast_mut_unchecked()) }
         } else {
@@ -104,14 +104,14 @@ impl dyn Addon {
     }
 
     #[inline]
-    pub unsafe fn downcast_ref_unchecked<T: Addon>(&self) -> &T {
+    pub unsafe fn downcast_ref_unchecked<T: KoalaAddon>(&self) -> &T {
         debug_assert!(self.is::<T>());
-        &*(self as *const dyn Addon as *const T)
+        &*(self as *const dyn KoalaAddon as *const T)
     }
 
     #[inline]
-    pub unsafe fn downcast_mut_unchecked<T: Addon>(&mut self) -> &mut T {
+    pub unsafe fn downcast_mut_unchecked<T: KoalaAddon>(&mut self) -> &mut T {
         debug_assert!(self.is::<T>());
-        &mut *(self as *mut dyn Addon as *mut T)
+        &mut *(self as *mut dyn KoalaAddon as *mut T)
     }
 }

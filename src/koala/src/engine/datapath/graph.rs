@@ -40,11 +40,11 @@ macro_rules! impl_vertex_for_engine {
 }
 
 /// A descriptor to describe channel
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ChannelDescriptor(pub EngineType, pub EngineType, pub usize, pub usize);
 
 #[derive(Debug)]
-pub struct DataPathGraph {
+pub(crate) struct DataPathGraph {
     // the engines on the sender end for `tx_inputs` on each engine's DataPathNode
     // type of the engine, and the index in the sender engine's `tx_outputs`
     pub(crate) tx_inputs: HashMap<EngineType, Vec<(EngineType, usize)>>,
@@ -77,9 +77,9 @@ impl DataPathGraph {
         rx_inputs: Vec<(EngineType, usize)>,
         rx_outputs: Vec<(EngineType, usize)>,
     ) {
-        self.tx_inputs.insert(engine.clone(), tx_inputs);
-        self.tx_outputs.insert(engine.clone(), tx_outputs);
-        self.rx_inputs.insert(engine.clone(), rx_inputs);
+        self.tx_inputs.insert(engine, tx_inputs);
+        self.tx_outputs.insert(engine, tx_outputs);
+        self.rx_inputs.insert(engine, rx_inputs);
         self.rx_outputs.insert(engine, rx_outputs);
     }
 

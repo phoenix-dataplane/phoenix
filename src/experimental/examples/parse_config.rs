@@ -3,14 +3,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use interface::engine::EngineType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Node {
     id: String,
-    #[serde(alias = "type")]
-    engine_type: EngineType,
     #[serde(default)]
     tx_input: Vec<String>,
     #[serde(default)]

@@ -93,8 +93,8 @@ impl EngineContainer {
     }
 
     #[inline]
-    pub(crate) fn engine_type(&self) -> &EngineType {
-        &self.ty
+    pub(crate) fn engine_type(&self) -> EngineType {
+        self.ty
     }
 
     #[inline]

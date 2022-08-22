@@ -20,18 +20,18 @@ use crate::storage::ResourceCollection;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EngineId(u64);
+pub(crate) struct EngineId(u64);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RuntimeId(u64);
+pub(crate) struct RuntimeId(u64);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GroupId(u64);
+pub(crate) struct GroupId(pub(crate) u64);
 
-#[derive(Debug, Clone)]
-pub struct EngineInfo {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EngineInfo {
     /// Application process PID that this engine serves
     pub(crate) pid: Pid,
     /// Which group the engine belongs to,
@@ -147,6 +147,7 @@ impl RuntimeManager {
         gid: GroupId,
         engine: EngineContainer,
         mode: SchedulingMode,
+        register_subscription: bool,
     ) {
         let mut inner = self.inner.lock().unwrap();
         match mode {
@@ -160,17 +161,19 @@ impl RuntimeManager {
                     scheduling_mode: mode,
                     engine_type,
                 };
-                let prev = self.engine_subscriptions.insert(eid, engine_info);
-                debug_assert!(prev.is_none());
-                // increase active engine count for corresponding engine group
-                self.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 += 1;
+                self.engine_subscriptions.insert(eid, engine_info)
+                    .expect(format!("eid={:?} is already used", eid).as_str());
+                if register_subscription {
+                    // increase active engine count for corresponding engine group
+                    self.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 += 1;
+                }
             }
             SchedulingMode::Compact => unimplemented!(),
             SchedulingMode::Spread => unimplemented!(),
         }
     }
 
-    #[inline]
+    /// Create a new engine group for service subscription
     pub(crate) fn new_group(&self, pid: Pid, subscription: ServiceSubscription) -> GroupId {
         let mut counter = self.group_counter.entry(pid).or_insert(0);
         let gid = GroupId(*counter);
@@ -181,7 +184,6 @@ impl RuntimeManager {
         gid
     }
 
-    #[inline]
     pub(crate) fn register_engine_shutdown(&self, engine_id: EngineId) {
         let info = self.engine_subscriptions.remove(&engine_id).unwrap().1;
         let removed =

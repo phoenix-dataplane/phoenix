@@ -1,56 +1,67 @@
 use std::collections::HashMap;
 use std::iter::Iterator;
 
+use thiserror::Error;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{DfsPostOrder, Walker};
 use petgraph::Graph;
 
 use crate::engine::{EnginePair, EngineType};
 
-pub struct EngineGraph {
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Engine type {:?} not found", .0)]
+    EngineNotFound(EngineType)
+}
+
+pub(crate) struct EngineGraph {
     index: HashMap<EngineType, NodeIndex>,
     graph: Graph<EngineType, ()>,
 }
 
 impl EngineGraph {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         EngineGraph {
             index: HashMap::new(),
             graph: Graph::new(),
         }
     }
 
-    fn get_or_insert_index(&mut self, engine: &EngineType) -> NodeIndex {
-        let EngineGraph {
-            ref mut index,
-            ref mut graph,
-        } = *self;
-        *index
-            .entry(engine.clone())
-            .or_insert_with(|| graph.add_node(engine.clone()))
-    }
-
-    pub fn add_engines(&mut self, engines: &[EngineType]) {
-        for engine in engines {
-            self.get_or_insert_index(engine);
+    pub(crate) fn add_engines<I>(&mut self, engines: I) 
+    where
+        I: IntoIterator<Item = EngineType>,
+    {
+        for engine in engines.into_iter() {
+            let index = if let Some(index) = self.index.remove(&engine) {
+                *self.graph.node_weight_mut(index).unwrap() = engine;
+                index
+            } else {
+                self.graph.add_node(engine)
+            };
+            self.index.insert(engine, index);
         }
     }
 
-    pub fn add_dependency(&mut self, edges: &[EnginePair]) {
+    pub(crate) fn add_dependency<I>(&mut self, edges: I) -> Result<(), Error>
+    where 
+        I: IntoIterator<Item = EnginePair>
+    {
         for edge in edges {
-            let from = self.get_or_insert_index(&edge.0);
-            let to = self.get_or_insert_index(&edge.1);
+            let from = *self.index.get(&edge.0).ok_or(Error::EngineNotFound(edge.0))?;
+            let to = *self.index.get(&edge.1).ok_or(Error::EngineNotFound(edge.1))?;
             self.graph.add_edge(from, to, ());
         }
+        Ok(())
     }
 
-    pub fn get_engine_dependencies(&self, service: &EngineType) -> Vec<EngineType> {
-        let visit = DfsPostOrder::new(&self.graph, self.index[service]);
+    pub(crate) fn get_engine_dependencies(&self, service: &EngineType) -> Result<Vec<EngineType>, Error> {
+        let service_idx = *self.index.get(service).ok_or(Error::EngineNotFound(*service))?;
+        let visit = DfsPostOrder::new(&self.graph, service_idx);
         let post_order = visit.iter(&self.graph).collect::<Vec<_>>();
         let rev_topo_order = post_order
             .iter()
-            .map(|node| self.graph[*node].clone())
+            .map(|node| self.graph[*node])
             .collect();
-        rev_topo_order
+        Ok(rev_topo_order)
     }
 }

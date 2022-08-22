@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use memfd::Memfd;
 use thiserror::Error;
 
-use interface::engine::EngineType;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
@@ -73,7 +72,7 @@ impl SAContext {
         let service = ShmService::register(
             KOALA_PREFIX.as_path(),
             KOALA_CONTROL_SOCK.as_path(),
-            EngineType::SallocV2,
+            "Salloc".to_string(),
         )?;
         Ok(Self { service })
     }

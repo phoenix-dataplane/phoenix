@@ -53,6 +53,7 @@ impl Indicator {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[allow(dead_code)]
     #[error("Invalid engine ID: {0}, (0 <= expected < {})", num_cpus::get())]
     InvalidId(usize),
     #[allow(dead_code)]

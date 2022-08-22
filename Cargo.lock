@@ -967,22 +967,10 @@ dependencies = [
 name = "ipc"
 version = "0.1.0"
 dependencies = [
- "atomic-traits",
- "bincode",
- "crossbeam",
- "interface",
- "ipc-channel",
- "libc",
- "memfd",
- "memmap2 0.5.4",
- "nix 0.23.1",
- "serde",
- "shmem-ipc",
- "static_assertions",
- "thiserror",
- "unique",
- "uuid",
- "zerocopy 0.3.0",
+ "ipc-core",
+ "ipc-mrpc",
+ "ipc-salloc",
+ "ipc-transport",
 ]
 
 [[package]]
@@ -1002,6 +990,57 @@ dependencies = [
  "tempfile",
  "uuid",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "ipc-core"
+version = "0.1.0"
+dependencies = [
+ "atomic-traits",
+ "bincode",
+ "crossbeam",
+ "interface",
+ "ipc-channel",
+ "libc",
+ "memfd",
+ "memmap2 0.5.4",
+ "nix 0.23.1",
+ "serde",
+ "shmem-ipc",
+ "thiserror",
+ "unique",
+ "uuid",
+ "zerocopy 0.3.0",
+]
+
+[[package]]
+name = "ipc-mrpc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-salloc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-transport"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1141,7 +1180,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "koala-policy"
+name = "koala-ratelimit"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1160,10 +1199,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "koala-policy-plugin"
+name = "koala-ratelimit-plugin"
 version = "0.1.0"
 dependencies = [
- "koala-policy",
+ "koala-ratelimit",
 ]
 
 [[package]]

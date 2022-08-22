@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 interface = { path = "../interface" }
-ipc = { path = "../ipc" }
+ipc = { path = "../ipc", features = ["transport"] }
 utils = { path = "../utils" }
 
 thiserror = "1.0.29"

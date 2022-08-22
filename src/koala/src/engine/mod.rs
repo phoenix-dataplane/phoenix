@@ -4,22 +4,24 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
-pub(crate) mod container;
 pub mod datapath;
+pub mod decompose;
 pub mod future;
-pub(crate) mod lb;
 pub mod manager;
+pub(crate) mod lb;
+pub(crate) mod container;
 pub(crate) mod runtime;
-pub mod unload;
 pub(crate) mod upgrade;
 pub(crate) use container::EngineContainer;
-pub(crate) use datapath::graph::Vertex;
+
 pub use runtime::ENGINE_LS;
-pub use unload::Unload;
+
+pub use decompose::Decompose;
+pub use datapath::graph::Vertex;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EngineType(pub String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EngineType(pub &'static str);
 
 pub type EnginePair = (EngineType, EngineType);
 
@@ -39,7 +41,7 @@ impl Default for Indicator {
     }
 }
 
-pub trait Engine: Unload + Send + Vertex + Unpin + 'static {
+pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     /// Activate the engine, creates an executable `Future`
     /// This method takes a pinned pointer to the engine and returns a boxed future.
     /// TODO(wyj): double-check whether it is safe if the implmentation moves out the engine,

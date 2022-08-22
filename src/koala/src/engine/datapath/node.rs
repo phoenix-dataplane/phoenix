@@ -13,11 +13,11 @@ pub enum Error {
     IndexNotContiguous(usize),
     #[error("Invalid replacement {0:?}")]
     InvalidReplacement(ChannelDescriptor),
-    #[error("Plugin {0:?} not found")]
-    PluginNotFound(EngineType),
+    #[error("Addon engine {0:?} not found")]
+    AddonNotFound(EngineType),
     #[error("Channel to be replaced is not empty, receiver_engine={0:?}, endpoint=({1:?}, {2})")]
     ChannelNotEmpty(EngineType, EndpointType, usize),
-    #[error("Engine {0:?}'s channels ({1:?}) mismatch graph descriptor")]
+    #[error("Engine {0:?}'s channels ({1:?}) and the graph descriptor mismatched")]
     NodeTampered(EngineType, EndpointType),
     #[error("Dangling endpoints left after replacement")]
     DanglingEndpoint,
@@ -143,6 +143,7 @@ impl EndpointCollection {
     }
 }
 
+// create a set of `DataPathNode`s for a service engine group
 pub(crate) fn create_datapath_channels<I>(
     tx_edges: I,
     rx_edges: I,
@@ -154,11 +155,11 @@ where
     for edge in tx_edges {
         let (sender, receiver) = create_channel();
         let sender_endpoint = endpoints
-            .entry(edge.0.clone())
+            .entry(edge.0)
             .or_insert_with(EndpointCollection::new);
         sender_endpoint
             .tx_outputs
-            .push((edge.1.clone(), edge.3, sender, edge.2));
+            .push((edge.1, edge.3, sender, edge.2));
         let receiver_endpoint = endpoints
             .entry(edge.1)
             .or_insert_with(EndpointCollection::new);
@@ -169,11 +170,11 @@ where
     for edge in rx_edges {
         let (sender, receiver) = create_channel();
         let sender_endpoint = endpoints
-            .entry(edge.0.clone())
+            .entry(edge.0)
             .or_insert_with(EndpointCollection::new);
         sender_endpoint
             .rx_outputs
-            .push((edge.1.clone(), edge.3, sender, edge.2));
+            .push((edge.1, edge.3, sender, edge.2));
         let receiver_endpoint = endpoints
             .entry(edge.1)
             .or_insert_with(EndpointCollection::new);
@@ -186,79 +187,86 @@ where
     let mut graph = DataPathGraph::new();
     for (engine, endpoint) in endpoints.into_iter() {
         let (node, endpoint_info) = endpoint.create_node()?;
-        let [tx_inputs, tx_outputs, rx_inputs, rx_outputs] = endpoint_info;
-        nodes.insert(engine.clone(), node);
+        let [
+            tx_inputs, 
+            tx_outputs, 
+            rx_inputs, 
+            rx_outputs
+        ] = endpoint_info;
+        nodes.insert(engine, node);
         graph.insert_node(engine, tx_inputs, tx_outputs, rx_inputs, rx_outputs);
     }
 
     Ok((nodes, graph))
 }
 
-pub(crate) fn refactor_channels_add_plugin<I>(
+// Replace senders/receivers on the data path to install an addon
+pub(crate) fn refactor_channels_attach_addon<I>(
     engines: &mut HashMap<EngineType, Box<dyn Engine>>,
     graph: &mut DataPathGraph,
-    plugin: EngineType,
+    addon: EngineType,
     tx_edges_replacement: I,
     rx_edges_replacement: I,
 ) -> Result<DataPathNode, Error>
 where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
-    let mut plugin_endpoint = EndpointCollection::new();
+    let mut addon_endpoint = EndpointCollection::new();
 
     let mut senders_await_replace = HashSet::new();
     let mut receivers_await_replace = HashSet::new();
     for edge in tx_edges_replacement.into_iter() {
-        if &edge.0 == &plugin {
-            // new plugin is the sender
+        if edge.0 == addon {
+            // newly installed addon is the sender
             let receiver_endpoint = engines
                 .get_mut(&edge.1)
-                .ok_or(Error::InvalidReplacement(edge.clone()))?;
+                .ok_or(Error::InvalidReplacement(edge))?;
             let receiver_tx_inputs = graph.tx_inputs.get_mut(&edge.1).unwrap();
             if edge.3 >= receiver_tx_inputs.len() {
-                return Err(Error::InvalidReplacement(edge.clone()));
+                return Err(Error::InvalidReplacement(edge));
             }
             if receiver_tx_inputs.len() != receiver_endpoint.tx_inputs().len() {
-                return Err(Error::NodeTampered(edge.1.clone(), EndpointType::TxInput));
+                return Err(Error::NodeTampered(edge.1, EndpointType::TxInput));
             }
-            if !receivers_await_replace.remove(&(edge.1.clone(), edge.3)) {
+            if !receivers_await_replace.remove(&(edge.1, edge.3)) {
                 // original channel's sender end has not be replaced yet
                 // we must check that the sender end will be replaced at a later stage
                 // otherwise, sender end must have already been replaced.
-                senders_await_replace.insert(receiver_tx_inputs[edge.3].clone());
+                senders_await_replace.insert(receiver_tx_inputs[edge.3]);
             }
             if !receiver_endpoint.tx_inputs()[edge.3].is_empty() {
                 return Err(Error::ChannelNotEmpty(
-                    edge.1.clone(),
+                    edge.1,
                     EndpointType::TxInput,
                     edge.3,
                 ));
             }
             let (sender, receiver) = create_channel();
+            // replace the sender and receiver
             receiver_tx_inputs[edge.3] = (edge.0, edge.2);
             receiver_endpoint.tx_inputs()[edge.3] = receiver;
-            plugin_endpoint
+            addon_endpoint
                 .tx_outputs
                 .push((edge.1, edge.3, sender, edge.2));
-        } else if &edge.1 == &plugin {
-            // new plugin is the receiver
+        } else if edge.1 == addon {
+            // new addon is the receiver
             let sender_endpoint = engines
                 .get_mut(&edge.0)
-                .ok_or(Error::InvalidReplacement(edge.clone()))?;
+                .ok_or(Error::InvalidReplacement(edge))?;
             let sender_tx_outputs = graph.tx_outputs.get_mut(&edge.0).unwrap();
             if edge.2 >= sender_tx_outputs.len() {
                 return Err(Error::InvalidReplacement(edge));
             }
             if sender_tx_outputs.len() != sender_endpoint.tx_outputs().len() {
-                return Err(Error::NodeTampered(edge.0.clone(), EndpointType::TxOutput));
+                return Err(Error::NodeTampered(edge.0, EndpointType::TxOutput));
             }
-            if !senders_await_replace.remove(&(edge.0.clone(), edge.2)) {
-                receivers_await_replace.insert(sender_tx_outputs[edge.2].clone());
+            if !senders_await_replace.remove(&(edge.0, edge.2)) {
+                receivers_await_replace.insert(sender_tx_outputs[edge.2]);
             }
             let (sender, receiver) = create_channel();
             sender_tx_outputs[edge.2] = (edge.1, edge.3);
             sender_endpoint.tx_outputs()[edge.2] = sender;
-            plugin_endpoint
+            addon_endpoint
                 .tx_inputs
                 .push((edge.0, edge.2, receiver, edge.3));
         } else {
@@ -270,27 +278,27 @@ where
     }
 
     for edge in rx_edges_replacement.into_iter() {
-        if &edge.0 == &plugin {
+        if edge.0 == addon {
             // new plugin is the sender
             let receiver_endpoint = engines
                 .get_mut(&edge.1)
-                .ok_or(Error::InvalidReplacement(edge.clone()))?;
+                .ok_or(Error::InvalidReplacement(edge))?;
             let receiver_rx_inputs = graph.rx_inputs.get_mut(&edge.1).unwrap();
             if edge.3 >= receiver_rx_inputs.len() {
-                return Err(Error::InvalidReplacement(edge.clone()));
+                return Err(Error::InvalidReplacement(edge));
             }
             if receiver_rx_inputs.len() != receiver_endpoint.rx_inputs().len() {
-                return Err(Error::NodeTampered(edge.1.clone(), EndpointType::RxInput));
+                return Err(Error::NodeTampered(edge.1, EndpointType::RxInput));
             }
-            if !receivers_await_replace.remove(&(edge.1.clone(), edge.3)) {
+            if !receivers_await_replace.remove(&(edge.1, edge.3)) {
                 // original channel's sender end has not be replaced yet
                 // we must check that the sender end will be replaced at a later stage
                 // otherwise, sender end must have already been replaced.
-                senders_await_replace.insert(receiver_rx_inputs[edge.3].clone());
+                senders_await_replace.insert(receiver_rx_inputs[edge.3]);
             }
             if !receiver_endpoint.rx_inputs()[edge.3].is_empty() {
                 return Err(Error::ChannelNotEmpty(
-                    edge.1.clone(),
+                    edge.1,
                     EndpointType::RxInput,
                     edge.3,
                 ));
@@ -298,28 +306,28 @@ where
             let (sender, receiver) = create_channel();
             receiver_rx_inputs[edge.3] = (edge.0, edge.2);
             receiver_endpoint.rx_inputs()[edge.3] = receiver;
-            plugin_endpoint
+            addon_endpoint
                 .rx_outputs
                 .push((edge.1, edge.3, sender, edge.2));
-        } else if &edge.1 == &plugin {
+        } else if edge.1 == addon {
             // new plugin is the receiver
             let sender_endpoint = engines
                 .get_mut(&edge.0)
-                .ok_or(Error::InvalidReplacement(edge.clone()))?;
+                .ok_or(Error::InvalidReplacement(edge))?;
             let sender_rx_outputs = graph.tx_outputs.get_mut(&edge.0).unwrap();
             if edge.2 >= sender_rx_outputs.len() {
                 return Err(Error::InvalidReplacement(edge));
             }
             if sender_rx_outputs.len() != sender_endpoint.rx_outputs().len() {
-                return Err(Error::NodeTampered(edge.0.clone(), EndpointType::RxOutput));
+                return Err(Error::NodeTampered(edge.0, EndpointType::RxOutput));
             }
-            if !senders_await_replace.remove(&(edge.0.clone(), edge.2)) {
-                receivers_await_replace.insert(sender_rx_outputs[edge.2].clone());
+            if !senders_await_replace.remove(&(edge.0, edge.2)) {
+                receivers_await_replace.insert(sender_rx_outputs[edge.2]);
             }
             let (sender, receiver) = create_channel();
             sender_rx_outputs[edge.2] = (edge.1, edge.3);
             sender_endpoint.rx_outputs()[edge.2] = sender;
-            plugin_endpoint
+            addon_endpoint
                 .rx_inputs
                 .push((edge.0, edge.2, receiver, edge.3));
         } else {
@@ -330,82 +338,80 @@ where
         return Err(Error::DanglingEndpoint);
     }
 
-    let (node, endpoint_info) = plugin_endpoint.create_node()?;
+    let (node, endpoint_info) = addon_endpoint.create_node()?;
     let [tx_inputs, tx_outputs, rx_inputs, rx_outputs] = endpoint_info;
-    graph.insert_node(plugin, tx_inputs, tx_outputs, rx_inputs, rx_outputs);
+    graph.insert_node(addon, tx_inputs, tx_outputs, rx_inputs, rx_outputs);
 
     Ok(node)
 }
 
-pub fn refactor_channels_remove_plugin<I>(
+/// 
+pub(crate) fn refactor_channels_detach_addon<I>(
     engines: &mut HashMap<EngineType, Box<dyn Engine>>,
     graph: &mut DataPathGraph,
-    plugin: EngineType,
+    addon: EngineType,
     tx_edges_replacement: I,
     rx_edges_replacement: I,
 ) -> Result<(), Error>
 where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
-    let mut plugin_engine = engines
-        .remove(&plugin)
-        .ok_or(Error::PluginNotFound(plugin.clone()))?;
-    let tx_inputs_len = graph.tx_inputs.get_mut(&plugin).unwrap().len();
-    let tx_outputs_len = graph.tx_outputs.get_mut(&plugin).unwrap().len();
-    let rx_inputs_len = graph.rx_inputs.get_mut(&plugin).unwrap().len();
-    let rx_outputs_len = graph.rx_outputs.get_mut(&plugin).unwrap().len();
-    if plugin_engine.tx_inputs().len() != tx_inputs_len {
-        return Err(Error::NodeTampered(plugin.clone(), EndpointType::TxInput));
+    let mut addon_engine = engines
+        .remove(&addon)
+        .ok_or(Error::AddonNotFound(addon))?;
+    let tx_inputs_len = graph.tx_inputs.get_mut(&addon).unwrap().len();
+    let tx_outputs_len = graph.tx_outputs.get_mut(&addon).unwrap().len();
+    let rx_inputs_len = graph.rx_inputs.get_mut(&addon).unwrap().len();
+    let rx_outputs_len = graph.rx_outputs.get_mut(&addon).unwrap().len();
+    if addon_engine.tx_inputs().len() != tx_inputs_len {
+        return Err(Error::NodeTampered(addon, EndpointType::TxInput));
     }
-    if plugin_engine.tx_outputs().len() != tx_outputs_len {
-        return Err(Error::NodeTampered(plugin.clone(), EndpointType::TxOutput));
+    if addon_engine.tx_outputs().len() != tx_outputs_len {
+        return Err(Error::NodeTampered(addon, EndpointType::TxOutput));
     }
-    if plugin_engine.rx_inputs().len() != rx_inputs_len {
-        return Err(Error::NodeTampered(plugin.clone(), EndpointType::RxInput));
+    if addon_engine.rx_inputs().len() != rx_inputs_len {
+        return Err(Error::NodeTampered(addon, EndpointType::RxInput));
     }
-    if plugin_engine.rx_outputs().len() != rx_outputs_len {
-        return Err(Error::NodeTampered(plugin.clone(), EndpointType::RxOutput));
+    if addon_engine.rx_outputs().len() != rx_outputs_len {
+        return Err(Error::NodeTampered(addon, EndpointType::RxOutput));
     }
 
     let mut tx_inputs_await_replace = (0..tx_inputs_len).collect::<HashSet<_>>();
     let mut tx_outputs_await_replace = (0..tx_outputs_len).collect::<HashSet<_>>();
-    let mut rx_inputs_await_replace = (0..rx_inputs_len).collect::<HashSet<_>>();
-    let mut rx_outputs_await_replace = (0..rx_outputs_len).collect::<HashSet<_>>();
-
     for edge in tx_edges_replacement.into_iter() {
         let (sender, receiver) = create_channel();
         let sender_endpoint = engines
             .get_mut(&edge.0)
-            .ok_or(Error::InvalidReplacement(edge.clone()))?;
+            .ok_or(Error::InvalidReplacement(edge))?;
         let sender_tx_outputs = graph.tx_outputs.get_mut(&edge.0).unwrap();
-        if edge.2 >= sender_tx_outputs.len() || &sender_tx_outputs[edge.2].0 != &plugin {
-            return Err(Error::InvalidReplacement(edge.clone()));
+        if edge.2 >= sender_tx_outputs.len() || sender_tx_outputs[edge.2].0 != addon {
+            return Err(Error::InvalidReplacement(edge));
         }
         if sender_tx_outputs.len() != sender_endpoint.tx_outputs().len() {
-            return Err(Error::NodeTampered(edge.0.clone(), EndpointType::TxOutput));
+            return Err(Error::NodeTampered(edge.0, EndpointType::TxOutput));
         }
         let receiver_index = sender_tx_outputs[edge.2].1;
-        if !plugin_engine.tx_inputs()[receiver_index].is_empty() {
+        if !addon_engine.tx_inputs()[receiver_index].is_empty() {
             return Err(Error::ChannelNotEmpty(
-                plugin.clone(),
+                addon, 
                 EndpointType::TxInput,
                 receiver_index,
             ));
         }
         tx_inputs_await_replace.remove(&receiver_index);
-        sender_tx_outputs[edge.2] = (edge.1.clone(), edge.3);
+        sender_tx_outputs[edge.2] = (edge.1, edge.3);
         sender_endpoint.tx_outputs()[edge.2] = sender;
 
         let receiver_endpoint = engines
             .get_mut(&edge.1)
-            .ok_or(Error::InvalidReplacement(edge.clone()))?;
+            .ok_or(Error::InvalidReplacement(edge))?;
         let receiver_tx_inputs = graph.tx_inputs.get_mut(&edge.1).unwrap();
-        if edge.3 >= receiver_tx_inputs.len() || &receiver_tx_inputs[edge.3].0 != &plugin {
-            return Err(Error::InvalidReplacement(edge.clone()));
+        if edge.3 >= receiver_tx_inputs.len() || receiver_tx_inputs[edge.3].0 != addon {
+            return Err(Error::InvalidReplacement(edge));
         }
         if !receiver_endpoint.tx_inputs()[edge.3].is_empty() {
             return Err(Error::ChannelNotEmpty(
-                edge.1.clone(),
+                edge.1,
                 EndpointType::TxInput,
                 edge.3,
             ));
@@ -418,40 +424,42 @@ where
         return Err(Error::DanglingEndpoint);
     }
 
+    let mut rx_inputs_await_replace = (0..rx_inputs_len).collect::<HashSet<_>>();
+    let mut rx_outputs_await_replace = (0..rx_outputs_len).collect::<HashSet<_>>();
     for edge in rx_edges_replacement.into_iter() {
         let (sender, receiver) = create_channel();
         let sender_endpoint = engines
             .get_mut(&edge.0)
-            .ok_or(Error::InvalidReplacement(edge.clone()))?;
+            .ok_or(Error::InvalidReplacement(edge))?;
         let sender_rx_outputs = graph.rx_outputs.get_mut(&edge.0).unwrap();
-        if edge.2 >= sender_rx_outputs.len() || &sender_rx_outputs[edge.2].0 != &plugin {
-            return Err(Error::InvalidReplacement(edge.clone()));
+        if edge.2 >= sender_rx_outputs.len() || sender_rx_outputs[edge.2].0 != addon {
+            return Err(Error::InvalidReplacement(edge));
         }
         if sender_rx_outputs.len() != sender_endpoint.rx_outputs().len() {
-            return Err(Error::NodeTampered(edge.0.clone(), EndpointType::RxOutput));
+            return Err(Error::NodeTampered(edge.0, EndpointType::RxOutput));
         }
         let receiver_index = sender_rx_outputs[edge.2].1;
-        if !plugin_engine.rx_inputs()[receiver_index].is_empty() {
+        if !addon_engine.rx_inputs()[receiver_index].is_empty() {
             return Err(Error::ChannelNotEmpty(
-                plugin.clone(),
+                addon,
                 EndpointType::RxInput,
                 receiver_index,
             ));
         }
         rx_inputs_await_replace.remove(&receiver_index);
-        sender_rx_outputs[edge.2] = (edge.1.clone(), edge.3);
+        sender_rx_outputs[edge.2] = (edge.1, edge.3);
         sender_endpoint.rx_outputs()[edge.2] = sender;
 
         let receiver_endpoint = engines
             .get_mut(&edge.1)
-            .ok_or(Error::InvalidReplacement(edge.clone()))?;
+            .ok_or(Error::InvalidReplacement(edge))?;
         let receiver_rx_inputs = graph.rx_inputs.get_mut(&edge.1).unwrap();
-        if edge.3 >= receiver_rx_inputs.len() || &receiver_rx_inputs[edge.3].0 != &plugin {
-            return Err(Error::InvalidReplacement(edge.clone()));
+        if edge.3 >= receiver_rx_inputs.len() || receiver_rx_inputs[edge.3].0 != addon {
+            return Err(Error::InvalidReplacement(edge));
         }
         if !receiver_endpoint.rx_inputs()[edge.3].is_empty() {
             return Err(Error::ChannelNotEmpty(
-                edge.1.clone(),
+                edge.1,
                 EndpointType::RxInput,
                 edge.3,
             ));
@@ -464,6 +472,6 @@ where
         return Err(Error::DanglingEndpoint);
     }
 
-    graph.remove_node(&plugin);
+    graph.remove_node(&addon);
     Ok(())
 }

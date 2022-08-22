@@ -8,7 +8,7 @@ use anyhow::bail;
 use dashmap::DashMap;
 use ipc::control::PluginDescriptor;
 
-use crate::addon::Addon;
+use crate::addon::KoalaAddon;
 use crate::dependency::EngineGraph;
 use crate::engine::datapath::graph::ChannelDescriptor;
 use crate::engine::EngineType;
@@ -16,7 +16,7 @@ use crate::module::KoalaModule;
 use crate::module::Service;
 
 pub type InitModuleFn = fn(Option<&Path>) -> Box<dyn KoalaModule>;
-pub type InitAddonFn = fn(Option<&Path>) -> Box<dyn Addon>;
+pub type InitAddonFn = fn(Option<&Path>) -> Box<dyn KoalaAddon>;
 
 pub struct DynamicLibrary {
     lib: libloading::Library,
@@ -35,7 +35,7 @@ impl DynamicLibrary {
         module
     }
 
-    pub fn init_addon(&self, config_path: Option<&Path>) -> Box<dyn Addon> {
+    pub fn init_addon(&self, config_path: Option<&Path>) -> Box<dyn KoalaAddon> {
         let func = unsafe { self.lib.get::<InitAddonFn>(b"init_addon").unwrap() };
         let addon = func(config_path);
         addon
@@ -71,7 +71,7 @@ pub enum Plugin {
     Addon(String),
 }
 
-pub struct ServiceRegistry {
+pub(crate) struct ServiceRegistry {
     pub(crate) engines: Vec<EngineType>,
     pub(crate) tx_channels: Vec<ChannelDescriptor>,
     pub(crate) rx_channels: Vec<ChannelDescriptor>,
@@ -80,7 +80,7 @@ pub struct ServiceRegistry {
 pub struct PluginCollection {
     libraries: DashMap<Plugin, DynamicLibrary>,
     pub(crate) modules: DashMap<String, Box<dyn KoalaModule>>,
-    pub(crate) addons: DashMap<String, Box<dyn Addon>>,
+    pub(crate) addons: DashMap<String, Box<dyn KoalaAddon>>,
     pub(crate) engine_registry: DashMap<EngineType, Plugin>,
     pub(crate) service_registry: DashMap<Service, ServiceRegistry>,
     dependency_graph: Mutex<EngineGraph>,
@@ -112,7 +112,7 @@ impl PluginCollection {
         self.libraries.insert(plugin.clone(), dylib);
         if !new_addon.check_compatibility(old_ver.as_ref()) {
             self.libraries.get_mut(&plugin).unwrap().rollback();
-            bail!("New addon is not compatible with old version");
+            bail!("new addon is not compatible with old version");
         }
 
         if let Some((_, old_addon)) = self.addons.remove(&addon.name) {
@@ -121,7 +121,11 @@ impl PluginCollection {
         };
         let engines = new_addon.engines();
         for engine in engines {
-            self.engine_registry.insert(engine.clone(), plugin.clone());
+            self.engine_registry.insert(*engine, plugin.clone());
+            tracing::info!(
+                "Registered addon engine {:?}",
+                engine
+            );
         }
 
         self.addons.insert(addon.name.clone(), new_addon);
@@ -139,19 +143,19 @@ impl PluginCollection {
             .map(|x| Plugin::Module(x.name.clone()))
             .collect::<Vec<_>>();
 
-        let mut new_modules = HashMap::new();
-        let mut old_verions = HashMap::new();
-        let mut new_versions = HashMap::new();
+        let mut new_modules = HashMap::with_capacity(descriptors.len());
+        let mut old_verions = HashMap::with_capacity(descriptors.len());
+        let mut new_versions = HashMap::with_capacity(descriptors.len() + self.modules.len());
         let modules_guard = self.modules.iter().collect::<Vec<_>>();
         for module in modules_guard.iter() {
-            new_versions.insert(&module.key()[..], module.value().version());
+            new_versions.insert(&module.key()[..], module.version());
         }
 
         // load new moduels (plugins)
         for (descriptor, plugin) in descriptors.iter().zip(plugins.iter()) {
             let old_dylib = self.libraries.remove(plugin);
             let dylib = if let Some((_, old)) = old_dylib {
-                let old_ver = new_versions.get(&descriptor.name[..]).unwrap().clone();
+                let old_ver = new_versions.remove(&descriptor.name[..]).unwrap();
                 old_verions.insert(&descriptor.name[..], old_ver);
                 old.upgrade(&descriptor.lib_path)
             } else {
@@ -180,55 +184,67 @@ impl PluginCollection {
             for plugin in plugins.iter() {
                 self.libraries.get_mut(plugin).unwrap().rollback();
             }
-            bail!("New modules are not compatible with existing ones");
+            bail!("new modules are not compatible with existing ones");
         }
 
         std::mem::drop(modules_guard);
         // if compatible, finish upgrade
         let mut graph_guard = self.dependency_graph.lock().unwrap();
         let mut upgraded_engine_types = HashSet::new();
-        for (name, mut module) in new_modules.into_iter() {
+        for (name, module) in new_modules.iter_mut() {
             let plugin = Plugin::Module(name.to_string());
-            if let Some((_, old_module)) = self.modules.remove(name) {
+            if let Some((_, old_module)) = self.modules.remove(*name) {
                 // migrate any states/resources from old module
                 module.migrate(old_module);
             }
             let engines = module.engines();
-            upgraded_engine_types.extend(engines.iter().cloned());
-            graph_guard.add_engines(&engines[..]);
+            upgraded_engine_types.extend(engines.iter().copied());
+            graph_guard.add_engines(engines.iter().copied());
             for engine in engines {
-                self.engine_registry.insert(engine.clone(), plugin.clone());
+                self.engine_registry.insert(*engine, plugin.clone());
             }
-
+        }
+        for (name, module) in new_modules.into_iter() {
             let edges = module.dependencies();
-            graph_guard.add_dependency(&edges[..]);
-
+            graph_guard.add_dependency(edges.iter().copied())?;
             self.modules.insert(name.to_string(), module);
         }
 
         for descriptor in descriptors.iter() {
             let module = self.modules.get(&descriptor.name).unwrap();
-            let (service_name, service_engine) = module.service();
-            let dependencies = graph_guard.get_engine_dependencies(&service_engine);
-            eprintln!(
-                "Service={:?}, Dependencies {:?}",
-                service_name, dependencies
-            );
-            let group_engines = dependencies.iter().cloned().collect::<HashSet<_>>();
-            let tx_channels = module.tx_channels();
-            let rx_channels = module.rx_channels();
-            for channel in tx_channels.iter().chain(rx_channels.iter()) {
-                if !group_engines.contains(&channel.0) || !group_engines.contains(&channel.1) {
-                    bail!("Channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph", channel.0, channel.1, service_name);
-                }
-            }
+            if let Some(service_info) = module.service() {
+                let dependencies = graph_guard.get_engine_dependencies(&service_info.engine)?;
+                let group_engines = dependencies.iter().copied().collect::<HashSet<_>>();
+                let mut tx_channels = service_info.tx_channels.to_vec();
+                let mut rx_channels = service_info.rx_channels.to_vec();
 
-            let service = ServiceRegistry {
-                engines: dependencies,
-                tx_channels,
-                rx_channels,
-            };
-            self.service_registry.insert(service_name, service);
+                for channel in tx_channels.iter_mut().chain(rx_channels.iter_mut()) {
+                    if !group_engines.contains(&channel.0) || !group_engines.contains(&channel.1) {
+                        bail!(
+                            "channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph",
+                            channel.0, 
+                            channel.1, 
+                            service_info.service
+                        );
+                    }
+                    else {
+                        // relocate &'static str
+                        channel.0 = *group_engines.get(&channel.0).unwrap();
+                        channel.1 = *group_engines.get(&channel.1).unwrap();
+                    }
+                }
+                let service = ServiceRegistry {
+                    engines: dependencies,
+                    tx_channels,
+                    rx_channels,
+                };
+                tracing::info!(
+                    "Registered service {:?}, dependencies={:?}",
+                    service_info.service,
+                    service.engines,
+                );
+                self.service_registry.insert(service_info.service, service);
+            }
         }
 
         Ok(upgraded_engine_types)

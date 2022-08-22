@@ -7,16 +7,3 @@ pub enum SchedulingMode {
     Spread,
     Compact,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum EngineType {
-    RdmaTransport,
-    RdmaConnMgmt,
-    TcpTransport,
-    Mrpc,
-    RpcAdapter,
-    RpcAdapterAcceptor,
-    Overload,
-    Salloc,
-    SallocV2,
-}

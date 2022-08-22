@@ -17,8 +17,20 @@ use crate::storage::{ResourceCollection, SharedStorage};
 pub type ModuleCollection = DashMap<String, Box<dyn KoalaModule>>;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Service(pub String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Service(pub &'static str);
+
+/// Information about a service
+pub struct ServiceInfo {
+    /// Name of the service
+    pub service: Service,
+    /// Service engine that directly talks to client application
+    pub engine: EngineType,
+    /// Default data path tx channels between engines
+    pub tx_channels: &'static [ChannelDescriptor],
+    /// Default data path rx channels between engines
+    pub rx_channels: &'static [ChannelDescriptor],
+}
 
 pub enum NewEngineRequest<'a> {
     Service {
@@ -45,10 +57,10 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     }
 
     /// The main service engine
-    fn service(&self) -> (Service, EngineType);
+    fn service(&self) -> Option<ServiceInfo>;
 
     /// Engine types provided by the module
-    fn engines(&self) -> Vec<EngineType>;
+    fn engines(&self) -> &[EngineType];
 
     /// Dependencies between the engines
     /// It may include external engines
@@ -56,13 +68,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// If access to other service engine's resource is needed
     /// The resources should be wrapped in ProcessShared state
     /// and managed by the corresponding module's state_mgr
-    fn dependencies(&self) -> Vec<EnginePair>;
-
-    /// Default data path tx channels between engines
-    fn tx_channels(&self) -> Vec<ChannelDescriptor>;
-
-    /// Default data path rx channels between engines
-    fn rx_channels(&self) -> Vec<ChannelDescriptor>;
+    fn dependencies(&self) -> &[EnginePair];
 
     /// Check whether the upgrade is compatible,
     /// provide with previous verion of current module,
@@ -99,7 +105,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     ///     Enable state sharing between engines in different services    
     fn create_engine(
         &mut self,
-        ty: &EngineType,
+        ty: EngineType,
         request: NewEngineRequest,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,
@@ -125,7 +131,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// so that the new state type can be reassembled from the components.
     fn restore_engine(
         &mut self,
-        ty: &EngineType,
+        ty: EngineType,
         local: ResourceCollection,
         shared: &mut SharedStorage,
         global: &mut ResourceCollection,

@@ -33,7 +33,6 @@ use std::io;
 
 use thiserror::Error;
 
-use interface::engine::EngineType;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
 use libkoala::_rx_recv_impl as rx_recv_impl;
@@ -57,7 +56,11 @@ pub(crate) struct Context {
 impl Context {
     fn register() -> Result<Context, Error> {
         let protos = RefCell::new(BTreeSet::new());
-        let service = ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, EngineType::Mrpc)?;
+        let service = ShmService::register(
+            &*KOALA_PREFIX, 
+            &*KOALA_CONTROL_SOCK,
+            "Mrpc".to_string(),
+        )?;
         Ok(Self { protos, service })
     }
 
