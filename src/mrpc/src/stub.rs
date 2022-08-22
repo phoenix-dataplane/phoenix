@@ -405,6 +405,24 @@ impl ClientStub {
     }
 }
 
+pub struct Pending<T> {
+    _data: std::marker::PhantomData<fn() -> T>,
+}
+
+pub fn pending<T>() -> Pending<T> {
+    Pending { _data: std::marker::PhantomData }
+}
+
+impl<T> Future for Pending<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
+
 impl !Send for ClientStub {}
 impl !Sync for ClientStub {}
 
@@ -477,7 +495,7 @@ impl Server {
         // running tasks
         let mut running = FuturesUnordered::new();
         running.push(LocalFutureObj::new(Box::new(std::future::pending())));
-        // running: FuturesUnordered<LocalFutureObj<'s, MessageErased>>,
+        // running.push(LocalFutureObj::new(Box::new(pending())));
         // batching reply small requests for better CPU efficiency
         let mut reply_buffer = Vec::with_capacity(32);
         loop {
@@ -490,13 +508,13 @@ impl Server {
                     panic!("unexpected complete")
                 }
                 default => {
+                    if !reply_buffer.is_empty() {
+                        self.post_replies(&mut reply_buffer)?;
+                    }
                     // no futures is ready
                     self.check_cm_event()?;
                     // check new requests, dispatch them to the executor
                     self.dispatch_requests(&mut running)?;
-                    if !reply_buffer.is_empty() {
-                        self.post_replies(&mut reply_buffer)?;
-                    }
                 }
             }
         }
@@ -621,7 +639,8 @@ impl Server {
                         Some(conn) => {
                             let read_heap = Arc::clone(&conn.read_heap);
                             // Box allocation here!
-                            let task = LocalFutureObj::new(Box::new(s.call(request, read_heap)));
+                            // let task = LocalFutureObj::new(Box::new(s.call(request, read_heap)));
+                            let task = LocalFutureObj::new(s.call(request, read_heap));
                             running.push(task);
                         }
                         None => {
