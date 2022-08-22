@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
 use crossbeam::channel::{Receiver, Sender};
+use petgraph::graph::NodeIndex;
+use petgraph::Graph;
+use petgraph::visit::{Topo, Walker};
 
 use super::message::{EngineRxMessage, EngineTxMessage};
 use crate::engine::EngineType;
@@ -42,6 +45,37 @@ macro_rules! impl_vertex_for_engine {
 /// A descriptor to describe channel
 #[derive(Debug, Clone, Copy)]
 pub struct ChannelDescriptor(pub EngineType, pub EngineType, pub usize, pub usize);
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum FlowDirection {
+    Tx,
+    Rx,
+}
+
+struct FlowDependencyGraph {
+    index: HashMap<(EngineType, FlowDirection), NodeIndex>,
+    graph: Graph<(EngineType, FlowDirection), ()>,
+}
+
+impl FlowDependencyGraph {
+    fn new() -> Self {
+        FlowDependencyGraph {
+            index: HashMap::new(),
+            graph: Graph::new(),
+        }
+    }
+
+    fn get_or_insert_index(&mut self, ty: EngineType, direction: FlowDirection) -> NodeIndex {
+        let FlowDependencyGraph {
+            ref mut index,
+            ref mut graph,
+        } = *self;
+        *index
+            .entry((ty, direction))
+            .or_insert_with(|| graph.add_node((ty, direction)))
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct DataPathGraph {
@@ -88,5 +122,36 @@ impl DataPathGraph {
         self.tx_outputs.remove(engine);
         self.rx_inputs.remove(engine);
         self.rx_outputs.remove(engine);
+    }
+
+    pub(crate) fn topological_order(&self) -> Vec<(EngineType, FlowDirection)> {
+        let mut graph = FlowDependencyGraph::new();
+        for (engine_type, endpoints) in self.tx_outputs.iter() {
+            let sender = graph.get_or_insert_index(*engine_type, FlowDirection::Tx);
+            for (receiver, _) in endpoints.iter() {
+                let receiver = graph.get_or_insert_index(*receiver, FlowDirection::Tx);
+                graph.graph.add_edge(sender, receiver, ());
+            }
+        }
+        for (engine_type, endpoints) in self.rx_outputs.iter() {
+            let sender = graph.get_or_insert_index(*engine_type, FlowDirection::Rx);
+            for (receiver, _) in endpoints.iter() {
+                let receiver = graph.get_or_insert_index(*receiver, FlowDirection::Rx);
+                graph.graph.add_edge(sender, receiver, ());
+            }
+        }
+
+        if petgraph::algo::is_cyclic_directed(&graph.graph) {
+            panic!("Data path graph contains a directed cycle")
+        }
+
+        let visit = Topo::new(&graph.graph);
+        let topo_order_idx = visit.iter(&graph.graph).collect::<Vec<_>>();
+        let topo_order = topo_order_idx
+            .iter()
+            .map(|node| graph.graph[*node])
+            .collect();
+
+        topo_order
     }
 }

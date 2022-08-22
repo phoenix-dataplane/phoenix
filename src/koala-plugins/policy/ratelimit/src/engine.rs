@@ -67,6 +67,10 @@ impl Decompose for RateLimitEngine {
         while !self.tx_inputs()[0].is_empty() {
             self.check_input_queue()?;
         }
+        while !self.queue.is_empty() {
+            let msg = self.queue.pop_front().unwrap();
+            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+        } 
         Ok(())
     }
 

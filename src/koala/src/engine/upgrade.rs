@@ -94,7 +94,14 @@ where
     for (container, mode) in engine_containers {
         let engine_type = container.engine_type();
         let version = container.version();
-        let mut engine = container.detach();
+        let engine = container.detach();
+        detached_engines.insert(engine_type, engine);
+        detached_meta.insert(engine_type, (version, mode));
+    }
+
+    let dataflow_order = subscription.graph.topological_order();
+    for (engine_type, _) in dataflow_order.into_iter() {
+        let engine = detached_engines.get_mut(&engine_type).unwrap();
         engine.set_els();
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the engine group
@@ -113,8 +120,6 @@ where
             gid,
             engine_type,
         );
-        detached_engines.insert(engine_type, engine);
-        detached_meta.insert(engine_type, (version, mode));
     }
 
     let node = match refactor_channels_attach_addon(
@@ -276,7 +281,14 @@ where
     for (container, mode) in engine_containers {
         let engine_type = container.engine_type();
         let version = container.version();
-        let mut engine = container.detach();
+        let engine = container.detach();
+        detached_engines.insert(engine_type, engine);
+        detached_meta.insert(engine_type, (version, mode));
+    }
+
+    let dataflow_order = subscription.graph.topological_order();
+    for (engine_type, _) in dataflow_order.into_iter() {
+        let engine = detached_engines.get_mut(&engine_type).unwrap();
         engine.set_els();
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the engine group
@@ -290,13 +302,11 @@ where
             );
         };
         tracing::info!(
-            "Engine (pid={:?}, gid={:?}, type={:?} flushed",
+            "Engine (pid={:?}, gid={:?}, type={:?}) flushed",
             pid,
             gid,
             engine_type,
         );
-        detached_engines.insert(engine_type, engine);
-        detached_meta.insert(engine_type, (version, mode));
     }
 
     let result = refactor_channels_detach_addon(
@@ -369,7 +379,7 @@ async fn upgrade_client(
     std::mem::drop(guard);
 
     // EngineContainers suspended from runtimes, awaiting for upgrade
-    let mut containers_to_upgrade = HashMap::new();
+    let mut engines_to_upgrade = HashMap::new();
     // EngineContainers for engines in the same engine groups
     // that do not need update, but need to suspend from runtimes,
     let mut containers_suspended = HashMap::new();
@@ -379,8 +389,11 @@ async fn upgrade_client(
             let runtime = guard.runtimes.get(&info.rid).unwrap();
             if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
-                    let group = containers_to_upgrade.entry(info.gid).or_insert_with(Vec::new);
-                    group.push((container, info.scheduling_mode));
+                    let group = engines_to_upgrade.entry(info.gid).or_insert_with(HashMap::new);
+                    let engine_type = container.engine_type();
+                    let version = container.version();
+                    let engine = container.detach();
+                    group.insert(engine_type, (engine, info.scheduling_mode, version));
                     // remove the engine from subscriptions
                     // but we don't decrease the reference count
                     // of the corresponding service subscription
@@ -409,7 +422,7 @@ async fn upgrade_client(
             }
         });
     }
-    let subscribed_groups = containers_to_upgrade
+    let subscribed_groups = engines_to_upgrade
         .keys()
         .chain(containers_suspended.keys())
         .map(|x| *x)
@@ -425,15 +438,18 @@ async fn upgrade_client(
         .resource
         .entry(pid)
         .or_insert_with(ResourceCollection::new);
-    // Decompose the engines to upgrade
-    for (gid, containers) in containers_to_upgrade {
-        let shared = shared_storage.entry(gid).or_insert_with(SharedStorage::new);
-        for (container, mode) in containers {
-            let prev_version = container.version();
-            let engine_type = container.engine_type();
-            let mut engine = container.detach();
-            engine.set_els();
-            if flush {
+
+
+    if flush {
+        for (gid, engines) in engines_to_upgrade.iter_mut() {
+            let mut subscription_guard = rm.service_subscriptions.get_mut(&(pid, *gid)).unwrap();
+            let (subscription, _) = subscription_guard.value_mut();
+            let dataflow_order = subscription.graph.topological_order();
+            for (engine_type, _) in dataflow_order.into_iter() {
+                let (engine, _, _) = engines.get_mut(&engine_type).unwrap();
+                engine.set_els();
+                // DataPathNode may change for any engine
+                // hence we need to flush the queues for all engines in the engine group
                 if let Err(err) = engine.flush() {
                     tracing::warn!(
                         "Error in flushing engine (pid={:?}, gid={:?}, type={:?}), error: {:?}",
@@ -443,7 +459,21 @@ async fn upgrade_client(
                         err,
                     );
                 };
-            }
+                tracing::info!(
+                    "Engine (pid={:?}, gid={:?}, type={:?}) flushed",
+                    pid,
+                    gid,
+                    engine_type,
+                );
+            } 
+        }
+    }
+
+    // Decompose the engines to upgrade
+    for (gid, engines) in engines_to_upgrade {
+        let shared = shared_storage.entry(gid).or_insert_with(SharedStorage::new);
+        for (engine_type, (engine, mode, prev_version)) in engines {
+            engine.set_els();
             let (state, node) = engine.decompose(shared, global_resource.value_mut());
             tracing::info!(
                 "Engine (pid={:?}, gid={:?}, type={:?}) decomposed",

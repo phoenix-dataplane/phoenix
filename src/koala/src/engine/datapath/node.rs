@@ -27,6 +27,15 @@ fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
     crossbeam::channel::unbounded()
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum EndpointType {
+    TxInput,
+    TxOutput,
+    RxInput,
+    RxOutput,
+}
+
+
 pub struct DataPathNode {
     pub tx_inputs: Vec<TxIQueue>,
     pub tx_outputs: Vec<TxOQueue>,
@@ -43,14 +52,6 @@ impl DataPathNode {
             rx_outputs: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum EndpointType {
-    TxInput,
-    TxOutput,
-    RxInput,
-    RxOutput,
 }
 
 struct EndpointCollection {
