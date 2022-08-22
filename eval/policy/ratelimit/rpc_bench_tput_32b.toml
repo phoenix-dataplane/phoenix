@@ -1,4 +1,4 @@
-name = "benchmark/ratelimit_1/rpc_bench_tput_32b"
+name = "ratelimit_1/rpc_bench_tput_32b"
 description = "Run rpc_bench benchmark"
 group = "ratelimit"
 timeout_secs = 60
