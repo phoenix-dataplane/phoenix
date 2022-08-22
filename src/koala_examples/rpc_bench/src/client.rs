@@ -1,3 +1,4 @@
+#![feature(scoped_threads)]
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -64,8 +65,16 @@ pub struct Args {
 
     /// The number of messages to provision. Must be a positive number. The test will repeatedly
     /// sending the provisioned message.
-    #[structopt(long, default_value = "128")]
+    #[structopt(long, default_value = "1")]
     pub provision_count: usize,
+
+    /// Number of client threads. Each client thread is mapped to one server threads.
+    #[structopt(long, default_value = "1")]
+    pub num_client_threads: usize,
+
+    /// Number of server threads.
+    #[structopt(long, default_value = "1")]
+    pub num_server_threads: usize,
 }
 
 // mod bench_app;
@@ -76,6 +85,7 @@ async fn run_bench(
     args: &Args,
     client: &GreeterClient,
     reqs: &[WRef<HelloRequest>],
+    tid: usize,
 ) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
 
@@ -159,7 +169,7 @@ async fn run_bench(
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
                     let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    println!("{} rps, {} Gb/s", rps, bw);
+                    println!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
                     last_nbytes = nbytes;
@@ -172,13 +182,15 @@ async fn run_bench(
     Ok((dura, nbytes, rcnt, hist))
 }
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
-    let args = Args::from_args();
-    eprintln!("args: {:?}", args);
-    let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
-
-    let client = GreeterClient::connect((args.ip.as_str(), args.port))?;
-    eprintln!("connection setup");
+fn run_client_thread(
+    tid: usize,
+    args: &Args,
+) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    let client = GreeterClient::connect((
+        args.ip.as_str(),
+        args.port + (tid % args.num_server_threads) as u16,
+    ))?;
+    eprintln!("connection setup for thread {tid}");
 
     smol::block_on(async {
         // provision
@@ -190,17 +202,17 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
             reqs.push(req);
         }
 
-        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs).await?;
+        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
 
         println!(
-            "duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
+            "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
             dura,
             8e-9 * total_bytes as f64 / dura.as_secs_f64(),
             1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
         );
         // print latencies
         println!(
-            "duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+            "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
             dura,
             Duration::from_nanos(hist.mean() as u64),
             Duration::from_nanos(hist.min()),
@@ -211,8 +223,29 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         );
 
         Result::<(), mrpc::Status>::Ok(())
-    })
-    .unwrap();
+    })?;
+
+    Ok(())
+}
+
+fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    let args = Args::from_args();
+    eprintln!("args: {:?}", args);
+
+    assert!(args.num_client_threads % args.num_server_threads == 0);
+
+    let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
+
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for tid in 0..args.num_client_threads {
+            let args = &args;
+            handles.push(s.spawn(move || {
+                run_client_thread(tid, args).unwrap();
+            }));
+        }
+    });
+
     Ok(())
 }
 

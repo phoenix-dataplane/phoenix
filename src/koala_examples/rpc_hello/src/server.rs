@@ -31,7 +31,8 @@ impl Greeter for MyGreeter {
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     smol::block_on(async {
-        let _server = mrpc::stub::Server::bind("0.0.0.0:5000")?
+        let mut server = mrpc::stub::Server::bind("0.0.0.0:5000")?;
+        server
             .add_service(GreeterServer::new(MyGreeter::default()))
             .serve()
             .await?;

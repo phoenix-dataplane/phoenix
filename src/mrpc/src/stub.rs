@@ -463,7 +463,7 @@ impl Server {
     }
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
-    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn serve(&mut self) -> Result<(), Error> {
         // let mut msg_buffer = Vec::with_capacity(32);
         // loop {
         //     // TODO(cjr): change this to check_cm_event(); cm event contains new connections
@@ -556,7 +556,7 @@ impl Server {
         Ok(())
     }
 
-    fn check_cm_event(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn check_cm_event(&self) -> Result<(), Error> {
         MRPC_CTX.with(|ctx| {
             match ctx.service.try_recv_comp().map(|comp| comp.0) {
                 Err(ipc::Error::TryRecv(ipc::TryRecvError::Empty)) => {}
@@ -569,7 +569,7 @@ impl Server {
                         Ok(CompletionKind::NewMappedAddrs) => {
                             // do nothing, just consume the completion
                         }
-                        Err(e) => return Err(e.into()),
+                        Err(e) => return Err(Error::Interface("check_cm_event", e)),
                         otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
                     }
                 }
@@ -578,43 +578,7 @@ impl Server {
         })
     }
 
-    pub(crate) fn post_reply(&self, erased: MessageErased) -> Result<(), Error> {
-        tracing::trace!(
-            "client post reply to mRPC engine, call_id={}",
-            erased.meta.call_id
-        );
-
-        #[cfg(feature = "timing")]
-        TIMER.with_borrow_mut(|timer| {
-            timer.sample(
-                RpcId::new(erased.meta.conn_id, erased.meta.call_id),
-                SampleKind::ServerReply,
-            );
-        });
-
-        let wr = dp::WorkRequest::Reply(erased);
-        MRPC_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                    ptr.cast::<dp::WorkRequest>().write(wr);
-                    sent = true;
-                    1
-                })?;
-            }
-            Ok(())
-        })
-    }
-
-    fn post_replies(
-        &self,
-        msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // let replies = msg_buffer.drain(..);
-        // for reply in replies {
-        //     self.post_reply(reply)?;
-        // }
-
+    fn post_replies(&self, msg_buffer: &mut Vec<MessageErased>) -> Result<(), Error> {
         let num = msg_buffer.len();
         let mut sent = 0;
         MRPC_CTX.with(|ctx| {
@@ -639,7 +603,7 @@ impl Server {
     fn dispatch_requests<'s>(
         &'s self,
         running: &mut FuturesUnordered<LocalFutureObj<'s, MessageErased>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Error> {
         match check_completion_queue() {
             Ok(_) => {}
             Err(Error::Disconnect(conn_id)) => {
@@ -659,43 +623,6 @@ impl Server {
                             // Box allocation here!
                             let task = LocalFutureObj::new(Box::new(s.call(request, read_heap)));
                             running.push(task);
-                        }
-                        None => {
-                            // the connection has disappeared, do nothing
-                        }
-                    }
-                }
-                None => {
-                    log::warn!("unrecognized request: {:?}", request);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn poll_requests(
-        &mut self,
-        msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        match check_completion_queue() {
-            Ok(_) => {}
-            Err(Error::Disconnect(conn_id)) => {
-                // close the connection and free the related resources
-                self.close_connection(conn_id)?;
-            }
-            Err(e) => return Err(e.into()),
-        }
-
-        for request in RECV_REQUEST_CACHE.get_mut(&self.stub_id).unwrap().drain(..) {
-            let service_id = request.meta.service_id;
-            match self.routes.get_mut(&service_id) {
-                Some(s) => {
-                    match self.connections.borrow().get(&request.meta.conn_id) {
-                        Some(conn) => {
-                            let read_heap = Arc::clone(&conn.read_heap);
-                            let reply_erased = s.call(request, read_heap).await;
-                            msg_buffer.push(reply_erased);
                         }
                         None => {
                             // the connection has disappeared, do nothing

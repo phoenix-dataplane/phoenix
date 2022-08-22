@@ -154,14 +154,13 @@ fn run_server(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
             handles.push(s.spawn(move || {
                 smol::block_on(async {
                     let service = MasstreeAnalyticsService::new(mti, tid, ti_vec);
-                    let _server = mrpc::stub::Server::bind((
+                    mrpc::stub::Server::bind((
                         opt.server_addr.as_deref().unwrap_or("0.0.0.0"),
                         opt.server_port + tid as u16,
                     ))?
                     .add_service(MasstreeAnalyticsServer::new(service))
                     .serve()
-                    .await?;
-                    Result::<(), Box<dyn std::error::Error>>::Ok(())
+                    .await
                 })
                 .unwrap();
             }));
