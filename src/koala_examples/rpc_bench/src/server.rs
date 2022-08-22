@@ -62,36 +62,41 @@ impl Greeter for MyGreeter {
     }
 }
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn run_server(tid: usize, args: Args) -> Result<(), mrpc::Error> {
+    smol::block_on(async {
+        let mut replies = Vec::new();
+        for _ in 0..args.provision_count {
+            let mut message = Vec::new();
+            message.resize(args.reply_size, 43);
+            let msg = WRef::new(HelloReply { message });
+            replies.push(msg);
+        }
+
+        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
+            .add_service(GreeterServer::new(MyGreeter {
+                replies,
+                count: AtomicUsize::new(0),
+                args,
+            }))
+            .serve()
+            .await
+    })
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::scope(|s| {
         let mut handles = Vec::new();
         let args = Args::from_args();
         eprintln!("args: {:?}", args);
         let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
 
-        for tid in 0..args.num_server_threads {
+        for tid in 1..args.num_server_threads {
             let args = args.clone();
-            handles.push(s.spawn(move || {
-                smol::block_on(async {
-                    let mut replies = Vec::new();
-                    for _ in 0..args.provision_count {
-                        let mut message = Vec::new();
-                        message.resize(args.reply_size, 43);
-                        let msg = WRef::new(HelloReply { message });
-                        replies.push(msg);
-                    }
+            handles.push(s.spawn(move || run_server(tid, args)));
 
-                    mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
-                        .add_service(GreeterServer::new(MyGreeter {
-                            replies,
-                            count: AtomicUsize::new(0),
-                            args,
-                        }))
-                        .serve()
-                        .await
-                })
-            }));
         }
+
+        run_server(0, args)?;
         Ok(())
     })
 }

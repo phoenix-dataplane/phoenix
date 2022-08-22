@@ -238,12 +238,13 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
 
     std::thread::scope(|s| {
         let mut handles = Vec::new();
-        for tid in 0..args.num_client_threads {
+        for tid in 1..args.num_client_threads {
             let args = &args;
             handles.push(s.spawn(move || {
                 run_client_thread(tid, args).unwrap();
             }));
         }
+        run_client_thread(0, &args).unwrap();
     });
 
     Ok(())
