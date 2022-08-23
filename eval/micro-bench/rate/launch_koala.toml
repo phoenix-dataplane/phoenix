@@ -1,0 +1,15 @@
+name = "launch_koala"
+description = "Launch koala daemon"
+group = "launch_koala"
+timeout_secs = 600
+
+[[worker]]
+host = "danyang-06"
+bin = "koala"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "koala"
+args = ""
+dependencies = [0] # launch in order, no very necessary
