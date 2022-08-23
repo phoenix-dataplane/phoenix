@@ -50,7 +50,7 @@ impl TransportEngineBuilder {
             _mode: self.mode,
             state: super::engine::State::new(),
             cmd_buffer: None,
-            indicator: None,
+            indicator: Default::default(),
         })
     }
 }

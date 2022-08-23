@@ -37,30 +37,6 @@ use crate::transport::rdma::ops;
 
 #[inline]
 fn get_ops() -> &'static ops::Ops {
-    use super::engine::TlStorage;
-    use crate::engine::runtime::ENGINE_LS;
-    ENGINE_LS.with(|els| {
-        &els.borrow()
-            .as_ref()
-            .unwrap()
-            .as_any()
-            .downcast_ref::<TlStorage>()
-            .unwrap()
-            .ops
-    })
+    use super::engine::ELS;
+    ELS.with(|els| &els.borrow().as_ref().unwrap().ops)
 }
-
-// #[inline]
-// fn get_ops_mut() -> &'static mut ops::Ops {
-//     use super::engine::TlStorage;
-//     use crate::engine::runtime::ENGINE_LS;
-//     ENGINE_LS.with(|els| {
-//         &mut els.borrow_mut()
-//             .as_mut()
-//             .unwrap()
-//             .as_any()
-//             .downcast_ref::<TlStorage>()
-//             .unwrap()
-//             .ops
-//     })
-// }

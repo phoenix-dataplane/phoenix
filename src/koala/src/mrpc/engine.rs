@@ -1,6 +1,8 @@
-use std::future::Future;
 use std::mem;
 use std::path::PathBuf;
+use std::pin::Pin;
+
+use futures::future::BoxFuture;
 
 use interface::rpc::{MessageErased, RpcId};
 
@@ -34,7 +36,7 @@ pub struct MrpcEngine {
 
     pub(crate) transport_type: Option<control_plane::TransportType>,
 
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
     pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
@@ -50,18 +52,17 @@ enum Status {
 use Status::Progress;
 
 impl Engine for MrpcEngine {
-    type Future = impl Future<Output = EngineResult>;
-
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!("MrpcEngine, todo show more information")
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 }
 
@@ -99,7 +100,7 @@ impl MrpcEngine {
                 self.check_input_cmd_queue()?;
             }
 
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             // timer.tick();
             // log::info!("mrpc mainloop: {}", timer);
 

@@ -1,12 +1,14 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::future::Future;
 use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
+use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
@@ -21,9 +23,7 @@ use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 use crate::engine::graph::{EngineTxMessage, RpcMessageRx, RpcMessageTx};
-use crate::engine::{
-    future, Engine, EngineLocalStorage, EngineResult, EngineRxMessage, Indicator, Vertex,
-};
+use crate::engine::{future, Engine, EngineResult, EngineRxMessage, Indicator, Vertex};
 use crate::mrpc::meta_pool::{MetaBuffer, MetaBufferPtr};
 use crate::mrpc::unpack::UnpackFromSgE;
 use crate::node::Node;
@@ -31,20 +31,14 @@ use crate::transport::rdma::ops::Ops;
 
 pub(crate) const MAX_INLINE_DATA: usize = 128;
 
-pub(crate) struct TlStorage {
-    pub(crate) ops: Ops,
+thread_local! {
+    /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
+    pub(crate) static ELS: RefCell<Option<&'static TlStorage>> = RefCell::new(None);
 }
 
-/// WARNING(cjr): This this not true! I unafely mark Sync for TlStorage to cheat the compiler. I
-/// have to do this because runtime.running_engines[i].els() exposes a &EngineLocalStorage, and
-/// runtimes are shared between two threads, so EngineLocalStorage must be Sync.
-unsafe impl Sync for TlStorage {}
-
-unsafe impl EngineLocalStorage for TlStorage {
-    #[inline]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
+// Must be `Send`.
+pub(crate) struct TlStorage {
+    pub(crate) ops: Ops,
 }
 
 pub(crate) struct RpcAdapterEngine {
@@ -73,7 +67,7 @@ pub(crate) struct RpcAdapterEngine {
     pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<mrpc::cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
 
     // work completion read buffer
     pub(crate) wc_read_buffer: Vec<interface::WorkCompletion>,
@@ -91,32 +85,37 @@ enum Status {
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
-    type Future = impl Future<Output = EngineResult>;
-
-    fn description(&self) -> String {
-        format!("RcpAdapterEngine, user: {:?}", self.state.shared.pid)
+    fn description(self: Pin<&Self>) -> String {
+        format!(
+            "RcpAdapterEngine, user: {:?}",
+            self.get_ref().state.shared.pid
+        )
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
-    }
-
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 
     #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
+    }
+
+    #[inline]
+    fn set_els(self: Pin<&mut Self>) {
+        let tls = self.get_mut().tls.as_ref() as *const TlStorage;
+        // SAFETY: This is fine here because ELS is only used while the engine is running.
+        // As long as we do not move out or drop self.tls, we are good.
+        ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 }
 
 impl Drop for RpcAdapterEngine {
     fn drop(&mut self) {
-        let desc = self.description().to_owned();
+        let this = Pin::new(self);
+        let desc = this.as_ref().description();
         log::debug!("{} is being dropped", desc);
-        self.state.stop_acceptor(true);
+        this.get_mut().state.stop_acceptor(true);
         log::debug!("stop acceptor bit set");
     }
 }
@@ -153,10 +152,7 @@ impl RpcAdapterEngine {
             }
 
             // If there's pending receives, there will always be future work to do.
-            self.indicator
-                .as_ref()
-                .unwrap()
-                .set_nwork(work + self.pending_recv);
+            self.indicator.set_nwork(work + self.pending_recv);
 
             // log::info!("RpcAdapter mainloop: {}", timer);
             future::yield_now().await;

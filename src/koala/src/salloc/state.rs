@@ -6,7 +6,6 @@ use std::sync::Arc;
 use nix::unistd::Pid;
 
 use super::region::SharedRegion;
-use crate::engine::EngineLocalStorage;
 use crate::state_mgr::{StateManager, StateTrait};
 
 pub(crate) struct State {
@@ -63,13 +62,6 @@ impl State {
 pub(crate) struct Resource {
     // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
     pub(crate) mr_table: spin::Mutex<BTreeMap<usize, SharedRegion>>,
-}
-
-unsafe impl EngineLocalStorage for Resource {
-    #[inline]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 impl Resource {

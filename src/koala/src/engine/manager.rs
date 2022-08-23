@@ -4,14 +4,48 @@
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
+use nix::unistd::Pid;
 use spin::Mutex;
 
-use interface::engine::SchedulingMode;
+use interface::engine::{EngineType, SchedulingMode};
 
 use super::container::EngineContainer;
-use super::group::EngineGroup;
+use super::group::SchedulingGroup;
 use super::runtime::{self, Runtime};
 use crate::config::Config;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EngineId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RuntimeId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GroupId(u64);
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GraphId(u64);
+
+/// Additional information affiliated with an Engine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineInfo {
+    /// Application process PID that this engine serves
+    pub(crate) pid: Pid,
+    /// Runtime ID the engine is running on
+    pub(crate) rid: RuntimeId,
+    /// Which group the engine belongs to
+    pub(crate) group_id: GroupId,
+    /// Which graph the engine belongs to
+    pub(crate) graph_id: GraphId,
+    /// The type of the engine
+    pub(crate) engine_type: EngineType,
+    /// Scheduling mode
+    pub(crate) scheduling_mode: SchedulingMode,
+}
 
 pub struct RuntimeManager {
     inner: Mutex<Inner>,
@@ -24,7 +58,7 @@ struct Inner {
 }
 
 impl Inner {
-    fn schedule_dedicate(&mut self, engine_group: EngineGroup) {
+    fn schedule_dedicate(&mut self, scheduling_group: SchedulingGroup) {
         // find a spare runtime
         let rid = match self
             .runtimes
@@ -45,14 +79,14 @@ impl Inner {
             }
         };
 
-        self.runtimes[rid].add_engine(engine_group, true);
+        self.runtimes[rid].add_engine(scheduling_group, true);
 
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
         self.handles[rid].thread().unpark();
     }
 
-    fn schedule_compact(&mut self, engine_group: EngineGroup) {
+    fn schedule_compact(&mut self, scheduling_group: SchedulingGroup) {
         // find the first non-dedicated runtime or start a new runtime
         // TODO(cjr): monitor the load of a runtime, use new runtime when existing runtimes' load
         // is high.
@@ -75,7 +109,7 @@ impl Inner {
             }
         };
 
-        self.runtimes[rid].add_engine(engine_group, false);
+        self.runtimes[rid].add_engine(scheduling_group, false);
 
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
@@ -95,21 +129,21 @@ impl RuntimeManager {
         }
     }
 
-    pub(crate) fn submit_group(&self, engine_group: EngineGroup) {
+    pub(crate) fn submit_group(&self, scheduling_group: SchedulingGroup) {
         let mut inner = self.inner.lock();
-        match engine_group.mode {
+        match scheduling_group.mode {
             SchedulingMode::Dedicate => {
-                inner.schedule_dedicate(engine_group);
+                inner.schedule_dedicate(scheduling_group);
             }
             SchedulingMode::Compact => {
-                inner.schedule_compact(engine_group);
+                inner.schedule_compact(scheduling_group);
             }
             SchedulingMode::Spread => unimplemented!(),
         }
     }
 
     pub(crate) fn submit(&self, engine: EngineContainer, mode: SchedulingMode) {
-        self.submit_group(EngineGroup::singleton(mode, engine))
+        self.submit_group(SchedulingGroup::singleton(mode, engine))
     }
 }
 

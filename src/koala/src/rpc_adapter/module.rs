@@ -93,7 +93,7 @@ impl RpcAdapterEngineBuilder {
             cmd_rx: self.cmd_rx,
             cmd_tx: self.cmd_tx,
             _mode: self.mode,
-            indicator: None,
+            indicator: Default::default(),
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
             wc_read_buffer: Vec::with_capacity(BUF_LEN),

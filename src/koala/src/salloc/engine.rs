@@ -1,6 +1,8 @@
 use std::alloc::Layout;
-use std::future::Future;
 use std::os::unix::io::AsRawFd;
+use std::pin::Pin;
+
+use futures::future::BoxFuture;
 
 use ipc::salloc::cmd;
 
@@ -16,7 +18,7 @@ use crate::salloc::state::State as SallocState;
 pub struct SallocEngine {
     pub(crate) customer: CustomerType,
     pub(crate) node: Node,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
     pub(crate) state: SallocState,
 }
 
@@ -32,18 +34,17 @@ crate::unimplemented_ungradable!(SallocEngine);
 crate::impl_vertex_for_engine!(SallocEngine, node);
 
 impl Engine for SallocEngine {
-    type Future = impl Future<Output = EngineResult>;
-
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         "SallocEngine".to_owned()
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 }
 
@@ -55,7 +56,7 @@ impl SallocEngine {
                 Progress(n) => nwork += n,
                 Status::Disconnected => return Ok(()),
             }
-            self.indicator.as_ref().unwrap().set_nwork(nwork);
+            self.indicator.set_nwork(nwork);
             future::yield_now().await;
         }
     }
