@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use koala::engine::datapath::node::DataPathNode;
-use koala::engine::{future, Engine, EngineResult, Indicator, Decompose};
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};

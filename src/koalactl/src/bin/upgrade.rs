@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use uuid::Uuid;
 
-use ipc::control::{PluginDescriptor, UpgradeRequest, PluginType};
 use ipc::control::Request;
+use ipc::control::{PluginDescriptor, PluginType, UpgradeRequest};
 use ipc::unix::DomainSocket;
 
 const MAX_MSG_LEN: usize = 65536;
@@ -71,10 +71,15 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    assert!(config.modules.is_empty() ^ config.addons.is_empty(), "modules and addons cannot be upgraded at the same time");
+    assert!(
+        config.modules.is_empty() ^ config.addons.is_empty(),
+        "modules and addons cannot be upgraded at the same time"
+    );
     let (plugins, ty) = if config.modules.is_empty() {
         (config.addons, PluginType::Addon)
-    } else { (config.modules, PluginType::Module) };
+    } else {
+        (config.modules, PluginType::Module)
+    };
 
     let flush = config.flush.unwrap_or(false);
     let detach_group = config.detach_group.unwrap_or(true);

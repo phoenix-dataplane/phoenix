@@ -9,8 +9,8 @@ use semver::Version;
 
 use interface::engine::SchedulingMode;
 
-use super::datapath::{DataPathNode, ChannelDescriptor};
 use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
+use super::datapath::{ChannelDescriptor, DataPathNode};
 use super::manager::{EngineId, EngineInfo, GroupId, RuntimeManager};
 use super::runtime::SuspendResult;
 use super::{EngineContainer, EngineType};
@@ -42,8 +42,7 @@ async fn attach_addon<I>(
     tx_edges_replacement: I,
     rx_edges_replacement: I,
     indicator: Arc<DashSet<Pid>>,
-) 
-where
+) where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
     let mut group_engines = rm
@@ -148,17 +147,13 @@ where
 
     let mut containers_resubmit = Vec::with_capacity(detached_engines.len() + 1);
     let mut plugin = match plugins.engine_registry.get_mut(&addon) {
-        Some(plugin) => {
-            match plugin.value() {
-                Plugin::Module(_) => {
-                    tracing::error!("Engine type {:?} is not an addon", addon);
-                    rm.global_resource_mgr.register_group_shutdown(pid);
-                    return;
-                },
-                Plugin::Addon(addon_name) => {
-                    plugins.addons.get_mut(addon_name).unwrap()
-                },
+        Some(plugin) => match plugin.value() {
+            Plugin::Module(_) => {
+                tracing::error!("Engine type {:?} is not an addon", addon);
+                rm.global_resource_mgr.register_group_shutdown(pid);
+                return;
             }
+            Plugin::Addon(addon_name) => plugins.addons.get_mut(addon_name).unwrap(),
         },
         None => {
             tracing::error!("Addon for engine type {:?} not found", addon);
@@ -168,18 +163,16 @@ where
         }
     };
     let version = plugin.version();
-    let addon_engine = plugin
-        .value_mut()
-        .create_engine(addon, pid, node);
-    
+    let addon_engine = plugin.value_mut().create_engine(addon, pid, node);
+
     match addon_engine {
         Ok(engine) => {
             let container = EngineContainer::new(engine, addon, version);
             containers_resubmit.push((container, mode))
-        },
+        }
         Err(err) => {
             tracing::error!(
-                "Failed to create addon engine {:?} for group (pid={:?}, gid={:?}), error: {:?}", 
+                "Failed to create addon engine {:?} for group (pid={:?}, gid={:?}), error: {:?}",
                 addon,
                 pid,
                 gid,
@@ -204,7 +197,8 @@ where
     }
     subscription.addons.push(addon);
 
-    rm.service_subscriptions.insert((pid, gid), (subscription, containers_resubmit.len()));
+    rm.service_subscriptions
+        .insert((pid, gid), (subscription, containers_resubmit.len()));
     for (container, mode) in containers_resubmit {
         tracing::info!(
             "Submitting engine {:?} (pid={:?}, gid={:?}) to runtime",
@@ -226,8 +220,7 @@ async fn detach_addon<I>(
     tx_edges_replacement: I,
     rx_edges_replacement: I,
     indicator: Arc<DashSet<Pid>>,
-) 
-where
+) where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
     let mut group_engines = rm
@@ -245,7 +238,7 @@ where
     std::mem::drop(guard);
 
     let (mut subscription, _) = rm.service_subscriptions.remove(&(pid, gid)).unwrap().1;
-    
+
     if let Some(index) = subscription.addons.iter().position(|x| *x == addon) {
         subscription.addons.remove(index);
     } else {
@@ -310,10 +303,10 @@ where
     }
 
     let result = refactor_channels_detach_addon(
-        &mut detached_engines, 
-        &mut subscription.graph, 
-        addon, 
-        tx_edges_replacement, 
+        &mut detached_engines,
+        &mut subscription.graph,
+        addon,
+        tx_edges_replacement,
         rx_edges_replacement,
     );
     if let Err(err) = result {
@@ -336,7 +329,8 @@ where
         containers_resubmit.push((container, mode));
     }
 
-    rm.service_subscriptions.insert((pid, gid), (subscription, containers_resubmit.len()));
+    rm.service_subscriptions
+        .insert((pid, gid), (subscription, containers_resubmit.len()));
     for (container, mode) in containers_resubmit {
         tracing::info!(
             "Submitting engine {:?} (pid={:?}, gid={:?}) to runtime",
@@ -345,7 +339,7 @@ where
             gid,
         );
         rm.submit(pid, gid, container, mode, false);
-    } 
+    }
     indicator.remove(&pid);
 }
 
@@ -389,7 +383,9 @@ async fn upgrade_client(
             let runtime = guard.runtimes.get(&info.rid).unwrap();
             if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
-                    let group = engines_to_upgrade.entry(info.gid).or_insert_with(HashMap::new);
+                    let group = engines_to_upgrade
+                        .entry(info.gid)
+                        .or_insert_with(HashMap::new);
                     let engine_type = container.engine_type();
                     let version = container.version();
                     let engine = container.detach();
@@ -412,7 +408,9 @@ async fn upgrade_client(
             let runtime = guard.runtimes.get(&info.rid).unwrap();
             if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
-                    let group = containers_suspended.entry(info.gid).or_insert_with(Vec::new);
+                    let group = containers_suspended
+                        .entry(info.gid)
+                        .or_insert_with(Vec::new);
                     group.push((container, info.scheduling_mode));
                     rm.engine_subscriptions.remove(eid);
                 }
@@ -439,7 +437,6 @@ async fn upgrade_client(
         .entry(pid)
         .or_insert_with(ResourceCollection::new);
 
-
     if flush {
         for (gid, engines) in engines_to_upgrade.iter_mut() {
             let mut subscription_guard = rm.service_subscriptions.get_mut(&(pid, *gid)).unwrap();
@@ -465,7 +462,7 @@ async fn upgrade_client(
                     gid,
                     engine_type,
                 );
-            } 
+            }
         }
     }
 
@@ -496,7 +493,10 @@ async fn upgrade_client(
     for gid in subscribed_groups {
         let mut subscription_guard = rm.service_subscriptions.get_mut(&(pid, gid)).unwrap();
         let (subscription, _) = subscription_guard.value_mut();
-        let mut service = plugins.service_registry.get_mut(&subscription.service).unwrap();
+        let mut service = plugins
+            .service_registry
+            .get_mut(&subscription.service)
+            .unwrap();
         // redirects all `ServiceType` in `subscription`
         // to point to the new &'static str
         subscription.service = *service.key();
@@ -512,7 +512,11 @@ async fn upgrade_client(
         if let Some(mut engine_group) = local_states.remove(&gid) {
             resubmit_count += engine_group.len();
             let mut shared = shared_storage.remove(&gid).unwrap();
-            for subscribed_engine_ty in service.engines.iter_mut().chain(subscription.addons.iter_mut()) {
+            for subscribed_engine_ty in service
+                .engines
+                .iter_mut()
+                .chain(subscription.addons.iter_mut())
+            {
                 if let Some(dumped) = engine_group.remove(&subscribed_engine_ty) {
                     let plugin = plugins.engine_registry.get(&subscribed_engine_ty).unwrap();
 
@@ -525,29 +529,53 @@ async fn upgrade_client(
                         // but not for the addons in `ServiceSubscription`
                         *subscribed_engine_ty = engine_ty_relocated;
                     }
-                    if let Some(tx_inputs) = subscription.graph.tx_inputs.remove(&engine_ty_relocated) {
+                    if let Some(tx_inputs) =
+                        subscription.graph.tx_inputs.remove(&engine_ty_relocated)
+                    {
                         for (peer, index) in tx_inputs.iter() {
-                            subscription.graph.tx_outputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                            subscription.graph.tx_outputs.get_mut(peer).unwrap()[*index].0 =
+                                engine_ty_relocated;
                         }
-                        subscription.graph.tx_inputs.insert(engine_ty_relocated, tx_inputs);
-                    } 
-                    if let Some(tx_outputs) =  subscription.graph.tx_outputs.remove(&engine_ty_relocated) {
-                        for (peer, index) in tx_outputs.iter() {
-                            subscription.graph.tx_inputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
-                        }
-                        subscription.graph.tx_outputs.insert(engine_ty_relocated, tx_outputs);
+                        subscription
+                            .graph
+                            .tx_inputs
+                            .insert(engine_ty_relocated, tx_inputs);
                     }
-                    if let Some(rx_inputs) = subscription.graph.rx_inputs.remove(&engine_ty_relocated) {
+                    if let Some(tx_outputs) =
+                        subscription.graph.tx_outputs.remove(&engine_ty_relocated)
+                    {
+                        for (peer, index) in tx_outputs.iter() {
+                            subscription.graph.tx_inputs.get_mut(peer).unwrap()[*index].0 =
+                                engine_ty_relocated;
+                        }
+                        subscription
+                            .graph
+                            .tx_outputs
+                            .insert(engine_ty_relocated, tx_outputs);
+                    }
+                    if let Some(rx_inputs) =
+                        subscription.graph.rx_inputs.remove(&engine_ty_relocated)
+                    {
                         for (peer, index) in rx_inputs.iter() {
-                            subscription.graph.rx_outputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                            subscription.graph.rx_outputs.get_mut(peer).unwrap()[*index].0 =
+                                engine_ty_relocated;
                         }
-                        subscription.graph.rx_inputs.insert(engine_ty_relocated, rx_inputs);
-                    } 
-                    if let Some(rx_outputs) =  subscription.graph.rx_outputs.remove(&engine_ty_relocated) {
+                        subscription
+                            .graph
+                            .rx_inputs
+                            .insert(engine_ty_relocated, rx_inputs);
+                    }
+                    if let Some(rx_outputs) =
+                        subscription.graph.rx_outputs.remove(&engine_ty_relocated)
+                    {
                         for (peer, index) in rx_outputs.iter() {
-                            subscription.graph.rx_inputs.get_mut(peer).unwrap()[*index].0 = engine_ty_relocated;
+                            subscription.graph.rx_inputs.get_mut(peer).unwrap()[*index].0 =
+                                engine_ty_relocated;
                         }
-                        subscription.graph.rx_outputs.insert(engine_ty_relocated, rx_outputs);
+                        subscription
+                            .graph
+                            .rx_outputs
+                            .insert(engine_ty_relocated, rx_outputs);
                     }
 
                     let (engine, new_version) = match plugin.value() {
@@ -619,13 +647,13 @@ async fn upgrade_client(
             }
         } else {
             // error has occurred, rollback
-            // cancel all pending submission 
-            let removed =
-                rm.service_subscriptions
-                    .remove_if_mut(&(pid, gid), |_, (_, cnt)| {
-                        *cnt -= resubmit_count;
-                        *cnt == 0
-            });
+            // cancel all pending submission
+            let removed = rm
+                .service_subscriptions
+                .remove_if_mut(&(pid, gid), |_, (_, cnt)| {
+                    *cnt -= resubmit_count;
+                    *cnt == 0
+                });
             if removed.is_some() {
                 rm.global_resource_mgr.register_group_shutdown(pid);
             }
@@ -663,18 +691,21 @@ impl EngineUpgrader {
         I: IntoIterator<Item = ChannelDescriptor> + Send + 'static,
     {
         if self.upgrade_indicator.contains(&pid) {
-            bail!("there is already an ongoing upgrade for client pid={:?}", pid)
+            bail!(
+                "there is already an ongoing upgrade for client pid={:?}",
+                pid
+            )
         }
         self.upgrade_indicator.insert(pid);
         let fut = attach_addon(
-            self.runtime_manager.clone(), 
+            self.runtime_manager.clone(),
             self.plugins.clone(),
-            pid, 
-            gid, 
-            addon, 
-            mode, 
-            tx_edges_replacement, 
-            rx_edges_replacement, 
+            pid,
+            gid,
+            addon,
+            mode,
+            tx_edges_replacement,
+            rx_edges_replacement,
             Arc::clone(&self.upgrade_indicator),
         );
         self.executor.spawn_ok(fut);
@@ -692,18 +723,21 @@ impl EngineUpgrader {
     ) -> anyhow::Result<()>
     where
         I: IntoIterator<Item = ChannelDescriptor> + Send + 'static,
-    {   
+    {
         if self.upgrade_indicator.contains(&pid) {
-            bail!("there is already an ongoing upgrade for client pid={:?}", pid)
+            bail!(
+                "there is already an ongoing upgrade for client pid={:?}",
+                pid
+            )
         }
         self.upgrade_indicator.insert(pid);
         let fut = detach_addon(
-            self.runtime_manager.clone(), 
-            pid, 
-            gid, 
-            addon, 
-            tx_edges_replacement, 
-            rx_edges_replacement, 
+            self.runtime_manager.clone(),
+            pid,
+            gid,
+            addon,
+            tx_edges_replacement,
+            rx_edges_replacement,
             Arc::clone(&self.upgrade_indicator),
         );
         self.executor.spawn_ok(fut);
@@ -714,7 +748,7 @@ impl EngineUpgrader {
     /// * engine_types: engines that need to be upgraded
     /// * flush: whether to flush the queues for the engines to be upgraded
     /// * detach_group: whether to suspend/detach all engines in each engine group,
-    ///     even the engine does not need upgrade, this is generally required to flush queues 
+    ///     even the engine does not need upgrade, this is generally required to flush queues
     pub(crate) fn upgrade(
         &mut self,
         engine_types: HashSet<EngineType>,
@@ -726,7 +760,9 @@ impl EngineUpgrader {
         }
 
         if flush && !detach_group {
-            tracing::warn!("Flush queues but not detaching all engines within each group during upgrade")
+            tracing::warn!(
+                "Flush queues but not detaching all engines within each group during upgrade"
+            )
         }
 
         // engines that need to be upgraded
@@ -759,9 +795,7 @@ impl EngineUpgrader {
                         && groups_to_upgrade.contains(&(e.pid, e.gid))
                 })
             {
-                let client = engines_to_detach
-                    .entry(engine.pid)
-                    .or_insert_with(Vec::new);
+                let client = engines_to_detach.entry(engine.pid).or_insert_with(Vec::new);
                 client.push((*engine.key(), engine.value().clone()));
             }
         }
@@ -769,7 +803,9 @@ impl EngineUpgrader {
         for (pid, to_upgrade) in engines_to_upgrade {
             let to_detach = if let Some(engines) = engines_to_detach.remove(&pid) {
                 engines
-            } else { Vec::new() };
+            } else {
+                Vec::new()
+            };
             let rm = Arc::clone(&self.runtime_manager);
             let plugins = Arc::clone(&self.plugins);
             let fut = upgrade_client(

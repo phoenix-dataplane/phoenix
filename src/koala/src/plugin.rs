@@ -122,10 +122,7 @@ impl PluginCollection {
         let engines = new_addon.engines();
         for engine in engines {
             self.engine_registry.insert(*engine, plugin.clone());
-            tracing::info!(
-                "Registered addon engine {:?}",
-                engine
-            );
+            tracing::info!("Registered addon engine {:?}", engine);
         }
 
         self.addons.insert(addon.name.clone(), new_addon);
@@ -222,12 +219,11 @@ impl PluginCollection {
                     if !group_engines.contains(&channel.0) || !group_engines.contains(&channel.1) {
                         bail!(
                             "channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph",
-                            channel.0, 
-                            channel.1, 
+                            channel.0,
+                            channel.1,
                             service_info.service
                         );
-                    }
-                    else {
+                    } else {
                         // relocate &'static str
                         channel.0 = *group_engines.get(&channel.0).unwrap();
                         channel.1 = *group_engines.get(&channel.1).unwrap();

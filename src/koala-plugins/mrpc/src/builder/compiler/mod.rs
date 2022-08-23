@@ -13,8 +13,10 @@ const MRPC_DERIVE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mr
 const MRPC_MARSHAL: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
 const IPC: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ipc");
 const INTERFACE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../interface");
-const TOOLCHAIN: &'static str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../rust-toolchain"));
+const TOOLCHAIN: &'static str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../rust-toolchain"
+));
 
 #[derive(Error, Debug)]
 pub enum Error {

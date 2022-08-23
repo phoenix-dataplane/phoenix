@@ -7,18 +7,18 @@ pub use anyhow::Result;
 
 use futures::future::BoxFuture;
 
+pub(crate) mod container;
 pub mod datapath;
 pub mod decompose;
 pub mod future;
-pub mod manager;
 pub(crate) mod lb;
-pub(crate) mod container;
+pub mod manager;
 pub(crate) mod runtime;
 pub(crate) mod upgrade;
 pub(crate) use container::EngineContainer;
 
-pub use decompose::Decompose;
 pub use datapath::graph::Vertex;
+pub use decompose::Decompose;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,7 +56,7 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     fn description(&self) -> String;
 
     #[inline]
-    fn set_els(&self) { }
+    fn set_els(&self) {}
 
     #[inline]
     fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> Result<()> {

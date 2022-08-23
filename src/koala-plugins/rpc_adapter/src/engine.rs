@@ -22,14 +22,14 @@ use salloc::region::SharedRegion;
 use salloc::state::State as SallocState;
 use transport_rdma::ops::Ops;
 
-use koala::engine::datapath::DataPathNode;
-use koala::impl_vertex_for_engine;
 use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
 use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
-use koala::engine::{future, Engine, EngineResult, Indicator, Decompose, Vertex};
+use koala::engine::datapath::DataPathNode;
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 

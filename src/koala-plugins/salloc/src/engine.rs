@@ -9,7 +9,7 @@ use ipc::salloc::cmd;
 
 use koala::engine::datapath::DataPathNode;
 use koala::engine::future;
-use koala::engine::{Engine, EngineResult, Indicator, Decompose};
+use koala::engine::{Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};

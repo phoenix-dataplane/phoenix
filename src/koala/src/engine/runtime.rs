@@ -133,7 +133,7 @@ impl Runtime {
         self.pending.lock().push((id, RefCell::new(engine)));
         self.new_pending.store(true, Ordering::Release);
     }
-    
+
     pub(crate) fn submit_request(&self, id: EngineId, request: Vec<u8>, cred: UCred) {
         self.control_requests.lock().push((id, request, cred));
         self.new_ctrl_request.store(true, Ordering::Release);
@@ -269,8 +269,8 @@ impl Runtime {
 
             if Ok(true)
                 == self.new_ctrl_request.compare_exchange(
-                    true, 
-                    false, 
+                    true,
+                    false,
                     Ordering::Acquire,
                     Ordering::Relaxed,
                 )
@@ -278,7 +278,9 @@ impl Runtime {
                 let mut guard = self.control_requests.lock();
                 for (target_eid, request, cred) in guard.drain(..) {
                     let mut running = self.running.borrow_mut();
-                    if let Some((_, container)) = running.iter_mut().find(|(eid, _)| target_eid == *eid) {
+                    if let Some((_, container)) =
+                        running.iter_mut().find(|(eid, _)| target_eid == *eid)
+                    {
                         if let Err(err) = container.borrow_mut().handle_request(request, cred) {
                             tracing::error!(
                                 "Error in handling engine request, eid={:?}, error: {:?}",

@@ -1,6 +1,6 @@
-use std::{future::Future, os::unix::ucred::UCred};
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
+use std::{future::Future, os::unix::ucred::UCred};
 
 use futures::future::BoxFuture;
 use semver::Version;

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
+use std::os::unix::ucred::UCred;
 use std::pin::Pin;
 use std::time::Duration;
-use std::os::unix::ucred::UCred;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
@@ -11,7 +11,7 @@ use ipc::ratelimit::control_plane;
 
 use koala::engine::datapath::message::{EngineTxMessage, RpcMessageTx};
 use koala::engine::datapath::node::DataPathNode;
-use koala::engine::{future, Engine, EngineResult, Indicator, Decompose, Vertex};
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::Version;
@@ -66,7 +66,7 @@ impl Engine for RateLimitEngine {
             control_plane::Request::NewConfig(requests_per_sec, bucket_size) => {
                 self.config.requests_per_sec = requests_per_sec;
                 self.config.bucket_size = bucket_size;
-            },
+            }
         }
         Ok(())
     }
@@ -82,7 +82,7 @@ impl Decompose for RateLimitEngine {
         while !self.queue.is_empty() {
             let msg = self.queue.pop_front().unwrap();
             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-        } 
+        }
         Ok(())
     }
 

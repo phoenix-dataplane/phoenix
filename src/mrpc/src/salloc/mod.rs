@@ -20,11 +20,7 @@ pub(crate) struct SAContext {
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
         let service =
-            ShmService::register(
-                &*KOALA_PREFIX,
-                &*KOALA_CONTROL_SOCK,
-                "Salloc".to_string(),
-            )?;
+            ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, "Salloc".to_string())?;
         Ok(Self { service })
     }
 }

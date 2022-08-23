@@ -10,7 +10,7 @@ use interface::rpc::{MessageErased, RpcId, TransportStatus};
 use ipc::mrpc::{cmd, control_plane, dp};
 
 use koala::engine::datapath::DataPathNode;
-use koala::engine::{future, Engine, EngineResult, Indicator, Vertex, Decompose};
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};

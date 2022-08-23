@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use uuid::Uuid;
 
-use ipc::control::{AddonRequest, pid_t};
 use ipc::control::Request;
+use ipc::control::{pid_t, AddonRequest};
 use ipc::unix::DomainSocket;
 
 const MAX_MSG_LEN: usize = 65536;

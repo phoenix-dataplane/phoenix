@@ -18,7 +18,7 @@ use transport_rdma::ops::Ops;
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};
 use koala::module::{
-    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Version, ServiceInfo,
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, ServiceInfo, Version,
 };
 use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
@@ -121,9 +121,18 @@ impl RpcAdapterModule {
         RpcAdapterModule::RPC_ADAPTER_ENGINE,
     ];
     pub const DEPENDENCIES: &'static [EnginePair] = &[
-        (RpcAdapterModule::RPC_ADAPTER_ENGINE, RpcAdapterModule::RPC_ACCEPTOR_ENGINE),
-        (RpcAdapterModule::RPC_ACCEPTOR_ENGINE, EngineType("RdmaCmEngine")),
-        (RpcAdapterModule::RPC_ADAPTER_ENGINE, EngineType("RdmaCmEngine")),
+        (
+            RpcAdapterModule::RPC_ADAPTER_ENGINE,
+            RpcAdapterModule::RPC_ACCEPTOR_ENGINE,
+        ),
+        (
+            RpcAdapterModule::RPC_ACCEPTOR_ENGINE,
+            EngineType("RdmaCmEngine"),
+        ),
+        (
+            RpcAdapterModule::RPC_ADAPTER_ENGINE,
+            EngineType("RdmaCmEngine"),
+        ),
     ];
 }
 
@@ -207,13 +216,11 @@ impl KoalaModule for RpcAdapterModule {
                     mode,
                 } = request
                 {
-                    let (cmd_sender, cmd_receiver) =
-                        tokio::sync::mpsc::unbounded_channel();
+                    let (cmd_sender, cmd_receiver) = tokio::sync::mpsc::unbounded_channel();
                     shared
                         .command_path
                         .put_sender(Self::RPC_ADAPTER_ENGINE, cmd_sender)?;
-                    let (comp_sender, comp_receiver) =
-                        tokio::sync::mpsc::unbounded_channel();
+                    let (comp_sender, comp_receiver) = tokio::sync::mpsc::unbounded_channel();
                     shared
                         .command_path
                         .put_receiver(EngineType("MrpcEngine"), comp_receiver)?;

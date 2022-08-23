@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
-use toml::to_string_pretty;
+#[macro_use]
+extern crate prettytable;
+use prettytable::Table;
 use uuid::Uuid;
 
 use ipc::control::{Request, Response, ResponseKind};
@@ -28,7 +31,6 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
-
     let uuid = Uuid::new_v4();
     let arg0 = env::args().next().unwrap();
     let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
@@ -54,10 +56,39 @@ fn main() {
     let res: Response = bincode::deserialize(&buf).unwrap();
     let kind = res.0.unwrap();
     match kind {
-        ResponseKind::ListSubscription(subscription) => {
-            println!("{}", to_string_pretty(&subscription).unwrap())
-        },
+        ResponseKind::ListSubscription(subscriptions) => {
+            let mut services = HashMap::with_capacity(subscriptions.len());
+            let mut engine_tables = HashMap::new();
+            for subscription in subscriptions {
+                services.insert(
+                    (subscription.pid, subscription.gid),
+                    (subscription.service, subscription.addons),
+                );
+                let mut table = Table::new();
+                table.add_row(row![bFc => "EngineId", "EngineType"]);
+                for (engine_id, engine_type) in subscription.engines {
+                    table.add_row(row![Fc => engine_id, engine_type]);
+                }
+                engine_tables.insert((subscription.pid, subscription.gid), table);
+            }
+
+            let mut table = Table::new();
+            table.add_row(row![bFm => "PID", "GID", "Service", "Addons", "Engines"]);
+            for ((pid, gid), (service, addons)) in services.into_iter() {
+                let engines = engine_tables.remove(&(pid, gid)).unwrap();
+                let addons = if !addons.is_empty() {
+                    addons.join(", ")
+                } else {
+                    "None".to_string()
+                };
+                if engines.len() > 1 {
+                    table.add_row(row![pid, gid, service, Fy->addons, Fb->engines]);
+                } else {
+                    table.add_row(row![pid, gid, service, Fy->addons, Fb->"None"]);
+                }
+            }
+            table.printstd();
+        }
         _ => panic!("invalid response"),
     }
-
 }

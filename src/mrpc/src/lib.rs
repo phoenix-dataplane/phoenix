@@ -56,11 +56,8 @@ pub(crate) struct Context {
 impl Context {
     fn register() -> Result<Context, Error> {
         let protos = RefCell::new(BTreeSet::new());
-        let service = ShmService::register(
-            &*KOALA_PREFIX, 
-            &*KOALA_CONTROL_SOCK,
-            "Mrpc".to_string(),
-        )?;
+        let service =
+            ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, "Mrpc".to_string())?;
         Ok(Self { protos, service })
     }
 

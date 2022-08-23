@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crossbeam::channel::{Receiver, Sender};
 use petgraph::graph::NodeIndex;
-use petgraph::Graph;
 use petgraph::visit::{Topo, Walker};
+use petgraph::Graph;
 
 use super::message::{EngineRxMessage, EngineTxMessage};
 use crate::engine::EngineType;
@@ -45,7 +45,6 @@ macro_rules! impl_vertex_for_engine {
 /// A descriptor to describe channel
 #[derive(Debug, Clone, Copy)]
 pub struct ChannelDescriptor(pub EngineType, pub EngineType, pub usize, pub usize);
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FlowDirection {

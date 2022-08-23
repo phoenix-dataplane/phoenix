@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use std::iter::Iterator;
 
-use thiserror::Error;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{DfsPostOrder, Walker};
 use petgraph::Graph;
+use thiserror::Error;
 
 use crate::engine::{EnginePair, EngineType};
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Engine type {:?} not found", .0)]
-    EngineNotFound(EngineType)
+    EngineNotFound(EngineType),
 }
 
 pub(crate) struct EngineGraph {
@@ -27,7 +27,7 @@ impl EngineGraph {
         }
     }
 
-    pub(crate) fn add_engines<I>(&mut self, engines: I) 
+    pub(crate) fn add_engines<I>(&mut self, engines: I)
     where
         I: IntoIterator<Item = EngineType>,
     {
@@ -43,25 +43,34 @@ impl EngineGraph {
     }
 
     pub(crate) fn add_dependency<I>(&mut self, edges: I) -> Result<(), Error>
-    where 
-        I: IntoIterator<Item = EnginePair>
+    where
+        I: IntoIterator<Item = EnginePair>,
     {
         for edge in edges {
-            let from = *self.index.get(&edge.0).ok_or(Error::EngineNotFound(edge.0))?;
-            let to = *self.index.get(&edge.1).ok_or(Error::EngineNotFound(edge.1))?;
+            let from = *self
+                .index
+                .get(&edge.0)
+                .ok_or(Error::EngineNotFound(edge.0))?;
+            let to = *self
+                .index
+                .get(&edge.1)
+                .ok_or(Error::EngineNotFound(edge.1))?;
             self.graph.add_edge(from, to, ());
         }
         Ok(())
     }
 
-    pub(crate) fn get_engine_dependencies(&self, service: &EngineType) -> Result<Vec<EngineType>, Error> {
-        let service_idx = *self.index.get(service).ok_or(Error::EngineNotFound(*service))?;
+    pub(crate) fn get_engine_dependencies(
+        &self,
+        service: &EngineType,
+    ) -> Result<Vec<EngineType>, Error> {
+        let service_idx = *self
+            .index
+            .get(service)
+            .ok_or(Error::EngineNotFound(*service))?;
         let visit = DfsPostOrder::new(&self.graph, service_idx);
         let post_order = visit.iter(&self.graph).collect::<Vec<_>>();
-        let rev_topo_order = post_order
-            .iter()
-            .map(|node| self.graph[*node])
-            .collect();
+        let rev_topo_order = post_order.iter().map(|node| self.graph[*node]).collect();
         Ok(rev_topo_order)
     }
 }

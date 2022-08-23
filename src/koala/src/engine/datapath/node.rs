@@ -35,7 +35,6 @@ pub enum EndpointType {
     RxOutput,
 }
 
-
 pub struct DataPathNode {
     pub tx_inputs: Vec<TxIQueue>,
     pub tx_outputs: Vec<TxOQueue>,
@@ -188,12 +187,7 @@ where
     let mut graph = DataPathGraph::new();
     for (engine, endpoint) in endpoints.into_iter() {
         let (node, endpoint_info) = endpoint.create_node()?;
-        let [
-            tx_inputs, 
-            tx_outputs, 
-            rx_inputs, 
-            rx_outputs
-        ] = endpoint_info;
+        let [tx_inputs, tx_outputs, rx_inputs, rx_outputs] = endpoint_info;
         nodes.insert(engine, node);
         graph.insert_node(engine, tx_inputs, tx_outputs, rx_inputs, rx_outputs);
     }
@@ -346,7 +340,7 @@ where
     Ok(node)
 }
 
-/// 
+///
 pub(crate) fn refactor_channels_detach_addon<I>(
     engines: &mut HashMap<EngineType, Box<dyn Engine>>,
     graph: &mut DataPathGraph,
@@ -357,9 +351,7 @@ pub(crate) fn refactor_channels_detach_addon<I>(
 where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
-    let mut addon_engine = engines
-        .remove(&addon)
-        .ok_or(Error::AddonNotFound(addon))?;
+    let mut addon_engine = engines.remove(&addon).ok_or(Error::AddonNotFound(addon))?;
     let tx_inputs_len = graph.tx_inputs.get_mut(&addon).unwrap().len();
     let tx_outputs_len = graph.tx_outputs.get_mut(&addon).unwrap().len();
     let rx_inputs_len = graph.rx_inputs.get_mut(&addon).unwrap().len();
@@ -394,7 +386,7 @@ where
         let receiver_index = sender_tx_outputs[edge.2].1;
         if !addon_engine.tx_inputs()[receiver_index].is_empty() {
             return Err(Error::ChannelNotEmpty(
-                addon, 
+                addon,
                 EndpointType::TxInput,
                 receiver_index,
             ));

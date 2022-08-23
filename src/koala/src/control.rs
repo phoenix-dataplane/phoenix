@@ -14,17 +14,17 @@ use ipc::control::ResponseKind;
 use nix::unistd::Pid;
 
 use interface::engine::SchedulingMode;
-use ipc::unix::DomainSocket;
 use ipc::control::ServiceSubscriptionInfo;
+use ipc::unix::DomainSocket;
 
 use crate::config::Config;
-use crate::engine::EngineType;
 use crate::engine::container::EngineContainer;
-use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
 use crate::engine::datapath::create_datapath_channels;
-use crate::engine::manager::{EngineId, GroupId, ServiceSubscription, RuntimeManager};
+use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
+use crate::engine::manager::{EngineId, GroupId, RuntimeManager, ServiceSubscription};
 use crate::engine::upgrade::EngineUpgrader;
-use crate::module::{Service, NewEngineRequest};
+use crate::engine::EngineType;
+use crate::module::{NewEngineRequest, Service};
 use crate::plugin::{Plugin, PluginCollection};
 use crate::storage::ResourceCollection;
 use crate::storage::SharedStorage;
@@ -55,10 +55,7 @@ impl Control {
             .ok_or(anyhow!("service {:?} not found in the registry", service))?;
         let tx_channels = service_registry.tx_channels.iter().copied();
         let rx_channels = service_registry.rx_channels.iter().copied();
-        let (mut nodes, graph) = create_datapath_channels(
-            tx_channels,
-            rx_channels
-        )?;
+        let (mut nodes, graph) = create_datapath_channels(tx_channels, rx_channels)?;
 
         let subscription = ServiceSubscription {
             service: service.clone(),
@@ -151,10 +148,15 @@ impl Control {
         let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
         containers_to_submit.push(container);
         let gid = self.runtime_manager.new_group(pid, subscription);
-        
-        self.runtime_manager.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 = containers_to_submit.len();
+
+        self.runtime_manager
+            .service_subscriptions
+            .get_mut(&(pid, gid))
+            .unwrap()
+            .1 = containers_to_submit.len();
         for container in containers_to_submit {
-            self.runtime_manager.submit(pid, gid, container, mode, false);
+            self.runtime_manager
+                .submit(pid, gid, container, mode, false);
         }
         Ok(())
     }
@@ -181,7 +183,7 @@ impl Control {
         plugins
             .load_or_upgrade_plugins(&config.modules)
             .expect("failed to load modules");
-        
+
         for addon in config.addons.iter() {
             plugins
                 .load_or_upgrade_addon(addon)
@@ -238,13 +240,15 @@ impl Control {
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
                 let service = unsafe { transmute_service_from_str(service_name.as_str()) };
-                let service = *self.plugins.service_registry
+                let service = *self
+                    .plugins
+                    .service_registry
                     .get(&service)
                     .ok_or(anyhow!("service {:?} not found", sender))?
                     .key();
                 self.create_service(service, client_path, mode, cred)?;
                 Ok(())
-            },
+            }
             control::Request::EngineRequest(eid, request) => {
                 let eid = EngineId(eid);
                 match self.runtime_manager.engine_subscriptions.get(&eid) {
@@ -252,20 +256,17 @@ impl Control {
                         let rid = info.rid;
                         let guard = self.runtime_manager.inner.lock().unwrap();
                         guard.runtimes[&rid].submit_request(eid, request, *cred);
-                    },
+                    }
                     None => {
                         bail!("engine eid={:?} not found", eid);
-                    },
+                    }
                 }
                 Ok(())
-            },
+            }
             control::Request::Upgrade(request) => {
                 let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
-                self.upgrader.upgrade(
-                    engines_to_upgrade,
-                    request.flush,
-                    request.detach_group,
-                )?;
+                self.upgrader
+                    .upgrade(engines_to_upgrade, request.flush, request.detach_group)?;
                 Ok(())
             }
             control::Request::ListSubscription => {
@@ -275,13 +276,16 @@ impl Control {
 
                 let mut engine_subscriptions = HashMap::new();
                 for engine in self.runtime_manager.engine_subscriptions.iter() {
-                    let entry = engine_subscriptions.entry((engine.pid, engine.gid)).or_insert_with(Vec::new);
+                    let entry = engine_subscriptions
+                        .entry((engine.pid, engine.gid))
+                        .or_insert_with(Vec::new);
                     entry.push((engine.key().0, engine.engine_type.0.to_string()));
                 }
-                let mut subscriptions_info = Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
+                let mut subscriptions_info =
+                    Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
                 for subscription in self.runtime_manager.service_subscriptions.iter() {
                     let pid = subscription.key().0.as_raw();
-                    let gid = subscription.key().1.0;
+                    let gid = subscription.key().1 .0;
                     let service = subscription.0.service.0.to_string();
                     let mut addons = Vec::with_capacity(subscription.0.addons.len());
                     for addon in subscription.0.addons.iter() {
@@ -290,7 +294,7 @@ impl Control {
                     let engines = engine_subscriptions
                         .remove(&(subscription.key().0, subscription.key().1))
                         .unwrap_or(Vec::new());
-                    
+
                     let info = ServiceSubscriptionInfo {
                         pid,
                         gid,
@@ -309,24 +313,32 @@ impl Control {
                     "expect to send {} bytes, but only {} was sent",
                     buf.len(),
                     nbytes
-                ); 
+                );
                 tracing::info!("List subscription request completed");
                 Ok(())
-            },
+            }
             control::Request::AttachAddon(mode, request) => {
-                let addon_engine = unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
-                let addon_engine = *self.plugins.engine_registry
+                let addon_engine =
+                    unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
+                let addon_engine = *self
+                    .plugins
+                    .engine_registry
                     .get(&addon_engine)
-                    .ok_or(anyhow!("Addon engine type {:?} not found", request.addon_engine))?
+                    .ok_or(anyhow!(
+                        "Addon engine type {:?} not found",
+                        request.addon_engine
+                    ))?
                     .key();
 
-                let tx_edges_replacement = self.refactor_channel_descriptors(request.tx_channels_replacements)?;
-                let rx_edges_replacement = self.refactor_channel_descriptors(request.rx_channels_replacements)?;
+                let tx_edges_replacement =
+                    self.refactor_channel_descriptors(request.tx_channels_replacements)?;
+                let rx_edges_replacement =
+                    self.refactor_channel_descriptors(request.rx_channels_replacements)?;
 
                 let pid = Pid::from_raw(request.pid);
                 let gid = GroupId(request.gid);
                 self.upgrader.attach_addon(
-                    pid, 
+                    pid,
                     gid,
                     addon_engine,
                     mode,
@@ -336,19 +348,27 @@ impl Control {
                 Ok(())
             }
             control::Request::DetachAddon(request) => {
-                let addon_engine = unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
-                let addon_engine = *self.plugins.engine_registry
+                let addon_engine =
+                    unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
+                let addon_engine = *self
+                    .plugins
+                    .engine_registry
                     .get(&addon_engine)
-                    .ok_or(anyhow!("Addon engine type {:?} not found", request.addon_engine))?
+                    .ok_or(anyhow!(
+                        "Addon engine type {:?} not found",
+                        request.addon_engine
+                    ))?
                     .key();
 
-                let tx_edges_replacement = self.refactor_channel_descriptors(request.tx_channels_replacements)?;
-                let rx_edges_replacement = self.refactor_channel_descriptors(request.rx_channels_replacements)?;
+                let tx_edges_replacement =
+                    self.refactor_channel_descriptors(request.tx_channels_replacements)?;
+                let rx_edges_replacement =
+                    self.refactor_channel_descriptors(request.rx_channels_replacements)?;
 
                 let pid = Pid::from_raw(request.pid);
                 let gid = GroupId(request.gid);
                 self.upgrader.detach_addon(
-                    pid, 
+                    pid,
                     gid,
                     addon_engine,
                     tx_edges_replacement,
@@ -360,22 +380,31 @@ impl Control {
     }
 
     fn refactor_channel_descriptors(
-        &self, 
-        channels: Vec<(String, String, usize, usize)>
+        &self,
+        channels: Vec<(String, String, usize, usize)>,
     ) -> anyhow::Result<Vec<ChannelDescriptor>> {
         let mut edges = Vec::with_capacity(channels.len());
-        for (sender, receiver, sender_idx, recevier_idx) in channels.into_iter() { 
+        for (sender, receiver, sender_idx, recevier_idx) in channels.into_iter() {
             let sender_engine = unsafe { transmute_engine_type_from_str(sender.as_str()) };
             let receiver_engine = unsafe { transmute_engine_type_from_str(receiver.as_str()) };
-            let sender_engine = *self.plugins.engine_registry
+            let sender_engine = *self
+                .plugins
+                .engine_registry
                 .get(&sender_engine)
                 .ok_or(anyhow!("Engine type {:?} not found", sender))?
                 .key();
-            let receiver_engine = *self.plugins.engine_registry
+            let receiver_engine = *self
+                .plugins
+                .engine_registry
                 .get(&receiver_engine)
                 .ok_or(anyhow!("Engine type {:?} not found", receiver))?
                 .key();
-            edges.push(ChannelDescriptor(sender_engine, receiver_engine, sender_idx, recevier_idx));
+            edges.push(ChannelDescriptor(
+                sender_engine,
+                receiver_engine,
+                sender_idx,
+                recevier_idx,
+            ));
         }
         Ok(edges)
     }

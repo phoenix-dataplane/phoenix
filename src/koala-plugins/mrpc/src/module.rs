@@ -14,7 +14,7 @@ use ipc::mrpc::{cmd, dp};
 
 use koala::engine::{EnginePair, EngineType};
 use koala::module::{
-    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, Version, ServiceInfo,
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo, Version,
 };
 use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
@@ -92,17 +92,22 @@ pub struct MrpcModule {
 impl MrpcModule {
     pub const MRPC_ENGINE: EngineType = EngineType("MrpcEngine");
     pub const ENGINES: &'static [EngineType] = &[MrpcModule::MRPC_ENGINE];
-    pub const DEPENDENCIES: &'static [EnginePair] = &[
-        (MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine")),
-    ];
+    pub const DEPENDENCIES: &'static [EnginePair] =
+        &[(MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine"))];
 
     pub const SERVICE: Service = Service("Mrpc");
-    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[
-        ChannelDescriptor(MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine"), 0, 0),
-    ];
-    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[
-        ChannelDescriptor(EngineType("RpcAdapterEngine"), MrpcModule::MRPC_ENGINE, 0, 0),
-    ];
+    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
+        MrpcModule::MRPC_ENGINE,
+        EngineType("RpcAdapterEngine"),
+        0,
+        0,
+    )];
+    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
+        EngineType("RpcAdapterEngine"),
+        MrpcModule::MRPC_ENGINE,
+        0,
+        0,
+    )];
 }
 
 impl MrpcModule {
@@ -116,11 +121,11 @@ impl MrpcModule {
 
 impl KoalaModule for MrpcModule {
     fn service(&self) -> Option<ServiceInfo> {
-        let service = ServiceInfo { 
+        let service = ServiceInfo {
             service: MrpcModule::SERVICE,
-            engine: MrpcModule::MRPC_ENGINE, 
-            tx_channels: MrpcModule::TX_CHANNELS, 
-            rx_channels: MrpcModule::RX_CHANNELS, 
+            engine: MrpcModule::MRPC_ENGINE,
+            tx_channels: MrpcModule::TX_CHANNELS,
+            rx_channels: MrpcModule::RX_CHANNELS,
         };
         Some(service)
     }
@@ -186,7 +191,9 @@ impl KoalaModule for MrpcModule {
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let cmd_tx = shared.command_path.get_sender(&EngineType("RpcAdapterEngine"))?;
+            let cmd_tx = shared
+                .command_path
+                .get_sender(&EngineType("RpcAdapterEngine"))?;
             let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
 
             let builder = MrpcEngineBuilder::new(
@@ -223,5 +230,4 @@ impl KoalaModule for MrpcModule {
         let engine = MrpcEngine::restore(local, shared, global, node, plugged, prev_version)?;
         Ok(Box::new(engine))
     }
-
 }

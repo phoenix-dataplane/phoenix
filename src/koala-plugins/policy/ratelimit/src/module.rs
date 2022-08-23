@@ -4,8 +4,8 @@ use anyhow::{bail, Result};
 use minstant::Instant;
 use nix::unistd::Pid;
 
-use koala::engine::datapath::DataPathNode;
 use koala::addon::{KoalaAddon, Version};
+use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EngineType};
 use koala::storage::ResourceCollection;
 
@@ -44,12 +44,9 @@ impl RateLimitAddon {
 }
 impl RateLimitAddon {
     pub fn new(config: RateLimitConfig) -> Self {
-        RateLimitAddon {
-            config: config, 
-        }
+        RateLimitAddon { config: config }
     }
 }
-
 
 impl KoalaAddon for RateLimitAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
@@ -64,7 +61,7 @@ impl KoalaAddon for RateLimitAddon {
     }
 
     #[inline]
-    fn migrate(&mut self, _prev_addon: Box<dyn KoalaAddon>) { }
+    fn migrate(&mut self, _prev_addon: Box<dyn KoalaAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
         RateLimitAddon::ENGINES

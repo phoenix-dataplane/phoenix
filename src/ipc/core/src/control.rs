@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use interface::engine::SchedulingMode;
 
-
 type IResult<T> = Result<T, interface::Error>;
 
 /// Description for loading/upgrading a plugin
@@ -21,7 +20,7 @@ pub struct UpgradeRequest {
     /// plugins to upgrade
     pub plugins: Vec<PluginDescriptor>,
     /// type of the plugins to upgrade,
-    /// module or addon 
+    /// module or addon
     pub ty: PluginType,
     /// whether to flush the shared queues
     pub flush: bool,
@@ -72,7 +71,7 @@ pub struct ServiceSubscriptionInfo {
     pub gid: u64,
     pub service: String,
     pub engines: Vec<(u64, String)>,
-    pub addons: Vec<String> 
+    pub addons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

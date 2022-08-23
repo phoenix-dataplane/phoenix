@@ -15,7 +15,7 @@ use ipc::unix::DomainSocket;
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};
 use koala::module::{
-    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, Version, ServiceInfo,
+    KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo, Version,
 };
 use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
@@ -95,9 +95,10 @@ impl RdmaTransportModule {
         RdmaTransportModule::RDMA_CM_ENGINE,
         RdmaTransportModule::RDMA_TRANSPORT_ENGINE,
     ];
-    pub const DEPENDENCIES: &'static [EnginePair] = &[
-        (RdmaTransportModule::RDMA_TRANSPORT_ENGINE, RdmaTransportModule::RDMA_CM_ENGINE),
-    ];
+    pub const DEPENDENCIES: &'static [EnginePair] = &[(
+        RdmaTransportModule::RDMA_TRANSPORT_ENGINE,
+        RdmaTransportModule::RDMA_CM_ENGINE,
+    )];
 
     pub const SERIVCE: Service = Service("RdmaTransport");
 }
@@ -114,7 +115,7 @@ impl RdmaTransportModule {
 impl KoalaModule for RdmaTransportModule {
     fn service(&self) -> Option<ServiceInfo> {
         let serivce = ServiceInfo {
-            service: RdmaTransportModule::SERIVCE, 
+            service: RdmaTransportModule::SERIVCE,
             engine: RdmaTransportModule::RDMA_TRANSPORT_ENGINE,
             tx_channels: &[],
             rx_channels: &[],

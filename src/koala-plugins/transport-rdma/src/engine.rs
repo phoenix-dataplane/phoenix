@@ -17,7 +17,7 @@ use koala::impl_vertex_for_engine;
 use rdma::ibv;
 use rdma::rdmacm;
 
-use koala::engine::{future, Engine, EngineResult, Indicator, Decompose};
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
@@ -41,7 +41,7 @@ impl_vertex_for_engine!(TransportEngine, node);
 
 impl Decompose for TransportEngine {
     #[inline]
-    fn flush(&mut self) -> Result<()> { 
+    fn flush(&mut self) -> Result<()> {
         Ok(())
     }
 
@@ -64,7 +64,6 @@ impl Decompose for TransportEngine {
         (collections, engine.node)
     }
 }
-
 
 impl TransportEngine {
     pub(crate) fn restore(
