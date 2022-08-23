@@ -1,8 +1,6 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use anyhow::{bail, Result};
-use atomic::Atomic;
 use minstant::Instant;
 use nix::unistd::Pid;
 
@@ -16,11 +14,11 @@ use crate::config::RateLimitConfig;
 
 pub(crate) struct RateLimitEngineBuilder {
     node: DataPathNode,
-    config: Arc<Atomic<RateLimitConfig>>,
+    config: RateLimitConfig,
 }
 
 impl RateLimitEngineBuilder {
-    fn new(node: DataPathNode, config: Arc<Atomic<RateLimitConfig>>) -> Self {
+    fn new(node: DataPathNode, config: RateLimitConfig) -> Self {
         RateLimitEngineBuilder { node, config }
     }
 
@@ -28,7 +26,7 @@ impl RateLimitEngineBuilder {
         Ok(RateLimitEngine {
             node: self.node,
             indicator: Default::default(),
-            config: Arc::clone(&self.config),
+            config: self.config,
             last_ts: Instant::now(),
             num_tokens: 0,
             queue: VecDeque::new(),
@@ -37,7 +35,7 @@ impl RateLimitEngineBuilder {
 }
 
 pub struct RateLimitAddon {
-    config: Arc<Atomic<RateLimitConfig>>,
+    config: RateLimitConfig,
 }
 
 impl RateLimitAddon {
@@ -47,7 +45,7 @@ impl RateLimitAddon {
 impl RateLimitAddon {
     pub fn new(config: RateLimitConfig) -> Self {
         RateLimitAddon {
-            config: Arc::new(Atomic::new(config)),
+            config: config, 
         }
     }
 }
@@ -66,9 +64,7 @@ impl KoalaAddon for RateLimitAddon {
     }
 
     #[inline]
-    fn migrate(&mut self, _prev_addon: Box<dyn KoalaAddon>) {
-
-    }
+    fn migrate(&mut self, _prev_addon: Box<dyn KoalaAddon>) { }
 
     fn engines(&self) -> &[EngineType] {
         RateLimitAddon::ENGINES
@@ -84,7 +80,7 @@ impl KoalaAddon for RateLimitAddon {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = RateLimitEngineBuilder::new(node, Arc::clone(&self.config));
+        let builder = RateLimitEngineBuilder::new(node, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }

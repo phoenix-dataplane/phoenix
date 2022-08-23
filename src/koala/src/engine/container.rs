@@ -1,11 +1,11 @@
-use std::future::Future;
+use std::{future::Future, os::unix::ucred::UCred};
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 
 use futures::future::BoxFuture;
 use semver::Version;
 
-use super::{Engine, EngineLocalStorage, EngineResult, EngineType, Indicator};
+use super::{Engine, EngineResult, EngineType, Indicator};
 
 pub(crate) struct EngineContainer {
     // SAFETY: the future's lifetime will be extended to static.
@@ -21,7 +21,6 @@ pub(crate) struct EngineContainer {
     desc: String,
     ty: EngineType,
     version: Version,
-    els: Option<&'static dyn EngineLocalStorage>,
 }
 
 /// Extending the future's lifetime.
@@ -44,7 +43,6 @@ impl EngineContainer {
         // ENGINE_LS takes a 'static EngineLocalStorage to emulate a per-engine thread-local context.
         // It points to some states attatched to the engine
         // hence in reality its lifetime is bound by engine (future) s lifetime
-        let els = unsafe { engine.els() };
 
         let mut pinned = Pin::new(engine);
         let future = {
@@ -61,7 +59,6 @@ impl EngineContainer {
             desc,
             version,
             ty,
-            els,
         }
     }
 
@@ -83,11 +80,6 @@ impl EngineContainer {
     }
 
     #[inline]
-    pub(crate) unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        self.els
-    }
-
-    #[inline]
     pub(crate) fn set_els(&self) {
         self.engine.set_els();
     }
@@ -100,6 +92,10 @@ impl EngineContainer {
     #[inline]
     pub(crate) fn version(&self) -> Version {
         self.version.clone()
+    }
+
+    pub(crate) fn handle_request(&mut self, request: Vec<u8>, cred: UCred) -> anyhow::Result<()> {
+        self.engine.handle_request(request, cred)
     }
 
     /// Detach current engine in prepare for upgrade

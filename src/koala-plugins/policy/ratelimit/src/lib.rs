@@ -1,3 +1,5 @@
+#![feature(peer_credentials_unix_socket)]
+
 use thiserror::Error;
 
 pub use koala::addon::KoalaAddon;

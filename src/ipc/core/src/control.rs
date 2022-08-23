@@ -54,9 +54,15 @@ pub struct AddonRequest {
 pub enum Request {
     /// New service subscription, scheduling mode and service name
     NewClient(SchedulingMode, String),
+    /// Send a request to a specified engine, identified by the EngineId
+    EngineRequest(u64, Vec<u8>),
+    /// List all service subscriptions
     ListSubscription,
+    /// Attach an addon to a service subscription
     AttachAddon(SchedulingMode, AddonRequest),
+    /// Detach an addon from a service subscription
     DetachAddon(AddonRequest),
+    /// Upgrade modules or plugins
     Upgrade(UpgradeRequest),
 }
 
@@ -65,6 +71,7 @@ pub struct ServiceSubscriptionInfo {
     pub pid: pid_t,
     pub gid: u64,
     pub service: String,
+    pub engines: Vec<(u64, String)>,
     pub addons: Vec<String> 
 }
 

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io;
+use std::os::unix::ucred::UCred;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -13,12 +14,7 @@ use spin::Mutex;
 use thiserror::Error;
 
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
-use super::{EngineContainer, EngineLocalStorage, EngineResult, Indicator};
-
-thread_local! {
-    /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
-    pub static ENGINE_LS: RefCell<Option<&'static dyn EngineLocalStorage>> = RefCell::new(None);
-}
+use super::{EngineContainer, EngineResult, Indicator};
 
 #[allow(unused)]
 impl Indicator {
@@ -96,6 +92,9 @@ pub(crate) struct Runtime {
     /// or detach and live upgrade to a new version.
     pub(crate) suspended: DashMap<EngineId, SuspendResult>,
 
+    pub(crate) new_ctrl_request: AtomicBool,
+    pub(crate) control_requests: Mutex<Vec<(EngineId, Vec<u8>, UCred)>>,
+
     pub(crate) runtime_manager: Arc<RuntimeManager>,
 }
 
@@ -110,6 +109,9 @@ impl Runtime {
             new_suspend: AtomicBool::new(false),
             suspend_requests: Mutex::new(Vec::new()),
             suspended: DashMap::new(),
+
+            new_ctrl_request: AtomicBool::new(false),
+            control_requests: Mutex::new(Vec::new()),
 
             runtime_manager: rm,
         }
@@ -130,6 +132,11 @@ impl Runtime {
     pub(crate) fn add_engine(&self, id: EngineId, engine: EngineContainer) {
         self.pending.lock().push((id, RefCell::new(engine)));
         self.new_pending.store(true, Ordering::Release);
+    }
+    
+    pub(crate) fn submit_request(&self, id: EngineId, request: Vec<u8>, cred: UCred) {
+        self.control_requests.lock().push((id, request, cred));
+        self.new_ctrl_request.store(true, Ordering::Release);
     }
 
     pub(crate) fn request_suspend(&self, id: EngineId) {
@@ -178,17 +185,6 @@ impl Runtime {
 
             // drive each engine
             for (index, (_eid, engine)) in self.running.borrow().iter().enumerate() {
-                // TODO(cjr): Set engine's local storage here before poll
-                ENGINE_LS.with(|els| {
-                    // Safety: The purpose here is to emulate thread-local storage for Engine.
-                    // Different engines can expose different types of TLS. The TLS will only be
-                    // used during the runtime of an engine. Thus, the TLS should always be valid
-                    // when it is referred to. However, there is no known way (for me) to express
-                    // this lifetime constraint. Ultimately, the solution is to force the lifetime
-                    // of the TLS of an engine to be 'static, and the programmer needs to think
-                    // through to make sure they implement it correctly.
-                    *els.borrow_mut() = unsafe { engine.borrow().els() };
-                });
                 engine.borrow_mut().set_els();
 
                 // bind to a variable first (otherwise engine is borrowed in the match expression)
@@ -268,6 +264,29 @@ impl Runtime {
 
                 for engine_id in engine_ids {
                     self.suspended.insert(engine_id, SuspendResult::NotFound);
+                }
+            }
+
+            if Ok(true)
+                == self.new_ctrl_request.compare_exchange(
+                    true, 
+                    false, 
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
+                let mut guard = self.control_requests.lock();
+                for (target_eid, request, cred) in guard.drain(..) {
+                    let mut running = self.running.borrow_mut();
+                    if let Some((_, container)) = running.iter_mut().find(|(eid, _)| target_eid == *eid) {
+                        if let Err(err) = container.borrow_mut().handle_request(request, cred) {
+                            tracing::error!(
+                                "Error in handling engine request, eid={:?}, error: {:?}",
+                                target_eid,
+                                err,
+                            );
+                        }
+                    }
                 }
             }
         }

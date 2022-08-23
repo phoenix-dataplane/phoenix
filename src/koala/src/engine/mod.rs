@@ -1,6 +1,9 @@
+use std::os::unix::ucred::UCred;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+
+pub use anyhow::Result;
 
 use futures::future::BoxFuture;
 
@@ -13,8 +16,6 @@ pub(crate) mod container;
 pub(crate) mod runtime;
 pub(crate) mod upgrade;
 pub(crate) use container::EngineContainer;
-
-pub use runtime::ENGINE_LS;
 
 pub use decompose::Decompose;
 pub use datapath::graph::Vertex;
@@ -55,26 +56,12 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     fn description(&self) -> String;
 
     #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        None
-    }
+    fn set_els(&self) { }
 
-    fn set_els(&self) {}
+    #[inline]
+    fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub type EngineResult = Result<(), Box<dyn std::error::Error>>;
-
-/// Safety: EngineLocalStorage is only accessed from a thread/runtime at a time. There should be no
-/// concurrent access to it. But since Engine can be moved between Runtimes, the local storage
-/// could be read from different threads _at different times_ (i.e., Send).
-///
-/// The user must ensure their storage type are Send.
-///
-/// WARNING(cjr): EngineLocalStorage is Sync only because runtime is shared between threads, and
-/// they require it to be Sync. They are, in fact, not concurrently accessed, so we even if the
-/// underlying data is not threadsafe, we are still good here.
-///
-/// TODO(cjr): Consider remove this EngineLocalStorage when ShmPtr is ready.
-pub unsafe trait EngineLocalStorage: std::any::Any + Send + Sync {
-    fn as_any(&self) -> &dyn std::any::Any;
-}

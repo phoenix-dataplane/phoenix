@@ -20,11 +20,11 @@ use crate::storage::ResourceCollection;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct EngineId(u64);
+pub(crate) struct EngineId(pub(crate) u64);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RuntimeId(u64);
+pub(crate) struct RuntimeId(pub(crate) u64);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -1,5 +1,6 @@
 //! A Control is the entry of control plane. It directs commands from the external
 //! world to corresponding module.
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -21,7 +22,7 @@ use crate::engine::EngineType;
 use crate::engine::container::EngineContainer;
 use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
 use crate::engine::datapath::create_datapath_channels;
-use crate::engine::manager::{GroupId, ServiceSubscription, RuntimeManager};
+use crate::engine::manager::{EngineId, GroupId, ServiceSubscription, RuntimeManager};
 use crate::engine::upgrade::EngineUpgrader;
 use crate::module::{Service, NewEngineRequest};
 use crate::plugin::{Plugin, PluginCollection};
@@ -239,11 +240,25 @@ impl Control {
                 let service = unsafe { transmute_service_from_str(service_name.as_str()) };
                 let service = *self.plugins.service_registry
                     .get(&service)
-                    .ok_or(anyhow!("Service {:?} not found", sender))?
+                    .ok_or(anyhow!("service {:?} not found", sender))?
                     .key();
                 self.create_service(service, client_path, mode, cred)?;
                 Ok(())
-            }
+            },
+            control::Request::EngineRequest(eid, request) => {
+                let eid = EngineId(eid);
+                match self.runtime_manager.engine_subscriptions.get(&eid) {
+                    Some(info) => {
+                        let rid = info.rid;
+                        let guard = self.runtime_manager.inner.lock().unwrap();
+                        guard.runtimes[&rid].submit_request(eid, request, *cred);
+                    },
+                    None => {
+                        bail!("engine eid={:?} not found", eid);
+                    },
+                }
+                Ok(())
+            },
             control::Request::Upgrade(request) => {
                 let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
                 self.upgrader.upgrade(
@@ -257,6 +272,12 @@ impl Control {
                 let client_path = sender
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
+
+                let mut engine_subscriptions = HashMap::new();
+                for engine in self.runtime_manager.engine_subscriptions.iter() {
+                    let entry = engine_subscriptions.entry((engine.pid, engine.gid)).or_insert_with(Vec::new);
+                    entry.push((engine.key().0, engine.engine_type.0.to_string()));
+                }
                 let mut subscriptions_info = Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
                 for subscription in self.runtime_manager.service_subscriptions.iter() {
                     let pid = subscription.key().0.as_raw();
@@ -266,9 +287,14 @@ impl Control {
                     for addon in subscription.0.addons.iter() {
                         addons.push(addon.0.to_string());
                     }
+                    let engines = engine_subscriptions
+                        .remove(&(subscription.key().0, subscription.key().1))
+                        .unwrap_or(Vec::new());
+                    
                     let info = ServiceSubscriptionInfo {
                         pid,
                         gid,
+                        engines,
                         service,
                         addons,
                     };

@@ -10,7 +10,6 @@ use crate::region::AddressMediator;
 
 use super::region::SharedRegion;
 use super::ControlPathError;
-use koala::engine::EngineLocalStorage;
 use koala::resource::{Error as ResourceError, ResourceTable};
 use koala::state_mgr::ProcessShared;
 
@@ -89,13 +88,6 @@ pub struct Resource {
     // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
     // NOTE(wyj): removed Arc wrapper for SharedRegion, and accessing sender heap region is not needed
     pub mr_table: spin::Mutex<BTreeMap<usize, SharedRegion>>,
-}
-
-unsafe impl EngineLocalStorage for Resource {
-    #[inline]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 impl Resource {

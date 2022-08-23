@@ -1,13 +1,13 @@
 use std::collections::VecDeque;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
+use std::os::unix::ucred::UCred;
 
 use anyhow::{anyhow, Result};
-use atomic::Atomic;
 use futures::future::BoxFuture;
 use minstant::Instant;
+
+use ipc::ratelimit::control_plane;
 
 use koala::engine::datapath::message::{EngineTxMessage, RpcMessageTx};
 use koala::engine::datapath::node::DataPathNode;
@@ -29,7 +29,7 @@ pub(crate) struct RateLimitEngine {
     // TODO(cjr): maybe put this filter in a separate engine like FilterEngine/ClassiferEngine.
     // pub(crate) filter: FnvHashSet<u32>,
     // Number of tokens to add for each seconds.
-    pub(crate) config: Arc<Atomic<RateLimitConfig>>,
+    pub(crate) config: RateLimitConfig,
     // The most recent timestamp we add the token to the bucket.
     pub(crate) last_ts: Instant,
     // The number of available tokens in the token bucket algorithm.
@@ -57,6 +57,18 @@ impl Engine for RateLimitEngine {
 
     fn set_tracker(&mut self, indicator: Indicator) {
         self.indicator = Some(indicator)
+    }
+
+    fn handle_request(&mut self, request: Vec<u8>, _cred: UCred) -> Result<()> {
+        let request: control_plane::Request = bincode::deserialize(&request[..])?;
+
+        match request {
+            control_plane::Request::NewConfig(requests_per_sec, bucket_size) => {
+                self.config.requests_per_sec = requests_per_sec;
+                self.config.bucket_size = bucket_size;
+            },
+        }
+        Ok(())
     }
 }
 
@@ -99,7 +111,7 @@ impl RateLimitEngine {
         let config = *local
             .remove("config")
             .unwrap()
-            .downcast::<Arc<Atomic<RateLimitConfig>>>()
+            .downcast::<RateLimitConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let last_ts = *local
             .remove("last_ts")
@@ -156,8 +168,8 @@ impl RateLimitEngine {
     fn add_tokens(&mut self) {
         let now = Instant::now();
         let dura = now - self.last_ts;
-        let requests_per_sec = self.config.load(Ordering::Relaxed).requests_per_sec;
-        let bucket_size = self.config.load(Ordering::Relaxed).bucket_size as usize;
+        let requests_per_sec = self.config.requests_per_sec;
+        let bucket_size = self.config.bucket_size as usize;
         if dura * requests_per_sec as u32 >= Duration::from_secs(1) {
             self.num_tokens += (dura.as_secs_f64() * requests_per_sec as f64) as usize;
             if self.num_tokens > bucket_size {

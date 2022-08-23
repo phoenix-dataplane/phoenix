@@ -140,15 +140,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30696a84d817107fc028e049980e09d5e140e8da8f1caeb17e8e950658a3cea9"
 
 [[package]]
-name = "atomic"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88d82667eca772c4aa12f0f1348b3ae643424c8876448f3f7bd5787032e234c"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "atomic-traits"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -969,6 +960,7 @@ version = "0.1.0"
 dependencies = [
  "ipc-core",
  "ipc-mrpc",
+ "ipc-ratelimit",
  "ipc-salloc",
  "ipc-transport",
 ]
@@ -1015,6 +1007,16 @@ dependencies = [
 
 [[package]]
 name = "ipc-mrpc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-ratelimit"
 version = "0.1.0"
 dependencies = [
  "interface",
@@ -1184,7 +1186,7 @@ name = "koala-ratelimit"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "atomic",
+ "bincode",
  "crossbeam",
  "futures",
  "ipc",
