@@ -18,7 +18,7 @@ use crate::config::Config;
 use crate::engine::channel::ChannelFlavor;
 use crate::engine::container::EngineContainer;
 use crate::engine::graph::create_channel;
-use crate::engine::group::EngineGroup;
+use crate::engine::group::SchedulingGroup;
 use crate::engine::manager::RuntimeManager;
 use crate::node::Node;
 use crate::{
@@ -241,11 +241,11 @@ impl Control {
         }
 
         // submit engines to runtime
-        let mut engine_group = EngineGroup::empty(SchedulingMode::Dedicate);
+        let mut scheduling_group = SchedulingGroup::empty(SchedulingMode::Dedicate);
         for e in engines {
-            engine_group.add(e);
+            scheduling_group.add(e);
         }
-        self.runtime_manager.submit_group(engine_group);
+        self.runtime_manager.submit_group(scheduling_group);
 
         Ok(())
     }

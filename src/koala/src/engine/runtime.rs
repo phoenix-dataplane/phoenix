@@ -9,7 +9,7 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
-use super::group::EngineGroup;
+use super::group::SchedulingGroup;
 use super::{EngineContainer, EngineResult};
 
 /// This indicates the runtime of an engine's status.
@@ -118,18 +118,18 @@ impl Runtime {
 
     #[inline]
     // pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
-    pub(crate) fn add_engine(&self, engine_group: EngineGroup, dedicated: bool) {
+    pub(crate) fn add_engine(&self, scheduling_group: SchedulingGroup, dedicated: bool) {
         // TODO(cjr): FIXME
         // immediate update the dedicate bit
         self.dedicated.fetch_or(dedicated, Ordering::Release);
 
-        log::info!("Runtime {}, adding {:?}", self.id, engine_group);
+        log::info!("Runtime {}, adding {:?}", self.id, scheduling_group);
 
         // adding the engines
-        // TODO(cjr): Also record the engine_group.id so that when moving engines around runtime,
+        // TODO(cjr): Also record the scheduling_group.id so that when moving engines around runtime,
         // we can know which engines should be moved together.
         let mut pending = self.pending.lock();
-        for engine in engine_group.engines {
+        for engine in scheduling_group.engines {
             pending.push(RefCell::new(engine));
         }
         self.new_pending.store(true, Ordering::Release);
