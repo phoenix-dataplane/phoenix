@@ -34,15 +34,20 @@ def get_goodput(path: str) -> List[float]:
 # rpc_bench_tput_128kb/rpc_bench_client_danyang-05.stdout
 # /tmp/mrpc-eval/benchmark/rpc_bench_tput_32/rpc_bench_tput_512b/rpc_bench_client_danyang-05.stderr
 
+xticks = [(2 << i) for i in range(0, 14, 2)]
+
 def load_result(solution, f: str):
     # print(f)
     msg_size_text = f.split('/')[-2].split('_')[-1]
     msg_size = convert_msg_size(msg_size_text)
     if msg_size < 2048:
         return
+    msg_size_kb = msg_size // 1024
+    if msg_size_kb not in xticks:
+        return
     goodputs = get_goodput(f)
     for g in goodputs:
-        print(f'{solution},{msg_size},{g}')
+        print(f'{msg_size_kb},{g},{solution}')
 
 solution = 'mRPC (32)'
 for f in glob.glob("/tmp/mrpc-eval/benchmark/rpc_bench_tput_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
