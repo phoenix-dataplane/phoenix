@@ -1,9 +1,12 @@
-use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
+use std::os::unix::ucred::UCred;
+use std::future::Future;
 
 use futures::future::BoxFuture;
+use semver::Version;
 
-use super::{Engine, EngineResult};
+use super::{Engine, EngineResult, EngineType, Indicator};
 
 /// A container that bundles a `Box<dyn Engine>` and its `Future` object so that the caller of this
 /// type can use both the methods provided by the `Engine` trait and poll the future.
@@ -29,7 +32,12 @@ pub(crate) struct EngineContainer {
     /// (impossible with pinned Box) while the future is still in use (not returning
     /// `Pending::Ready`).
     engine: Pin<Box<dyn Engine>>,
-    // info: EngineInfo,
+
+    /// The type of the engine.
+    ty: EngineType,
+
+    /// The verion of the koala module that the engine belongs to.
+    version: Version,
 }
 
 /// Extending the future's lifetime from 'a to 'static.
@@ -44,8 +52,8 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
-    pub(crate) fn new<E: Engine + 'static>(engine: E) -> Self {
-        let mut pinned = Box::pin(engine);
+    pub(crate) fn new(mut engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
+        let mut pinned = Pin::new(engine);
         let future = {
             let fut = pinned.as_mut().activate();
             // SAFETY: In Rust, we cannot inform the compiler that the future reference to the
@@ -59,6 +67,8 @@ impl EngineContainer {
         Self {
             future,
             engine: pinned,
+            version,
+            ty,
         }
     }
 
@@ -75,5 +85,38 @@ impl EngineContainer {
     #[inline]
     pub(crate) fn engine_mut(&mut self) -> Pin<&mut dyn Engine> {
         self.engine.as_mut()
+    }
+
+    #[inline]
+    pub(crate) fn set_els(&self) {
+        self.engine.set_els();
+    }
+
+    #[inline]
+    pub(crate) fn engine_type(&self) -> EngineType {
+        self.ty
+    }
+
+    #[inline]
+    pub(crate) fn version(&self) -> Version {
+        self.version.clone()
+    }
+
+    pub(crate) fn handle_request(&mut self, request: Vec<u8>, cred: UCred) -> anyhow::Result<()> {
+        self.engine.handle_request(request, cred)
+    }
+
+    /// Detach current engine in prepare for upgrade
+    /// Some preparatory work is done during this step
+    /// e.g., flush inter-engine shared queues
+    /// There is no need to call this function if only moves
+    pub(crate) fn detach(self) -> Box<dyn Engine> {
+        std::mem::drop(self.future);
+        let engine = self.engine;
+        unsafe { Pin::into_inner_unchecked(engine) }
+    }
+
+    pub(crate) fn flush(&mut self) -> anyhow::Result<()> {
+        self.engine.flush()
     }
 }

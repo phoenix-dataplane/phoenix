@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.57"
+version = "1.0.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
+checksum = "bb07d2053ccdbe10e2af2995a2f116c1330396493dc1269f6a91d0ae82e19704"
 
 [[package]]
 name = "arc-swap"
@@ -332,6 +332,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
+dependencies = [
+ "lazy_static",
+ "memchr",
+ "regex-automata",
+ "serde",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -595,6 +607,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22813a6dc45b335f9bade10bf7271dc477e81113e89eb251a0bc2a8a81c536e1"
+dependencies = [
+ "bstr",
+ "csv-core",
+ "itoa 0.4.8",
+ "ryu",
+ "serde",
+]
+
+[[package]]
+name = "csv-core"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2466559f260f48ad25fe6317b3c8dac77b5bdb5763ac7d9d6103530663bc90"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "ctor"
 version = "0.1.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,6 +678,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
 name = "env_logger"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -654,27 +694,6 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
-]
-
-[[package]]
-name = "errno"
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "errno-dragonfly"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]
@@ -708,6 +727,7 @@ dependencies = [
  "libc",
  "linked-hash-map",
  "log",
+ "memfd",
  "nix 0.23.1",
  "num_cpus",
  "petgraph",
@@ -872,6 +892,7 @@ dependencies = [
  "futures-core",
  "futures-task",
  "futures-util",
+ "num_cpus",
 ]
 
 [[package]]
@@ -1078,6 +1099,7 @@ dependencies = [
 name = "ipc"
 version = "0.1.0"
 dependencies = [
+<<<<<<< HEAD
  "atomic-traits",
  "bincode",
  "crossbeam",
@@ -1094,6 +1116,13 @@ dependencies = [
  "thiserror",
  "uuid",
  "zerocopy",
+=======
+ "ipc-core",
+ "ipc-mrpc",
+ "ipc-ratelimit",
+ "ipc-salloc",
+ "ipc-transport",
+>>>>>>> d6b54c4 ([Upgrade] init)
 ]
 
 [[package]]
@@ -1116,6 +1145,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipc-core"
+version = "0.1.0"
+dependencies = [
+ "atomic-traits",
+ "bincode",
+ "crossbeam",
+ "interface",
+ "ipc-channel",
+ "libc",
+ "memfd",
+ "memmap2 0.5.4",
+ "nix 0.23.1",
+ "serde",
+ "shmem-ipc",
+ "thiserror",
+ "unique",
+ "uuid",
+ "zerocopy 0.3.0",
+]
+
+[[package]]
+name = "ipc-mrpc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-salloc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-transport"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "itertools"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1123,6 +1213,12 @@ checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
 dependencies = [
  "either",
 ]
+
+[[package]]
+name = "itoa"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
 
 [[package]]
 name = "itoa"
@@ -1165,7 +1261,6 @@ dependencies = [
  "bincode",
  "bitvec",
  "chrono",
- "crc32fast",
  "crossbeam",
  "dashmap",
  "fastrand",
@@ -1178,31 +1273,31 @@ dependencies = [
  "lazy_static",
  "libc",
  "libloading",
+<<<<<<< HEAD
  "md5",
  "memfd",
  "memmap-fixed",
  "memmap2 0.5.4",
  "memoffset 0.6.5",
+=======
+>>>>>>> d6b54c4 ([Upgrade] init)
  "minstant",
- "mio 0.7.14",
- "mrpc-derive",
- "mrpc-marshal",
  "nix 0.23.1",
  "num_cpus",
- "prettyplease",
- "proc-macro2",
+ "petgraph",
  "prost-build",
- "quote",
- "rdma",
- "scheduler",
+ "semver 1.0.12",
  "serde",
+<<<<<<< HEAD
  "serde_json",
  "smallstr",
  "smallvec 1.9.0",
+=======
+ "smallvec 1.8.0",
+>>>>>>> d6b54c4 ([Upgrade] init)
  "spin",
  "static_assertions",
  "structopt",
- "syn",
  "thiserror",
  "tokio",
  "toml",
@@ -1211,7 +1306,175 @@ dependencies = [
  "tracing-chrome",
  "tracing-subscriber",
  "uuid",
- "version",
+]
+
+[[package]]
+name = "koala-mrpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "crossbeam",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "itertools",
+ "koala",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "koala-mrpc-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-mrpc",
+]
+
+[[package]]
+name = "koala-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "crossbeam",
+ "futures",
+ "ipc",
+ "koala",
+ "minstant",
+ "nix 0.23.1",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "koala-ratelimit-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-ratelimit",
+]
+
+[[package]]
+name = "koala-rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-rdma",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "koala-rpc_adapter-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-rpc_adapter",
+]
+
+[[package]]
+name = "koala-salloc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "libc",
+ "memfd",
+ "memmap-fixed",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "serde",
+ "spin",
+ "thiserror",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "koala-salloc-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-salloc",
+]
+
+[[package]]
+name = "koala-transport-rdma"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "lazy_static",
+ "memoffset",
+ "mio 0.7.14",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "koala-transport-rdma-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-transport-rdma",
+]
+
+[[package]]
+name = "koalactl"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "prettytable-rs",
+ "serde",
+ "structopt",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -1856,6 +2119,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettytable-rs"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f375cb74c23b51d23937ffdeb48b1fbf5b6409d4b9979c1418c1de58bc8f801"
+dependencies = [
+ "atty",
+ "csv",
+ "encode_unicode",
+ "lazy_static",
+ "term",
+ "unicode-width",
+]
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2183,8 +2460,14 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0dfe2087c51c460008730de8b57e6a320782fbfb312e1f4d520e6c6fae155ee"
 dependencies = [
- "semver",
+ "semver 0.11.0",
 ]
+
+[[package]]
+name = "rustversion"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97477e48b4cf8603ad5f7aaf897467cf42ab4218a38ef76fb14c2d6773a6d6a8"
 
 [[package]]
 name = "ryu"
@@ -2199,16 +2482,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "scheduler"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fa43f074ab0432dea0abfafb02b211ff81fb4119617d1c9148a5e7b9c372038"
-dependencies = [
- "errno",
- "libc",
 ]
 
 [[package]]
@@ -2241,6 +2514,12 @@ checksum = "f301af10236f6df4160f7c3f04eec6dbc70ace82d23326abad5edee88801c6b6"
 dependencies = [
  "semver-parser",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2333e6df6d6598f2b1974829f853c2b4c5f4a6e503c10af918081aa6f8564e1"
 
 [[package]]
 name = "semver-parser"
@@ -2293,7 +2572,7 @@ version = "1.0.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7ce2b32a1aed03c558dc61a5cd328f15aff2dbc17daad8fb8af04d2100e15c"
 dependencies = [
- "itoa",
+ "itoa 1.0.2",
  "ryu",
  "serde",
 ]
@@ -2385,6 +2664,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "smallstr"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2394,6 +2674,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> d6b54c4 ([Upgrade] init)
 name = "smallvec"
 version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2531,6 +2813,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "term"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c59df8ac95d96ff9bede18eb7300b0fda5e5d8d90960e76f8e14ae765eedbf1f"
+dependencies = [
+ "dirs-next",
+ "rustversion",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2594,7 +2887,7 @@ version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2702e08a7a860f005826c6815dcac101b19b5eb330c27fe4a5928fec1d20ddd"
 dependencies = [
- "itoa",
+ "itoa 1.0.2",
  "libc",
  "num_threads",
 ]
@@ -2772,12 +3065,6 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
-
-[[package]]
-name = "version"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a449064fee414fcc201356a3e6c1510f6c8829ed28bb06b91c54ebe208ce065"
 
 [[package]]
 name = "version_check"

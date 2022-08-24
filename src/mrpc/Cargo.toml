@@ -12,7 +12,7 @@ timing = ["minstant"]
 [dependencies]
 libkoala = { path = "../libkoala" }
 interface = { path = "../interface" }
-ipc = { path = "../ipc" }
+ipc = { path = "../ipc", features = ["mrpc", "salloc"]}
 memmap-fixed = { path = "../memmap-fixed" }
 slabmalloc = { path = "../slabmalloc" }
 

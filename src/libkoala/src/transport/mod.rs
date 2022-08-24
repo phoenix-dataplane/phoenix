@@ -4,7 +4,6 @@ use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
 use thiserror::Error;
 
-use interface::engine::EngineType;
 use ipc::service::ShmService;
 use ipc::transport::rdma::{cmd, dp};
 
@@ -34,7 +33,7 @@ impl Context {
         let service = ShmService::register(
             &*KOALA_PREFIX,
             &*KOALA_CONTROL_SOCK,
-            EngineType::RdmaTransport,
+            "RdmaTransport".to_string(),
         )?;
         Ok(Self { service })
     }

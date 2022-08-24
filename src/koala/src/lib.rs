@@ -9,51 +9,24 @@
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(core_intrinsics)]
 #![feature(local_key_cell_methods)]
+#![feature(drain_filter)]
 
-extern crate tracing;
+pub extern crate tracing;
 // alias
-extern crate tracing as log;
+pub extern crate tracing as log;
 
+pub mod addon;
 pub mod config;
 pub mod control;
 pub mod engine;
-pub mod mrpc;
-pub(crate) mod node;
-pub(crate) mod resource;
-pub(crate) mod rpc_adapter;
-pub(crate) mod salloc;
-pub(crate) mod state_mgr;
-pub(crate) mod transport;
+pub mod envelop;
+pub mod module;
+pub mod plugin;
+pub mod resource;
+pub mod state_mgr;
+pub mod storage;
 
-pub(crate) mod policy;
+pub(crate) mod dependency;
 
 #[allow(unused)]
 pub(crate) mod timer;
-
-#[macro_export]
-macro_rules! unimplemented_ungradable {
-    ($engine:ident) => {
-        use crate::engine::{Upgradable, Version};
-        impl Upgradable for $engine {
-            fn version(&self) -> Version {
-                unimplemented!();
-            }
-
-            fn check_compatible(&self, _v2: Version) -> bool {
-                unimplemented!();
-            }
-
-            fn suspend(&mut self) {
-                unimplemented!();
-            }
-
-            fn dump(&self) {
-                unimplemented!();
-            }
-
-            fn restore(&mut self) {
-                unimplemented!();
-            }
-        }
-    };
-}

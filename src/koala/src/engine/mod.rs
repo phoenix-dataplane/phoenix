@@ -1,30 +1,41 @@
+use std::os::unix::ucred::UCred;
 use std::pin::Pin;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
+pub use anyhow::Result;
 use futures::future::BoxFuture;
-
-pub mod manager;
-
-pub(crate) mod lb;
-pub(crate) mod runtime;
-pub(crate) use runtime::Indicator;
-
-pub(crate) mod graph;
-pub(crate) use graph::{EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};
-
-pub(crate) mod upgradable;
-pub(crate) use upgradable::{Upgradable, Version};
 
 pub(crate) mod container;
 pub(crate) use container::EngineContainer;
 
-pub(crate) mod future;
+pub mod future;
+pub mod manager;
 
-pub(crate) mod channel;
-pub(crate) mod flavors;
+pub mod datapath;
+pub use datapath::graph::Vertex;
+
+pub mod decompose;
+pub use decompose::Decompose;
 
 pub(crate) mod group;
+pub(crate) mod lb;
 
-pub(crate) trait Engine: Upgradable + Vertex + Send {
+pub(crate) mod runtime;
+pub(crate) use runtime::Indicator;
+
+pub(crate) mod upgrade;
+pub(crate) use group::SchedulingGroup;
+
+pub type EngineResult = Result<(), Box<dyn std::error::Error>>;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EngineType(pub &'static str);
+
+pub type EnginePair = (EngineType, EngineType);
+
+pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     /// Turn the Engine into an executable `Future`
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult>;
 
@@ -47,13 +58,10 @@ pub(crate) trait Engine: Upgradable + Vertex + Send {
     fn set_els(self: Pin<&mut Self>) {
         // empty default impl
     }
+
+    /// Handle request sent by the network operator.
+    #[inline]
+    fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> Result<()> {
+        Ok(())
+    }
 }
-
-pub(crate) type EngineResult = Result<(), Box<dyn std::error::Error>>;
-
-// NoProgress, MayDemandMoreCPU
-// pub(crate) enum EngineStatus {
-//     NoWork,
-//     Continue,
-//     Complete,
-// }
