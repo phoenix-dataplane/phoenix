@@ -32,6 +32,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::tracing;
 
 use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};
@@ -86,24 +87,51 @@ impl Decompose for RpcAdapterEngine {
     ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
-        let engine = *self;
+        let mut engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(12);
         tracing::trace!("dumping RpcAdapterEngine states...");
-        collections.insert("state".to_string(), Box::new(engine.state));
-        collections.insert("ops".to_string(), Box::new(engine.ops));
-        collections.insert("mode".to_string(), Box::new(engine._mode));
-        collections.insert("odp_mr".to_string(), Box::new(engine.odp_mr));
-        collections.insert("salloc".to_string(), Box::new(engine.salloc));
-        collections.insert("local_buffer".to_string(), Box::new(engine.local_buffer));
-        collections.insert("recv_mr_usage".to_string(), Box::new(engine.recv_mr_usage));
-        collections.insert(
-            "serialization_engine".to_string(),
-            Box::new(engine.serialization_engine),
-        );
-        collections.insert("cmd_tx".to_string(), Box::new(engine.cmd_tx));
-        collections.insert("cmd_rx".to_string(), Box::new(engine.cmd_rx));
-        (collections, engine.node)
+
+        let node = unsafe {
+            collections.insert("state".to_string(), Box::new(ptr::read(&mut engine.state)));
+            collections.insert("ops".to_string(), Box::new(ptr::read(&mut engine.ops)));
+            collections.insert("mode".to_string(), Box::new(ptr::read(&mut engine._mode)));
+            collections.insert(
+                "odp_mr".to_string(),
+                Box::new(ptr::read(&mut engine.odp_mr)),
+            );
+            collections.insert(
+                "salloc".to_string(),
+                Box::new(ptr::read(&mut engine.salloc)),
+            );
+            collections.insert(
+                "local_buffer".to_string(),
+                Box::new(ptr::read(&mut engine.local_buffer)),
+            );
+            collections.insert(
+                "recv_mr_usage".to_string(),
+                Box::new(ptr::read(&mut engine.recv_mr_usage)),
+            );
+            collections.insert(
+                "serialization_engine".to_string(),
+                Box::new(ptr::read(&mut engine.serialization_engine)),
+            );
+            collections.insert(
+                "cmd_tx".to_string(),
+                Box::new(ptr::read(&mut engine.cmd_tx)),
+            );
+            collections.insert(
+                "cmd_rx".to_string(),
+                Box::new(ptr::read(&mut engine.cmd_rx)),
+            );
+
+            // don't call the drop function
+            ptr::read(&mut engine.node)
+        };
+
+        mem::forget(engine);
+
+        (collections, node)
     }
 }
 
@@ -214,13 +242,13 @@ impl Engine for RpcAdapterEngine {
 }
 
 // TODO(wyj): FIX THIS
-// impl Drop for RpcAdapterEngine {
-//     fn drop(&mut self) {
-//         let desc = self.description().to_owned();
-//         tracing::warn!("{} is being dropped", desc);
-//         self.state.stop_acceptor(true);
-//     }
-// }
+impl Drop for RpcAdapterEngine {
+    fn drop(&mut self) {
+        let desc = self.description().to_owned();
+        tracing::warn!("{} is being dropped", desc);
+        self.state.stop_acceptor(true);
+    }
+}
 
 impl RpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {

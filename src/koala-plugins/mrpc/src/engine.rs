@@ -15,6 +15,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::tracing;
 
 use super::builder::build_serializer_lib;
 use super::module::CustomerType;

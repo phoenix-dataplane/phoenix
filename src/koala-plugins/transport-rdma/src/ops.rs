@@ -10,6 +10,7 @@ use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
 use koala::engine::future;
+use koala::tracing;
 
 use super::state::{Resource, State};
 use super::{ApiError, DatapathError};

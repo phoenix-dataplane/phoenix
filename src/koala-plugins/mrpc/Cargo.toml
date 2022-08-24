@@ -19,7 +19,6 @@ tokio = { version = "1.18.2", features = ["sync"] }
 crossbeam = "0.8.1"
 anyhow = "1.0.58"
 lazy_static = "1.4.0"
-tracing = "0.1"
 fnv = "1.0.7"
 nix = "0.23.0"
 uuid = "0.8.2"

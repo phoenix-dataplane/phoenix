@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::slice;
 
 use interface::{returned, AsHandle, Handle};
+use koala::tracing;
 use rdma::mr::OdpMemoryRegion;
 use rdma::rdmacm;
 

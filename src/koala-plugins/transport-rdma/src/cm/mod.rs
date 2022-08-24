@@ -8,6 +8,7 @@ use interface::Handle;
 use rdma::rdmacm;
 
 use koala::resource::ResourceTable;
+use koala::tracing;
 
 use crate::ApiError;
 

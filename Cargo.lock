@@ -1178,7 +1178,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "tracing",
  "uuid",
 ]
 
@@ -1205,7 +1204,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
- "tracing",
 ]
 
 [[package]]
@@ -1230,7 +1228,6 @@ dependencies = [
  "koala-mrpc",
  "koala-salloc",
  "koala-transport-rdma",
- "lazy_static",
  "libloading",
  "mrpc-marshal",
  "nix 0.23.1",
@@ -1240,7 +1237,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "tracing",
 ]
 
 [[package]]
@@ -1259,7 +1255,6 @@ dependencies = [
  "interface",
  "ipc",
  "koala",
- "lazy_static",
  "libc",
  "memfd",
  "memmap-fixed",
@@ -1269,7 +1264,6 @@ dependencies = [
  "spin",
  "thiserror",
  "toml",
- "tracing",
  "uuid",
 ]
 
@@ -1300,7 +1294,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "tracing",
  "uuid",
 ]
 

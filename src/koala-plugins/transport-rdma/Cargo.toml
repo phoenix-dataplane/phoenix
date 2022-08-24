@@ -17,7 +17,6 @@ rdma = { path = "../../rdma", features = ["koala"] }
 tokio = { version = "1.18.2", features = ["sync"] }
 anyhow = "1.0.58"
 lazy_static = "1.4.0"
-tracing = "0.1"
 nix = "0.23.0"
 uuid = "0.8.2"
 thiserror = "1.0.31"

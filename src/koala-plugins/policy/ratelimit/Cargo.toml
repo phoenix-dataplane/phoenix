@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tracing = "0.1"
 futures = "0.3.21"
 minstant = "0.1.1"
 thiserror = "1.0.31"
