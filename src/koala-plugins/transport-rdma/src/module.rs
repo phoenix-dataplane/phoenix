@@ -119,6 +119,7 @@ impl KoalaModule for RdmaTransportModule {
             engine: RdmaTransportModule::RDMA_TRANSPORT_ENGINE,
             tx_channels: &[],
             rx_channels: &[],
+            scheduling_groups: vec![],
         };
         Some(serivce)
     }

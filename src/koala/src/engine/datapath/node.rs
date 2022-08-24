@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use crossbeam::channel::{Receiver, Sender};
 use thiserror::Error;
 
+use super::channel::{create_channel, ChannelFlavor};
 use super::graph::{ChannelDescriptor, DataPathGraph};
 use super::graph::{RxIQueue, RxOQueue, TxIQueue, TxOQueue};
+use crate::engine::group::{GroupUnionFind, GroupId};
 use crate::engine::{Engine, EngineType};
 
 #[derive(Debug, Error)]
@@ -21,10 +22,6 @@ pub enum Error {
     NodeTampered(EngineType, EndpointType),
     #[error("Dangling endpoints left after replacement")]
     DanglingEndpoint,
-}
-
-fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
-    crossbeam::channel::unbounded()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,13 +144,19 @@ impl EndpointCollection {
 pub(crate) fn create_datapath_channels<I>(
     tx_edges: I,
     rx_edges: I,
+    // engines that should be put in the same scheduling group
+    groups: &GroupUnionFind,
 ) -> Result<(HashMap<EngineType, DataPathNode>, DataPathGraph), Error>
 where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
     let mut endpoints = HashMap::new();
     for edge in tx_edges {
-        let (sender, receiver) = create_channel();
+        let (sender, receiver) = if groups.is_same_group(edge.0, edge.1) {
+            create_channel(ChannelFlavor::Sequential)
+        } else {
+            create_channel(ChannelFlavor::Concurrent)
+        };
         let sender_endpoint = endpoints
             .entry(edge.0)
             .or_insert_with(EndpointCollection::new);
@@ -168,7 +171,11 @@ where
             .push((edge.0, edge.2, receiver, edge.3));
     }
     for edge in rx_edges {
-        let (sender, receiver) = create_channel();
+        let (sender, receiver) = if groups.is_same_group(edge.0, edge.1) {
+            create_channel(ChannelFlavor::Sequential)
+        } else {
+            create_channel(ChannelFlavor::Concurrent)
+        };
         let sender_endpoint = endpoints
             .entry(edge.0)
             .or_insert_with(EndpointCollection::new);
@@ -196,12 +203,14 @@ where
 }
 
 // Replace senders/receivers on the data path to install an addon
+// * group: which scheduling group should the addon belongs to
 pub(crate) fn refactor_channels_attach_addon<I>(
     engines: &mut HashMap<EngineType, Box<dyn Engine>>,
     graph: &mut DataPathGraph,
     addon: EngineType,
     tx_edges_replacement: I,
     rx_edges_replacement: I,
+    group: &HashSet<EngineType>,
 ) -> Result<DataPathNode, Error>
 where
     I: IntoIterator<Item = ChannelDescriptor>,
@@ -236,7 +245,11 @@ where
                     edge.3,
                 ));
             }
-            let (sender, receiver) = create_channel();
+            let (sender, receiver) = if group.contains(&edge.1) {
+                create_channel(ChannelFlavor::Sequential)
+            } else {
+                create_channel(ChannelFlavor::Concurrent)
+            };
             // replace the sender and receiver
             receiver_tx_inputs[edge.3] = (edge.0, edge.2);
             receiver_endpoint.tx_inputs()[edge.3] = receiver;
@@ -258,7 +271,11 @@ where
             if !senders_await_replace.remove(&(edge.0, edge.2)) {
                 receivers_await_replace.insert(sender_tx_outputs[edge.2]);
             }
-            let (sender, receiver) = create_channel();
+            let (sender, receiver) = if group.contains(&edge.0) {
+                create_channel(ChannelFlavor::Sequential)
+            } else {
+                create_channel(ChannelFlavor::Concurrent)
+            };
             sender_tx_outputs[edge.2] = (edge.1, edge.3);
             sender_endpoint.tx_outputs()[edge.2] = sender;
             addon_endpoint
@@ -298,7 +315,11 @@ where
                     edge.3,
                 ));
             }
-            let (sender, receiver) = create_channel();
+            let (sender, receiver) = if group.contains(&edge.1) {
+                create_channel(ChannelFlavor::Sequential)
+            } else {
+                create_channel(ChannelFlavor::Concurrent)
+            };
             receiver_rx_inputs[edge.3] = (edge.0, edge.2);
             receiver_endpoint.rx_inputs()[edge.3] = receiver;
             addon_endpoint
@@ -319,7 +340,11 @@ where
             if !senders_await_replace.remove(&(edge.0, edge.2)) {
                 receivers_await_replace.insert(sender_rx_outputs[edge.2]);
             }
-            let (sender, receiver) = create_channel();
+            let (sender, receiver) = if group.contains(&edge.0) {
+                create_channel(ChannelFlavor::Sequential)
+            } else {
+                create_channel(ChannelFlavor::Concurrent)
+            };
             sender_rx_outputs[edge.2] = (edge.1, edge.3);
             sender_endpoint.rx_outputs()[edge.2] = sender;
             addon_endpoint
@@ -342,7 +367,7 @@ where
 
 ///
 pub(crate) fn refactor_channels_detach_addon<I>(
-    engines: &mut HashMap<EngineType, Box<dyn Engine>>,
+    engines: &mut HashMap<EngineType, (Box<dyn Engine>, GroupId)>,
     graph: &mut DataPathGraph,
     addon: EngineType,
     tx_edges_replacement: I,
@@ -351,7 +376,7 @@ pub(crate) fn refactor_channels_detach_addon<I>(
 where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
-    let mut addon_engine = engines.remove(&addon).ok_or(Error::AddonNotFound(addon))?;
+    let (mut addon_engine, _) = engines.remove(&addon).ok_or(Error::AddonNotFound(addon))?;
     let tx_inputs_len = graph.tx_inputs.get_mut(&addon).unwrap().len();
     let tx_outputs_len = graph.tx_outputs.get_mut(&addon).unwrap().len();
     let rx_inputs_len = graph.rx_inputs.get_mut(&addon).unwrap().len();
@@ -372,10 +397,21 @@ where
     let mut tx_inputs_await_replace = (0..tx_inputs_len).collect::<HashSet<_>>();
     let mut tx_outputs_await_replace = (0..tx_outputs_len).collect::<HashSet<_>>();
     for edge in tx_edges_replacement.into_iter() {
-        let (sender, receiver) = create_channel();
-        let sender_endpoint = engines
+        let sender_group = engines
+            .get(&edge.0)
+            .ok_or(Error::InvalidReplacement(edge))?.1;
+        let receiver_group = engines
+            .get(&edge.1)
+            .ok_or(Error::InvalidReplacement(edge))?.1;
+        let (sender, receiver) = if sender_group == receiver_group {
+            create_channel(ChannelFlavor::Sequential)
+        } else {
+            create_channel(ChannelFlavor::Concurrent)
+        };
+
+        let (sender_endpoint, _) = engines
             .get_mut(&edge.0)
-            .ok_or(Error::InvalidReplacement(edge))?;
+            .unwrap();
         let sender_tx_outputs = graph.tx_outputs.get_mut(&edge.0).unwrap();
         if edge.2 >= sender_tx_outputs.len() || sender_tx_outputs[edge.2].0 != addon {
             return Err(Error::InvalidReplacement(edge));
@@ -393,14 +429,11 @@ where
         }
         tx_inputs_await_replace.remove(&receiver_index);
         sender_tx_outputs[edge.2] = (edge.1, edge.3);
-        dbg!(edge.0);
-        dbg!(edge.1);
-        dbg!(edge.2, edge.3);
         sender_endpoint.tx_outputs()[edge.2] = sender;
 
-        let receiver_endpoint = engines
+        let (receiver_endpoint, _) = engines
             .get_mut(&edge.1)
-            .ok_or(Error::InvalidReplacement(edge))?;
+            .unwrap();
         let receiver_tx_inputs = graph.tx_inputs.get_mut(&edge.1).unwrap();
         if edge.3 >= receiver_tx_inputs.len() || receiver_tx_inputs[edge.3].0 != addon {
             return Err(Error::InvalidReplacement(edge));
@@ -423,10 +456,21 @@ where
     let mut rx_inputs_await_replace = (0..rx_inputs_len).collect::<HashSet<_>>();
     let mut rx_outputs_await_replace = (0..rx_outputs_len).collect::<HashSet<_>>();
     for edge in rx_edges_replacement.into_iter() {
-        let (sender, receiver) = create_channel();
-        let sender_endpoint = engines
+        let sender_group = engines
+            .get(&edge.0)
+            .ok_or(Error::InvalidReplacement(edge))?.1;
+        let receiver_group = engines
+            .get(&edge.1)
+            .ok_or(Error::InvalidReplacement(edge))?.1;
+        let (sender, receiver) = if sender_group == receiver_group {
+            create_channel(ChannelFlavor::Sequential)
+        } else {
+            create_channel(ChannelFlavor::Concurrent)
+        };
+
+        let (sender_endpoint, _) = engines
             .get_mut(&edge.0)
-            .ok_or(Error::InvalidReplacement(edge))?;
+            .unwrap();
         let sender_rx_outputs = graph.rx_outputs.get_mut(&edge.0).unwrap();
         if edge.2 >= sender_rx_outputs.len() || sender_rx_outputs[edge.2].0 != addon {
             return Err(Error::InvalidReplacement(edge));
@@ -446,9 +490,9 @@ where
         sender_rx_outputs[edge.2] = (edge.1, edge.3);
         sender_endpoint.rx_outputs()[edge.2] = sender;
 
-        let receiver_endpoint = engines
+        let (receiver_endpoint, _) = engines
             .get_mut(&edge.1)
-            .ok_or(Error::InvalidReplacement(edge))?;
+            .unwrap(); 
         let receiver_rx_inputs = graph.rx_inputs.get_mut(&edge.1).unwrap();
         if edge.3 >= receiver_rx_inputs.len() || receiver_rx_inputs[edge.3].0 != addon {
             return Err(Error::InvalidReplacement(edge));

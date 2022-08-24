@@ -47,6 +47,9 @@ pub struct AddonRequest {
     pub tx_channels_replacements: Vec<(String, String, usize, usize)>,
     /// replacement for data path rx edges
     pub rx_channels_replacements: Vec<(String, String, usize, usize)>,
+    /// Which scheduling group should the addon belongs when attaching an addon,
+    /// the group is identified as a set engines
+    pub group: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

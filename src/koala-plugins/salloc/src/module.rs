@@ -102,6 +102,7 @@ impl KoalaModule for SallocModule {
             engine: SallocModule::SALLOC_ENGINE,
             tx_channels: &[],
             rx_channels: &[],
+            scheduling_groups: vec![],
         };
         Some(service)
     }

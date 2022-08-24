@@ -121,11 +121,13 @@ impl MrpcModule {
 
 impl KoalaModule for MrpcModule {
     fn service(&self) -> Option<ServiceInfo> {
+        let group = vec![Self::MRPC_ENGINE, EngineType("RpcAdapterEngine")];
         let service = ServiceInfo {
             service: MrpcModule::SERVICE,
             engine: MrpcModule::MRPC_ENGINE,
             tx_channels: MrpcModule::TX_CHANNELS,
             rx_channels: MrpcModule::RX_CHANNELS,
+            scheduling_groups: vec![group],
         };
         Some(service)
     }

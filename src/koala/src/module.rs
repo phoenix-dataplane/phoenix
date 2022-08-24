@@ -30,6 +30,8 @@ pub struct ServiceInfo {
     pub tx_channels: &'static [ChannelDescriptor],
     /// Default data path rx channels between engines
     pub rx_channels: &'static [ChannelDescriptor],
+    /// Scheduling groups
+    pub scheduling_groups: Vec<Vec<EngineType>>,
 }
 
 pub enum NewEngineRequest<'a> {

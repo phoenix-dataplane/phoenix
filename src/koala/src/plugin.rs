@@ -12,6 +12,7 @@ use crate::addon::KoalaAddon;
 use crate::dependency::EngineGraph;
 use crate::engine::datapath::graph::ChannelDescriptor;
 use crate::engine::EngineType;
+use crate::engine::group::GroupUnionFind;
 use crate::module::KoalaModule;
 use crate::module::Service;
 
@@ -75,6 +76,7 @@ pub(crate) struct ServiceRegistry {
     pub(crate) engines: Vec<EngineType>,
     pub(crate) tx_channels: Vec<ChannelDescriptor>,
     pub(crate) rx_channels: Vec<ChannelDescriptor>,
+    pub(crate) scheduling_groups: GroupUnionFind,
 }
 
 pub struct PluginCollection {
@@ -211,12 +213,12 @@ impl PluginCollection {
             let module = self.modules.get(&descriptor.name).unwrap();
             if let Some(service_info) = module.service() {
                 let dependencies = graph_guard.get_engine_dependencies(&service_info.engine)?;
-                let group_engines = dependencies.iter().copied().collect::<HashSet<_>>();
+                let subscription_engines = dependencies.iter().copied().collect::<HashSet<_>>();
                 let mut tx_channels = service_info.tx_channels.to_vec();
                 let mut rx_channels = service_info.rx_channels.to_vec();
 
                 for channel in tx_channels.iter_mut().chain(rx_channels.iter_mut()) {
-                    if !group_engines.contains(&channel.0) || !group_engines.contains(&channel.1) {
+                    if !subscription_engines.contains(&channel.0) || !subscription_engines.contains(&channel.1) {
                         bail!(
                             "channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph",
                             channel.0,
@@ -225,14 +227,22 @@ impl PluginCollection {
                         );
                     } else {
                         // relocate &'static str
-                        channel.0 = *group_engines.get(&channel.0).unwrap();
-                        channel.1 = *group_engines.get(&channel.1).unwrap();
+                        // COMMENT: The koala backend control plane uses EngineType which has a static str points
+                        // to the ro memory in a dynamic library. When upgrading an engine, the static str in the
+                        // old library becomes invalidate after dlclose, so before the upgrade, the backend needs
+                        // to point to the new memory of the EngineType.
+                        channel.0 = *subscription_engines.get(&channel.0).unwrap();
+                        channel.1 = *subscription_engines.get(&channel.1).unwrap();
                     }
                 }
+
+                let groups = service_info.scheduling_groups;
+                let union_find = GroupUnionFind::new(groups);
                 let service = ServiceRegistry {
                     engines: dependencies,
                     tx_channels,
                     rx_channels,
+                    scheduling_groups: union_find,
                 };
                 tracing::info!(
                     "Registered service {:?}, dependencies={:?}",

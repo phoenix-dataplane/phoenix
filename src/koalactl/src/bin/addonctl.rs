@@ -53,8 +53,12 @@ enum AddonOp {
 #[serde(deny_unknown_fields)]
 struct Config {
     addon_engine: String,
+    #[serde(default)]
     tx_channels_replacements: Vec<(String, String, usize, usize)>,
+    #[serde(default)]
     rx_channels_replacements: Vec<(String, String, usize, usize)>,
+    #[serde(default)]
+    group: Vec<String>,
     op: AddonOp,
 }
 
@@ -87,6 +91,7 @@ fn main() {
         addon_engine: config.addon_engine,
         tx_channels_replacements: config.tx_channels_replacements,
         rx_channels_replacements: config.rx_channels_replacements,
+        group: config.group,
     };
     let req = if config.op == AddonOp::Attach {
         Request::AttachAddon(SchedulingMode::Dedicate, request)

@@ -4,4 +4,5 @@ tx_channels_replacements = [
     ["RateLimitEngine", "RpcAdapterEngine", 0, 0],
 ]
 rx_channels_replacements = []
+group = ["MrpcEngine", "RpcAdapterEngine"]
 op = "attach"
