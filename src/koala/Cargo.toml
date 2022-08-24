@@ -5,13 +5,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
-rdma = { path = "../rdma", features = ["koala"] }
-memmap-fixed = { path = "../memmap-fixed" }
-mrpc-derive = { path = "../mrpc-derive" }
-mrpc-marshal = { path = "../mrpc-marshal" } 
+prost-build = { path = "../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
 # minitrace = { path = "../../../minitrace-rust/minitrace" }
 
 chrono = "0.4.19"
@@ -20,8 +20,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "ansi", "smallvec"] }
 tracing-appender = "0.2"
 tracing-chrome = "0.6"
-anyhow = "1.0.44"
-thiserror = "1.0.29"
+anyhow = "1.0.58"
+thiserror = "1.0.31"
 crossbeam = "0.8.1"
 uuid = "0.8.2"
 num_cpus = "1.13.0"
@@ -30,34 +30,21 @@ libc = "0.2.103"
 serde = { version = "1.0.130", features = ["derive"] }
 bincode = "1.3.3"
 fnv = "1.0.7"
-mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 lazy_static = "1.4.0"
-memoffset = "0.6.5"
 spin = "0.9.3"
 structopt = "0.3.26"
 toml = { version = "0.5.8", features = ["preserve_order"] }
-version = "3.0.0"
-scheduler = "0.1.3"
-memfd = "0.4.1"
-memmap2 = "0.5.0"
-futures = "0.3.21"
+futures = { version = "0.3.21", features = ["executor", "thread-pool"] }
 tokio = { version = "1.18.2", features = ["sync"] }
 dashmap = "5.3.4"
 smallvec = "1.8.0"
-smallstr = "0.3.0"
 json = "0.12.4"
 minstant = "0.1.1"
 static_assertions = "1.1.0"
-prost-build = { path = "../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
 itertools = "0.10.3"
-crc32fast = "1.3.2"
-syn = "1.0.98"
-quote = "1.0.20"
-proc-macro2 = "1.0.40"
-md5 = "0.7.0"
-prettyplease = "0.1.15"
-serde_json = "1.0.81"
 libloading = "0.7.3"
 bitvec = "1.0.1"
 fastrand = "1.8.0"
 atomic = "0.5.1"
+petgraph = "0.6.2"
+semver = "1.0.12"

@@ -1,16 +1,21 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::os::unix::ucred::UCred;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
+use dashmap::DashMap;
 use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
-use super::group::SchedulingGroup;
-use super::{EngineContainer, EngineResult};
+use super::group::GroupId;
+use super::manager::{EngineId, RuntimeId, RuntimeManager};
+use super::{EngineContainer, EngineResult, Indicator, SchedulingGroup};
 
 /// This indicates the runtime of an engine's status.
 #[derive(Debug)]
@@ -59,6 +64,7 @@ impl Indicator {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[allow(dead_code)]
     #[error("Invalid engine ID: {0}, (0 <= expected < {})", num_cpus::get())]
     InvalidId(usize),
     #[allow(dead_code)]
@@ -74,28 +80,64 @@ pub enum Error {
 /// the runtime moves engines from `pending` to `running` by checking the `new_pending` flag.
 unsafe impl Sync for Runtime {}
 
+/// Result for a suspend request
+pub(crate) enum SuspendResult {
+    /// Container to suspended engine
+    Engine(EngineContainer),
+    /// Engine not found in current runtime,
+    /// either it is already shutdown
+    /// or not exists
+    NotFound,
+}
+
+enum RuntimeSubmission {
+    NewGroup(SchedulingGroup),
+    AttachToGroup(GroupId, Vec<(EngineId, EngineContainer)>),
+}
+
 pub(crate) struct Runtime {
-    /// Runtime id
-    pub(crate) id: usize,
+    /// runtime id
+    pub(crate) _id: RuntimeId,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
-    pub(crate) running: RefCell<Vec<RefCell<EngineContainer>>>,
+    pub(crate) running: RefCell<Vec<RefCell<SchedulingGroup>>>,
 
     // Whether the engine is dedicated or shared.
     pub(crate) dedicated: AtomicBool,
 
     pub(crate) new_pending: AtomicBool,
-    pub(crate) pending: Mutex<Vec<RefCell<EngineContainer>>>,
+    pending: Mutex<Vec<RuntimeSubmission>>,
+
+    pub(crate) new_suspend: AtomicBool,
+    pub(crate) suspend_requests: Mutex<Vec<EngineId>>,
+    /// Engines that are still active but suspended
+    /// They may be moved to another runtime,
+    /// or detach and live upgrade to a new version.
+    pub(crate) suspended: DashMap<EngineId, SuspendResult>,
+
+    pub(crate) new_ctrl_request: AtomicBool,
+    pub(crate) control_requests: Mutex<Vec<(EngineId, Vec<u8>, UCred)>>,
+
+    pub(crate) runtime_manager: Arc<RuntimeManager>,
 }
 
 impl Runtime {
-    pub(crate) fn new(id: usize) -> Self {
+    pub(crate) fn new(id: RuntimeId, rm: Arc<RuntimeManager>) -> Self {
         Runtime {
-            id,
+            _id: id,
             running: RefCell::new(Vec::new()),
             dedicated: AtomicBool::new(false),
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
+
+            new_suspend: AtomicBool::new(false),
+            suspend_requests: Mutex::new(Vec::new()),
+            suspended: DashMap::new(),
+
+            new_ctrl_request: AtomicBool::new(false),
+            control_requests: Mutex::new(Vec::new()),
+
+            runtime_manager: rm,
         }
     }
 
@@ -111,28 +153,48 @@ impl Runtime {
         self.running.try_borrow().map_or(false, |r| r.is_empty())
     }
 
+    /// Returns true if the runtime is dedicated to a single scheduling group.
     #[inline]
     pub(crate) fn is_dedicated(&self) -> bool {
         self.dedicated.load(Ordering::Acquire)
     }
 
-    #[inline]
-    // pub(crate) fn add_engine(&self, engine: EngineContainer, dedicated: bool) {
-    pub(crate) fn add_engine(&self, scheduling_group: SchedulingGroup, dedicated: bool) {
+    /// Submit a scheduling group to the runtime
+    pub(crate) fn add_group(&self, group: SchedulingGroup) {
         // TODO(cjr): FIXME
         // immediate update the dedicate bit
+        // Check in the manager and update this dedicate bit should be atomic
+        // E.g.
+        // if self.runtimes[rid].dedicated.compare_exchange(xxx) {
+        //     self.add_group(group);
+        // }
         self.dedicated.fetch_or(dedicated, Ordering::Release);
 
-        log::info!("Runtime {}, adding {:?}", self.id, scheduling_group);
-
-        // adding the engines
-        // TODO(cjr): Also record the scheduling_group.id so that when moving engines around runtime,
-        // we can know which engines should be moved together.
-        let mut pending = self.pending.lock();
-        for engine in scheduling_group.engines {
-            pending.push(RefCell::new(engine));
-        }
+        let submission = RuntimeSubmission::NewGroup(group);
+        self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
+    }
+
+    /// Attach an engine to a existing scheduling roup
+    pub(crate) fn attach_engines_to_group(
+        &self,
+        gid: GroupId,
+        engines: Vec<(EngineId, EngineContainer)>,
+    ) {
+        let submission = RuntimeSubmission::AttachToGroup(gid, engines);
+        self.pending.lock().push(submission);
+        self.new_pending.store(true, Ordering::Release);
+    }
+
+    /// Submit a request to a specified engine
+    pub(crate) fn submit_engine_request(&self, eid: EngineId, request: Vec<u8>, cred: UCred) {
+        self.control_requests.lock().push((eid, request, cred));
+        self.new_ctrl_request.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn request_suspend(&self, eid: EngineId) {
+        self.suspend_requests.lock().push(eid);
+        self.new_suspend.store(true, Ordering::Release);
     }
 
     #[inline]
@@ -182,60 +244,52 @@ impl Runtime {
             // are two concerns)
             self.save_energy_or_shutdown(last_event_ts);
 
-            // let mut timer = if self.id == 2 {
-            //     Some(crate::timer::Timer::new())
-            // } else {
-            //     None
-            // };
-
-            // let mut has_work = 0;
-
             // drive each engine
-            for (index, engine) in self.running.borrow().iter().enumerate() {
-                let mut engine = engine.borrow_mut();
-
-                // Set engine's local storage here before poll
-                engine.engine_mut().set_els();
-
-                // bind to a variable first (otherwise engine is borrowed in the match expression)
-                let ret = engine.future().poll(&mut cx);
-                match ret {
-                    Poll::Pending => {
-                        let tracker = engine.engine_mut().tracker();
-                        // has_work += tracker.nwork();
-                        if tracker.nwork() > 0 {
-                            last_event_ts = Instant::now();
+            for (group_index, group) in self.running.borrow().iter().enumerate() {
+                let mut group = group.borrow_mut();
+                for (engine_index, (_eid, engine)) in group.engines.iter_mut().enumerate() {
+                    engine.engine_mut().set_els();
+                    // bind to a variable first (otherwise engine is borrowed in the match expression)
+                    let ret = engine.future().poll(&mut cx);
+                    match ret {
+                        Poll::Pending => {
+                            let tracker = engine.engine_mut().tracker();
+                            // has_work += tracker.nwork();
+                            if tracker.nwork() > 0 {
+                                last_event_ts = Instant::now();
+                            }
+                            tracker.set_nwork(0);
                         }
-                        tracker.set_nwork(0);
-                    }
-                    Poll::Ready(EngineResult::Ok(())) => {
-                        log::info!(
-                            "Engine [{}] completed, shutting down...",
-                            engine.engine().description()
-                        );
-                        shutdown.push(index);
-                    }
-                    Poll::Ready(EngineResult::Err(e)) => {
-                        log::error!("Engine [{}] error: {}", engine.engine().description(), e);
-                        shutdown.push(index);
+                        Poll::Ready(EngineResult::Ok(())) => {
+                            log::info!(
+                                "Engine [{}] completed, shutting down...",
+                                engine.engine().description()
+                            );
+                            shutdown.push((group_index, engine_index));
+                        }
+                        Poll::Ready(EngineResult::Err(e)) => {
+                            log::error!("Engine [{}] error: {}", engine.engine().description(), e);
+                            shutdown.push((group_index, engine_index));
+                        }
                     }
                 }
             }
 
-            // if timer.is_some() {
-            //     timer.as_mut().unwrap().tick();
-            // }
-
             // garbage collect every several rounds, maybe move to another thread.
-            for index in shutdown.drain(..).rev() {
-                let engine = self.running.borrow_mut().swap_remove(index);
-                let desc = engine.borrow().engine().description();
+            for (group_index, engine_index) in shutdown.drain(..).rev() {
+                let mut running = self.running.borrow_mut();
+                let (eid, engine) = running[group_index]
+                    .borrow_mut()
+                    .engines
+                    .swap_remove(engine_index);
+                let desc = engine.engine().description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
-            }
-
-            if self.is_empty() {
-                self.dedicated.store(false, Ordering::Release);
+                if running[group_index].borrow_mut().engines.is_empty() {
+                    // All engines in the scheduling group has shutdown
+                    running.swap_remove(group_index);
+                }
+                self.runtime_manager.register_engine_shutdown(eid);
             }
 
             // move newly added runtime to the scheduling queue
@@ -247,14 +301,96 @@ impl Runtime {
                     Ordering::Relaxed,
                 )
             {
-                self.running.borrow_mut().append(&mut self.pending.lock());
+                let mut running = self.running.borrow_mut();
+                for submission in self.pending.lock().drain(..) {
+                    match submission {
+                        RuntimeSubmission::NewGroup(group) => {
+                            running.push(RefCell::new(group));
+                        }
+                        RuntimeSubmission::AttachToGroup(group_id, engines) => {
+                            match running.iter_mut().find(|x| x.borrow().id == group_id) {
+                                Some(group) => {
+                                    group.borrow_mut().engines.extend(engines);
+                                }
+                                None => {
+                                    // handle the case that all engines within the group already shutdowns
+                                    let group = SchedulingGroup::new(group_id, engines);
+                                    running.push(RefCell::new(group));
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            // if timer.is_some() {
-            //     timer.as_mut().unwrap().tick();
-            //     log::debug!("Runtime {}, work: {}, {}", self.id, has_work, timer.unwrap())
-            //     // sometimes 300ns, sometimes 1-3us
-            // }
+            if Ok(true)
+                == self.new_suspend.compare_exchange(
+                    true,
+                    false,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
+                let mut engine_ids = {
+                    let mut guard = self.suspend_requests.lock();
+                    guard.drain(..).collect::<HashSet<_>>()
+                };
+
+                let mut running = self.running.borrow_mut();
+                let mut engines = Vec::with_capacity(engine_ids.len());
+                for group in running.iter_mut() {
+                    let mut group_guard = group.borrow_mut();
+                    let group_engines_suspend = group_guard
+                        .engines
+                        .drain_filter(|e| engine_ids.contains(&e.0));
+                    engines.extend(group_engines_suspend);
+                }
+                for (engine_id, engine) in engines {
+                    tracing::info!(
+                        "Engine {:?} revmoed from runtime",
+                        engine.engine().description().to_string()
+                    );
+                    self.suspended
+                        .insert(engine_id, SuspendResult::Engine(engine));
+                    engine_ids.remove(&engine_id);
+                }
+
+                for engine_id in engine_ids {
+                    self.suspended.insert(engine_id, SuspendResult::NotFound);
+                }
+            }
+
+            if Ok(true)
+                == self.new_ctrl_request.compare_exchange(
+                    true,
+                    false,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+            {
+                let mut guard = self.control_requests.lock();
+                for (target_eid, request, cred) in guard.drain(..) {
+                    let mut running = self.running.borrow_mut();
+                    for group in running.iter_mut() {
+                        let mut group_guard = group.borrow_mut();
+                        if let Some((_, engine)) = group_guard
+                            .engines
+                            .iter_mut()
+                            .find(|(eid, _)| *eid == target_eid)
+                        {
+                            if let Err(err) = engine.handle_request(request, cred) {
+                                log::error!(
+                                    "Error in handling engine request, eid={:?}, error: {:?}",
+                                    target_eid,
+                                    err,
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
         }
     }
 }

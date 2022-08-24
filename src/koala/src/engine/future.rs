@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub(crate) async fn yield_now() {
+pub async fn yield_now() {
     /// Yield implementation
     struct YieldNow {
         yielded: bool,
