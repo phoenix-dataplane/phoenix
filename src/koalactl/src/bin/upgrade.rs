@@ -45,7 +45,7 @@ struct Config {
     #[serde(default)]
     addons: Vec<PluginDescriptor>,
     flush: Option<bool>,
-    detach_group: Option<bool>,
+    detach_subscription: Option<bool>,
 }
 
 impl Config {
@@ -82,13 +82,13 @@ fn main() {
     };
 
     let flush = config.flush.unwrap_or(false);
-    let detach_group = config.detach_group.unwrap_or(true);
+    let detach_subscription = config.detach_subscription.unwrap_or(true);
 
     let upgrade_request = UpgradeRequest {
         plugins,
         ty,
         flush,
-        detach_group,
+        detach_subscription,
     };
 
     let req = Request::Upgrade(upgrade_request);

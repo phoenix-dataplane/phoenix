@@ -1,6 +1,6 @@
 //! A Control is the entry of control plane. It directs commands from the external
 //! world to corresponding module.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -21,7 +21,7 @@ use crate::config::Config;
 use crate::engine::container::EngineContainer;
 use crate::engine::datapath::create_datapath_channels;
 use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
-use crate::engine::manager::{EngineId, GroupId, RuntimeManager, ServiceSubscription};
+use crate::engine::manager::{EngineId, RuntimeManager, ServiceSubscription, SubscriptionId};
 use crate::engine::upgrade::EngineUpgrader;
 use crate::engine::EngineType;
 use crate::module::{NewEngineRequest, Service};
@@ -55,7 +55,11 @@ impl Control {
             .ok_or(anyhow!("service {:?} not found in the registry", service))?;
         let tx_channels = service_registry.tx_channels.iter().copied();
         let rx_channels = service_registry.rx_channels.iter().copied();
-        let (mut nodes, graph) = create_datapath_channels(tx_channels, rx_channels)?;
+        let (mut nodes, graph) = create_datapath_channels(
+            tx_channels,
+            rx_channels,
+            &service_registry.scheduling_groups,
+        )?;
 
         let subscription = ServiceSubscription {
             service: service.clone(),
@@ -71,7 +75,8 @@ impl Control {
             .entry(pid)
             .or_insert_with(ResourceCollection::new);
 
-        let mut containers_to_submit = Vec::with_capacity(service_registry.engines.len());
+        let mut singleton_id = service_registry.scheduling_groups.size();
+        let mut containers_to_submit = HashMap::new();
         // crate auxiliary engines in (reverse) topological order
         for aux_engine_type in service_registry.engines.split_last().unwrap().1 {
             let plugin = self.plugins.engine_registry.get(aux_engine_type).unwrap();
@@ -94,13 +99,23 @@ impl Control {
                 &mut shared,
                 global.value_mut(),
                 node,
-                &&self.plugins.modules,
+                &self.plugins.modules,
             )?;
             // submit auxiliary to runtime manager
             if let Some(engine) = engine {
                 let container =
                     EngineContainer::new(engine, aux_engine_type.clone(), module.version());
-                containers_to_submit.push(container);
+                let representative = service_registry
+                    .scheduling_groups
+                    .find_representative(*aux_engine_type)
+                    .unwrap_or_else(|| {
+                        singleton_id += 1;
+                        singleton_id - 1
+                    });
+                let entry = containers_to_submit
+                    .entry(representative)
+                    .or_insert_with(Vec::new);
+                entry.push(container);
             }
         }
 
@@ -146,17 +161,32 @@ impl Control {
         );
         // Submit service engine to runtime manager
         let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
-        containers_to_submit.push(container);
-        let gid = self.runtime_manager.new_group(pid, subscription);
+        let representative = service_registry
+            .scheduling_groups
+            .find_representative(*service_engine_type)
+            .unwrap_or_else(|| {
+                singleton_id += 1;
+                singleton_id - 1
+            });
+        let entry = containers_to_submit
+            .entry(representative)
+            .or_insert_with(Vec::new);
+        entry.push(container);
 
+        let sid = self.runtime_manager.new_subscription(pid, subscription);
+        let engines_count = containers_to_submit
+            .iter()
+            .map(|(_, engines)| engines.len())
+            .sum();
         self.runtime_manager
             .service_subscriptions
-            .get_mut(&(pid, gid))
+            .get_mut(&(pid, sid))
             .unwrap()
-            .1 = containers_to_submit.len();
-        for container in containers_to_submit {
+            .1 = engines_count;
+
+        for (_, containers) in containers_to_submit {
             self.runtime_manager
-                .submit(pid, gid, container, mode, false);
+                .submit_group(pid, sid, containers, mode);
         }
         Ok(())
     }
@@ -255,7 +285,7 @@ impl Control {
                     Some(info) => {
                         let rid = info.rid;
                         let guard = self.runtime_manager.inner.lock().unwrap();
-                        guard.runtimes[&rid].submit_request(eid, request, *cred);
+                        guard.runtimes[&rid].submit_engine_request(eid, request, *cred);
                     }
                     None => {
                         bail!("engine eid={:?} not found", eid);
@@ -265,8 +295,11 @@ impl Control {
             }
             control::Request::Upgrade(request) => {
                 let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
-                self.upgrader
-                    .upgrade(engines_to_upgrade, request.flush, request.detach_group)?;
+                self.upgrader.upgrade(
+                    engines_to_upgrade,
+                    request.flush,
+                    request.detach_subscription,
+                )?;
                 Ok(())
             }
             control::Request::ListSubscription => {
@@ -277,7 +310,7 @@ impl Control {
                 let mut engine_subscriptions = HashMap::new();
                 for engine in self.runtime_manager.engine_subscriptions.iter() {
                     let entry = engine_subscriptions
-                        .entry((engine.pid, engine.gid))
+                        .entry((engine.pid, engine.sid))
                         .or_insert_with(Vec::new);
                     entry.push((engine.key().0, engine.engine_type.0.to_string()));
                 }
@@ -285,7 +318,7 @@ impl Control {
                     Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
                 for subscription in self.runtime_manager.service_subscriptions.iter() {
                     let pid = subscription.key().0.as_raw();
-                    let gid = subscription.key().1 .0;
+                    let sid = subscription.key().1 .0;
                     let service = subscription.0.service.0.to_string();
                     let mut addons = Vec::with_capacity(subscription.0.addons.len());
                     for addon in subscription.0.addons.iter() {
@@ -297,7 +330,7 @@ impl Control {
 
                     let info = ServiceSubscriptionInfo {
                         pid,
-                        gid,
+                        sid,
                         engines,
                         service,
                         addons,
@@ -334,9 +367,20 @@ impl Control {
                     self.refactor_channel_descriptors(request.tx_channels_replacements)?;
                 let rx_edges_replacement =
                     self.refactor_channel_descriptors(request.rx_channels_replacements)?;
+                let mut group = HashSet::with_capacity(request.group.len());
+                for engine in request.group {
+                    let engine_ty = unsafe { transmute_engine_type_from_str(engine.as_str()) };
+                    let engine_ty = *self
+                        .plugins
+                        .engine_registry
+                        .get(&engine_ty)
+                        .ok_or(anyhow!("Engine type {:?} not found", engine))?
+                        .key();
+                    group.insert(engine_ty);
+                }
 
                 let pid = Pid::from_raw(request.pid);
-                let gid = GroupId(request.gid);
+                let gid = SubscriptionId(request.sid);
                 self.upgrader.attach_addon(
                     pid,
                     gid,
@@ -344,6 +388,7 @@ impl Control {
                     mode,
                     tx_edges_replacement,
                     rx_edges_replacement,
+                    group,
                 )?;
                 Ok(())
             }
@@ -366,7 +411,7 @@ impl Control {
                     self.refactor_channel_descriptors(request.rx_channels_replacements)?;
 
                 let pid = Pid::from_raw(request.pid);
-                let gid = GroupId(request.gid);
+                let gid = SubscriptionId(request.sid);
                 self.upgrader.detach_addon(
                     pid,
                     gid,

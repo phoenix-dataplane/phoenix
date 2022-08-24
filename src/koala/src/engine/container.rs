@@ -107,4 +107,8 @@ impl EngineContainer {
         let engine = self.engine;
         unsafe { Pin::into_inner_unchecked(engine) }
     }
+
+    pub(crate) fn flush(&mut self) -> anyhow::Result<()> {
+        self.engine.flush()
+    }
 }

@@ -11,11 +11,13 @@ pub(crate) mod container;
 pub mod datapath;
 pub mod decompose;
 pub mod future;
+pub(crate) mod group;
 pub(crate) mod lb;
 pub mod manager;
 pub(crate) mod runtime;
 pub(crate) mod upgrade;
 pub(crate) use container::EngineContainer;
+pub(crate) use group::SchedulingGroup;
 
 pub use datapath::graph::Vertex;
 pub use decompose::Decompose;

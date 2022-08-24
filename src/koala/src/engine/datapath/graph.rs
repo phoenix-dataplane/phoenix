@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crossbeam::channel::{Receiver, Sender};
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{Topo, Walker};
 use petgraph::Graph;
 
+use super::channel::{Receiver, Sender};
 use super::message::{EngineRxMessage, EngineTxMessage};
 use crate::engine::EngineType;
 

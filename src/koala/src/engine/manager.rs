@@ -2,6 +2,8 @@
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
@@ -12,8 +14,10 @@ use nix::unistd::Pid;
 
 use super::container::EngineContainer;
 use super::datapath::graph::DataPathGraph;
+use super::group::GroupId;
 use super::runtime::{self, Runtime};
 use super::EngineType;
+use super::SchedulingGroup;
 use crate::config::Config;
 use crate::module::Service;
 use crate::storage::ResourceCollection;
@@ -28,16 +32,18 @@ pub(crate) struct RuntimeId(pub(crate) u64);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct GroupId(pub(crate) u64);
+pub(crate) struct SubscriptionId(pub(crate) u64);
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EngineInfo {
     /// Application process PID that this engine serves
     pub(crate) pid: Pid,
-    /// Which group the engine belongs to,
-    pub(crate) gid: GroupId,
+    /// Which service subscription the engine belongs to,
+    pub(crate) sid: SubscriptionId,
     /// Runtime ID the engine is running on
     pub(crate) rid: RuntimeId,
+    /// Which scheduling group the engine belongs to,
+    pub(crate) gid: GroupId,
     /// The type of the engine
     pub(crate) engine_type: EngineType,
     /// Scheduling mode
@@ -65,7 +71,7 @@ impl GlobalResourceManager {
     }
 
     #[inline]
-    pub(crate) fn register_group_shutdown(&self, pid: Pid) {
+    pub(crate) fn register_subscription_shutdown(&self, pid: Pid) {
         let removed = self.active_cnt.remove_if_mut(&pid, |_, cnt| {
             *cnt -= 1;
             *cnt == 0
@@ -77,20 +83,24 @@ impl GlobalResourceManager {
 }
 
 pub struct RuntimeManager {
-    pub inner: Mutex<Inner>,
+    // EngineId counter
+    // the number of engines are at most u64::MAX
+    pub(crate) engine_counter: AtomicU64,
+    // GroupId counter
+    pub(crate) scheduling_group_counter: AtomicU64,
     /// Per-process counter for generating ID of engine groups
-    group_counter: DashMap<Pid, u64>,
+    subscription_counter: DashMap<Pid, u64>,
+    // TODO: decide whether to move some of the other fields into Inner.
+    pub inner: Mutex<Inner>,
     /// Info about the engines
     pub(crate) engine_subscriptions: DashMap<EngineId, EngineInfo>,
     /// The service each engine group is running,
     /// and the number of active engines in that group
-    pub(crate) service_subscriptions: DashMap<(Pid, GroupId), (ServiceSubscription, usize)>,
+    pub(crate) service_subscriptions: DashMap<(Pid, SubscriptionId), (ServiceSubscription, usize)>,
     pub(crate) global_resource_mgr: GlobalResourceManager,
 }
 
 pub struct Inner {
-    // the number of engines are at most u64::MAX
-    engine_counter: u64,
     // the number of runtimes are at most u64::MAX
     runtime_counter: u64,
     pub(crate) runtimes: HashMap<RuntimeId, Arc<Runtime>>,
@@ -100,9 +110,11 @@ pub struct Inner {
 impl Inner {
     fn schedule_dedicate(
         &mut self,
-        engine: EngineContainer,
+        pid: Pid,
+        sid: SubscriptionId,
+        group: SchedulingGroup,
         rm: &Arc<RuntimeManager>,
-    ) -> (EngineId, RuntimeId) {
+    ) {
         // find a spare runtime
         // NOTE(wyj): iterating over HashMap should be fine
         // as submitting a new engine is not on fast path
@@ -112,61 +124,112 @@ impl Inner {
             None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
         };
 
-        let engine_id = EngineId(self.engine_counter);
-        self.engine_counter = self.engine_counter.checked_add(1).unwrap();
-        self.runtimes[&rid].add_engine(engine_id, engine);
+        for (eid, engine) in group.engines.iter() {
+            let engine_type = engine.engine_type();
+            let engine_info = EngineInfo {
+                pid,
+                sid,
+                rid,
+                gid: group.id,
+                scheduling_mode: SchedulingMode::Dedicate,
+                engine_type,
+            };
+            tracing::info!(
+                "Submitting engine {:?} (pid={:?}, sid={:?}, gid={:?}) to runtime (rid={:?})",
+                engine_type,
+                pid,
+                sid,
+                group.id,
+                rid,
+            );
+            let prev = rm.engine_subscriptions.insert(*eid, engine_info);
+            assert!(prev.is_none(), "eid={:?} is already used", eid);
+        }
 
+        self.runtimes[&rid].add_group(group);
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
         self.handles[&rid].thread().unpark();
-
-        (engine_id, rid)
     }
 }
 
 impl RuntimeManager {
     pub fn new(_config: &Config) -> Self {
         let inner = Inner {
-            engine_counter: 0,
             runtime_counter: 0,
             runtimes: HashMap::with_capacity(1),
             handles: HashMap::with_capacity(1),
         };
         RuntimeManager {
+            engine_counter: AtomicU64::new(0),
+            scheduling_group_counter: AtomicU64::new(0),
             inner: Mutex::new(inner),
-            group_counter: DashMap::new(),
+            subscription_counter: DashMap::new(),
             engine_subscriptions: DashMap::new(),
             service_subscriptions: DashMap::new(),
             global_resource_mgr: GlobalResourceManager::new(),
         }
     }
 
-    pub(crate) fn submit(
+    pub(crate) fn attach_to_group(
         self: &Arc<Self>,
         pid: Pid,
+        sid: SubscriptionId,
         gid: GroupId,
-        engine: EngineContainer,
+        rid: RuntimeId,
+        engines: Vec<EngineContainer>,
         mode: SchedulingMode,
-        register_subscription: bool,
+    ) {
+        let inner = self.inner.lock().unwrap();
+        let mut submission = Vec::with_capacity(engines.len());
+        for engine in engines {
+            let eid = EngineId(self.engine_counter.fetch_add(1, Ordering::Relaxed));
+            let engine_type = engine.engine_type();
+            let engine_info = EngineInfo {
+                pid,
+                sid,
+                rid,
+                gid,
+                scheduling_mode: mode,
+                engine_type,
+            };
+            tracing::info!(
+                "Attaching engine {:?} (pid={:?}, sid={:?}, gid={:?}) to runtime (rid={:?})",
+                engine_type,
+                pid,
+                sid,
+                gid,
+                rid,
+            );
+            let prev = self.engine_subscriptions.insert(eid, engine_info);
+            assert!(prev.is_none(), "eid={:?} is already used", eid);
+            submission.push((eid, engine));
+        }
+        inner.runtimes[&rid].attach_engines_to_group(gid, submission);
+    }
+
+    pub(crate) fn submit_group(
+        self: &Arc<Self>,
+        pid: Pid,
+        sid: SubscriptionId,
+        engines: Vec<EngineContainer>,
+        mode: SchedulingMode,
     ) {
         let mut inner = self.inner.lock().unwrap();
+        let mut submission = Vec::with_capacity(engines.len());
+        for engine in engines {
+            let eid = EngineId(self.engine_counter.fetch_add(1, Ordering::Relaxed));
+            submission.push((eid, engine));
+        }
+        let gid = GroupId(
+            self.scheduling_group_counter
+                .fetch_add(1, Ordering::Relaxed),
+        );
+        let group = SchedulingGroup::new(gid, submission);
+
         match mode {
             SchedulingMode::Dedicate => {
-                let engine_type = engine.engine_type();
-                let (eid, rid) = inner.schedule_dedicate(engine, self);
-                let engine_info = EngineInfo {
-                    pid,
-                    gid,
-                    rid,
-                    scheduling_mode: mode,
-                    engine_type,
-                };
-                let prev = self.engine_subscriptions.insert(eid, engine_info);
-                assert!(prev.is_none(), "eid={:?} is already used", eid);
-                if register_subscription {
-                    // increase active engine count for corresponding engine group
-                    self.service_subscriptions.get_mut(&(pid, gid)).unwrap().1 += 1;
-                }
+                inner.schedule_dedicate(pid, sid, group, self);
             }
             SchedulingMode::Compact => unimplemented!(),
             SchedulingMode::Spread => unimplemented!(),
@@ -174,26 +237,31 @@ impl RuntimeManager {
     }
 
     /// Create a new engine group for service subscription
-    pub(crate) fn new_group(&self, pid: Pid, subscription: ServiceSubscription) -> GroupId {
-        let mut counter = self.group_counter.entry(pid).or_insert(0);
-        let gid = GroupId(*counter);
+    pub(crate) fn new_subscription(
+        &self,
+        pid: Pid,
+        subscription: ServiceSubscription,
+    ) -> SubscriptionId {
+        let mut counter = self.subscription_counter.entry(pid).or_insert(0);
+        let sid = SubscriptionId(*counter);
         self.service_subscriptions
-            .insert((pid, gid), (subscription, 0));
+            .insert((pid, sid), (subscription, 0));
         *self.global_resource_mgr.active_cnt.entry(pid).or_insert(0) += 1;
         *counter = counter.checked_add(1).unwrap();
-        gid
+        sid
     }
 
     pub(crate) fn register_engine_shutdown(&self, engine_id: EngineId) {
         let info = self.engine_subscriptions.remove(&engine_id).unwrap().1;
         let removed =
             self.service_subscriptions
-                .remove_if_mut(&(info.pid, info.gid), |_, (_, cnt)| {
+                .remove_if_mut(&(info.pid, info.sid), |_, (_, cnt)| {
                     *cnt -= 1;
                     *cnt == 0
                 });
         if removed.is_some() {
-            self.global_resource_mgr.register_group_shutdown(info.pid);
+            self.global_resource_mgr
+                .register_subscription_shutdown(info.pid);
         }
     }
 }
