@@ -90,6 +90,7 @@ pub struct RuntimeManager {
     pub(crate) scheduling_group_counter: AtomicU64,
     /// Per-process counter for generating ID of engine groups
     subscription_counter: DashMap<Pid, u64>,
+    // TODO: decide whether to move some of the other fields into Inner.
     pub inner: Mutex<Inner>,
     /// Info about the engines
     pub(crate) engine_subscriptions: DashMap<EngineId, EngineInfo>,
