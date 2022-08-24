@@ -3,6 +3,7 @@ use std::mem;
 use std::net::ToSocketAddrs;
 
 use interface::{AsHandle, Handle};
+use koala::tracing;
 use rdma::rdmacm;
 
 use super::get_ops;

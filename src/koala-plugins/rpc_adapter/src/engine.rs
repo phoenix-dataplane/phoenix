@@ -32,6 +32,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::tracing;
 
 use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, ReqContext, State, WrContext};

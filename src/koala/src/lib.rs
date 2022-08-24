@@ -10,9 +10,9 @@
 #![feature(core_intrinsics)]
 #![feature(drain_filter)]
 
-extern crate tracing;
+pub extern crate tracing;
 // alias
-extern crate tracing as log;
+pub extern crate tracing as log;
 
 pub mod addon;
 pub mod config;

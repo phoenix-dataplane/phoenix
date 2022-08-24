@@ -21,6 +21,7 @@ use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::tracing;
 
 use super::module::CustomerType;
 use super::ops::Ops;

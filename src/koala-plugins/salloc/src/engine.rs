@@ -14,6 +14,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::tracing;
 
 use super::module::CustomerType;
 use super::{ControlPathError, ResourceError};

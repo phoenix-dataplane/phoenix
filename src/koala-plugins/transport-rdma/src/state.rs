@@ -15,6 +15,7 @@ use rdma::rdmacm::CmId;
 
 use koala::resource::ResourceTable;
 use koala::state_mgr::ProcessShared;
+use koala::tracing;
 
 use super::cm::CmEventManager;
 use super::ApiError;
