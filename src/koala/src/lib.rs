@@ -25,6 +25,8 @@ pub(crate) mod salloc;
 pub(crate) mod state_mgr;
 pub(crate) mod transport;
 
+pub(crate) mod policy;
+
 #[allow(unused)]
 pub(crate) mod timer;
 

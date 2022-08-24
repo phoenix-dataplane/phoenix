@@ -64,8 +64,14 @@ impl TransportEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             let mut nwork = 0;
-            if let Progress(n) = self.check_dp(false)? {
-                nwork += n;
+
+            loop {
+                if let Progress(n) = self.check_dp(false)? {
+                    nwork += n;
+                    if n == 0 {
+                        break;
+                    }
+                }
             }
 
             if let Status::Disconnected = self.check_cmd().await? {
@@ -106,10 +112,11 @@ impl TransportEngine {
             return Ok(Progress(0));
         }
 
-        // TODO(cjr): flamegraph shows that a large portion of time is spent in this with_capacity
-        // optimize this with smallvec or so.
         let mut count = 0;
-        self.wr_read_buffer.clear();
+        // SAFETY: dp::WorkRequest is Copy and zerocopy
+        unsafe {
+            self.wr_read_buffer.set_len(0);
+        }
 
         self.customer
             .dequeue_wr_with(|ptr, read_count| unsafe {

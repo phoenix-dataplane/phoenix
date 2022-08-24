@@ -2,9 +2,13 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use fnv::FnvHashMap as HashMap;
+use futures::select;
+use futures::stream::{FuturesUnordered, StreamExt};
+use futures::task::LocalFutureObj;
 
 use interface::rpc::{RpcId, TransportStatus};
 use interface::{AsHandle, Handle};
@@ -94,7 +98,7 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
         let this = self.get_mut();
 
         match check_completion_queue() {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(Error::Disconnect(_)) => {}
             Err(e) => return Poll::Ready(Err(e.into())),
         }
@@ -139,10 +143,13 @@ thread_local! {
     static TIMER: RefCell<Timer> = RefCell::new(Timer::new());
 }
 
-pub(crate) fn check_completion_queue() -> Result<(), Error> {
+pub(crate) fn check_completion_queue() -> Result<usize, Error> {
     MRPC_CTX.with(|ctx| {
         COMP_READ_BUFFER.with_borrow_mut(|buffer| {
-            buffer.clear();
+            // SAFETY: dp::Completion is Copy and zerocopy
+            unsafe {
+                buffer.set_len(0);
+            }
 
             ctx.service
                 .dequeue_wc_with(|ptr, count| unsafe {
@@ -153,6 +160,8 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                     count
                 })
                 .map_err(Error::Service)?;
+
+            let cnt = buffer.len();
 
             for c in buffer {
                 match c {
@@ -225,7 +234,7 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
                     }
                 }
             }
-            Ok(())
+            Ok(cnt)
         })
     })
 }
@@ -235,7 +244,7 @@ pub(crate) fn check_completion_queue() -> Result<(), Error> {
 struct Connection {
     // mRPC connection handle
     handle: Handle,
-    read_heap: ReadHeap,
+    read_heap: Arc<ReadHeap>,
 }
 
 impl PartialEq for Connection {
@@ -255,7 +264,10 @@ impl std::hash::Hash for Connection {
 impl Connection {
     #[inline]
     fn new(handle: Handle, read_heap: ReadHeap) -> Self {
-        Self { handle, read_heap }
+        Self {
+            handle,
+            read_heap: Arc::new(read_heap),
+        }
     }
 }
 
@@ -393,6 +405,25 @@ impl ClientStub {
     }
 }
 
+pub struct Pending<T> {
+    _data: std::marker::PhantomData<fn() -> T>,
+}
+
+pub fn pending<T>() -> Pending<T> {
+    Pending {
+        _data: std::marker::PhantomData,
+    }
+}
+
+impl<T> Future for Pending<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
 impl !Send for ClientStub {}
 impl !Sync for ClientStub {}
 
@@ -407,11 +438,12 @@ impl Drop for ClientStub {
     }
 }
 
+// TODO(cjr): rename it to LocalServer
 pub struct Server {
     stub_id: u64,
     #[allow(unused)]
     listener_handle: Handle,
-    connections: HashMap<Handle, Connection>,
+    connections: RefCell<HashMap<Handle, Connection>>,
     routes: HashMap<u32, Box<dyn Service>>,
 }
 
@@ -430,12 +462,11 @@ impl Server {
                 let stub_id = CS_STUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 // setup recv cache
                 RECV_REQUEST_CACHE.insert(stub_id, Vec::with_capacity(RECV_BUF_SIZE));
+
                 Ok(Self {
                     stub_id,
                     listener_handle,
-                    connections: HashMap::default(),
-                    // handles: HashSet::default(),
-                    // read_heaps: Default::default(),
+                    connections: RefCell::new(HashMap::default()),
                     routes: HashMap::default(),
                 })
             })
@@ -451,42 +482,47 @@ impl Server {
     }
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
-    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut msg_buffer = Vec::with_capacity(32);
-        loop {
-            // TODO(cjr): change this to check_cm_event(); cm event contains new connections
-            // establishment and destruction; read heap scaling.
-            self.check_cm_event()?;
-            // check new requests
-            self.poll_requests(&mut msg_buffer).await?;
-            self.post_replies(&mut msg_buffer)?;
-        }
-
-        // use futures::select;
-        // use futures::stream::UnorderedFutures;
-        // let mut running = UnorderedFutures::new();
+    pub async fn serve(&mut self) -> Result<(), Error> {
+        // let mut msg_buffer = Vec::with_capacity(32);
         // loop {
-        //     select! {
-        //         reply_erased = running.next() => {
-        //             msg_buffer.push(reply_erased);
-        //         }
-        //         completed => {}
-        //         default => {
-        //             // no futures is ready
-        //             self.check_cm_event()?;
-        //             // check new requests
-        //             // self.poll_requests(&mut msg_buffer).await?;
-        //             self.poll_requests(&mut running)?;
-        //             if !msg_buffer.is_empty() {
-        //                 self.post_replies(&mut msg_buffer)?;
-        //             }
-        //         }
-        //     }
+        //     // TODO(cjr): change this to check_cm_event(); cm event contains new connections
+        //     // establishment and destruction; read heap scaling.
+        //     self.check_cm_event()?;
+        //     // check new requests
+        //     self.poll_requests(&mut msg_buffer).await?;
+        //     self.post_replies(&mut msg_buffer)?;
         // }
+
+        // running tasks
+        let mut running = FuturesUnordered::new();
+        running.push(LocalFutureObj::new(Box::new(std::future::pending())));
+        // running.push(LocalFutureObj::new(Box::new(pending())));
+        // batching reply small requests for better CPU efficiency
+        let mut reply_buffer = Vec::with_capacity(32);
+        loop {
+            select! {
+                reply_erased = running.next() => {
+                    if reply_erased.is_none() { continue; }
+                    reply_buffer.push(reply_erased.unwrap());
+                }
+                complete => {
+                    panic!("unexpected complete")
+                }
+                default => {
+                    if !reply_buffer.is_empty() {
+                        self.post_replies(&mut reply_buffer)?;
+                    }
+                    // no futures is ready
+                    self.check_cm_event()?;
+                    // check new requests, dispatch them to the executor
+                    self.dispatch_requests(&mut running)?;
+                }
+            }
+        }
     }
 
     fn handle_new_connection(
-        &mut self,
+        &self,
         conn_resp: ConnectResponse,
         ctx: &crate::Context,
     ) -> Result<(), Error> {
@@ -507,6 +543,7 @@ impl Server {
 
                 assert_eq!(
                     self.connections
+                        .borrow_mut()
                         .insert(conn_handle, Connection::new(conn_handle, read_heap)),
                     None
                 );
@@ -521,24 +558,24 @@ impl Server {
         }
     }
 
-    fn close_connection(&mut self, conn_id: Handle) -> Result<(), Error> {
+    fn close_connection(&self, conn_id: Handle) -> Result<(), Error> {
         // handles
         // read_heaps
         // CONN_SERVER_STUB_MAP
         // RECV_REQUEST_CACHE
         // PENDING_WREF
-        self.connections.remove(&conn_id);
+        self.connections.borrow_mut().remove(&conn_id);
 
         CONN_SERVER_STUB_MAP.with_borrow_mut(|map| {
             map.remove(&conn_id);
         });
 
         // remove all outstanding RPC releated to this client/server stub
-        PENDING_WREF.erase_by(|rpc_id, _| self.connections.contains_key(&rpc_id.0));
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.0));
         Ok(())
     }
 
-    fn check_cm_event(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn check_cm_event(&self) -> Result<(), Error> {
         MRPC_CTX.with(|ctx| {
             match ctx.service.try_recv_comp().map(|comp| comp.0) {
                 Err(ipc::Error::TryRecv(ipc::TryRecvError::Empty)) => {}
@@ -551,7 +588,7 @@ impl Server {
                         Ok(CompletionKind::NewMappedAddrs) => {
                             // do nothing, just consume the completion
                         }
-                        Err(e) => return Err(e.into()),
+                        Err(e) => return Err(Error::Interface("check_cm_event", e)),
                         otherwise => panic!("Expect {}, found {:?}", stringify!($resp), otherwise),
                     }
                 }
@@ -560,51 +597,34 @@ impl Server {
         })
     }
 
-    pub(crate) fn post_reply(&self, erased: MessageErased) -> Result<(), Error> {
-        tracing::trace!(
-            "client post reply to mRPC engine, call_id={}",
-            erased.meta.call_id
-        );
-
-        #[cfg(feature = "timing")]
-        TIMER.with_borrow_mut(|timer| {
-            timer.sample(
-                RpcId::new(erased.meta.conn_id, erased.meta.call_id),
-                SampleKind::ServerReply,
-            );
-        });
-
-        let wr = dp::WorkRequest::Reply(erased);
+    fn post_replies(&self, msg_buffer: &mut Vec<MessageErased>) -> Result<(), Error> {
+        let num = msg_buffer.len();
+        let mut sent = 0;
         MRPC_CTX.with(|ctx| {
-            let mut sent = false;
-            while !sent {
-                ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                    ptr.cast::<dp::WorkRequest>().write(wr);
-                    sent = true;
-                    1
+            while sent < num {
+                ctx.service.enqueue_wr_with(|ptr, count| unsafe {
+                    let to_send = (num - sent).min(count);
+                    for i in 0..to_send {
+                        let wr = dp::WorkRequest::Reply(msg_buffer[sent + i]);
+                        ptr.add(i).cast::<dp::WorkRequest>().write(wr);
+                    }
+                    sent += to_send;
+                    to_send
                 })?;
             }
-            Ok(())
-        })
-    }
+            Result::<(), Error>::Ok(())
+        })?;
 
-    fn post_replies(
-        &mut self,
-        msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let replies = msg_buffer.drain(..);
-        for reply in replies {
-            self.post_reply(reply)?;
-        }
+        msg_buffer.clear();
         Ok(())
     }
 
-    async fn poll_requests(
-        &mut self,
-        msg_buffer: &mut Vec<MessageErased>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn dispatch_requests<'s>(
+        &'s self,
+        running: &mut FuturesUnordered<LocalFutureObj<'s, MessageErased>>,
+    ) -> Result<(), Error> {
         match check_completion_queue() {
-            Ok(()) => {}
+            Ok(_) => {}
             Err(Error::Disconnect(conn_id)) => {
                 // close the connection and free the related resources
                 self.close_connection(conn_id)?;
@@ -614,13 +634,15 @@ impl Server {
 
         for request in RECV_REQUEST_CACHE.get_mut(&self.stub_id).unwrap().drain(..) {
             let service_id = request.meta.service_id;
-            match self.routes.get_mut(&service_id) {
+            match self.routes.get(&service_id) {
                 Some(s) => {
-                    match self.connections.get(&request.meta.conn_id) {
+                    match self.connections.borrow().get(&request.meta.conn_id) {
                         Some(conn) => {
-                            let read_heap = &conn.read_heap;
-                            let reply_erased = s.call(request, read_heap).await;
-                            msg_buffer.push(reply_erased);
+                            let read_heap = Arc::clone(&conn.read_heap);
+                            // Box allocation here!
+                            // let task = LocalFutureObj::new(Box::new(s.call(request, read_heap)));
+                            let task = LocalFutureObj::new(s.call(request, read_heap));
+                            running.push(task);
                         }
                         None => {
                             // the connection has disappeared, do nothing
@@ -644,7 +666,7 @@ impl Drop for Server {
     fn drop(&mut self) {
         // clear recv cache setup
         CONN_SERVER_STUB_MAP.with_borrow_mut(|map| {
-            for conn_id in self.connections.keys() {
+            for conn_id in self.connections.borrow().keys() {
                 map.remove(conn_id);
             }
         });
@@ -652,7 +674,7 @@ impl Drop for Server {
         RECV_REQUEST_CACHE.remove(&self.stub_id);
 
         // remove all outstanding RPC releated to this client/server stub
-        PENDING_WREF.erase_by(|rpc_id, _| self.connections.contains_key(&rpc_id.0));
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.0));
     }
 }
 
@@ -664,14 +686,14 @@ pub trait NamedService {
 #[crate::async_trait]
 pub trait Service {
     // return erased reply and ID of its corresponding RpcMessage
-    async fn call(&self, req: MessageErased, read_heap: &ReadHeap) -> MessageErased;
+    async fn call(&self, req: MessageErased, read_heap: Arc<ReadHeap>) -> MessageErased;
 }
 
 pub fn service_pre_handler<'a, T: Unpin>(
     req: &MessageErased,
-    read_heap: &'a ReadHeap,
+    read_heap: &'a Arc<ReadHeap>,
 ) -> RRef<'a, T> {
-    RRef::new(&req, read_heap)
+    RRef::new(&req, &read_heap)
 }
 
 pub fn service_post_handler<T: RpcData>(

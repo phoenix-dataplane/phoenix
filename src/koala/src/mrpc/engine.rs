@@ -72,19 +72,27 @@ impl MrpcEngine {
             // let mut timer = crate::timer::Timer::new();
             let mut nwork = 0;
 
-            // 400-900ns ->
-            // no work: 40ns
-            // has work: 200-1000ns
-            if let Progress(n) = self.check_customer()? {
-                nwork += n;
+            // no work 80ns
+            // has work: <1us for a batch of 30
+            loop {
+                // no work: 40ns
+                if let Progress(n) = self.check_customer()? {
+                    nwork += n;
+                    if n == 0 {
+                        break;
+                    }
+                }
             }
             // timer.tick();
 
-            // no work: 100-150ns
-            // has work: 300-600ns
-            match self.check_input_queue()? {
-                Progress(n) => nwork += n,
-                Status::Disconnected => break,
+            // no work: 20ns
+            // has work: <2us for a batch of 30
+            loop {
+                match self.check_input_queue()? {
+                    Progress(0) => break,
+                    Progress(n) => nwork += n,
+                    Status::Disconnected => break,
+                }
             }
             // timer.tick();
 
@@ -96,13 +104,12 @@ impl MrpcEngine {
                 // timer.tick();
 
                 // 50ns
-                // self.check_new_incoming_connection()?;
                 self.check_input_cmd_queue()?;
+                // timer.tick();
             }
 
             self.indicator.set_nwork(nwork);
-            // timer.tick();
-            // log::info!("mrpc mainloop: {}", timer);
+            // log::info!("mrpc mainloop: {} {}", nwork, timer);
 
             future::yield_now().await;
         }
@@ -218,7 +225,11 @@ impl MrpcEngine {
 
         // 300-10us, mostly 300ns (Vec::with_capacity())
         let mut count = 0;
-        self.wr_read_buffer.clear();
+        // self.wr_read_buffer.clear();
+        // SAFETY: dp::WorkRequest is Copy and zerocopy
+        unsafe {
+            self.wr_read_buffer.set_len(0);
+        }
 
         // timer.tick();
 
@@ -257,7 +268,7 @@ impl MrpcEngine {
         self.wr_read_buffer = buffer;
 
         // timer.tick();
-        // log::info!("check_customer: {}", timer);
+        // log::info!("check_customer: {} {}", count, timer);
 
         Ok(Progress(count))
     }
@@ -265,14 +276,17 @@ impl MrpcEngine {
     fn process_dp(&mut self, req: &dp::WorkRequest) -> Result<(), DatapathError> {
         use dp::WorkRequest;
 
-        // let mut timer = crate::timer::Timer::new();
-
         match req {
             WorkRequest::Call(erased) | WorkRequest::Reply(erased) => {
+                // let mut timer = crate::timer::Timer::new();
+
+                // 1300ns, even if the tracing level is filtered shit!!!!!!
                 tracing::trace!(
                     "mRPC engine got a message from App, call_id: {}",
                     erased.meta.call_id
                 );
+
+                // timer.tick();
 
                 // construct message meta on heap
                 let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
@@ -280,6 +294,8 @@ impl MrpcEngine {
                     .meta_buf_pool
                     .obtain(rpc_id)
                     .expect("MessageMeta pool exhausted");
+
+                // timer.tick();
 
                 // copy the meta
                 unsafe {
@@ -290,18 +306,27 @@ impl MrpcEngine {
                     meta_buf_ptr,
                     addr_backend: erased.shm_addr_backend,
                 };
+
+                // timer.tick();
+
                 // if access to message's data fields are desired,
                 // typed message can be conjured up here via matching func_id
                 self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+
+                // timer.tick();
+                // log::info!("process_dp call/reply: {}", timer);
             }
             WorkRequest::ReclaimRecvBuf(conn_id, msg_call_ids) => {
+                // let mut timer = crate::timer::Timer::new();
+
+                // 10-40ns, mostly 10ns
                 self.tx_outputs()[0]
                     .send(EngineTxMessage::ReclaimRecvBuf(*conn_id, *msg_call_ids))?;
+
+                // timer.tick();
+                // log::info!("process_dp reclaim recv buf: {}", timer);
             }
         }
-
-        // timer.tick();
-        // log::info!("process_dp: {}", timer);
         Ok(())
     }
 

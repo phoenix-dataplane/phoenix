@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use interface::engine::{EngineType, SchedulingMode};
 
 use crate::mrpc;
+use crate::policy;
 use crate::transport::{rdma, tcp};
 
 type IResult<T> = Result<T, interface::Error>;
@@ -15,6 +16,7 @@ pub enum Request {
     RdmaTransport(rdma::control_plane::Request),
     TcpTransport(tcp::control_plane::Request),
     Mrpc(mrpc::control_plane::Request),
+    RateLimit(policy::ratelimit::control_plane::Request),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

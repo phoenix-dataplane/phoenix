@@ -1,3 +1,4 @@
+#![feature(scoped_threads)]
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,22 +9,18 @@ use mrpc::{RRef, WRef};
 
 pub mod rpc_hello {
     // The string specified here must match the proto package name
-    // mrpc::include_proto!("rpc_hello");
-    include!("../../../mrpc/src/codegen.rs");
+    mrpc::include_proto!("rpc_hello");
+    // include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};
 
-#[derive(StructOpt, Debug)]
+#[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "Koala RPC hello client")]
 pub struct Args {
     /// The port number to use.
     #[structopt(short, long, default_value = "5000")]
     pub port: u16,
-
-    /// Blocking or not?
-    #[structopt(short = "b", long)]
-    pub blocking: bool,
 
     #[structopt(short = "l", long, default_value = "error")]
     pub log_level: String,
@@ -31,11 +28,15 @@ pub struct Args {
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
 
-    #[structopt(long, default_value = "0")]
+    #[structopt(long, default_value = "8")]
     pub reply_size: usize,
 
     #[structopt(long, default_value = "128")]
     pub provision_count: usize,
+
+    /// Number of server threads.
+    #[structopt(long, default_value = "1")]
+    pub num_server_threads: usize,
 }
 
 #[derive(Debug)]
@@ -61,51 +62,40 @@ impl Greeter for MyGreeter {
     }
 }
 
-#[derive(Debug)]
-struct MyGreeterBlocking {
-    reply: WRef<HelloReply>,
-}
-
-#[mrpc::async_trait]
-impl Greeter for MyGreeterBlocking {
-    async fn say_hello<'s>(
-        &self,
-        _request: RRef<'s, HelloRequest>,
-    ) -> Result<WRef<HelloReply>, mrpc::Status> {
-        Ok(WRef::clone(&self.reply))
-    }
-}
-
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn run_server(tid: usize, args: Args) -> Result<(), mrpc::Error> {
     smol::block_on(async {
-        let args = Args::from_args();
-        let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
-
-        if args.blocking {
-            let message = Vec::new();
+        let mut replies = Vec::new();
+        for _ in 0..args.provision_count {
+            let mut message = Vec::new();
+            message.resize(args.reply_size, 43);
             let msg = WRef::new(HelloReply { message });
-            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-                .add_service(GreeterServer::new(MyGreeterBlocking { reply: msg }))
-                .serve()
-                .await?;
-        } else {
-            let mut replies = Vec::new();
-            for _ in 0..args.provision_count {
-                let mut message = Vec::new();
-                message.resize(args.reply_size, 43);
-                let msg = WRef::new(HelloReply { message });
-                replies.push(msg);
-            }
-            let _server = mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-                .add_service(GreeterServer::new(MyGreeter {
-                    replies,
-                    count: AtomicUsize::new(0),
-                    args,
-                }))
-                .serve()
-                .await?;
+            replies.push(msg);
         }
 
+        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
+            .add_service(GreeterServer::new(MyGreeter {
+                replies,
+                count: AtomicUsize::new(0),
+                args,
+            }))
+            .serve()
+            .await
+    })
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        let args = Args::from_args();
+        eprintln!("args: {:?}", args);
+        let _guard = init_tokio_tracing(&args.log_level, &args.log_dir);
+
+        for tid in 1..args.num_server_threads {
+            let args = args.clone();
+            handles.push(s.spawn(move || run_server(tid, args)));
+        }
+
+        run_server(0, args)?;
         Ok(())
     })
 }

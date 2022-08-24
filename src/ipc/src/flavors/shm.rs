@@ -123,6 +123,9 @@ where
         // 5. tell the name and the capacities of data path shared memory queues to the client
         let wq_cap = DP_WQ_DEPTH * mem::size_of::<WorkRequest>();
         let cq_cap = DP_CQ_DEPTH * mem::size_of::<WorkCompletion>();
+        // TODO(cjr): Below are the correct ones
+        // let wq_cap = DP_WQ_DEPTH;
+        // let cq_cap = DP_CQ_DEPTH;
 
         let mut buf = bincode::serialize(&control::Response(Ok(
             control::ResponseKind::ConnectEngine {

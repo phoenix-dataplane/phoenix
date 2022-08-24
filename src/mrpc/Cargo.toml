@@ -33,3 +33,4 @@ arrayvec = "0.7"
 async-trait = "0.1.56"
 log = "0.4.17"
 minstant = { version = "0.1.1", optional = true }
+futures = "0.3.23"

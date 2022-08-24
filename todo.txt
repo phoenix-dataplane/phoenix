@@ -23,11 +23,18 @@ Jingrong
 - dynamic binding
 - API
 - real apps
+- policy evals
 
 Other major tasks
 - performance deep dive
 	- engine overhead
 	- explicit mr registration
+
+Policy evals
+- content-based custom ACL
+- cross-app QoS (video-streaming + background)
+- distributed tracing/telemetry
+- maintain a eval folder
 
 Real Applications
 - eRPC maastree
@@ -51,12 +58,12 @@ Security
   only this way r/o permission can be enforced
 
 RPC
-- too many different things called recv_mr
-- *reduce the default 128 buffers to 1 big buffer*
+- need a multi-threaded throughput test (see if tput can scale linearly)
 - server cannot have too many connections, this becomes a problem for
   eRPC's test (both fd recycle and maximal number of fds need fixed)
+-[x] too many different things called recv_mr
+-[x] *reduce the default 128 buffers to 1 big buffer*
 - server cannot specify runtime (or thread pool)
-- need a multi-threaded throughput test (see if tput can scale linearly)
 - mrpc::stub::Server is not Send
 - merge mrpc::Error into mrpc::Status
 - *shared buffer among connections*
@@ -83,7 +90,7 @@ API
 
 Benchmark Suite
 - *collect and print result*
-- worker starting order
+-[x] worker starting order
 -[x] build then run
 -[x] allow setting timeouts in concrete cases
 -[x] auto kill on clean up
@@ -93,16 +100,16 @@ Benchmark Suite
 -[x] also test latency
 
 Engine Framework
-- *Implement Packaged scheduling policy* and see if latency is improved
+-[x] *Implement Packaged scheduling policy* and see if latency is improved
   for small RPCs
-- Implement Shared scheduling policy
-- move CmEngine and AcceptorEngine to Shared runtime
+-[x] Implement Shared scheduling policy
+-[x] move CmEngine and AcceptorEngine to Shared runtime
 -[x] suspend the runtime to save CPUs based on indicator
 - <s>new challenge: *fault isolation*</s> Updated: doen through careful
   engineering
-- futures::executor::block_on seems to start an extra engine, need an
+-[x] futures::executor::block_on seems to start an extra engine, need an
   lazy/sleepy runtime
-- *RpcAdapter/CmEngine can only be shut down when the other side has gone.*
+-[x] *RpcAdapter/CmEngine can only be shut down when the other side has gone.*
 -[x] *Change Engine trait to a huge Generator*, all block waitings become
   yields
 -[x] *Call an engine's method from another engine*, some engines go to an
@@ -113,11 +120,11 @@ Engine Framework
 -[x] What should Engine::run() return?
 - maybe the xatu customer/service framework and queues need to be
   adjusted, separating data/control queues are no more useful
-- SchedulingMode::Bundled
+-[x] SchedulingMode::Bundled
 
 Misc
 - prune unused features and unused dependencies
-- Properly garbage collect CmEngine
+-[x] Properly garbage collect CmEngine
 - for more flexible IO event notification, need a bus/mailbox/pub-sub.
 -[x] *UDP socket send/recv fd must be nonblocking*
 - visibility of mods in koala backend code
@@ -128,7 +135,7 @@ Misc
 -[x] KOALA_LOG[_LEVEL], KOALA_LOG_FILE/DIR
 -[x] *add static tracing* points at various points in code for performance
   analysis
-- CmIdBuilder::new() -> CmId::builder()
+-[x] CmIdBuilder::new() -> CmId::builder()
 -[x] get configuration from a file to run multiple backends for developing
 -[x] simplify ConnParam. Allow to set fields in QpBuilder.
 -[x] update the code and directory structure of koala_examples
@@ -213,17 +220,17 @@ Transport Trait
 - Design a unified transport trait for both socket and ibverbs
 - Let every data path operation return a future, and implement a runtime
   for that
-- Implement a socket datapath
+- *Implement a socket datapath*
 
 Performance & CPU efficiency
-- run latency test for more interations and use eRPC::Latency util
+-[x] run latency test for more itertions and use eRPC::Latency util
 - try enum_dispatch
 - Measure the time spent in userland
-- *Packaged scheduling policy*
+-[x] *Packaged scheduling policy*
 - *optimize userland latency*
-- shortcut query_app_addr
+-[x] shortcut query_app_addr
 - dashmap access latency seems high (rpc_adapter::check_incoming_connections)
-- Change ResoruceTable to one of the implementations of a concurrent
+-[x] Change ResoruceTable to one of the implementations of a concurrent
   hashmap (e.g., dashmap).
 - GetSendComp() is currently busy spinning
 -[x] Save CPU cycles in TransportEngine::run()

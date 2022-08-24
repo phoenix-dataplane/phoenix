@@ -125,16 +125,30 @@ impl RpcAdapterEngine {
         loop {
             // let mut timer = crate::timer::Timer::new();
             let mut work = 0;
-            // check input queue, ~100ns
-            match self.check_input_queue()? {
-                Progress(n) => work += n,
-                Status::Disconnected => return Ok(()),
+            // let mut work2 = 0;
+            // no work: 10-100ns
+            // has work: ~150-180ns each req on avg
+            loop {
+                // check input queue, no work 10ns, otherwise 250-350ns
+                match self.check_input_queue()? {
+                    Progress(0) => break,
+                    Progress(n) => work += n,
+                    Status::Disconnected => return Ok(()),
+                }
             }
             // timer.tick();
 
-            // check service, ~350-600ns
-            if let Progress(n) = self.check_transport_service()? {
-                work += n;
+            // no work: 80-130ns
+            // has work: ~320ns each wc on avg
+            loop {
+                // ibv_poll_cq, no work: 100-150ns, otherwise 400ns
+                if let Progress(n) = self.check_transport_service()? {
+                    work += n;
+                    // work2 += n;
+                    if n == 0 {
+                        break;
+                    }
+                }
             }
             // timer.tick();
 
@@ -154,7 +168,7 @@ impl RpcAdapterEngine {
             // If there's pending receives, there will always be future work to do.
             self.indicator.set_nwork(work + self.pending_recv);
 
-            // log::info!("RpcAdapter mainloop: {}", timer);
+            // log::info!("RpcAdapter mainloop: {} {} {} {}", work - work2, work2, self.pending_recv, timer);
             future::yield_now().await;
         }
     }
@@ -339,6 +353,34 @@ impl RpcAdapterEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use crate::engine::graph::TryRecvError;
 
+        match self.tx_inputs()[0].try_recv() {
+            Ok(msg) => {
+                match msg {
+                    EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
+                    EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
+                        // let mut timer = crate::timer::Timer::new();
+                        let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
+                        let cmid = &conn_ctx.cmid;
+                        // timer.tick();
+
+                        // TODO(cjr): only handle the first element, fix it later
+                        for call_id in &call_ids[..1] {
+                            let recv_buffer_handles = self
+                                .recv_mr_usage
+                                .remove(&RpcId(conn_id, *call_id))
+                                .expect("invalid WR identifier");
+                            self.reclaim_recv_buffers(cmid, &recv_buffer_handles)?;
+                        }
+                        // timer.tick();
+                        // log::info!("ReclaimRecvBuf: {}", timer);
+                    }
+                }
+                return Ok(Progress(1));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+
         while let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
             let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
@@ -372,30 +414,6 @@ impl RpcAdapterEngine {
             return Ok(status);
         }
 
-        match self.tx_inputs()[0].try_recv() {
-            Ok(msg) => match msg {
-                EngineTxMessage::RpcMessage(msg) => self.local_buffer.push_back(msg),
-                EngineTxMessage::ReclaimRecvBuf(conn_id, call_ids) => {
-                    // let mut timer = crate::timer::Timer::new();
-                    let conn_ctx = self.state.resource().cmid_table.get(&conn_id)?;
-                    let cmid = &conn_ctx.cmid;
-                    // timer.tick();
-
-                    // TODO(cjr): only handle the first element, fix it later
-                    for call_id in &call_ids[..1] {
-                        let recv_buffer_handles = self
-                            .recv_mr_usage
-                            .remove(&RpcId(conn_id, *call_id))
-                            .expect("invalid WR identifier");
-                        self.reclaim_recv_buffers(cmid, &recv_buffer_handles)?;
-                    }
-                    // timer.tick();
-                    // log::info!("ReclaimRecvBuf: {}", timer);
-                }
-            },
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
-        }
         Ok(Progress(0))
     }
 
@@ -489,12 +507,14 @@ impl RpcAdapterEngine {
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
         use interface::{WcFlags, WcOpcode, WcStatus};
-        // TODO(cjr): update this
-        // let mut comps = Vec::with_capacity(32);
 
         let cq = self.state.get_or_init_cq();
-        // cq.poll(&mut comps)?;
-        self.wc_read_buffer.clear();
+
+        // SAFETY: dp::WorkRequest is Copy and zerocopy
+        unsafe {
+            self.wc_read_buffer.set_len(0);
+        }
+
         cq.poll(&mut self.wc_read_buffer)?;
 
         let comps = mem::take(&mut self.wc_read_buffer);

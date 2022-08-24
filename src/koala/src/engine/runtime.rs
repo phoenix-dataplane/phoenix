@@ -182,6 +182,14 @@ impl Runtime {
             // are two concerns)
             self.save_energy_or_shutdown(last_event_ts);
 
+            // let mut timer = if self.id == 2 {
+            //     Some(crate::timer::Timer::new())
+            // } else {
+            //     None
+            // };
+
+            // let mut has_work = 0;
+
             // drive each engine
             for (index, engine) in self.running.borrow().iter().enumerate() {
                 let mut engine = engine.borrow_mut();
@@ -194,6 +202,7 @@ impl Runtime {
                 match ret {
                     Poll::Pending => {
                         let tracker = engine.engine_mut().tracker();
+                        // has_work += tracker.nwork();
                         if tracker.nwork() > 0 {
                             last_event_ts = Instant::now();
                         }
@@ -212,6 +221,10 @@ impl Runtime {
                     }
                 }
             }
+
+            // if timer.is_some() {
+            //     timer.as_mut().unwrap().tick();
+            // }
 
             // garbage collect every several rounds, maybe move to another thread.
             for index in shutdown.drain(..).rev() {
@@ -236,6 +249,12 @@ impl Runtime {
             {
                 self.running.borrow_mut().append(&mut self.pending.lock());
             }
+
+            // if timer.is_some() {
+            //     timer.as_mut().unwrap().tick();
+            //     log::debug!("Runtime {}, work: {}, {}", self.id, has_work, timer.unwrap())
+            //     // sometimes 300ns, sometimes 1-3us
+            // }
         }
     }
 }

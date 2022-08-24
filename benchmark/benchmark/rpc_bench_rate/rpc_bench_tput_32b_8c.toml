@@ -1,0 +1,15 @@
+name = "benchmark/rpc_bench_rate/rpc_bench_rate_32b_8c"
+description = "Small RPC rate and scalability"
+group = "rpc_bench_rate"
+timeout_secs = 15
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_server"
+args = "--num-server-threads 8"
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_client"
+args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32 -D 10 -i 1 --num-client-threads 8 --num-server-threads 8"
+dependencies = [0]

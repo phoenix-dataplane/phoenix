@@ -67,11 +67,19 @@ pub struct RdmaTransportConfig {
     pub command_max_interval_ms: u32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RateLimitConfig {
+    pub requests_per_sec: u64,
+    pub bucket_size: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TracingConfig {
     pub enable: bool,
     pub min_event_level: String,
+    pub max_event_level: String,
     pub span_level: String,
     pub output_dir: String,
 }
@@ -104,6 +112,7 @@ pub struct Config {
     pub salloc: Option<SallocConfig>,
     #[serde(alias = "transport-tcp")]
     pub transport_tcp: Option<TcpTransportConfig>,
+    pub ratelimit: Option<RateLimitConfig>,
     pub node: Vec<Node>,
     pub edges: Edges,
     #[serde(default)]

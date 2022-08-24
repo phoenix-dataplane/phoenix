@@ -19,6 +19,7 @@ tracing-appender = "0.2"
 futures = "0.3"
 smol = "1.2.5"
 minstant = "0.1.1"
+hdrhistogram = "7.5.0"
 
 
 [[bin]]

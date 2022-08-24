@@ -118,13 +118,13 @@ pub mod greeter_server {
         async fn call(
             &self,
             req_opaque: mrpc::MessageErased,
-            read_heap: &mrpc::salloc::ReadHeap,
+            read_heap: Arc<mrpc::salloc::ReadHeap>,
         ) -> mrpc::MessageErased {
             let func_id = req_opaque.meta.func_id;
             match func_id {
                 // TODO(cjr): fill this with the right func_id
                 3687134534u32 => {
-                    let req = mrpc::RRef::new(&req_opaque, read_heap);
+                    let req = mrpc::RRef::new(&req_opaque, &read_heap);
                     let res = self.inner.say_hello(req).await;
                     match res {
                         Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),
