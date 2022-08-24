@@ -410,7 +410,9 @@ pub struct Pending<T> {
 }
 
 pub fn pending<T>() -> Pending<T> {
-    Pending { _data: std::marker::PhantomData }
+    Pending {
+        _data: std::marker::PhantomData,
+    }
 }
 
 impl<T> Future for Pending<T> {
@@ -421,7 +423,6 @@ impl<T> Future for Pending<T> {
         Poll::Pending
     }
 }
-
 
 impl !Send for ClientStub {}
 impl !Sync for ClientStub {}

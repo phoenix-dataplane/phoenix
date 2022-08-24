@@ -93,7 +93,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for tid in 1..args.num_server_threads {
             let args = args.clone();
             handles.push(s.spawn(move || run_server(tid, args)));
-
         }
 
         run_server(0, args)?;
