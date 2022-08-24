@@ -71,7 +71,7 @@ impl GlobalResourceManager {
     }
 
     #[inline]
-    pub(crate) fn register_group_shutdown(&self, pid: Pid) {
+    pub(crate) fn register_subscription_shutdown(&self, pid: Pid) {
         let removed = self.active_cnt.remove_if_mut(&pid, |_, cnt| {
             *cnt -= 1;
             *cnt == 0
@@ -259,7 +259,8 @@ impl RuntimeManager {
                     *cnt == 0
                 });
         if removed.is_some() {
-            self.global_resource_mgr.register_group_shutdown(info.pid);
+            self.global_resource_mgr
+                .register_subscription_shutdown(info.pid);
         }
     }
 }

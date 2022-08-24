@@ -61,7 +61,7 @@ fn main() {
             let mut engine_tables = HashMap::new();
             for subscription in subscriptions {
                 services.insert(
-                    (subscription.pid, subscription.gid),
+                    (subscription.pid, subscription.sid),
                     (subscription.service, subscription.addons),
                 );
                 let mut table = Table::new();
@@ -69,22 +69,22 @@ fn main() {
                 for (engine_id, engine_type) in subscription.engines {
                     table.add_row(row![Fc => engine_id, engine_type]);
                 }
-                engine_tables.insert((subscription.pid, subscription.gid), table);
+                engine_tables.insert((subscription.pid, subscription.sid), table);
             }
 
             let mut table = Table::new();
-            table.add_row(row![bFm => "PID", "GID", "Service", "Addons", "Engines"]);
-            for ((pid, gid), (service, addons)) in services.into_iter() {
-                let engines = engine_tables.remove(&(pid, gid)).unwrap();
+            table.add_row(row![bFm => "PID", "SID", "Service", "Addons", "Engines"]);
+            for ((pid, sid), (service, addons)) in services.into_iter() {
+                let engines = engine_tables.remove(&(pid, sid)).unwrap();
                 let addons = if !addons.is_empty() {
                     addons.join(", ")
                 } else {
                     "None".to_string()
                 };
                 if engines.len() > 1 {
-                    table.add_row(row![pid, gid, service, Fy->addons, Fb->engines]);
+                    table.add_row(row![pid, sid, service, Fy->addons, Fb->engines]);
                 } else {
-                    table.add_row(row![pid, gid, service, Fy->addons, Fb->"None"]);
+                    table.add_row(row![pid, sid, service, Fy->addons, Fb->"None"]);
                 }
             }
             table.printstd();

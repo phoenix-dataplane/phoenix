@@ -25,8 +25,8 @@ pub struct UpgradeRequest {
     /// whether to flush the shared queues
     pub flush: bool,
     /// whether to suspend all engines
-    /// within the same engine group
-    pub detach_group: bool,
+    /// within the same service subscription
+    pub detach_subscription: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,8 +39,8 @@ pub enum PluginType {
 pub struct AddonRequest {
     /// Ttarget user process
     pub pid: pid_t,
-    /// Target engine group (service subscription)
-    pub gid: u64,
+    /// Target service subscription
+    pub sid: u64,
     /// addon engine type to attach/detach
     pub addon_engine: String,
     /// replacement for data path tx edges
@@ -71,7 +71,7 @@ pub enum Request {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceSubscriptionInfo {
     pub pid: pid_t,
-    pub gid: u64,
+    pub sid: u64,
     pub service: String,
     pub engines: Vec<(u64, String)>,
     pub addons: Vec<String>,

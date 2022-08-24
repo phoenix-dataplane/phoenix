@@ -295,8 +295,11 @@ impl Control {
             }
             control::Request::Upgrade(request) => {
                 let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
-                self.upgrader
-                    .upgrade(engines_to_upgrade, request.flush, request.detach_group)?;
+                self.upgrader.upgrade(
+                    engines_to_upgrade,
+                    request.flush,
+                    request.detach_subscription,
+                )?;
                 Ok(())
             }
             control::Request::ListSubscription => {
@@ -315,7 +318,7 @@ impl Control {
                     Vec::with_capacity(self.runtime_manager.service_subscriptions.len());
                 for subscription in self.runtime_manager.service_subscriptions.iter() {
                     let pid = subscription.key().0.as_raw();
-                    let gid = subscription.key().1 .0;
+                    let sid = subscription.key().1 .0;
                     let service = subscription.0.service.0.to_string();
                     let mut addons = Vec::with_capacity(subscription.0.addons.len());
                     for addon in subscription.0.addons.iter() {
@@ -327,7 +330,7 @@ impl Control {
 
                     let info = ServiceSubscriptionInfo {
                         pid,
-                        gid,
+                        sid,
                         engines,
                         service,
                         addons,
@@ -365,13 +368,19 @@ impl Control {
                 let rx_edges_replacement =
                     self.refactor_channel_descriptors(request.rx_channels_replacements)?;
                 let mut group = HashSet::with_capacity(request.group.len());
-                for engine_ty in request.group {
-                    let engine = unsafe { transmute_engine_type_from_str(engine_ty.as_str()) };
-                    group.insert(engine);
+                for engine in request.group {
+                    let engine_ty = unsafe { transmute_engine_type_from_str(engine.as_str()) };
+                    let engine_ty = *self
+                        .plugins
+                        .engine_registry
+                        .get(&engine_ty)
+                        .ok_or(anyhow!("Engine type {:?} not found", engine))?
+                        .key();
+                    group.insert(engine_ty);
                 }
 
                 let pid = Pid::from_raw(request.pid);
-                let gid = SubscriptionId(request.gid);
+                let gid = SubscriptionId(request.sid);
                 self.upgrader.attach_addon(
                     pid,
                     gid,
@@ -402,7 +411,7 @@ impl Control {
                     self.refactor_channel_descriptors(request.rx_channels_replacements)?;
 
                 let pid = Pid::from_raw(request.pid);
-                let gid = SubscriptionId(request.gid);
+                let gid = SubscriptionId(request.sid);
                 self.upgrader.detach_addon(
                     pid,
                     gid,

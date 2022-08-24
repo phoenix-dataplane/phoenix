@@ -153,8 +153,18 @@ where
     let mut endpoints = HashMap::new();
     for edge in tx_edges {
         let (sender, receiver) = if groups.is_same_group(edge.0, edge.1) {
+            tracing::debug!(
+                "Creating sequential channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Sequential)
         } else {
+            tracing::debug!(
+                "Creating concurrent channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Concurrent)
         };
         let sender_endpoint = endpoints
@@ -246,8 +256,18 @@ where
                 ));
             }
             let (sender, receiver) = if group.contains(&edge.1) {
+                tracing::debug!(
+                    "Creating sequential channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Sequential)
             } else {
+                tracing::debug!(
+                    "Creating concurrent channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Concurrent)
             };
             // replace the sender and receiver
@@ -272,8 +292,18 @@ where
                 receivers_await_replace.insert(sender_tx_outputs[edge.2]);
             }
             let (sender, receiver) = if group.contains(&edge.0) {
+                tracing::debug!(
+                    "Creating sequential channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Sequential)
             } else {
+                tracing::debug!(
+                    "Creating concurrent channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Concurrent)
             };
             sender_tx_outputs[edge.2] = (edge.1, edge.3);
@@ -316,8 +346,18 @@ where
                 ));
             }
             let (sender, receiver) = if group.contains(&edge.1) {
+                tracing::debug!(
+                    "Creating sequential channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Sequential)
             } else {
+                tracing::debug!(
+                    "Creating concurrent channel between {:?} and {:?}",
+                    edge.0,
+                    edge.1
+                );
                 create_channel(ChannelFlavor::Concurrent)
             };
             receiver_rx_inputs[edge.3] = (edge.0, edge.2);
@@ -406,8 +446,18 @@ where
             .ok_or(Error::InvalidReplacement(edge))?
             .1;
         let (sender, receiver) = if sender_group == receiver_group {
+            tracing::debug!(
+                "Creating sequential channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Sequential)
         } else {
+            tracing::debug!(
+                "Creating concurrent channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Concurrent)
         };
 
@@ -463,8 +513,18 @@ where
             .ok_or(Error::InvalidReplacement(edge))?
             .1;
         let (sender, receiver) = if sender_group == receiver_group {
+            tracing::debug!(
+                "Creating sequential channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Sequential)
         } else {
+            tracing::debug!(
+                "Creating concurrent channel between {:?} and {:?}",
+                edge.0,
+                edge.1
+            );
             create_channel(ChannelFlavor::Concurrent)
         };
 
