@@ -1,6 +1,6 @@
 //! A Control is the entry of control plane. It directs commands from the external
 //! world to corresponding module.
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
@@ -21,7 +21,7 @@ use crate::config::Config;
 use crate::engine::container::EngineContainer;
 use crate::engine::datapath::create_datapath_channels;
 use crate::engine::datapath::{ChannelDescriptor, DataPathNode};
-use crate::engine::manager::{EngineId, SubscriptionId, RuntimeManager, ServiceSubscription};
+use crate::engine::manager::{EngineId, RuntimeManager, ServiceSubscription, SubscriptionId};
 use crate::engine::upgrade::EngineUpgrader;
 use crate::engine::EngineType;
 use crate::module::{NewEngineRequest, Service};
@@ -75,6 +75,7 @@ impl Control {
             .entry(pid)
             .or_insert_with(ResourceCollection::new);
 
+        let mut singleton_id = service_registry.scheduling_groups.size();
         let mut containers_to_submit = HashMap::new();
         // crate auxiliary engines in (reverse) topological order
         for aux_engine_type in service_registry.engines.split_last().unwrap().1 {
@@ -104,7 +105,13 @@ impl Control {
             if let Some(engine) = engine {
                 let container =
                     EngineContainer::new(engine, aux_engine_type.clone(), module.version());
-                let representative = service_registry.scheduling_groups.find_representative(*aux_engine_type);
+                let representative = service_registry
+                    .scheduling_groups
+                    .find_representative(*aux_engine_type)
+                    .unwrap_or_else(|| {
+                        singleton_id += 1;
+                        singleton_id - 1
+                    });
                 let entry = containers_to_submit
                     .entry(representative)
                     .or_insert_with(Vec::new);
@@ -154,7 +161,13 @@ impl Control {
         );
         // Submit service engine to runtime manager
         let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
-        let representative = service_registry.scheduling_groups.find_representative(*service_engine_type);
+        let representative = service_registry
+            .scheduling_groups
+            .find_representative(*service_engine_type)
+            .unwrap_or_else(|| {
+                singleton_id += 1;
+                singleton_id - 1
+            });
         let entry = containers_to_submit
             .entry(representative)
             .or_insert_with(Vec::new);
@@ -172,7 +185,8 @@ impl Control {
             .1 = engines_count;
 
         for (_, containers) in containers_to_submit {
-            self.runtime_manager.submit_group(pid, sid, containers, mode);
+            self.runtime_manager
+                .submit_group(pid, sid, containers, mode);
         }
         Ok(())
     }

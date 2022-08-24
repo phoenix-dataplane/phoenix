@@ -1,18 +1,18 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use anyhow::bail;
 use dashmap::DashSet;
 use futures::executor::{ThreadPool, ThreadPoolBuilder};
 use nix::unistd::Pid;
 use semver::Version;
-  
+
 use interface::engine::SchedulingMode;
 
 use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
 use super::datapath::{ChannelDescriptor, DataPathNode};
-use super::manager::{EngineId, EngineInfo, SubscriptionId, RuntimeManager, RuntimeId};
+use super::manager::{EngineId, EngineInfo, RuntimeId, RuntimeManager, SubscriptionId};
 use super::runtime::SuspendResult;
 use super::{EngineContainer, EngineType};
 use crate::engine::group::GroupId;
@@ -212,9 +212,10 @@ async fn attach_addon<I>(
         let container = EngineContainer::new(engine, ty, version);
         let gid = info.gid;
         let rid = info.rid;
-        let entry = containers_resubmit
-            .entry(gid)
-            .or_insert((Vec::new(), info.scheduling_mode, Some(rid)));
+        let entry =
+            containers_resubmit
+                .entry(gid)
+                .or_insert((Vec::new(), info.scheduling_mode, Some(rid)));
         entry.0.push(container);
     }
     subscription.addons.push(addon);
@@ -352,9 +353,10 @@ async fn detach_addon<I>(
         let container = EngineContainer::new(engine, ty, version);
         let gid = info.gid;
         let rid = info.rid;
-        let entry = containers_resubmit
-            .entry(gid)
-            .or_insert((Vec::new(), info.scheduling_mode, rid));
+        let entry =
+            containers_resubmit
+                .entry(gid)
+                .or_insert((Vec::new(), info.scheduling_mode, rid));
         entry.0.push(container);
     }
     subscription.addons.push(addon);
@@ -513,7 +515,7 @@ async fn upgrade_client(
                 prev_version,
                 rid: info.rid,
                 gid: info.gid,
-                mode: info.scheduling_mode
+                mode: info.scheduling_mode,
             };
             entry.insert(engine_type, dumped);
         }
@@ -532,16 +534,18 @@ async fn upgrade_client(
         subscription.service = *service.key();
 
         let mut resubmit = true;
-        let mut containers_resubmit = HashMap::new(); 
+        let mut containers_resubmit = HashMap::new();
         let mut resubmit_count = 0;
         if let Some(containers) = containers_suspended.remove(&sid) {
             for (container, info) in containers {
                 let gid = info.gid;
                 let rid = info.rid;
-                let entry = containers_resubmit
-                    .entry(gid)
-                    .or_insert((Vec::new(), info.scheduling_mode, rid));
-                entry.0.push(container); 
+                let entry = containers_resubmit.entry(gid).or_insert((
+                    Vec::new(),
+                    info.scheduling_mode,
+                    rid,
+                ));
+                entry.0.push(container);
                 resubmit_count += 1;
             }
         }
@@ -649,10 +653,12 @@ async fn upgrade_client(
                                 EngineContainer::new(engine, *subscribed_engine_ty, new_version);
                             let gid = dumped.gid;
                             let rid = dumped.rid;
-                            let entry = containers_resubmit
-                                .entry(gid)
-                                .or_insert((Vec::new(), dumped.mode, rid));
-                            entry.0.push(container); 
+                            let entry = containers_resubmit.entry(gid).or_insert((
+                                Vec::new(),
+                                dumped.mode,
+                                rid,
+                            ));
+                            entry.0.push(container);
                             tracing::info!(
                                 "Engine (pid={:?}, sid={:?}, type={:?}) restored",
                                 pid,

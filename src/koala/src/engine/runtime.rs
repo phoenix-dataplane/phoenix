@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
-use super::{EngineContainer, SchedulingGroup, EngineResult, Indicator};
+use super::{EngineContainer, EngineResult, Indicator, SchedulingGroup};
 
 #[allow(unused)]
 impl Indicator {
@@ -143,7 +143,11 @@ impl Runtime {
     }
 
     /// Attach an engine to a existing scheduling roup
-    pub(crate) fn attach_engines_to_group(&self, gid: GroupId, engines: Vec<(EngineId, EngineContainer)>) {
+    pub(crate) fn attach_engines_to_group(
+        &self,
+        gid: GroupId,
+        engines: Vec<(EngineId, EngineContainer)>,
+    ) {
         let submission = RuntimeSubmission::AttachToGroup(gid, engines);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -234,7 +238,10 @@ impl Runtime {
             // garbage collect every several rounds, maybe move to another thread.
             for (group_index, engine_index) in shutdown.drain(..).rev() {
                 let mut guard = self.running.borrow_mut();
-                let (eid, engine) = guard[group_index].borrow_mut().engines.swap_remove(engine_index);
+                let (eid, engine) = guard[group_index]
+                    .borrow_mut()
+                    .engines
+                    .swap_remove(engine_index);
                 let desc = engine.description().to_owned();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
@@ -259,19 +266,19 @@ impl Runtime {
                     match submission {
                         RuntimeSubmission::NewGroup(group) => {
                             guard.push(RefCell::new(group));
-                        },
+                        }
                         RuntimeSubmission::AttachToGroup(group_id, engines) => {
                             match guard.iter_mut().find(|x| x.borrow().id == group_id) {
                                 Some(group) => {
                                     group.borrow_mut().engines.extend(engines);
-                                },
+                                }
                                 None => {
                                     // handle the case that all engines within the group already shutdowns
                                     let group = SchedulingGroup::new(group_id, engines);
                                     guard.push(RefCell::new(group));
-                                },
+                                }
                             }
-                        },
+                        }
                     }
                 }
             }
@@ -326,8 +333,10 @@ impl Runtime {
                     let mut running = self.running.borrow_mut();
                     for group in running.iter_mut() {
                         let mut group_guard = group.borrow_mut();
-                        if let Some((_, engine)) =
-                            group_guard.engines.iter_mut().find(|(eid, _)| *eid == target_eid)
+                        if let Some((_, engine)) = group_guard
+                            .engines
+                            .iter_mut()
+                            .find(|(eid, _)| *eid == target_eid)
                         {
                             if let Err(err) = engine.handle_request(request, cred) {
                                 tracing::error!(

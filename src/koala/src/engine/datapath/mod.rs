@@ -2,8 +2,8 @@ pub mod graph;
 pub mod message;
 pub mod node;
 
-pub(crate) mod flavors;
 pub mod channel;
+pub(crate) mod flavors;
 
 pub use graph::ChannelDescriptor;
 pub use graph::{RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex};

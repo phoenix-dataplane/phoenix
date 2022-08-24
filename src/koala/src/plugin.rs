@@ -11,8 +11,8 @@ use ipc::control::PluginDescriptor;
 use crate::addon::KoalaAddon;
 use crate::dependency::EngineGraph;
 use crate::engine::datapath::graph::ChannelDescriptor;
-use crate::engine::EngineType;
 use crate::engine::group::GroupUnionFind;
+use crate::engine::EngineType;
 use crate::module::KoalaModule;
 use crate::module::Service;
 
@@ -218,7 +218,9 @@ impl PluginCollection {
                 let mut rx_channels = service_info.rx_channels.to_vec();
 
                 for channel in tx_channels.iter_mut().chain(rx_channels.iter_mut()) {
-                    if !subscription_engines.contains(&channel.0) || !subscription_engines.contains(&channel.1) {
+                    if !subscription_engines.contains(&channel.0)
+                        || !subscription_engines.contains(&channel.1)
+                    {
                         bail!(
                             "channel endpoint ({:?}, {:?}) is not in the service {:?}'s dependency graph",
                             channel.0,

@@ -2,22 +2,22 @@
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 
 use dashmap::DashMap;
 use interface::engine::SchedulingMode;
 use nix::unistd::Pid;
 
-use super::SchedulingGroup;
 use super::container::EngineContainer;
 use super::datapath::graph::DataPathGraph;
 use super::group::GroupId;
 use super::runtime::{self, Runtime};
 use super::EngineType;
+use super::SchedulingGroup;
 use crate::config::Config;
 use crate::module::Service;
 use crate::storage::ResourceCollection;
@@ -113,7 +113,7 @@ impl Inner {
         sid: SubscriptionId,
         group: SchedulingGroup,
         rm: &Arc<RuntimeManager>,
-    )  {
+    ) {
         // find a spare runtime
         // NOTE(wyj): iterating over HashMap should be fine
         // as submitting a new engine is not on fast path
@@ -122,7 +122,7 @@ impl Inner {
             Some((rid, _runtime)) => *rid,
             None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
         };
-        
+
         for (eid, engine) in group.engines.iter() {
             let engine_type = engine.engine_type();
             let engine_info = EngineInfo {
@@ -149,7 +149,6 @@ impl Inner {
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
         self.handles[&rid].thread().unpark();
-
     }
 }
 
@@ -221,7 +220,10 @@ impl RuntimeManager {
             let eid = EngineId(self.engine_counter.fetch_add(1, Ordering::Relaxed));
             submission.push((eid, engine));
         }
-        let gid = GroupId(self.scheduling_group_counter.fetch_add(1, Ordering::Relaxed));
+        let gid = GroupId(
+            self.scheduling_group_counter
+                .fetch_add(1, Ordering::Relaxed),
+        );
         let group = SchedulingGroup::new(gid, submission);
 
         match mode {
@@ -234,7 +236,11 @@ impl RuntimeManager {
     }
 
     /// Create a new engine group for service subscription
-    pub(crate) fn new_subscription(&self, pid: Pid, subscription: ServiceSubscription) -> SubscriptionId {
+    pub(crate) fn new_subscription(
+        &self,
+        pid: Pid,
+        subscription: ServiceSubscription,
+    ) -> SubscriptionId {
         let mut counter = self.subscription_counter.entry(pid).or_insert(0);
         let sid = SubscriptionId(*counter);
         self.service_subscriptions
