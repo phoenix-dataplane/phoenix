@@ -9,7 +9,7 @@ use interface::Handle;
 use rdma::rdmacm;
 
 use koala::resource::{ResourceTable, Error as ResourceError};
-use koala::tracing;
+use koala::log;
 
 use super::state::EventChannel;
 use crate::ApiError;

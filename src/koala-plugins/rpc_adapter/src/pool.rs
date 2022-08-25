@@ -7,11 +7,11 @@ use bitvec::vec::BitVec;
 
 use interface::{AsHandle, Handle};
 
-use salloc::region::AddressMediator;
+use salloc::region::{SharedRegion, AddressMediator};
+
+use koala::resource::Error as ResourceError;
 
 use super::ControlPathError;
-use crate::resource::Error as ResourceError;
-use crate::salloc::region::SharedRegion;
 
 /// A reference handed by `BufferPool`, pointed to one particular memory segment in one of the
 /// backing storage of `BufferPool`. Multiple `RecvBuffer`s cannot overlap with each other.
@@ -147,7 +147,7 @@ impl BufferPool {
         }
 
         // replenish a slab
-        self.replenish(BufferSlab::new(128, 8 * 1024 * 1024, 8 * 1024 * 1024, &addr_mediator).unwrap());
+        self.replenish(BufferSlab::new(128, 8 * 1024 * 1024, 8 * 1024 * 1024, &self.addr_mediator).unwrap());
         self.obtain()
     }
 

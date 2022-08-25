@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::io;
 use std::sync::Arc;
 
-use interface::AsHandle;
 use nix::unistd::Pid;
 
 use crate::region::AddressMediator;
@@ -48,7 +47,7 @@ impl ProcessShared for Shared {
     }
 }
 
-pub(crate) struct Resource {
+pub struct Resource {
     // TODO(wyj): apply the alignment trick and replace the BTreeMap here.
     pub(crate) mr_table: spin::Mutex<BTreeMap<usize, SharedRegion>>,
 }

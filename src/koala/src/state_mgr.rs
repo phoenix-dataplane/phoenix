@@ -43,7 +43,7 @@ impl<S: ProcessShared> SharedStateManager<S> {
         }
     }
 
-    pub fn get_or_create_with(&mut self, pid: Pid, init: FnOnce() -> S) -> Result<Arc<S>, <S as ProcessShared>::Err> {
+    pub fn get_or_create_with<F: FnOnce() -> S>(&mut self, pid: Pid, init: F) -> Result<Arc<S>, <S as ProcessShared>::Err> {
         match self.states.entry(pid) {
             hash_map::Entry::Occupied(mut entry) => {
                 if let Some(state) = entry.get().upgrade() {

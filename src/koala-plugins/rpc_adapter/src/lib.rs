@@ -1,5 +1,6 @@
 #![feature(ptr_internals)]
 #![feature(strict_provenance)]
+#![feature(local_key_cell_methods)]
 //! this engine translate RPC messages into transport-level work requests / completions
 use std::alloc::LayoutError;
 

@@ -10,8 +10,6 @@ use ipc::mrpc::cmd;
 
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
-use salloc::state::Shared as SallocShared;
-use salloc::state::State as SallocState;
 use transport_rdma::module::RdmaTransportModule;
 use transport_rdma::ops::Ops;
 
@@ -24,7 +22,7 @@ use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::acceptor::engine::AcceptorEngine;
-use crate::engine::RpcAdapterEngine;
+use crate::engine::{RpcAdapterEngine, TlStorage};
 use crate::state::{Shared, State};
 
 pub(crate) struct AcceptorEngineBuilder {
@@ -46,7 +44,7 @@ impl AcceptorEngineBuilder {
 
     fn build(self) -> Result<AcceptorEngine> {
         let state = State::new(self.shared);
-        let engine = AcceptorEngine::new(state, Box::new(self.ops), self.node);
+        let engine = AcceptorEngine::new(self.node, state, Box::new(TlStorage { ops: self.ops }));
         Ok(engine)
     }
 }
@@ -202,7 +200,7 @@ impl KoalaModule for RpcAdapterModule {
                     mode: _,
                 } = request
                 {
-                    let engine = self.create_acceptor_engine(client_pid, rdma_transport, node)?;
+                    let engine = self.create_acceptor_engine(client_pid, salloc, rdma_transport, node)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -285,8 +283,8 @@ impl RpcAdapterModule {
         let addr_mediator = salloc.get_addr_mediator();
         let addr_mediator_clone = Arc::clone(&addr_mediator);
         let shared = self.state_mgr.get_or_create_with(client_pid, move || {
-            Shared::new_from_addr_mediator(addr_mediator_clone).unwrap()
-        });
+            Shared::new_from_addr_mediator(client_pid, addr_mediator_clone).unwrap()
+        })?;
 
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
@@ -305,6 +303,7 @@ impl RpcAdapterModule {
     fn create_acceptor_engine(
         &mut self,
         client_pid: Pid,
+        salloc: &mut SallocModule,
         rdma_transport: &mut RdmaTransportModule,
         node: DataPathNode,
     ) -> Result<Option<AcceptorEngine>> {
@@ -312,8 +311,8 @@ impl RpcAdapterModule {
 
         let addr_mediator = salloc.get_addr_mediator();
         let shared = self.state_mgr.get_or_create_with(client_pid, move || {
-            Shared::new_from_addr_mediator(addr_mediator).unwrap()
-        });
+            Shared::new_from_addr_mediator(client_pid, addr_mediator).unwrap()
+        })?;
 
         if Arc::strong_count(&shared) > 1 {
             return Ok(None);

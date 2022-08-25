@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
-use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
@@ -23,7 +22,7 @@ use crate::config::RateLimitConfig;
 pub(crate) struct RateLimitEngine {
     pub(crate) node: DataPathNode,
 
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) indicator: Indicator,
 
     // A set of func_ids to apply the rate limit.
     // TODO(cjr): maybe put this filter in a separate engine like FilterEngine/ClassiferEngine.
@@ -33,7 +32,7 @@ pub(crate) struct RateLimitEngine {
     // The most recent timestamp we add the token to the bucket.
     pub(crate) last_ts: Instant,
     // The number of available tokens in the token bucket algorithm.
-    pub(crate) num_tokens: usize,
+    pub(crate) num_tokens: f64,
     // The queue to buffer the requests that cannot be sent immediately.
     pub(crate) queue: VecDeque<RpcMessageTx>,
 }
@@ -51,12 +50,13 @@ impl Engine for RateLimitEngine {
         Box::pin(async move { self.get_mut().mainloop().await })
     }
 
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!("RateLimitEngine")
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator)
+    #[inline]
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 
     fn handle_request(&mut self, request: Vec<u8>, _cred: UCred) -> Result<()> {
@@ -64,8 +64,9 @@ impl Engine for RateLimitEngine {
 
         match request {
             control_plane::Request::NewConfig(requests_per_sec, bucket_size) => {
-                self.config.requests_per_sec = requests_per_sec;
-                self.config.bucket_size = bucket_size;
+                self.config = RateLimitConfig {
+                    requests_per_sec, bucket_size
+                };
             }
         }
         Ok(())
@@ -121,7 +122,7 @@ impl RateLimitEngine {
         let num_tokens = *local
             .remove("num_tokens")
             .unwrap()
-            .downcast::<usize>()
+            .downcast::<f64>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let queue = *local
             .remove("queue")
@@ -131,7 +132,7 @@ impl RateLimitEngine {
 
         let engine = RateLimitEngine {
             node,
-            indicator: None,
+            indicator: Default::default(),
             config,
             last_ts,
             num_tokens,
@@ -140,9 +141,12 @@ impl RateLimitEngine {
         Ok(engine)
     }
 }
+
 impl RateLimitEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
+            self.add_tokens();
+
             let mut work = 0;
             // check input queue, ~100ns
             loop {
@@ -155,8 +159,10 @@ impl RateLimitEngine {
 
             self.add_tokens();
 
+            self.leak_bucket()?;
+
             // If there's pending receives, there will always be future work to do.
-            self.indicator.as_ref().unwrap().set_nwork(work);
+            self.indicator.set_nwork(work);
 
             future::yield_now().await;
         }
@@ -168,37 +174,43 @@ impl RateLimitEngine {
     fn add_tokens(&mut self) {
         let now = Instant::now();
         let dura = now - self.last_ts;
-        let requests_per_sec = self.config.requests_per_sec;
-        let bucket_size = self.config.bucket_size as usize;
-        if dura * requests_per_sec as u32 >= Duration::from_secs(1) {
-            self.num_tokens += (dura.as_secs_f64() * requests_per_sec as f64) as usize;
-            if self.num_tokens > bucket_size {
-                self.num_tokens = bucket_size;
+        let config = &self.config;
+        let requests_per_sec = config.requests_per_sec;
+        let bucket_size = config.bucket_size as usize;
+        if dura.as_secs_f64() * requests_per_sec as f64 >= 1.0 {
+            self.num_tokens += dura.as_secs_f64() * requests_per_sec as f64;
+            if self.num_tokens > bucket_size as f64 {
+                self.num_tokens = bucket_size as f64;
             }
             self.last_ts = now;
         }
     }
 
-    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use crossbeam::channel::TryRecvError;
-
-        while self.num_tokens > 0 && !self.queue.is_empty() {
+    fn leak_bucket(&mut self) -> Result<(), DatapathError> {
+        while self.num_tokens > 0.1 && !self.queue.is_empty() {
             let msg = self.queue.pop_front().unwrap();
-            self.num_tokens -= 1;
+            self.num_tokens -= 1.0;
             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
         }
+
+        Ok(())
+    }
+
+    fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
+        use koala::engine::datapath::TryRecvError;
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        if !self.queue.is_empty() || self.num_tokens == 0 {
+                        if !self.queue.is_empty() || self.num_tokens < 0.1 {
                             self.queue.push_back(msg);
                         } else {
-                            self.num_tokens -= 1;
+                            self.num_tokens -= 1.0;
                             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                         }
                     }
+                    // XXX TODO(cjr): it is best not to reorder the message
                     m @ _ => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));

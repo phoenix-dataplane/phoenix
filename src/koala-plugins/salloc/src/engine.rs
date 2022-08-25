@@ -105,9 +105,6 @@ enum Status {
 
 use Status::Progress;
 
-crate::unimplemented_ungradable!(SallocEngine);
-crate::impl_vertex_for_engine!(SallocEngine, node);
-
 impl Engine for SallocEngine {
     fn description(self: Pin<&Self>) -> String {
         "SallocEngine".to_owned()

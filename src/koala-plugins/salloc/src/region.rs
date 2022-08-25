@@ -12,7 +12,7 @@ use thiserror::Error;
 use interface::{AsHandle, Handle};
 
 #[derive(Debug, Error)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("Memfd: {0}.")]
     Memfd(#[from] memfd::Error),
     #[error("IO: {0}.")]
@@ -20,10 +20,10 @@ pub(crate) enum Error {
 }
 
 #[derive(Debug)]
-pub(crate) struct SharedRegion {
+pub struct SharedRegion {
     mmap: MmapFixed,
     memfd: Memfd,
-    _align: usize,
+    align: usize,
 }
 
 impl Deref for SharedRegion {
@@ -47,7 +47,7 @@ impl AsHandle for SharedRegion {
 }
 
 impl SharedRegion {
-    pub(crate) fn new<'ctx>(
+    pub fn new<'ctx>(
         layout: Layout,
         addr_mediator: &AddressMediator,
     ) -> Result<Self, Error> {
@@ -69,7 +69,7 @@ impl SharedRegion {
         Ok(Self {
             mmap,
             memfd,
-            _align: align,
+            align,
         })
     }
 
@@ -79,7 +79,7 @@ impl SharedRegion {
     }
 
     #[inline]
-    pub(crate) fn align(&self) -> usize {
+    pub fn align(&self) -> usize {
         self.align
     }
 }

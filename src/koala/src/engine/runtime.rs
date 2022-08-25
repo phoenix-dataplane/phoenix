@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io;
 use std::os::unix::ucred::UCred;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::thread;
@@ -15,11 +15,11 @@ use thiserror::Error;
 
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
-use super::{EngineContainer, EngineResult, Indicator, SchedulingGroup};
+use super::{EngineContainer, EngineResult, SchedulingGroup};
 
 /// This indicates the runtime of an engine's status.
 #[derive(Debug)]
-pub(crate) struct Indicator(pub(crate) usize);
+pub struct Indicator(pub(crate) usize);
 
 impl Default for Indicator {
     fn default() -> Self {
@@ -29,7 +29,7 @@ impl Default for Indicator {
 
 #[allow(unused)]
 impl Indicator {
-    pub(crate) const BUSY: usize = usize::MAX;
+    pub const BUSY: usize = usize::MAX;
 
     #[inline]
     pub(crate) fn new(x: usize) -> Self {
@@ -37,17 +37,17 @@ impl Indicator {
     }
 
     #[inline]
-    pub(crate) fn set_busy(&mut self) {
+    pub fn set_busy(&mut self) {
         self.0 = Self::BUSY;
     }
 
     #[inline]
-    pub(crate) fn nwork(&self) -> usize {
+    pub fn nwork(&self) -> usize {
         self.0
     }
 
     #[inline]
-    pub(crate) fn set_nwork(&mut self, nwork: usize) {
+    pub fn set_nwork(&mut self, nwork: usize) {
         self.0 = nwork;
     }
 
@@ -97,7 +97,7 @@ enum RuntimeSubmission {
 
 pub(crate) struct Runtime {
     /// runtime id
-    pub(crate) _id: RuntimeId,
+    pub(crate) id: RuntimeId,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<RefCell<SchedulingGroup>>>,
@@ -124,7 +124,7 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn new(id: RuntimeId, rm: Arc<RuntimeManager>) -> Self {
         Runtime {
-            _id: id,
+            id,
             running: RefCell::new(Vec::new()),
             dedicated: AtomicBool::new(false),
             new_pending: AtomicBool::new(false),
@@ -160,7 +160,7 @@ impl Runtime {
     }
 
     /// Submit a scheduling group to the runtime
-    pub(crate) fn add_group(&self, group: SchedulingGroup) {
+    pub(crate) fn add_group(&self, group: SchedulingGroup, dedicated: bool) {
         // TODO(cjr): FIXME
         // immediate update the dedicate bit
         // Check in the manager and update this dedicate bit should be atomic
@@ -215,17 +215,17 @@ impl Runtime {
 
         // park the engine only then it's empty
         if dura > SHUTDOWN_THRESHOLD && self.is_empty() {
-            tracing::trace!("Runtime {} is shutting down", self.id);
+            tracing::trace!("Runtime {:?} is shutting down", self.id);
             thread::park();
-            tracing::trace!("Runtime {} is restarted", self.id);
+            tracing::trace!("Runtime {:?} is restarted", self.id);
         } else if dura > DEEP_SLEEP_THRESHOLD {
-            tracing::trace!("Runtime {} is going to deep sleep", self.id);
+            tracing::trace!("Runtime {:?} is going to deep sleep", self.id);
             thread::park_timeout(DEEP_SLEEP_DURATION);
-            tracing::trace!("Runtime {} has waked from deep sleep", self.id);
+            tracing::trace!("Runtime {:?} has waked from deep sleep", self.id);
         } else if dura > SLEEP_THRESHOLD {
-            tracing::trace!("Runtime {} is going to sleep", self.id);
+            tracing::trace!("Runtime {:?} is going to sleep", self.id);
             thread::park_timeout(SLEEP_DURATION);
-            tracing::trace!("Runtime {} has waked from sleep", self.id);
+            tracing::trace!("Runtime {:?} has waked from sleep", self.id);
         }
     }
 

@@ -1,12 +1,11 @@
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
 use std::os::unix::ucred::UCred;
 use std::future::Future;
 
 use futures::future::BoxFuture;
 use semver::Version;
 
-use super::{Engine, EngineResult, EngineType, Indicator};
+use super::{Engine, EngineResult, EngineType};
 
 /// A container that bundles a `Box<dyn Engine>` and its `Future` object so that the caller of this
 /// type can use both the methods provided by the `Engine` trait and poll the future.
@@ -52,7 +51,7 @@ unsafe fn extend_lifetime<'a>(
 }
 
 impl EngineContainer {
-    pub(crate) fn new(mut engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
+    pub(crate) fn new(engine: Box<dyn Engine>, ty: EngineType, version: Version) -> Self {
         let mut pinned = Pin::new(engine);
         let future = {
             let fut = pinned.as_mut().activate();
@@ -85,11 +84,6 @@ impl EngineContainer {
     #[inline]
     pub(crate) fn engine_mut(&mut self) -> Pin<&mut dyn Engine> {
         self.engine.as_mut()
-    }
-
-    #[inline]
-    pub(crate) fn set_els(&self) {
-        self.engine.set_els();
     }
 
     #[inline]

@@ -124,7 +124,7 @@ fn open_default_verbs() -> io::Result<Vec<DefaultContext>> {
 }
 
 #[derive(Debug)]
-pub(crate) struct EventChannel {
+pub struct EventChannel {
     inner: rdmacm::EventChannel,
     event_queue: spin::Mutex<VecDeque<rdmacm::CmEvent>>,
 }

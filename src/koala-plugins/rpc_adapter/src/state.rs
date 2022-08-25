@@ -11,6 +11,8 @@ use nix::unistd::Pid;
 use interface::AsHandle;
 use mrpc_marshal::SgList;
 
+use salloc::region::AddressMediator;
+
 use koala::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use koala::state_mgr::ProcessShared;
 
@@ -50,13 +52,13 @@ pub struct Shared {
 impl ProcessShared for Shared {
     type Err = io::Error;
 
-    fn new(pid: Pid) -> io::Result<Self> {
+    fn new(_pid: Pid) -> io::Result<Self> {
         panic!("should not use this function")
     }
 }
 
 impl Shared {
-    fn new_from_addr_mediator(addr_mediator: Arc<AddressMediator>) -> io::Result<Self> {
+    pub(crate) fn new_from_addr_mediator(pid: Pid, addr_mediator: Arc<AddressMediator>) -> io::Result<Self> {
         let shared = Shared {
             pid,
             stop_acceptor: AtomicBool::new(false),

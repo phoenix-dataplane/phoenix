@@ -6,6 +6,7 @@ use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};

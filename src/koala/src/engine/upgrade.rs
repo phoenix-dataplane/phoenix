@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -107,7 +108,7 @@ async fn attach_addon<I>(
     let dataflow_order = subscription.graph.topological_order();
     for (engine_type, _) in dataflow_order.into_iter() {
         let engine = detached_engines.get_mut(&engine_type).unwrap();
-        engine.set_els();
+        Pin::new(engine.as_mut()).set_els();
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the service subscription
         if let Err(err) = engine.flush() {
@@ -328,7 +329,7 @@ async fn detach_addon<I>(
     let dataflow_order = subscription.graph.topological_order();
     for (engine_type, _) in dataflow_order.into_iter() {
         let (engine, _) = detached_engines.get_mut(&engine_type).unwrap();
-        engine.set_els();
+        Pin::new(engine.as_mut()).set_els();
         if let Err(err) = engine.flush() {
             tracing::warn!(
                 "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
@@ -492,7 +493,7 @@ async fn upgrade_client(
             let dataflow_order = subscription.graph.topological_order();
             for (engine_type, _) in dataflow_order.into_iter() {
                 if let Some((engine, ..)) = engines_upgrade.get_mut(&engine_type) {
-                    engine.set_els();
+                    Pin::new(engine.as_mut()).set_els();
                     // DataPathNode may change for any engine
                     // hence we need to flush the queues for all engines in the engine group
                     if let Err(err) = engine.flush() {
@@ -533,8 +534,8 @@ async fn upgrade_client(
     // Decompose the engines to upgrade
     for (sid, engines) in engines_to_upgrade {
         let shared = shared_storage.entry(sid).or_insert_with(SharedStorage::new);
-        for (engine_type, (engine, info, prev_version)) in engines {
-            engine.set_els();
+        for (engine_type, (mut engine, info, prev_version)) in engines {
+            Pin::new(engine.as_mut()).set_els();
             let (state, node) = engine.decompose(shared, global_resource.value_mut());
             tracing::info!(
                 "Engine (pid={:?}, sid={:?}, type={:?}) decomposed",
