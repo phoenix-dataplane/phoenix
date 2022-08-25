@@ -100,6 +100,13 @@ pub struct RuntimeManager {
     pub(crate) global_resource_mgr: GlobalResourceManager,
 }
 
+// impl Drop for RuntimeManager {
+//     fn drop(&mut self) {
+//         dbg!(&self.engine_subscriptions);
+//         dbg!(&self.service_subscriptions.len());
+//     }
+// }
+
 pub struct Inner {
     // the number of runtimes are at most u64::MAX
     runtime_counter: u64,
@@ -316,7 +323,7 @@ impl Inner {
     fn start_runtime(&mut self, _core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
         let runtime_id = RuntimeId(self.runtime_counter);
         self.runtime_counter = self.runtime_counter.checked_add(1).unwrap();
-        let runtime = Arc::new(Runtime::new(runtime_id, rm));
+        let runtime = Arc::new(Runtime::new(runtime_id, Arc::downgrade(&rm)));
         self.runtimes.insert(runtime_id, Arc::clone(&runtime));
 
         let handle = thread::Builder::new()

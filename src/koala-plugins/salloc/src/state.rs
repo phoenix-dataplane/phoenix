@@ -8,10 +8,11 @@ use crate::region::AddressMediator;
 
 use super::region::SharedRegion;
 use koala::state_mgr::ProcessShared;
+use koala::log;
 
 pub struct State {
     pub(crate) shared: Arc<Shared>,
-    pub(crate) addr_mediator: Arc<AddressMediator>,
+    pub addr_mediator: Arc<AddressMediator>,
 }
 
 impl State {
@@ -57,5 +58,11 @@ impl Resource {
         Self {
             mr_table: spin::Mutex::new(BTreeMap::default()),
         }
+    }
+}
+
+impl Drop for Resource {
+    fn drop(&mut self) {
+        log::warn!("Resource is being dropped");
     }
 }

@@ -27,6 +27,12 @@ pub(crate) struct EngineUpgrader {
     upgrade_indicator: Arc<DashSet<Pid>>,
 }
 
+// impl Drop for EngineUpgrader {
+//     fn drop(&mut self) {
+//         dbg!("EngineUpgrader is dropping");
+//     }
+// }
+
 struct EngineDumped {
     local_states: ResourceCollection,
     node: DataPathNode,
