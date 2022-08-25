@@ -7,17 +7,17 @@ use std::ptr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use fnv::FnvHashMap;
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
-use ipc::cmd;
-use ipc::cmd::{ConnectResponse, ReadHeapRegion};
+use ipc::mrpc::cmd;
+use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
-use salloc::state::State as SallocState;
 use salloc::region::AddressMediator;
 use transport_rdma::ops::Ops;
 use mrpc::unpack::UnpackFromSgE;
@@ -32,7 +32,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
-use koala::tracing;
+use koala::{tracing, log};
 
 use super::pool::BufferSlab;
 use super::serialization::SerializationEngine;
@@ -83,7 +83,7 @@ pub(crate) struct RpcAdapterEngine {
     // work completion read buffer
     pub(crate) wc_read_buffer: Vec<interface::WorkCompletion>,
 
-    pub(crate) addr_medidator: Arc<AddressMediator>,
+    pub(crate) addr_mediator: Arc<AddressMediator>,
 }
 
 impl_vertex_for_engine!(RpcAdapterEngine, node);
@@ -220,8 +220,8 @@ impl RpcAdapterEngine {
             .unwrap()
             .downcast::<usize>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let wr_read_buffer = *local
-            .remove("wr_read_buffer")
+        let wc_read_buffer = *local
+            .remove("wc_read_buffer")
             .unwrap()
             .downcast::<Vec<interface::WorkCompletion>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
@@ -244,7 +244,7 @@ impl RpcAdapterEngine {
             node,
             _mode: mode,
             indicator: Default::default(),
-            wr_read_buffer,
+            wc_read_buffer,
             addr_mediator,
         };
         Ok(engine)

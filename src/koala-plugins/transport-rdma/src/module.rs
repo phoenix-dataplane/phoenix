@@ -46,7 +46,7 @@ impl CmEngineBuilder {
 
     fn build(self) -> Result<CmEngine> {
         let state = State::new(self.shared);
-        let engine = CmEngine::new(state, self.node);
+        let engine = CmEngine::new(self.node, state);
         Ok(engine)
     }
 }

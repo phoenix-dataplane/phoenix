@@ -1,7 +1,5 @@
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 
 pub use anyhow::Result;
 use futures::future::BoxFuture;
@@ -22,7 +20,7 @@ pub(crate) mod group;
 pub(crate) mod lb;
 
 pub(crate) mod runtime;
-pub(crate) use runtime::Indicator;
+pub use runtime::Indicator;
 
 pub(crate) mod upgrade;
 pub(crate) use group::SchedulingGroup;

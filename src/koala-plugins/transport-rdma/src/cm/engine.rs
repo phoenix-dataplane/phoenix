@@ -22,7 +22,7 @@ pub struct CmEngine {
 }
 
 impl CmEngine {
-    pub(crate) fn new(node: Node, state: State) -> Self {
+    pub(crate) fn new(node: DataPathNode, state: State) -> Self {
         Self {
             node,
             indicator: Default::default(),
@@ -82,8 +82,7 @@ enum Status {
 
 use Status::Progress;
 
-crate::unimplemented_ungradable!(CmEngine);
-crate::impl_vertex_for_engine!(CmEngine, node);
+impl_vertex_for_engine!(CmEngine, node);
 
 impl Engine for CmEngine {
     fn description(self: Pin<&Self>) -> String {

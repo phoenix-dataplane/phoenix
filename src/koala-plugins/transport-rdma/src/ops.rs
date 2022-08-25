@@ -13,14 +13,14 @@ use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
 use koala::engine::future;
-use koala::{tracing, log};
+use koala::log;
 
 use super::state::{EventChannel, Resource, State};
 use super::{ApiError, DatapathError};
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
-pub(crate) struct Ops {
+pub struct Ops {
     pub(crate) state: State,
 }
 

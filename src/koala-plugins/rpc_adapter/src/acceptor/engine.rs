@@ -23,6 +23,8 @@ pub struct AcceptorEngine {
     pub(crate) tls: Box<TlStorage>,
 }
 
+impl_vertex_for_engine!(AcceptorEngine, node);
+
 impl AcceptorEngine {
     pub(crate) fn new(node: DataPathNode, state: State, tls: Box<TlStorage>) -> Self {
         Self {
@@ -50,7 +52,7 @@ impl Decompose for AcceptorEngine {
 
         log::debug!("dumping RpcAdapter-AcceptorEngine states...");
         collections.insert("state".to_string(), Box::new(engine.state));
-        collections.insert("ops".to_string(), Box::new(engine.ops));
+        collections.insert("tls".to_string(), Box::new(engine.tls));
         (collections, engine.node)
     }
 }
@@ -70,17 +72,17 @@ impl AcceptorEngine {
             .unwrap()
             .downcast::<State>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let ops = *local
-            .remove("ops")
+        let tls = *local
+            .remove("tls")
             .unwrap()
-            .downcast::<Box<Ops>>()
+            .downcast::<Box<TlStorage>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = AcceptorEngine {
             indicator: Default::default(),
             node,
             state,
-            ops,
+            tls,
         };
         Ok(engine)
     }
@@ -93,8 +95,6 @@ enum Status {
 
 use Status::Progress;
 
-crate::unimplemented_ungradable!(AcceptorEngine);
-crate::impl_vertex_for_engine!(AcceptorEngine, node);
 
 impl Engine for AcceptorEngine {
     fn description(self: Pin<&Self>) -> String {
