@@ -282,10 +282,7 @@ impl Ops {
         Ok((channel_handle, channel))
     }
 
-    pub fn create_id(
-        &self,
-        port_space: interface::addrinfo::PortSpace,
-    ) -> Result<returned::CmId> {
+    pub fn create_id(&self, port_space: interface::addrinfo::PortSpace) -> Result<returned::CmId> {
         log::debug!("CreateId, port_space: {:?}", port_space);
 
         // prepare an event channel
@@ -378,10 +375,7 @@ impl Ops {
         self.handle_connect_request(event)
     }
 
-    pub fn try_get_request(
-        &self,
-        listener_handle: Handle,
-    ) -> Result<Option<returned::CmId>> {
+    pub fn try_get_request(&self, listener_handle: Handle) -> Result<Option<returned::CmId>> {
         // log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
@@ -473,11 +467,7 @@ impl Ops {
         Ok(())
     }
 
-    pub async fn resolve_addr(
-        &self,
-        cmid_handle: Handle,
-        sockaddr: &SocketAddr,
-    ) -> Result<()> {
+    pub async fn resolve_addr(&self, cmid_handle: Handle, sockaddr: &SocketAddr) -> Result<()> {
         log::debug!(
             "ResolveAddr: cmid_handle: {:?}, sockaddr: {:?}",
             cmid_handle,

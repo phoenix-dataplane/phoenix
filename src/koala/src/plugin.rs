@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::mem::ManuallyDrop;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -23,12 +24,6 @@ pub struct DynamicLibrary {
     lib: libloading::Library,
     _old: Option<libloading::Library>,
 }
-
-// impl Drop for DynamicLibrary {
-//     fn drop(&mut self) {
-//         dbg!(&self.lib);
-//     }
-// }
 
 impl DynamicLibrary {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
@@ -85,7 +80,6 @@ pub(crate) struct ServiceRegistry {
     pub(crate) scheduling_groups: GroupUnionFind,
 }
 
-use std::mem::ManuallyDrop;
 // COMMENT(wyj): drop order matters
 pub struct PluginCollection {
     pub(crate) modules: DashMap<String, Box<dyn KoalaModule>>,
@@ -94,28 +88,46 @@ pub struct PluginCollection {
     pub(crate) service_registry: DashMap<Service, ServiceRegistry>,
     dependency_graph: Mutex<EngineGraph>,
 
+    // There seems to be a fundmental problem of dlclose with thread-local destructors.
+    //
+    // The observed behavior is that when libstd is dynamically linked, a dynamic library who had
+    // referred thread-local variables will register thread-local dtors which will be executed
+    // at the the time of thread being exited. If the dynamic library was unloaded before via
+    // dlclose, those dtors will point to potentially freed memory and cause immediate UB or
+    // later segmentation faults.
+    //
+    // In short, such case happens when (1). linking libstd dynamically using prefer-dyanmic; (2).
+    // dlopen some libmycrate.so and initializing a thread-local variable; (3) unload the library
+    // libmycrate.so with dlclose; (4) thread of that tls is exited; (5) segmentation fault
+    //
+    // There have been many threads discussing this issue and the potential solutions.
+    //
+    // https://github.com/rust-lang/rust/issues/88737
+    // https://github.com/nagisa/rust_libloading/issues/41
     // https://github.com/rust-lang/rust/issues/28794
     // https://github.com/nagisa/rust_libloading/issues/5
-    // https://github.com/nagisa/rust_libloading/issues/41
-    // https://github.com/rust-lang/rust/issues/88737
+    //
+    // In short, to work around this issue, we only need to break any condition mentioned above.
+    // macOS makes call_tls_dtor a no-op. Some other common workaround are not to drop the library.
+    // In our situation, our current workaround is not dropped the library here (`ManuallyDrop`).
+    // In case `PluginCollection::upgrade_cleanup` still drops the old libraries, our current
+    // workaround is not to stop the runtime, so hopefully no thread exits.
     libraries: ManuallyDrop<DashMap<Plugin, DynamicLibrary>>,
-    // libraries: DashMap<Plugin, DynamicLibrary>,
 }
 
 // impl Drop for PluginCollection {
 //     fn drop(&mut self) {
 //         dbg!(self.libraries.len());
-//         // https://github.com/rust-lang/rust/issues/28794
-//         // https://github.com/nagisa/rust_libloading/issues/5
-//         // https://github.com/nagisa/rust_libloading/issues/41
-//         // https://github.com/rust-lang/rust/issues/88737
+//
+//         // Salloc is the one who cause the issue. Even though we don't find it refer to any
+//         // thread-locals.
 //
 //         // let rpc_adapter = self.libraries.remove(&Plugin::Module("RpcAdapter".to_string())).unwrap();
 //         // std::mem::forget(rpc_adapter);
 //         // let rdma_transport = self.libraries.remove(&Plugin::Module("RdmaTransport".to_string())).unwrap();
 //         // std::mem::forget(rdma_transport);
-//         // let a1 = self.libraries.remove(&Plugin::Module("Salloc".to_string())).unwrap();
-//         // std::mem::forget(a1);
+//         let a1 = self.libraries.remove(&Plugin::Module("Salloc".to_string())).unwrap();
+//         std::mem::forget(a1);
 //         // let a2 = self.libraries.remove(&Plugin::Module("Mrpc".to_string())).unwrap();
 //         // std::mem::forget(a2);
 //         // let a3 = self.libraries.remove(&Plugin::Addon("RateLimit".to_string())).unwrap();
@@ -132,7 +144,6 @@ impl PluginCollection {
             service_registry: DashMap::new(),
             dependency_graph: Mutex::new(EngineGraph::new()),
             libraries: ManuallyDrop::new(DashMap::new()),
-            // libraries: DashMap::new(),
         }
     }
 
@@ -296,6 +307,8 @@ impl PluginCollection {
 
     /// Finish upgrade of all engines, unload old plugins
     pub(crate) fn upgrade_cleanup(&self) {
+        // NOTE, we drop the old library here. To work around the issue mentioned earlier in
+        // PluginCollection, we do not exit thread/runtime actively.
         for mut plugin in self.libraries.iter_mut() {
             plugin.value_mut().unload_old()
         }

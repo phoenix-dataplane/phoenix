@@ -5,8 +5,8 @@ use std::fs;
 use std::io;
 use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};
@@ -240,7 +240,7 @@ impl Control {
 
     pub fn mainloop(&mut self, exit_flag: &AtomicBool) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65536];
-        while !exit_flag.load(Ordering::Relaxed)  {
+        while !exit_flag.load(Ordering::Relaxed) {
             match self.sock.recv_with_credential_from(buf.as_mut_slice()) {
                 Ok((size, sender, cred)) => {
                     log::debug!(

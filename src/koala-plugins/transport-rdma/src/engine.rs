@@ -20,12 +20,12 @@ use super::ops::Ops;
 use super::{ApiError, DatapathError, Error};
 
 use koala::engine::datapath::node::DataPathNode;
-use koala::impl_vertex_for_engine;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
+use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
-use koala::{tracing, log};
+use koala::{log, tracing};
 
 pub(crate) struct TransportEngine {
     pub(crate) customer: CustomerType,

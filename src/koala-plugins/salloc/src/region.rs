@@ -47,10 +47,7 @@ impl AsHandle for SharedRegion {
 }
 
 impl SharedRegion {
-    pub fn new<'ctx>(
-        layout: Layout,
-        addr_mediator: &AddressMediator,
-    ) -> Result<Self, Error> {
+    pub fn new<'ctx>(layout: Layout, addr_mediator: &AddressMediator) -> Result<Self, Error> {
         let nbytes = layout.size();
         let align = layout.align().max(page_size());
         let hugetlb_size = None;
@@ -66,11 +63,7 @@ impl SharedRegion {
 
         let target_addr = addr_mediator.allocate(layout);
         let mmap = MmapFixed::new(target_addr, nbytes, 0, memfd.as_file())?;
-        Ok(Self {
-            mmap,
-            memfd,
-            align,
-        })
+        Ok(Self { mmap, memfd, align })
     }
 
     #[inline]

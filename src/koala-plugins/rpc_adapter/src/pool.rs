@@ -7,7 +7,7 @@ use bitvec::vec::BitVec;
 
 use interface::{AsHandle, Handle};
 
-use salloc::region::{SharedRegion, AddressMediator};
+use salloc::region::{AddressMediator, SharedRegion};
 
 use koala::resource::Error as ResourceError;
 
@@ -147,7 +147,9 @@ impl BufferPool {
         }
 
         // replenish a slab
-        self.replenish(BufferSlab::new(128, 8 * 1024 * 1024, 8 * 1024 * 1024, &self.addr_mediator).unwrap());
+        self.replenish(
+            BufferSlab::new(128, 8 * 1024 * 1024, 8 * 1024 * 1024, &self.addr_mediator).unwrap(),
+        );
         self.obtain()
     }
 

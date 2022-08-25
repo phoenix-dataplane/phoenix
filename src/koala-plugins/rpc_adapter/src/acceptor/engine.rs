@@ -12,9 +12,9 @@ use koala::engine::datapath::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
+use koala::log;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
-use koala::log;
 
 pub struct AcceptorEngine {
     pub(crate) indicator: Indicator,
@@ -94,7 +94,6 @@ enum Status {
 }
 
 use Status::Progress;
-
 
 impl Engine for AcceptorEngine {
     fn description(self: Pin<&Self>) -> String {

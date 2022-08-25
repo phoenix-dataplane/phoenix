@@ -16,9 +16,9 @@ use salloc::region::AddressMediator;
 use koala::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
 use koala::state_mgr::ProcessShared;
 
-use super::ulib;
 use super::pool::{BufferPool, RecvBuffer};
 use super::serialization::AddressMap;
+use super::ulib;
 
 pub(crate) struct State {
     // per engine state
@@ -58,7 +58,10 @@ impl ProcessShared for Shared {
 }
 
 impl Shared {
-    pub(crate) fn new_from_addr_mediator(pid: Pid, addr_mediator: Arc<AddressMediator>) -> io::Result<Self> {
+    pub(crate) fn new_from_addr_mediator(
+        pid: Pid,
+        addr_mediator: Arc<AddressMediator>,
+    ) -> io::Result<Self> {
         let shared = Shared {
             pid,
             stop_acceptor: AtomicBool::new(false),

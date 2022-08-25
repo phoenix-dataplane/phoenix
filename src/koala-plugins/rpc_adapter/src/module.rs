@@ -8,9 +8,9 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
-use salloc::state::{State as SallocState, Shared as SallocShared};
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
+use salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_rdma::module::RdmaTransportModule;
 use transport_rdma::ops::Ops;
 
@@ -205,7 +205,8 @@ impl KoalaModule for RpcAdapterModule {
                     mode: _,
                 } = request
                 {
-                    let engine = self.create_acceptor_engine(client_pid, salloc, rdma_transport, node)?;
+                    let engine =
+                        self.create_acceptor_engine(client_pid, salloc, rdma_transport, node)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -291,7 +292,6 @@ impl RpcAdapterModule {
             Shared::new_from_addr_mediator(client_pid, addr_mediator_clone).unwrap()
         })?;
         let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
-
 
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
