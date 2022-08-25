@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::io;
 use std::os::unix::ucred::UCred;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::Weak;
 use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
@@ -118,11 +118,11 @@ pub(crate) struct Runtime {
     pub(crate) new_ctrl_request: AtomicBool,
     pub(crate) control_requests: Mutex<Vec<(EngineId, Vec<u8>, UCred)>>,
 
-    pub(crate) runtime_manager: Arc<RuntimeManager>,
+    pub(crate) runtime_manager: Weak<RuntimeManager>,
 }
 
 impl Runtime {
-    pub(crate) fn new(id: RuntimeId, rm: Arc<RuntimeManager>) -> Self {
+    pub(crate) fn new(id: RuntimeId, rm: Weak<RuntimeManager>) -> Self {
         Runtime {
             id,
             running: RefCell::new(Vec::new()),
@@ -289,7 +289,11 @@ impl Runtime {
                     // All engines in the scheduling group has shutdown
                     running.swap_remove(group_index);
                 }
-                self.runtime_manager.register_engine_shutdown(eid);
+                // This should be fine because runtime will be dropped later than RuntimeManager.
+                self.runtime_manager
+                    .upgrade()
+                    .unwrap()
+                    .register_engine_shutdown(eid);
             }
 
             // move newly added runtime to the scheduling queue
@@ -390,7 +394,6 @@ impl Runtime {
                     }
                 }
             }
-
         }
     }
 }

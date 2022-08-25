@@ -8,6 +8,7 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
+use salloc::state::{State as SallocState, Shared as SallocShared};
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use transport_rdma::module::RdmaTransportModule;
@@ -57,6 +58,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
     node: DataPathNode,
     ops: Ops,
     shared: Arc<Shared>,
+    salloc_shared: Arc<SallocShared>,
     addr_mediator: Arc<AddressMediator>,
 }
 
@@ -69,6 +71,7 @@ impl RpcAdapterEngineBuilder {
         node: DataPathNode,
         ops: Ops,
         shared: Arc<Shared>,
+        salloc_shared: Arc<SallocShared>,
         addr_mediator: Arc<AddressMediator>,
     ) -> Self {
         RpcAdapterEngineBuilder {
@@ -79,6 +82,7 @@ impl RpcAdapterEngineBuilder {
             node,
             ops,
             shared,
+            salloc_shared,
             addr_mediator,
         }
     }
@@ -86,6 +90,7 @@ impl RpcAdapterEngineBuilder {
     fn build(self) -> Result<RpcAdapterEngine> {
         const BUF_LEN: usize = 32;
         let state = State::new(self.shared);
+        let salloc_state = SallocState::new(self.salloc_shared, self.addr_mediator);
 
         Ok(RpcAdapterEngine {
             state,
@@ -101,7 +106,7 @@ impl RpcAdapterEngineBuilder {
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
             wc_read_buffer: Vec::with_capacity(BUF_LEN),
-            addr_mediator: self.addr_mediator,
+            salloc: salloc_state,
         })
     }
 }
@@ -285,6 +290,8 @@ impl RpcAdapterModule {
         let shared = self.state_mgr.get_or_create_with(client_pid, move || {
             Shared::new_from_addr_mediator(client_pid, addr_mediator_clone).unwrap()
         })?;
+        let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
+
 
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
@@ -294,6 +301,7 @@ impl RpcAdapterModule {
             node,
             ops,
             shared,
+            salloc_shared,
             addr_mediator,
         );
         let engine = builder.build()?;

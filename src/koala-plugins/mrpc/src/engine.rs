@@ -2,13 +2,15 @@ use std::mem;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use futures::future::BoxFuture;
 use anyhow::{anyhow, Result};
+use futures::future::BoxFuture;
 
-use interface::rpc::{MessageErased, RpcId};
 use interface::engine::SchedulingMode;
+use interface::rpc::{MessageErased, RpcId};
 use ipc::mrpc::{cmd, control_plane, dp};
 
+use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use koala::engine::datapath::meta_pool::MetaBufferPool;
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
@@ -16,13 +18,11 @@ use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 use koala::tracing;
-use koala::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
-use koala::engine::datapath::meta_pool::MetaBufferPool;
 
+use super::builder::build_serializer_lib;
 use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
-use super::builder::build_serializer_lib;
 
 pub struct MrpcEngine {
     pub(crate) _state: State,

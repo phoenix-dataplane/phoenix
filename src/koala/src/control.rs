@@ -37,6 +37,12 @@ pub struct Control {
     upgrader: EngineUpgrader,
 }
 
+// impl Drop for Control {
+//     fn drop(&mut self) {
+//         dbg!("Control is dropping");
+//     }
+// }
+
 impl Control {
     fn create_service(
         &self,

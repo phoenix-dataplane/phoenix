@@ -109,7 +109,7 @@ impl MetaBufferPtr {
 pub struct MetaBufferPool {
     #[allow(unused_variables)]
     buffer: Vec<MetaBuffer>,
-    free: Vec<MetaBufferPtr>,
+    pub free: Vec<MetaBufferPtr>,
     used: HashMap<RpcId, MetaBufferPtr>,
 }
 

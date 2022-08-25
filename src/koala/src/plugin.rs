@@ -24,6 +24,12 @@ pub struct DynamicLibrary {
     _old: Option<libloading::Library>,
 }
 
+// impl Drop for DynamicLibrary {
+//     fn drop(&mut self) {
+//         dbg!(&self.lib);
+//     }
+// }
+
 impl DynamicLibrary {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let lib = unsafe { libloading::Library::new(path.as_ref()).unwrap() };
@@ -79,24 +85,54 @@ pub(crate) struct ServiceRegistry {
     pub(crate) scheduling_groups: GroupUnionFind,
 }
 
+use std::mem::ManuallyDrop;
+// COMMENT(wyj): drop order matters
 pub struct PluginCollection {
-    libraries: DashMap<Plugin, DynamicLibrary>,
     pub(crate) modules: DashMap<String, Box<dyn KoalaModule>>,
     pub(crate) addons: DashMap<String, Box<dyn KoalaAddon>>,
     pub(crate) engine_registry: DashMap<EngineType, Plugin>,
     pub(crate) service_registry: DashMap<Service, ServiceRegistry>,
     dependency_graph: Mutex<EngineGraph>,
+
+    // https://github.com/rust-lang/rust/issues/28794
+    // https://github.com/nagisa/rust_libloading/issues/5
+    // https://github.com/nagisa/rust_libloading/issues/41
+    // https://github.com/rust-lang/rust/issues/88737
+    libraries: ManuallyDrop<DashMap<Plugin, DynamicLibrary>>,
+    // libraries: DashMap<Plugin, DynamicLibrary>,
 }
+
+// impl Drop for PluginCollection {
+//     fn drop(&mut self) {
+//         dbg!(self.libraries.len());
+//         // https://github.com/rust-lang/rust/issues/28794
+//         // https://github.com/nagisa/rust_libloading/issues/5
+//         // https://github.com/nagisa/rust_libloading/issues/41
+//         // https://github.com/rust-lang/rust/issues/88737
+//
+//         // let rpc_adapter = self.libraries.remove(&Plugin::Module("RpcAdapter".to_string())).unwrap();
+//         // std::mem::forget(rpc_adapter);
+//         // let rdma_transport = self.libraries.remove(&Plugin::Module("RdmaTransport".to_string())).unwrap();
+//         // std::mem::forget(rdma_transport);
+//         // let a1 = self.libraries.remove(&Plugin::Module("Salloc".to_string())).unwrap();
+//         // std::mem::forget(a1);
+//         // let a2 = self.libraries.remove(&Plugin::Module("Mrpc".to_string())).unwrap();
+//         // std::mem::forget(a2);
+//         // let a3 = self.libraries.remove(&Plugin::Addon("RateLimit".to_string())).unwrap();
+//         // std::mem::forget(a3);
+//     }
+// }
 
 impl PluginCollection {
     pub fn new() -> Self {
         PluginCollection {
-            libraries: DashMap::new(),
             modules: DashMap::new(),
             addons: DashMap::new(),
             engine_registry: DashMap::new(),
             service_registry: DashMap::new(),
             dependency_graph: Mutex::new(EngineGraph::new()),
+            libraries: ManuallyDrop::new(DashMap::new()),
+            // libraries: DashMap::new(),
         }
     }
 
