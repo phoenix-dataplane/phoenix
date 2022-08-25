@@ -1,6 +1,6 @@
-use std::pin::Pin;
-use std::os::unix::ucred::UCred;
 use std::future::Future;
+use std::os::unix::ucred::UCred;
+use std::pin::Pin;
 
 use futures::future::BoxFuture;
 use semver::Version;

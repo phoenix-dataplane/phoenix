@@ -170,7 +170,11 @@ impl Inner {
         // NOTE(wyj): iterating over HashMap should be fine
         // as submitting a new engine is not on fast path
         // Moreover, there are only limited number of runtimes
-        let rid = match self.runtimes.iter().find(|(_i, r)| r.is_empty() || !r.is_dedicated()) {
+        let rid = match self
+            .runtimes
+            .iter()
+            .find(|(_i, r)| r.is_empty() || !r.is_dedicated())
+        {
             Some((rid, _runtime)) => *rid,
             None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
         };

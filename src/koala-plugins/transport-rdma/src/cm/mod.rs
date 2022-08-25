@@ -8,8 +8,8 @@ use std::time::Duration;
 use interface::Handle;
 use rdma::rdmacm;
 
-use koala::resource::{ResourceTable, Error as ResourceError};
 use koala::log;
+use koala::resource::{Error as ResourceError, ResourceTable};
 
 use super::state::EventChannel;
 use crate::ApiError;

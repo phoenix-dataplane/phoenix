@@ -7,8 +7,8 @@ use nix::unistd::Pid;
 use crate::region::AddressMediator;
 
 use super::region::SharedRegion;
-use koala::state_mgr::ProcessShared;
 use koala::log;
+use koala::state_mgr::ProcessShared;
 
 pub struct State {
     pub(crate) shared: Arc<Shared>,

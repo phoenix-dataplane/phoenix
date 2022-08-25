@@ -65,7 +65,8 @@ impl Engine for RateLimitEngine {
         match request {
             control_plane::Request::NewConfig(requests_per_sec, bucket_size) => {
                 self.config = RateLimitConfig {
-                    requests_per_sec, bucket_size
+                    requests_per_sec,
+                    bucket_size,
                 };
             }
         }

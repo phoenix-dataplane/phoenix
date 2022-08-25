@@ -12,7 +12,6 @@ pub struct Control {
     pub path: PathBuf,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TracingConfig {
