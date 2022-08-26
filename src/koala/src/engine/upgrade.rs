@@ -65,6 +65,15 @@ async fn attach_addon<I>(
         .map(|e| (*e.key(), e.value().clone()))
         .collect::<Vec<_>>();
 
+    if subscription_engines.is_empty() {
+        tracing::warn!(
+            "No engines exist for subscription (pid={:?}, sid={:?})",
+            pid,
+            sid,
+        );
+        return;
+    }
+
     let guard = rm.inner.lock().unwrap();
     for (engine_id, info) in subscription_engines.iter() {
         let runtime = guard.runtimes.get(&info.rid).unwrap();
@@ -282,6 +291,15 @@ async fn detach_addon<I>(
         .filter(|e| e.pid == pid && e.sid == sid)
         .map(|e| (*e.key(), e.value().clone()))
         .collect::<Vec<_>>();
+
+    if subscription_engines.is_empty() {
+        tracing::warn!(
+            "No engines exist for subscription (pid={:?}, sid={:?})",
+            pid,
+            sid,
+        );
+        return;
+    }
 
     let guard = rm.inner.lock().unwrap();
     for (engine_id, info) in subscription_engines.iter() {

@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 interface = { path = "../../interface" }
-ipc = { path = "../../ipc", features = ["mrpc"] }
+ipc = { path = "../../ipc", features = ["mrpc", "rpc_adapter"] }
 koala = { path = "../../koala" }
 rdma = { path = "../../rdma", features = ["koala"] }
 transport_rdma = { path = "../transport-rdma", package = "koala-transport-rdma" }
@@ -31,3 +31,4 @@ serde = { version = "1.0.130", features = ["derive"] }
 toml = { version = "0.5.8", features = ["preserve_order"] }
 fastrand = "1.8.0"
 bitvec = "1.0.1"
+bincode = "1.3.3"

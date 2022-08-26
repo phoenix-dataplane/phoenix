@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
+use std::{path::PathBuf, process::Stdio};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -110,6 +111,8 @@ pub enum Error {
 }
 
 pub fn build_serializer_lib(protos: Vec<String>, cache_dir: PathBuf) -> Result<PathBuf, Error> {
+    // Create cache dir if it does not exists
+    std::fs::create_dir_all(cache_dir.as_path())?;
     let (identifier, cached) = cache::check_cache(&protos, &cache_dir, PROTO_DIR)?;
     if !cached {
         cache::write_protos_to_cache(&identifier, &protos, &cache_dir, PROTO_DIR)?;
@@ -149,10 +152,21 @@ pub fn build_serializer_lib(protos: Vec<String>, cache_dir: PathBuf) -> Result<P
         let dylib_path = builder.compile()?;
         Ok(dylib_path)
     } else {
-        let dylib_path = cache_dir
-            .join(&identifier)
-            .join(LIBRARY_DIR)
-            .join(format!("target/release/{}", compiler::DYLIB_FILENAME));
+        // Check whether dependencies have changed,
+        // hence requiring rebuilding the shared library
+        // TODO(wyj): use a built-in fingerprint mechanism to check changes
+        // instead of directly using cargo
+        let emit_crate_dir = cache_dir.join(&identifier).join(LIBRARY_DIR);
+        let mut cmd = Command::new("cargo");
+        cmd.arg("build").arg("--release");
+        cmd.current_dir(&emit_crate_dir);
+        let status = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+        if !status.success() {
+            // failed to run cargo build
+            return Err(Error::LibraryCompile(compiler::Error::Cargo));
+        }
+        let dylib_path =
+            emit_crate_dir.join(format!("target/release/{}", compiler::DYLIB_FILENAME));
         Ok(dylib_path)
     }
 }
