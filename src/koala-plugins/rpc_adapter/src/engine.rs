@@ -16,6 +16,7 @@ use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
+use ipc::rpc_adapter::control_plane;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
 use mrpc::unpack::UnpackFromSgE;
@@ -283,6 +284,43 @@ impl Engine for RpcAdapterEngine {
         // SAFETY: This is fine here because ELS is only used while the engine is running.
         // As long as we do not move out or drop self.tls, we are good.
         ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
+    }
+
+    fn handle_request(
+        &mut self,
+        request: Vec<u8>,
+        _cred: std::os::unix::ucred::UCred,
+    ) -> Result<()> {
+        let request: control_plane::Request = bincode::deserialize(&request[..])?;
+
+        // TODO: send result to userland
+        match request {
+            control_plane::Request::ListConnection => {
+                let mut connections =
+                    Vec::with_capacity(self.state.resource().cmid_table.inner().len());
+                for conn_ctx in self.state.resource().cmid_table.inner().iter() {
+                    let cmid = conn_ctx.data().cmid.inner.handle;
+                    let local_addr = conn_ctx.data().cmid.get_local_addr()?;
+                    let peer_addr = conn_ctx.data().cmid.get_peer_addr()?;
+                    let conn = control_plane::Connection {
+                        cmid,
+                        local: local_addr,
+                        peer: peer_addr,
+                    };
+                    connections.push(conn);
+                }
+
+                for conn in connections {
+                    log::info!(
+                        "RpcAdapter connection, CmId={:?}, local_addr={:?}, peer_addr={:?}",
+                        conn.cmid,
+                        conn.local,
+                        conn.peer
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -953,7 +991,6 @@ impl RpcAdapterEngine {
                 Ok(cmd::CompletionKind::ConnectInternal(conn_resp, fds))
             }
             cmd::Command::Bind(addr) => {
-                log::debug!("Bind, addr: {:?}", addr);
                 // create CmIdBuilder
                 let listener = ulib::ucm::CmIdBuilder::new().bind(addr).await?;
                 let handle = listener.as_handle();
@@ -964,7 +1001,6 @@ impl RpcAdapterEngine {
                 Ok(cmd::CompletionKind::Bind(handle))
             }
             cmd::Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
-                log::debug!("NewMappedAddrs, app_vaddr: {:?}", app_vaddrs);
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
                     let region = self.state.resource().recv_buffer_pool.find(mr_handle)?;
                     let mr_local_addr = region.as_ptr().expose_addr();

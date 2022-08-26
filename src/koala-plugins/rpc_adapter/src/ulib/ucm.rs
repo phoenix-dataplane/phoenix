@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::mem;
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use interface::{AsHandle, Handle};
 use koala::log;
@@ -326,6 +326,17 @@ impl AsHandle for CmId {
     }
 }
 
+impl CmId {
+    pub(crate) fn get_local_addr(&self) -> Result<SocketAddr, Error> {
+        let addr = get_ops().get_local_addr(&self.inner.handle)?;
+        Ok(addr)
+    }
+
+    pub(crate) fn get_peer_addr(&self) -> Result<SocketAddr, Error> {
+        let addr = get_ops().get_peer_addr(&self.inner.handle)?;
+        Ok(addr)
+    }
+}
 impl CmId {
     pub(crate) fn disconnect(&self) -> Result<(), Error> {
         get_ops().disconnect(&self.inner.handle)?;

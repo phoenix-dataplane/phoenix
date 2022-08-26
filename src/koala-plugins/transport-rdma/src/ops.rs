@@ -893,6 +893,34 @@ impl Ops {
             future::yield_now().await;
         }
     }
+
+    #[inline]
+    pub fn get_local_addr(&self, cmid: &interface::CmId) -> Result<SocketAddr> {
+        let cmid_handle = cmid.0;
+        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        Ok(cmid.get_local_addr())
+    }
+
+    #[inline]
+    pub fn get_peer_addr(&self, cmid: &interface::CmId) -> Result<SocketAddr> {
+        let cmid_handle = cmid.0;
+        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        Ok(cmid.get_peer_addr())
+    }
+
+    #[inline]
+    pub fn get_src_port(&self, cmid: &interface::CmId) -> Result<u16> {
+        let cmid_handle = cmid.0;
+        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        Ok(cmid.get_src_port())
+    }
+
+    #[inline]
+    pub fn get_dst_port(&self, cmid: &interface::CmId) -> Result<u16> {
+        let cmid_handle = cmid.0;
+        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        Ok(cmid.get_dst_port())
+    }
 }
 
 fn prepare_returned_qp(handles: (Handle, Handle, Handle, Handle)) -> returned::QueuePair {

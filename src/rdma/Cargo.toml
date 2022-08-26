@@ -22,6 +22,7 @@ interface = { path = "../interface", optional = true }
 memmap-fixed = { path = "../memmap-fixed", optional = true }
 spin = { version = "0.9.2", optional = true }
 lazy_static = { version = "1.4.0", optional = true }
+nix = { version = "0.25.0", features = ["socket"] }
 
 [features]
 koala = ["interface", "serde", "bincode", "memmap-fixed", "spin", "lazy_static"]

@@ -16,6 +16,8 @@ use std::ops::DerefMut;
 
 use socket2::SockAddr;
 
+use nix::sys::socket::{AddressFamily, SockaddrLike, SockaddrStorage};
+
 #[cfg(feature = "koala")]
 use interface::{AsHandle, Handle};
 
@@ -1057,5 +1059,57 @@ impl<'res> CmId<'res> {
             return Err(io::Error::last_os_error());
         }
         Ok(unsafe { wc.assume_init() })
+    }
+
+    #[inline]
+    pub fn get_src_port(&self) -> u16 {
+        let id = self.0;
+        unsafe { ffi::rdma_get_src_port(id) }
+    }
+
+    #[inline]
+    pub fn get_dst_port(&self) -> u16 {
+        let id = self.0;
+        unsafe { ffi::rdma_get_dst_port(id) }
+    }
+
+    #[inline]
+    pub fn get_local_addr(&self) -> SocketAddr {
+        let id = self.0;
+        let sockaddr = unsafe { ffi::rdma_get_local_addr_real(id) };
+        let ss =
+            unsafe { SockaddrStorage::from_raw(sockaddr as *mut libc::sockaddr, None).unwrap() };
+        let addr = match ss.family().unwrap() {
+            AddressFamily::Inet => {
+                let addr = *ss.as_sockaddr_in().unwrap();
+                SocketAddr::V4(addr.into())
+            }
+            AddressFamily::Inet6 => {
+                let addr = *ss.as_sockaddr_in6().unwrap();
+                SocketAddr::V6(addr.into())
+            }
+            _ => panic!("Address space should be either Ipv4 or Ipv6"),
+        };
+        addr
+    }
+
+    #[inline]
+    pub fn get_peer_addr(&self) -> SocketAddr {
+        let id = self.0;
+        let sockaddr = unsafe { ffi::rdma_get_peer_addr_real(id) };
+        let ss =
+            unsafe { SockaddrStorage::from_raw(sockaddr as *mut libc::sockaddr, None).unwrap() };
+        let addr = match ss.family().unwrap() {
+            AddressFamily::Inet => {
+                let addr = *ss.as_sockaddr_in().unwrap();
+                SocketAddr::V4(addr.into())
+            }
+            AddressFamily::Inet6 => {
+                let addr = *ss.as_sockaddr_in6().unwrap();
+                SocketAddr::V6(addr.into())
+            }
+            _ => panic!("Address space should be either IPv4 or IPv6"),
+        };
+        addr
     }
 }

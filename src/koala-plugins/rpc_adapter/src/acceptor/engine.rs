@@ -144,6 +144,7 @@ impl AcceptorEngine {
         if table.is_empty() {
             return Ok(Status::Progress(0));
         }
+        let mut nwork = 0;
         for entry in table.iter() {
             let listener = entry.data();
             if let Some(mut builder) = listener.1.try_get_request()? {
@@ -165,9 +166,10 @@ impl AcceptorEngine {
                     .entry(rpc_adapter_id)
                     .or_insert_with(VecDeque::new)
                     .push_back(pre_id);
+                nwork += 1;
             }
         }
-        Ok(Status::Progress(1))
+        Ok(Status::Progress(nwork))
     }
 
     // async fn check_new_incoming_connection(&mut self) -> Result<Status, ControlPathError> {

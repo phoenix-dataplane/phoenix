@@ -16,6 +16,16 @@ struct ibv_mr *rdma_reg_write_real(struct rdma_cm_id *id, void *addr, size_t len
         return rdma_reg_write(id, addr, length);
 }
 
+struct sockaddr *rdma_get_local_addr_real(struct rdma_cm_id *id)
+{
+	return rdma_get_local_addr(id);
+}
+
+struct sockaddr *rdma_get_peer_addr_real(struct rdma_cm_id *id)
+{
+	return rdma_get_peer_addr(id);
+}
+
 int rdma_dereg_mr_real(struct ibv_mr *mr) {
         return rdma_dereg_mr(mr);
 }

@@ -18,6 +18,8 @@ pub use ipc_core::{Error, IpcRecvError, IpcSendError, RecvFdError, TryRecvError}
 pub use mrpc;
 #[cfg(feature = "ratelimit")]
 pub use ratelimit;
+#[cfg(feature = "rpc_adapter")]
+pub use rpc_adapter;
 #[cfg(feature = "salloc")]
 pub use salloc;
 #[cfg(feature = "transport")]

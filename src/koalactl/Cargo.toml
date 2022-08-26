@@ -14,5 +14,5 @@ toml = { version = "0.5.8", features = ["preserve_order"] }
 lazy_static = "1.4.0"
 prettytable-rs = "0.9"
 
-ipc = { path = "../ipc", features = ["ratelimit"] }
+ipc = { path = "../ipc", features = ["ratelimit", "rpc_adapter"] }
 interface = { path = "../interface" }
