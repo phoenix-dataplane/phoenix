@@ -4,8 +4,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use interface::rpc::Token;
-use shm::ptr::ShmNonNull;
 use shm::boxed::Box as ShmBox;
+use shm::ptr::ShmNonNull;
 
 use crate::stub::RpcData;
 

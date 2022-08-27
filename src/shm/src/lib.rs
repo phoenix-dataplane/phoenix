@@ -37,10 +37,10 @@ pub mod alloc;
 #[allow(unused)]
 pub mod boxed;
 
+pub(crate) mod raw_vec;
 /// shm::vec is similar to alloc::vec
 #[allow(unused)]
 pub mod vec;
-pub(crate) mod raw_vec;
 
 /// shm::collections is similar to alloc::collections
 pub mod collections;

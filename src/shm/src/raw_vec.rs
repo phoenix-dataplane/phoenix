@@ -10,7 +10,7 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use crate::alloc::{ShmAllocator, SharedHeapAllocator};
+use crate::alloc::{SharedHeapAllocator, ShmAllocator};
 use crate::ptr::{ShmNonNull, ShmPtr};
 
 // use crate::salloc::SharedHeapAllocator;

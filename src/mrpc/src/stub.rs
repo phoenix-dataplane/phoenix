@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 
 use dashmap::DashMap;
 use fnv::FnvHashMap as HashMap;
