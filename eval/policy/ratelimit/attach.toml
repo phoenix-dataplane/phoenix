@@ -6,3 +6,7 @@ tx_channels_replacements = [
 rx_channels_replacements = []
 group = ["MrpcEngine", "RpcAdapterEngine"]
 op = "attach"
+config_string = '''
+requests_per_sec = 65536
+bucket_size = 65536
+'''

@@ -1,16 +1,10 @@
-use std::path::Path;
-
 use ratelimit::config::RateLimitConfig;
 use ratelimit::module::RateLimitAddon;
-use ratelimit::KoalaAddon;
+use ratelimit::{InitFnResult, KoalaAddon};
 
 #[no_mangle]
-pub fn init_addon(config_path: Option<&Path>) -> Box<dyn KoalaAddon> {
-    let config = if let Some(path) = config_path {
-        RateLimitConfig::from_path(path).unwrap()
-    } else {
-        RateLimitConfig::default()
-    };
-    let module = RateLimitAddon::new(config);
-    Box::new(module)
+pub fn init_addon(config_string: Option<&str>) -> InitFnResult<Box<dyn KoalaAddon>> {
+    let config = RateLimitConfig::new(config_string)?;
+    let addon = RateLimitAddon::new(config);
+    Ok(Box::new(addon))
 }

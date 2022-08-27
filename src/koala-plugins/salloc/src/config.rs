@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,19 +9,9 @@ pub struct SallocConfig {
     pub engine_basename: String,
 }
 
-impl Default for SallocConfig {
-    fn default() -> Self {
-        SallocConfig {
-            prefix: PathBuf::from("/tmp/koala"),
-            engine_basename: String::from("salloc"),
-        }
-    }
-}
-
 impl SallocConfig {
-    pub fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config = toml::from_str(&content)?;
+    pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
+        let config = toml::from_str(&config.unwrap_or(""))?;
         Ok(config)
     }
 }

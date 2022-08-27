@@ -1,16 +1,10 @@
-use std::path::Path;
-
 use transport_rdma::config::RdmaTransportConfig;
 use transport_rdma::module::RdmaTransportModule;
-use transport_rdma::KoalaModule;
+use transport_rdma::{InitFnResult, KoalaModule};
 
 #[no_mangle]
-pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let config = if let Some(path) = config_path {
-        RdmaTransportConfig::from_path(path).unwrap()
-    } else {
-        RdmaTransportConfig::default()
-    };
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn KoalaModule>> {
+    let config = RdmaTransportConfig::new(config_string)?;
     let module = RdmaTransportModule::new(config);
-    Box::new(module)
+    Ok(Box::new(module))
 }

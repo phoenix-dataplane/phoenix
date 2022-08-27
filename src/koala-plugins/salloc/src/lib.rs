@@ -7,6 +7,7 @@ use std::alloc::LayoutError;
 use thiserror::Error;
 
 pub use koala::module::KoalaModule;
+pub use koala::plugin::InitFnResult;
 use koala::resource::Error as ResourceError;
 
 pub mod config;

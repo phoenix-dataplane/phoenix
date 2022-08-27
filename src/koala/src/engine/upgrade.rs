@@ -27,12 +27,6 @@ pub(crate) struct EngineUpgrader {
     upgrade_indicator: Arc<DashSet<Pid>>,
 }
 
-// impl Drop for EngineUpgrader {
-//     fn drop(&mut self) {
-//         dbg!("EngineUpgrader is dropping");
-//     }
-// }
-
 struct EngineDumped {
     local_states: ResourceCollection,
     node: DataPathNode,
@@ -54,6 +48,7 @@ async fn attach_addon<I>(
     tx_edges_replacement: I,
     rx_edges_replacement: I,
     group: HashSet<EngineType>,
+    config_string: Option<String>,
     indicator: Arc<DashSet<Pid>>,
 ) where
     I: IntoIterator<Item = ChannelDescriptor>,
@@ -66,7 +61,7 @@ async fn attach_addon<I>(
         .collect::<Vec<_>>();
 
     if subscription_engines.is_empty() {
-        tracing::warn!(
+        log::warn!(
             "No engines exist for subscription (pid={:?}, sid={:?})",
             pid,
             sid,
@@ -79,11 +74,11 @@ async fn attach_addon<I>(
         let runtime = guard.runtimes.get(&info.rid).unwrap();
         runtime.request_suspend(*engine_id);
     }
-    std::mem::drop(guard);
+    drop(guard);
 
     let (mut subscription, _) = rm.service_subscriptions.remove(&(pid, sid)).unwrap().1;
     if subscription.addons.contains(&addon) {
-        tracing::error!(
+        log::error!(
             "Addon engine {:?} already exists in service subscription (pid={:?}, sid={:?})",
             addon,
             pid,
@@ -127,7 +122,7 @@ async fn attach_addon<I>(
         // DataPathNode may change for any engine
         // hence we need to flush the queues for all engines in the service subscription
         if let Err(err) = engine.flush() {
-            tracing::warn!(
+            log::warn!(
                 "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
                 pid,
                 sid,
@@ -135,7 +130,7 @@ async fn attach_addon<I>(
                 err,
             );
         };
-        tracing::info!(
+        log::info!(
             "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
             pid,
             sid,
@@ -153,7 +148,7 @@ async fn attach_addon<I>(
     ) {
         Ok(node) => node,
         Err(err) => {
-            tracing::error!(
+            log::error!(
                 "Fail to refactor data path channels in installing addon {:?} on subscription (pid={:?}, sid={:?}): {:?}",
                 addon,
                 pid,
@@ -168,45 +163,41 @@ async fn attach_addon<I>(
         }
     };
 
-    let mut containers_resubmit = HashMap::new();
+    // get the addon from the engine_registry
     let mut plugin = match plugins.engine_registry.get_mut(&addon) {
         Some(plugin) => match plugin.value() {
             Plugin::Module(_) => {
-                tracing::error!("Engine type {:?} is not an addon", addon);
+                log::error!("Engine type {:?} is not an addon", addon);
                 rm.global_resource_mgr.register_subscription_shutdown(pid);
                 return;
             }
             Plugin::Addon(addon_name) => plugins.addons.get_mut(addon_name).unwrap(),
         },
         None => {
-            tracing::error!("Addon for engine type {:?} not found", addon);
+            log::error!("Addon for engine type {:?} not found", addon);
             rm.global_resource_mgr.register_subscription_shutdown(pid);
             indicator.remove(&pid);
             return;
         }
     };
-    let version = plugin.version();
-    let addon_engine = plugin.value_mut().create_engine(addon, pid, node);
 
-    let addon_gid = match addon_engine {
-        Ok(engine) => {
-            let container = EngineContainer::new(engine, addon, version);
-            let (gid, rid) = if !group.is_empty() {
-                let peer = *group.iter().next().unwrap();
-                let (info, _) = detached_meta.get(&peer).unwrap();
-                (info.gid, Some(info.rid))
-            } else {
-                let gid = GroupId(rm.scheduling_group_counter.fetch_add(1, Ordering::Relaxed));
-                (gid, None)
-            };
-            let entry = containers_resubmit
-                .entry(gid)
-                .or_insert((Vec::new(), mode, rid));
-            entry.0.push(container);
-            gid
+    // update config if found necessary
+    if let Some(config) = config_string {
+        if let Err(err) = plugin.update_config(&config) {
+            log::error!(
+                "Failed to update config for addon: {:?}, err: {:?}, attach aborted",
+                addon,
+                err
+            );
+            return;
         }
+    }
+
+    // create engine from the module
+    let addon_engine = match plugin.value_mut().create_engine(addon, pid, node) {
+        Ok(engine) => engine,
         Err(err) => {
-            tracing::error!(
+            log::error!(
                 "Failed to create addon engine {:?} for subscription (pid={:?}, sid={:?}), error: {:?}",
                 addon,
                 pid,
@@ -218,11 +209,30 @@ async fn attach_addon<I>(
             return;
         }
     };
-    tracing::info!(
-        "Addon engine {:?} created, pid={:?}, sid={:?}",
+
+    // create EngineContainer
+    let version = plugin.version();
+    let container = EngineContainer::new(addon_engine, addon, version);
+
+    // get scheduling group ID and runtime ID for the addon
+    let (addon_gid, rid) = if !group.is_empty() {
+        let peer = *group.iter().next().unwrap();
+        let (info, _) = detached_meta.get(&peer).unwrap();
+        (info.gid, Some(info.rid))
+    } else {
+        let gid = GroupId(rm.scheduling_group_counter.fetch_add(1, Ordering::Relaxed));
+        (gid, None)
+    };
+
+    let mut containers_resubmit: HashMap<_, _> =
+        std::iter::once((addon_gid, (vec![container], mode, rid))).collect();
+
+    log::info!(
+        "Addon engine {:?} created, pid={:?}, sid={:?}, gid={:?}",
         addon,
         pid,
         sid,
+        addon_gid,
     );
 
     for (ty, engine) in detached_engines.into_iter() {
@@ -230,11 +240,11 @@ async fn attach_addon<I>(
         let container = EngineContainer::new(engine, ty, version);
         let gid = info.gid;
         let rid = info.rid;
-        let entry =
-            containers_resubmit
-                .entry(gid)
-                .or_insert((Vec::new(), info.scheduling_mode, Some(rid)));
-        entry.0.push(container);
+        containers_resubmit
+            .entry(gid)
+            .or_insert_with(|| (Vec::new(), info.scheduling_mode, Some(rid)))
+            .0
+            .push(container);
     }
 
     // TODO(wyj): determine whether the following check is necessary
@@ -242,7 +252,7 @@ async fn attach_addon<I>(
     for engine in addon_group_engines {
         let engine_type = engine.engine_type();
         if (engine_type != addon) && !group.contains(&engine_type) {
-            tracing::error!(
+            log::error!(
                 "Scheduling group {:?} to attach addon {:?} to subscription (pid={:?}, sid={:?}) does not contain all engines in the group",
                 group,
                 addon,
@@ -293,7 +303,7 @@ async fn detach_addon<I>(
         .collect::<Vec<_>>();
 
     if subscription_engines.is_empty() {
-        tracing::warn!(
+        log::warn!(
             "No engines exist for subscription (pid={:?}, sid={:?})",
             pid,
             sid,
@@ -306,14 +316,14 @@ async fn detach_addon<I>(
         let runtime = guard.runtimes.get(&info.rid).unwrap();
         runtime.request_suspend(*engine_id);
     }
-    std::mem::drop(guard);
+    drop(guard);
 
     let (mut subscription, _) = rm.service_subscriptions.remove(&(pid, sid)).unwrap().1;
 
     if let Some(index) = subscription.addons.iter().position(|x| *x == addon) {
         subscription.addons.remove(index);
     } else {
-        tracing::error!(
+        log::error!(
             "Addon engine {:?} not found in subscription (pid={:?}, gid={:?})",
             addon,
             pid,
@@ -355,7 +365,7 @@ async fn detach_addon<I>(
         let (engine, _) = detached_engines.get_mut(&engine_type).unwrap();
         Pin::new(engine.as_mut()).set_els();
         if let Err(err) = engine.flush() {
-            tracing::warn!(
+            log::warn!(
                 "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
                 pid,
                 sid,
@@ -363,7 +373,7 @@ async fn detach_addon<I>(
                 err,
             );
         };
-        tracing::info!(
+        log::info!(
             "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
             pid,
             sid,
@@ -379,7 +389,7 @@ async fn detach_addon<I>(
         rx_edges_replacement,
     );
     if let Err(err) = result {
-        tracing::error!(
+        log::error!(
             "Failed to refactor data path channels in uninstall addon {:?} for subscription (pid={:?}, sid={:?}), error: {:?}", 
             addon,
             pid,
@@ -443,7 +453,7 @@ async fn upgrade_client(
         let runtime = guard.runtimes.get(&info.rid).unwrap();
         runtime.request_suspend(*engine_id);
     }
-    std::mem::drop(guard);
+    drop(guard);
 
     // EngineContainers suspended from runtimes, awaiting for upgrade
     let mut engines_to_upgrade = HashMap::new();
@@ -521,7 +531,7 @@ async fn upgrade_client(
                     // DataPathNode may change for any engine
                     // hence we need to flush the queues for all engines in the engine group
                     if let Err(err) = engine.flush() {
-                        tracing::warn!(
+                        log::warn!(
                             "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
                             pid,
                             sid,
@@ -536,7 +546,7 @@ async fn upgrade_client(
                         .find(|(container, ..)| container.engine_type() == engine_type)
                         .unwrap();
                     if let Err(err) = container.flush() {
-                        tracing::warn!(
+                        log::warn!(
                             "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
                             pid,
                             sid,
@@ -545,7 +555,7 @@ async fn upgrade_client(
                         );
                     }
                 }
-                tracing::info!(
+                log::info!(
                     "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
                     pid,
                     sid,
@@ -561,7 +571,7 @@ async fn upgrade_client(
         for (engine_type, (mut engine, info, prev_version)) in engines {
             Pin::new(engine.as_mut()).set_els();
             let (state, node) = engine.decompose(shared, global_resource.value_mut());
-            tracing::info!(
+            log::info!(
                 "Engine (pid={:?}, sid={:?}, type={:?}) decomposed",
                 pid,
                 sid,
@@ -717,7 +727,7 @@ async fn upgrade_client(
                                 rid,
                             ));
                             entry.0.push(container);
-                            tracing::info!(
+                            log::info!(
                                 "Engine (pid={:?}, sid={:?}, type={:?}) restored",
                                 pid,
                                 sid,
@@ -725,7 +735,7 @@ async fn upgrade_client(
                             );
                         }
                         Err(err) => {
-                            tracing::error!(
+                            log::error!(
                                 "Failed to restore engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
                                 pid,
                                 sid,
@@ -740,7 +750,7 @@ async fn upgrade_client(
             }
         }
 
-        std::mem::drop(subscription_guard);
+        drop(subscription_guard);
         if resubmit {
             for (group_id, (containers, mode, rid)) in containers_resubmit {
                 rm.attach_to_group(pid, sid, group_id, rid, containers, mode);
@@ -787,6 +797,7 @@ impl EngineUpgrader {
         tx_edges_replacement: I,
         rx_edges_replacement: I,
         group: HashSet<EngineType>,
+        config_string: Option<String>,
     ) -> anyhow::Result<()>
     where
         I: IntoIterator<Item = ChannelDescriptor> + Send + 'static,
@@ -808,6 +819,7 @@ impl EngineUpgrader {
             tx_edges_replacement,
             rx_edges_replacement,
             group,
+            config_string,
             Arc::clone(&self.upgrade_indicator),
         );
         self.executor.spawn_ok(fut);

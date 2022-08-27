@@ -37,12 +37,6 @@ pub struct Control {
     upgrader: EngineUpgrader,
 }
 
-// impl Drop for Control {
-//     fn drop(&mut self) {
-//         dbg!("Control is dropping");
-//     }
-// }
-
 impl Control {
     fn create_service(
         &self,
@@ -218,7 +212,7 @@ impl Control {
 
         let plugins = Arc::new(PluginCollection::new());
         plugins
-            .load_or_upgrade_plugins(&config.modules)
+            .load_or_upgrade_modules(&config.modules)
             .expect("failed to load modules");
 
         for addon in config.addons.iter() {
@@ -308,7 +302,7 @@ impl Control {
                 Ok(())
             }
             control::Request::Upgrade(request) => {
-                let engines_to_upgrade = self.plugins.load_or_upgrade_plugins(&request.plugins)?;
+                let engines_to_upgrade = self.plugins.load_or_upgrade_modules(&request.plugins)?;
                 self.upgrader.upgrade(
                     engines_to_upgrade,
                     request.flush,
@@ -395,6 +389,8 @@ impl Control {
 
                 let pid = Pid::from_raw(request.pid);
                 let gid = SubscriptionId(request.sid);
+                let config_string =
+                    PluginCollection::load_config(request.config_path, request.config_string)?;
                 self.upgrader.attach_addon(
                     pid,
                     gid,
@@ -403,6 +399,7 @@ impl Control {
                     tx_edges_replacement,
                     rx_edges_replacement,
                     group,
+                    config_string,
                 )?;
                 Ok(())
             }

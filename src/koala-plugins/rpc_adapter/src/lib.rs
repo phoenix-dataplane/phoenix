@@ -12,6 +12,7 @@ use salloc::region;
 
 // Re-export KoalaModule
 pub use koala::module::KoalaModule;
+pub use koala::plugin::InitFnResult;
 use koala::resource::Error as ResourceError;
 
 pub mod module;
