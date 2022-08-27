@@ -1,16 +1,10 @@
-use std::path::Path;
-
 use salloc::config::SallocConfig;
 use salloc::module::SallocModule;
-use salloc::KoalaModule;
+use salloc::{InitFnResult, KoalaModule};
 
 #[no_mangle]
-pub fn init_module(config_path: Option<&Path>) -> Box<dyn KoalaModule> {
-    let config = if let Some(path) = config_path {
-        SallocConfig::from_path(path).unwrap()
-    } else {
-        SallocConfig::default()
-    };
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn KoalaModule>> {
+    let config = SallocConfig::new(config_string)?;
     let module = SallocModule::new(config);
-    Box::new(module)
+    Ok(Box::new(module))
 }

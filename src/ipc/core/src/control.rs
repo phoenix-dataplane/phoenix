@@ -7,14 +7,20 @@ use interface::engine::SchedulingMode;
 
 type IResult<T> = Result<T, interface::Error>;
 
-/// Description for loading/upgrading a plugin
+/// Description for loading/upgrading a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginDescriptor {
+    /// Name of the plugin. It must match one of the valid EngineType defined in plugin's module.rs.
     pub name: String,
+    /// The path of the plugin.
     pub lib_path: PathBuf,
+    /// The path of the configuration file of this plugin. Should be a toml file.
     pub config_path: Option<PathBuf>,
+    /// The configuration string.
+    pub config_string: Option<String>,
 }
 
+/// Request for upgrading plugins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpgradeRequest {
     /// plugins to upgrade
@@ -50,6 +56,10 @@ pub struct AddonRequest {
     /// Which scheduling group should the addon belongs when attaching an addon,
     /// the group is identified as a set engines
     pub group: Vec<String>,
+    /// The path of the configuration file of this plugin. Should be a toml file.
+    pub config_path: Option<PathBuf>,
+    /// The configuration string.
+    pub config_string: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

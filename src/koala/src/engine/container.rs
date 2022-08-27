@@ -105,7 +105,7 @@ impl EngineContainer {
     /// e.g., flush inter-engine shared queues
     /// There is no need to call this function if only moves
     pub(crate) fn detach(self) -> Box<dyn Engine> {
-        std::mem::drop(self.future);
+        drop(self.future);
         let engine = self.engine;
         unsafe { Pin::into_inner_unchecked(engine) }
     }

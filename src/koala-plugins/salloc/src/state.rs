@@ -7,7 +7,6 @@ use nix::unistd::Pid;
 use crate::region::AddressMediator;
 
 use super::region::SharedRegion;
-use koala::log;
 use koala::state_mgr::ProcessShared;
 
 pub struct State {
@@ -58,11 +57,5 @@ impl Resource {
         Self {
             mr_table: spin::Mutex::new(BTreeMap::default()),
         }
-    }
-}
-
-impl Drop for Resource {
-    fn drop(&mut self) {
-        log::warn!("Resource is being dropped");
     }
 }

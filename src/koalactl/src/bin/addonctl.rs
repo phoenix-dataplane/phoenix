@@ -60,6 +60,8 @@ struct Config {
     #[serde(default)]
     group: Vec<String>,
     op: AddonOp,
+    config_path: Option<PathBuf>,
+    config_string: Option<String>,
 }
 
 impl Config {
@@ -92,6 +94,8 @@ fn main() {
         tx_channels_replacements: config.tx_channels_replacements,
         rx_channels_replacements: config.rx_channels_replacements,
         group: config.group,
+        config_path: config.config_path,
+        config_string: config.config_string,
     };
     let req = if config.op == AddonOp::Attach {
         Request::AttachAddon(SchedulingMode::Dedicate, request)

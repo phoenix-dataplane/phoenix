@@ -30,22 +30,45 @@ prefix = "/tmp/koala"
 # overwrite with KOALA_CONTROL
 path = "control.sock"
 
-[[modules]]
-name = "Salloc"
-lib_path = "/tmp/koala/plugins/libkoala_salloc_plugin.so"
-
+# Modules
 [[modules]]
 name = "RdmaTransport"
 lib_path = "/tmp/koala/plugins/libkoala_transport_rdma_plugin.so"
+config_string = '''
+prefix = "/tmp/koala"
+engine_basename = "transport-engine-rdma"
+datapath_wq_depth = 32
+datapath_cq_depth = 32
+command_max_interval_ms = 1000
+'''
+
+[[modules]]
+name = "Salloc"
+lib_path = "/tmp/koala/plugins/libkoala_salloc_plugin.so"
+config_string = '''
+prefix = "/tmp/koala"
+engine_basename = "salloc"
+'''
+
+[[modules]]
+name = "Mrpc"
+lib_path = "/tmp/koala/plugins/libkoala_mrpc_plugin.so"
+config_string = '''
+prefix = "/tmp/koala"
+engine_basename = "mrpc-engine"
+build_cache = "/tmp/koala/build-cache"
+'''
 
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
 
-[[modules]]
-name = "Mrpc"
-lib_path = "/tmp/koala/plugins/libkoala_mrpc_plugin.so"
 
+# Addons being here
 [[addons]]
 name = "RateLimit"
 lib_path = "/tmp/koala/plugins/libkoala_ratelimit_plugin.so"
+config_string = '''
+requests_per_sec = 1000
+bucket_size = 1000
+'''

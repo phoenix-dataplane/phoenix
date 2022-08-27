@@ -3,10 +3,9 @@ use std::mem::ManuallyDrop;
 use std::path::Path;
 use std::sync::Mutex;
 
-use anyhow;
 use anyhow::bail;
-
 use dashmap::DashMap;
+
 use ipc::control::PluginDescriptor;
 
 use crate::addon::KoalaAddon;
@@ -17,8 +16,11 @@ use crate::engine::EngineType;
 use crate::module::KoalaModule;
 use crate::module::Service;
 
-pub type InitModuleFn = fn(Option<&Path>) -> Box<dyn KoalaModule>;
-pub type InitAddonFn = fn(Option<&Path>) -> Box<dyn KoalaAddon>;
+// Re-export for plugin dynamic library's use
+pub type InitFnResult<T> = anyhow::Result<T>;
+
+pub type InitModuleFn = fn(Option<&str>) -> InitFnResult<Box<dyn KoalaModule>>;
+pub type InitAddonFn = fn(Option<&str>) -> InitFnResult<Box<dyn KoalaAddon>>;
 
 pub struct DynamicLibrary {
     lib: libloading::Library,
@@ -31,16 +33,14 @@ impl DynamicLibrary {
         DynamicLibrary { lib, _old: None }
     }
 
-    pub fn init_module(&self, config_path: Option<&Path>) -> Box<dyn KoalaModule> {
+    pub fn init_module(&self, config_string: Option<&str>) -> InitFnResult<Box<dyn KoalaModule>> {
         let func = unsafe { self.lib.get::<InitModuleFn>(b"init_module").unwrap() };
-        let module = func(config_path);
-        module
+        func(config_string)
     }
 
-    pub fn init_addon(&self, config_path: Option<&Path>) -> Box<dyn KoalaAddon> {
+    pub fn init_addon(&self, config_string: Option<&str>) -> InitFnResult<Box<dyn KoalaAddon>> {
         let func = unsafe { self.lib.get::<InitAddonFn>(b"init_addon").unwrap() };
-        let addon = func(config_path);
-        addon
+        func(config_string)
     }
 
     pub fn upgrade<P: AsRef<Path>>(self, path: P) -> Self {
@@ -136,6 +136,7 @@ pub struct PluginCollection {
 // }
 
 impl PluginCollection {
+    /// Returns an empty PluginCollection.
     pub fn new() -> Self {
         PluginCollection {
             modules: DashMap::new(),
@@ -144,6 +145,22 @@ impl PluginCollection {
             service_registry: DashMap::new(),
             dependency_graph: Mutex::new(EngineGraph::new()),
             libraries: ManuallyDrop::new(DashMap::new()),
+        }
+    }
+
+    /// Load config string from either inline multiline string or a separate path.
+    pub(crate) fn load_config<P: AsRef<Path>, S: AsRef<str>>(
+        config_path: Option<P>,
+        config_string: Option<S>,
+    ) -> anyhow::Result<Option<String>> {
+        if config_path.is_some() && config_string.is_some() {
+            bail!("Please provide either `config_path` or `config_string`, not both");
+        }
+
+        if let Some(path) = config_path {
+            Ok(Some(std::fs::read_to_string(path)?))
+        } else {
+            Ok(config_string.map(|x| x.as_ref().to_string()))
         }
     }
 
@@ -156,8 +173,12 @@ impl PluginCollection {
         } else {
             DynamicLibrary::new(&addon.lib_path)
         };
-        let config_path = addon.config_path.as_ref().map(|x| x.as_path());
-        let mut new_addon = dylib.init_addon(config_path);
+
+        // read config from path or string
+        let config_string =
+            Self::load_config(addon.config_path.as_ref(), addon.config_string.as_ref())?;
+        let mut new_addon = dylib.init_addon(config_string.as_deref())?;
+
         self.libraries.insert(plugin.clone(), dylib);
         if !new_addon.check_compatibility(old_ver.as_ref()) {
             self.libraries.get_mut(&plugin).unwrap().rollback();
@@ -178,9 +199,9 @@ impl PluginCollection {
         Ok(())
     }
 
-    /// Load or upgrade plugins
-    /// Returns a set of affected engine types
-    pub fn load_or_upgrade_plugins(
+    /// Load or upgrade plugins.
+    /// Returns a set of affected engine types.
+    pub fn load_or_upgrade_modules(
         &self,
         descriptors: &Vec<PluginDescriptor>,
     ) -> anyhow::Result<HashSet<EngineType>> {
@@ -200,16 +221,23 @@ impl PluginCollection {
         // load new moduels (plugins)
         for (descriptor, plugin) in descriptors.iter().zip(plugins.iter()) {
             let old_dylib = self.libraries.remove(plugin);
+
             let dylib = if let Some((_, old)) = old_dylib {
+                // upgrade from the old library
                 let old_ver = new_versions.remove(&descriptor.name[..]).unwrap();
                 old_verions.insert(&descriptor.name[..], old_ver);
                 old.upgrade(&descriptor.lib_path)
             } else {
+                // directly load the new library since it's the new
                 DynamicLibrary::new(&descriptor.lib_path)
             };
 
-            let config_path = descriptor.config_path.as_ref().map(|x| x.as_path());
-            let new_module = dylib.init_module(config_path);
+            // read config from path or string
+            let config_string = Self::load_config(
+                descriptor.config_path.as_ref(),
+                descriptor.config_string.as_ref(),
+            )?;
+            let new_module = dylib.init_module(config_string.as_deref())?;
             self.libraries.insert(plugin.clone(), dylib);
             new_versions.insert(&descriptor.name[..], new_module.version());
             new_modules.insert(&descriptor.name[..], new_module);
@@ -233,7 +261,7 @@ impl PluginCollection {
             bail!("new modules are not compatible with existing ones");
         }
 
-        std::mem::drop(modules_guard);
+        drop(modules_guard);
         // if compatible, finish upgrade
         let mut graph_guard = self.dependency_graph.lock().unwrap();
         let mut upgraded_engine_types = HashSet::new();

@@ -247,8 +247,11 @@ impl Runtime {
             // drive each engine
             for (group_index, group) in self.running.borrow().iter().enumerate() {
                 let mut group = group.borrow_mut();
+
                 for (engine_index, (_eid, engine)) in group.engines.iter_mut().enumerate() {
+                    // Set engine's local storage here before poll
                     engine.engine_mut().set_els();
+
                     // bind to a variable first (otherwise engine is borrowed in the match expression)
                     let ret = engine.future().poll(&mut cx);
                     match ret {
@@ -394,6 +397,8 @@ impl Runtime {
                     }
                 }
             }
+
+            // loop scope ends here
         }
     }
 }

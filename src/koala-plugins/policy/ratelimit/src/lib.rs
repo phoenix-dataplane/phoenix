@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 pub use koala::addon::KoalaAddon;
+pub use koala::plugin::InitFnResult;
 
 pub mod config;
 pub(crate) mod engine;

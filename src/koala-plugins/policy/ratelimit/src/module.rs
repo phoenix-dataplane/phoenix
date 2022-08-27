@@ -44,7 +44,7 @@ impl RateLimitAddon {
 }
 impl RateLimitAddon {
     pub fn new(config: RateLimitConfig) -> Self {
-        RateLimitAddon { config: config }
+        RateLimitAddon { config }
     }
 }
 
@@ -65,6 +65,11 @@ impl KoalaAddon for RateLimitAddon {
 
     fn engines(&self) -> &[EngineType] {
         RateLimitAddon::ENGINES
+    }
+
+    fn update_config(&mut self, config: &str) -> Result<()> {
+        self.config = toml::from_str(config)?;
+        Ok(())
     }
 
     fn create_engine(

@@ -29,6 +29,9 @@ pub trait KoalaAddon: TypeTagged + Send + Sync + 'static {
     /// All addon engines provided in this module
     fn engines(&self) -> &[EngineType];
 
+    /// Live update addon's (RPC policy's) configuration.
+    fn update_config(&mut self, config: &str) -> Result<()>;
+
     /// Create a new addon engine
     fn create_engine(
         &mut self,

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -25,9 +25,8 @@ impl Default for RdmaTransportConfig {
 }
 
 impl RdmaTransportConfig {
-    pub fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config = toml::from_str(&content)?;
+    pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
+        let config = toml::from_str(&config.unwrap_or(""))?;
         Ok(config)
     }
 }
