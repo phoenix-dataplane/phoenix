@@ -10,7 +10,7 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use crate::alloc::{System, ShmAllocator};
+use crate::alloc::{ShmAllocator, System};
 use crate::ptr::{ShmNonNull, ShmPtr};
 
 use super::boxed::Box;

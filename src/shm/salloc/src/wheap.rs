@@ -12,12 +12,12 @@ use memfd::Memfd;
 use slabmalloc::GLOBAL_PAGE_POOL;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
-use shm::ptr::ShmNonNull;
 use ipc::salloc::cmd;
+use shm::ptr::ShmNonNull;
 
 use super::backend::{Error, SA_CTX};
-use shm::alloc::ShmAllocator;
 use region::WriteRegion;
+use shm::alloc::ShmAllocator;
 
 thread_local! {
     /// thread-local shared heap

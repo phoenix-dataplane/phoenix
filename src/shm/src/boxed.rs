@@ -15,7 +15,7 @@ use std::ptr::NonNull;
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use crate::alloc::{System, ShmAllocator};
+use crate::alloc::{ShmAllocator, System};
 use crate::ptr::{ShmNonNull, ShmPtr};
 
 /// A pointer type for shared memory heap allocation.
