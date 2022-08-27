@@ -1,26 +1,7 @@
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
-#![feature(allocator_api)]
-#![feature(nonnull_slice_from_raw_parts)]
-#![feature(min_specialization)]
 #![feature(strict_provenance)]
-// boxed.rs
-// TODO: clean up
-#![feature(exact_size_is_empty)]
-#![feature(ptr_internals)]
-#![feature(ptr_metadata)]
-#![feature(core_intrinsics)]
-#![feature(ptr_const_cast)]
-#![feature(try_reserve_kind)]
-#![feature(trusted_len)]
-#![feature(extend_one)]
 #![feature(rustc_attrs)]
-#![feature(slice_ptr_get)]
-#![feature(slice_ptr_len)]
-// GC
-#![feature(drain_filter)]
-// stub
-#![feature(hash_drain_filter)]
 // rref
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]

@@ -1,11 +1,10 @@
+// boxed.rs & shmptr.rs
+#![feature(strict_provenance)]
+#![feature(allocator_api)]
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
-#![feature(allocator_api)]
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(min_specialization)]
-#![feature(strict_provenance)]
-// boxed.rs
-// TODO: clean up
 #![feature(exact_size_is_empty)]
 #![feature(ptr_internals)]
 #![feature(ptr_metadata)]
@@ -17,7 +16,6 @@
 #![feature(rustc_attrs)]
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
-// shmptr.rs
 #![feature(const_trait_impl)]
 #![feature(unix_socket_ancillary_data)]
 #![feature(slice_index_methods)]
