@@ -64,7 +64,7 @@ pub fn generate(
         #![feature(strict_provenance)]
 
         use interface::rpc::{MessageMeta, RpcMsgType};
-        use mrpc_marshal::{SgList, ExcavateContext, ShmRecvMr, RpcMessage};
+        use mrpc_marshal::{SgList, ExcavateContext, RpcMessage};
         use mrpc_marshal::{MarshalError, UnmarshalError, AddressMap};
 
         mod codegen {

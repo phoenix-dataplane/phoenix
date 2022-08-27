@@ -9,6 +9,6 @@ crate-type = ["dylib"]
 [dependencies]
 mrpc-derive = {{ path = "{mrpc_derive}" }}
 mrpc-marshal = {{ path = "{mrpc_marshal}" }}
-ipc = {{ path = "{ipc}" }}
+shm = {{ path = "{shm}" }}
 interface = {{ path = "{interface}" }}
 spin = "0.9.3"

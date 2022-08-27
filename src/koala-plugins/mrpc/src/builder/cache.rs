@@ -14,6 +14,7 @@ pub fn check_cache<P: AsRef<Path>>(
         checksum_ctx.consume(proto.as_bytes());
     }
     let app_identifier = format!("{:0x}", checksum_ctx.compute());
+
     // protos are stored in cache_dir/proto_dir
     let cached_proto_dir = cache_dir.as_ref().join(&app_identifier).join(proto_dir);
     if !cached_proto_dir.is_dir() {

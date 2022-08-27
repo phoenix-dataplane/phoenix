@@ -15,16 +15,16 @@ use std::ptr::NonNull;
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use crate::alloc::{ShmAllocator, System};
+use crate::alloc::{ShmAllocator, SharedHeapAllocator};
 use crate::ptr::{ShmNonNull, ShmPtr};
 
 /// A pointer type for shared memory heap allocation.
-pub struct Box<T: ?Sized, A: ShmAllocator = System>(ShmPtr<T>, A);
+pub struct Box<T: ?Sized, A: ShmAllocator = SharedHeapAllocator>(ShmPtr<T>, A);
 
 impl<T> Box<T> {
     #[inline]
     pub fn new(x: T) -> Self {
-        Box::new_in(x, System)
+        Box::new_in(x, SharedHeapAllocator)
     }
 
     #[inline]
@@ -41,12 +41,12 @@ impl<T> Box<T> {
 
     #[inline]
     pub fn new_uninit() -> Box<mem::MaybeUninit<T>> {
-        Box::new_uninit_in(System)
+        Box::new_uninit_in(SharedHeapAllocator)
     }
 
     #[inline]
     pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_uninit_in(System)
+        Box::try_new_uninit_in(SharedHeapAllocator)
     }
 
     #[inline]
@@ -62,7 +62,7 @@ impl<T> Box<T> {
 
     #[inline]
     pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_zeroed_in(System)
+        Box::try_new_zeroed_in(SharedHeapAllocator)
     }
 
     #[inline(always)]
@@ -103,7 +103,7 @@ impl<T, A: ShmAllocator> Box<[mem::MaybeUninit<T>], A> {
 impl<T: ?Sized> Box<T> {
     #[inline]
     pub(crate) unsafe fn from_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
-        Self::from_raw_in(ptr_app, ptr_backend, System)
+        Self::from_raw_in(ptr_app, ptr_backend, SharedHeapAllocator)
     }
 
     #[inline]
@@ -142,7 +142,7 @@ impl<T, A: ShmAllocator> Box<T, A> {
     #[inline]
     pub fn try_new_zeroed_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = System.allocate_zeroed(layout)?.cast();
+        let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
         let (ptr_app, ptr_backend) = ptr.to_raw_parts();
         unsafe {
             Ok(Box::from_raw_in(
@@ -160,7 +160,10 @@ impl<T, A: ShmAllocator> Box<T, A> {
         // That would make code size bigger.
         match Box::try_new_uninit_in(alloc) {
             Ok(m) => m,
-            Err(_) => handle_alloc_error(layout),
+            Err(e) => {
+                eprintln!("new_uninit_in: {}", e);
+                handle_alloc_error(layout)
+            }
         }
     }
 

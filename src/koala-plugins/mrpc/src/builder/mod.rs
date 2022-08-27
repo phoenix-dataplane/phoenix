@@ -160,7 +160,8 @@ pub fn build_serializer_lib(protos: Vec<String>, cache_dir: PathBuf) -> Result<P
         let mut cmd = Command::new("cargo");
         cmd.arg("build").arg("--release");
         cmd.current_dir(&emit_crate_dir);
-        let status = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+        // let status = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+        let status = cmd.status()?;
         if !status.success() {
             // failed to run cargo build
             return Err(Error::LibraryCompile(compiler::Error::Cargo));
