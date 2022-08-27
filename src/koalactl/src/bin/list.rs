@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 use std::env;
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 #[macro_use]
 extern crate prettytable;
 use prettytable::Table;
 use uuid::Uuid;
+use structopt::StructOpt;
 
 use ipc::control::{Request, Response, ResponseKind};
 use ipc::unix::DomainSocket;
@@ -30,7 +33,16 @@ lazy_static::lazy_static! {
     };
 }
 
+#[derive(Debug, Clone, StructOpt)]
+#[structopt(name = "Koala service subscription viewer")]
+struct Opts {
+    #[structopt(short, long)]
+    dump: Option<PathBuf>,
+}
+
 fn main() {
+    let opts = Opts::from_args();
+
     let uuid = Uuid::new_v4();
     let arg0 = env::args().next().unwrap();
     let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
@@ -57,37 +69,43 @@ fn main() {
     let kind = res.0.unwrap();
     match kind {
         ResponseKind::ListSubscription(subscriptions) => {
-            let mut services = HashMap::with_capacity(subscriptions.len());
-            let mut engine_tables = HashMap::new();
-            for subscription in subscriptions {
-                services.insert(
-                    (subscription.pid, subscription.sid),
-                    (subscription.service, subscription.addons),
-                );
-                let mut table = Table::new();
-                table.add_row(row![bFc => "EngineId", "EngineType"]);
-                for (engine_id, engine_type) in subscription.engines {
-                    table.add_row(row![Fc => engine_id, engine_type]);
+            if let Some(path) = opts.dump {
+                let f = File::create(path).expect("unable to create file");
+                let writer = BufWriter::new(f);
+                serde_json::to_writer_pretty(writer, &subscriptions).unwrap(); 
+            } else {
+                let mut services = HashMap::with_capacity(subscriptions.len());
+                let mut engine_tables = HashMap::new();
+                for subscription in subscriptions {
+                    services.insert(
+                        (subscription.pid, subscription.sid),
+                        (subscription.service, subscription.addons),
+                    );
+                    let mut table = Table::new();
+                    table.add_row(row![bFc => "EngineId", "EngineType"]);
+                    for (engine_id, engine_type) in subscription.engines {
+                        table.add_row(row![Fc => engine_id, engine_type]);
+                    }
+                    engine_tables.insert((subscription.pid, subscription.sid), table);
                 }
-                engine_tables.insert((subscription.pid, subscription.sid), table);
-            }
 
-            let mut table = Table::new();
-            table.add_row(row![bFm => "PID", "SID", "Service", "Addons", "Engines"]);
-            for ((pid, sid), (service, addons)) in services.into_iter() {
-                let engines = engine_tables.remove(&(pid, sid)).unwrap();
-                let addons = if !addons.is_empty() {
-                    addons.join(", ")
-                } else {
-                    "None".to_string()
-                };
-                if engines.len() > 1 {
-                    table.add_row(row![pid, sid, service, Fy->addons, Fb->engines]);
-                } else {
-                    table.add_row(row![pid, sid, service, Fy->addons, Fb->"None"]);
+                let mut table = Table::new();
+                table.add_row(row![bFm => "PID", "SID", "Service", "Addons", "Engines"]);
+                for ((pid, sid), (service, addons)) in services.into_iter() {
+                    let engines = engine_tables.remove(&(pid, sid)).unwrap();
+                    let addons = if !addons.is_empty() {
+                        addons.join(", ")
+                    } else {
+                        "None".to_string()
+                    };
+                    if engines.len() > 1 {
+                        table.add_row(row![pid, sid, service, Fy->addons, Fb->engines]);
+                    } else {
+                        table.add_row(row![pid, sid, service, Fy->addons, Fb->"None"]);
+                    }
                 }
+                table.printstd();
             }
-            table.printstd();
         }
         _ => panic!("invalid response"),
     }

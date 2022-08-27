@@ -7,6 +7,15 @@ pub struct RateLimitConfig {
     pub bucket_size: u64,
 }
 
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        RateLimitConfig {
+            requests_per_sec: 1000,
+            bucket_size: 1000,
+        }
+    }
+}
+
 impl RateLimitConfig {
     pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
         let config = toml::from_str(&config.unwrap_or(""))?;

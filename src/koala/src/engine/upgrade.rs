@@ -66,6 +66,7 @@ async fn attach_addon<I>(
             pid,
             sid,
         );
+        indicator.remove(&pid);
         return;
     }
 
@@ -308,6 +309,7 @@ async fn detach_addon<I>(
             pid,
             sid,
         );
+        indicator.remove(&pid);
         return;
     }
 

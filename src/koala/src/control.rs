@@ -302,6 +302,7 @@ impl Control {
                 Ok(())
             }
             control::Request::Upgrade(request) => {
+                log::info!("Receive backend upgrade request from koalactl");
                 let engines_to_upgrade = self.plugins.load_or_upgrade_modules(&request.plugins)?;
                 self.upgrader.upgrade(
                     engines_to_upgrade,
@@ -359,6 +360,7 @@ impl Control {
                 Ok(())
             }
             control::Request::AttachAddon(mode, request) => {
+                log::info!("Receive attach addon request from koalactl");
                 let addon_engine =
                     unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
                 let addon_engine = *self
@@ -404,6 +406,7 @@ impl Control {
                 Ok(())
             }
             control::Request::DetachAddon(request) => {
+                log::info!("Receive detach addon request from koalactl");
                 let addon_engine =
                     unsafe { transmute_engine_type_from_str(request.addon_engine.as_str()) };
                 let addon_engine = *self

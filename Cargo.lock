@@ -1493,6 +1493,7 @@ dependencies = [
  "lazy_static",
  "prettytable-rs",
  "serde",
+ "serde_json",
  "structopt",
  "toml",
  "uuid",
