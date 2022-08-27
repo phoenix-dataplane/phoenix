@@ -62,7 +62,9 @@ impl Context {
 // Re-exports shared memory collections and data types.
 pub use shm::collections;
 pub mod alloc {
-    pub use shm::vec::Vec;
+    use salloc::SharedHeapAllocator;
+    pub type Box<T> = shm::boxed::Box<T, SharedHeapAllocator>;
+    pub type Vec<T> = shm::vec::Vec<T, SharedHeapAllocator>;
 }
 
 pub mod stub;

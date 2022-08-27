@@ -11,6 +11,7 @@ members = [
   "src/ipc/rpc_adapter",
   "src/ipc/policy/ratelimit",
   "src/shm",
+  "src/shm/salloc",
   "src/koala",
   "src/koala-plugins/salloc",
   "src/koala-plugins/salloc/plugin",

@@ -7,12 +7,6 @@ use crate::ptr::ShmNonNull;
 pub mod system;
 pub use system::System;
 
-pub mod wheap;
-pub use wheap::SharedHeapAllocator;
-
-pub mod backend;
-pub(crate) mod gc;
-
 pub unsafe trait ShmAllocator {
     fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError>;
 

@@ -1792,6 +1792,7 @@ dependencies = [
  "minstant",
  "mmap",
  "nix 0.23.1",
+ "salloc",
  "shm",
  "thiserror",
  "tracing",
@@ -2498,6 +2499,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
 
 [[package]]
+name = "salloc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc",
+ "lazy_static",
+ "libkoala",
+ "memfd",
+ "mmap",
+ "nix 0.25.0",
+ "shm",
+ "slabmalloc",
+ "smol",
+ "spin",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2638,14 +2658,10 @@ checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
 name = "shm"
 version = "0.1.0"
 dependencies = [
- "interface",
- "ipc",
  "lazy_static",
- "libkoala",
  "memfd",
  "mmap",
  "nix 0.25.0",
- "slabmalloc",
  "smol",
  "spin",
  "thiserror",

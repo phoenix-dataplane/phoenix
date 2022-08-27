@@ -1,5 +1,5 @@
 pub(crate) mod rheap;
 pub use rheap::ReadHeap;
 
-pub use shm::alloc::backend::Error;
-pub use shm::alloc::backend::SA_CTX;
+pub use salloc::backend::Error;
+pub use salloc::backend::SA_CTX;

@@ -15,16 +15,16 @@ use std::ptr::NonNull;
 use std::alloc::handle_alloc_error;
 use std::alloc::{AllocError, Layout};
 
-use crate::alloc::{SharedHeapAllocator, ShmAllocator};
+use crate::alloc::{System, ShmAllocator};
 use crate::ptr::{ShmNonNull, ShmPtr};
 
 /// A pointer type for shared memory heap allocation.
-pub struct Box<T: ?Sized, A: ShmAllocator = SharedHeapAllocator>(ShmPtr<T>, A);
+pub struct Box<T: ?Sized, A: ShmAllocator = System>(ShmPtr<T>, A);
 
-impl<T> Box<T> {
+impl<T, A: ShmAllocator + Default> Box<T, A> {
     #[inline]
     pub fn new(x: T) -> Self {
-        Box::new_in(x, SharedHeapAllocator)
+        Box::new_in(x, A::default())
     }
 
     #[inline]
@@ -40,17 +40,17 @@ impl<T> Box<T> {
     }
 
     #[inline]
-    pub fn new_uninit() -> Box<mem::MaybeUninit<T>> {
-        Box::new_uninit_in(SharedHeapAllocator)
+    pub fn new_uninit() -> Box<mem::MaybeUninit<T>, A> {
+        Box::new_uninit_in(A::default())
     }
 
     #[inline]
-    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_uninit_in(SharedHeapAllocator)
+    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+        Box::try_new_uninit_in(A::default())
     }
 
     #[inline]
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
+    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>, A> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
@@ -61,8 +61,8 @@ impl<T> Box<T> {
     }
 
     #[inline]
-    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_zeroed_in(SharedHeapAllocator)
+    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+        Box::try_new_zeroed_in(A::default())
     }
 
     #[inline(always)]
@@ -103,7 +103,7 @@ impl<T, A: ShmAllocator> Box<[mem::MaybeUninit<T>], A> {
 impl<T: ?Sized> Box<T> {
     #[inline]
     pub(crate) unsafe fn from_raw(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
-        Self::from_raw_in(ptr_app, ptr_backend, SharedHeapAllocator)
+        Self::from_raw_in(ptr_app, ptr_backend, System)
     }
 
     #[inline]
@@ -142,7 +142,7 @@ impl<T, A: ShmAllocator> Box<T, A> {
     #[inline]
     pub fn try_new_zeroed_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
         let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = SharedHeapAllocator.allocate_zeroed(layout)?.cast();
+        let ptr = System.allocate_zeroed(layout)?.cast();
         let (ptr_app, ptr_backend) = ptr.to_raw_parts();
         unsafe {
             Ok(Box::from_raw_in(

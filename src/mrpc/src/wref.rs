@@ -4,9 +4,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use interface::rpc::Token;
-use shm::boxed::Box as ShmBox;
 use shm::ptr::ShmNonNull;
 
+use crate::alloc::Box as ShmBox;
 use crate::stub::RpcData;
 
 #[derive(PartialEq, Copy, Clone, Debug)]

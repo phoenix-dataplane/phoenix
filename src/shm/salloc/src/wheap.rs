@@ -12,11 +12,11 @@ use memfd::Memfd;
 use slabmalloc::GLOBAL_PAGE_POOL;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
-use crate::ptr::ShmNonNull;
+use shm::ptr::ShmNonNull;
 use ipc::salloc::cmd;
 
 use super::backend::{Error, SA_CTX};
-use super::ShmAllocator;
+use shm::alloc::ShmAllocator;
 use region::WriteRegion;
 
 thread_local! {
@@ -153,7 +153,7 @@ impl Default for WriteHeap {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct SharedHeapAllocator;
 
 impl SharedHeapAllocator {

@@ -14,7 +14,8 @@ libkoala = { path = "../libkoala" }
 interface = { path = "../interface" }
 ipc = { path = "../ipc", features = ["mrpc", "salloc"] }
 mmap = { path = "../mmap" }
-shm = { path = "../shm" }
+shm = { path = "../shm", features = ["mrpc"] }
+salloc = { path = "../shm/salloc" }
 
 thiserror = "1.0.29"
 uuid = "0.8.2"

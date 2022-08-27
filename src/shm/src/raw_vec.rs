@@ -10,10 +10,8 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use crate::alloc::{SharedHeapAllocator, ShmAllocator};
+use crate::alloc::{System, ShmAllocator};
 use crate::ptr::{ShmNonNull, ShmPtr};
-
-// use crate::salloc::SharedHeapAllocator;
 
 use super::boxed::Box;
 
@@ -24,26 +22,31 @@ enum AllocInit {
     Zeroed,
 }
 
-pub struct RawVec<T, A: ShmAllocator = SharedHeapAllocator> {
+pub struct RawVec<T, A: ShmAllocator = System> {
     ptr: ShmPtr<T>,
     cap: usize,
     alloc: A,
 }
 
 impl<T> RawVec<T> {
+    #[allow(unused)]
+    pub const NEW: Self = Self::new();
+
+    #[allow(unused)]
     #[must_use]
     pub const fn new() -> Self {
-        Self::new_in(SharedHeapAllocator)
+        Self::new_in(System)
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity_in(capacity, SharedHeapAllocator)
+        Self::with_capacity_in(capacity, System)
     }
 
     #[inline]
     pub fn with_capacity_zeroed(capacity: usize) -> Self {
-        Self::with_capacity_zeroed_in(capacity, SharedHeapAllocator)
+        Self::with_capacity_zeroed_in(capacity, System)
     }
 }
 
@@ -181,10 +184,10 @@ impl<T, A: ShmAllocator> RawVec<T, A> {
     }
 
     /// Returns a shared reference to the allocator backing this `RawVec`.
-    // #[inline]
-    // pub fn allocator(&self) -> &A {
-    //     &self.alloc
-    // }
+    #[inline]
+    pub fn allocator(&self) -> &A {
+        &self.alloc
+    }
 
     fn current_memory(&self) -> Option<(ShmNonNull<u8>, Layout)> {
         if mem::size_of::<T>() == 0 || self.cap == 0 {
