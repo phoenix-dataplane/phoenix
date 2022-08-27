@@ -85,7 +85,7 @@ pub fn generate<T: Service>(
                 async fn call(
                     &self,
                     req_opaque: ::mrpc::MessageErased,
-                    read_heap: std::sync::Arc<::mrpc::salloc::ReadHeap>,
+                    read_heap: std::sync::Arc<::mrpc::ReadHeap>,
                 ) -> ::mrpc::MessageErased {
                     let func_id = req_opaque.meta.func_id;
 

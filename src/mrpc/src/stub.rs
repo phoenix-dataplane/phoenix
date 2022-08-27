@@ -22,8 +22,8 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::rref::RRef;
-use crate::salloc::ReadHeap;
 use crate::wref::{WRef, WRefOpaque};
+use crate::ReadHeap;
 use crate::{Error, Status, MRPC_CTX};
 
 static CS_STUB_ID_COUNTER: AtomicU64 = AtomicU64::new(0);

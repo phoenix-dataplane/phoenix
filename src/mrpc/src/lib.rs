@@ -22,10 +22,15 @@ use ipc::service::ShmService;
 use libkoala::_rx_recv_impl as rx_recv_impl;
 use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
+pub mod rheap;
+pub use rheap::ReadHeap;
+
+pub use salloc::backend::SA_CTX;
+
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static MRPC_CTX: Context = {
-        crate::salloc::SA_CTX.with(|_ctx| {
+        SA_CTX.with(|_ctx| {
             // do nothing, just to ensure SA_CTX is initialized before MRPC_CTX
         });
         Context::register().expect("koala mRPC register failed")
@@ -68,9 +73,6 @@ pub mod alloc {
 }
 
 pub mod stub;
-
-// TODO(wyj): change to pub(crate)
-pub mod salloc;
 
 #[macro_use]
 pub mod macros;

@@ -9,7 +9,7 @@ use interface::rpc::{MessageErased, RpcId, Token};
 use ipc::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 use shm::ptr::ShmPtr;
 
-use crate::salloc::ReadHeap;
+use crate::ReadHeap;
 use crate::MRPC_CTX;
 
 pub type ShmView<'a, T> = RRef<'a, T>;
