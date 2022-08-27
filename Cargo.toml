@@ -2,6 +2,7 @@
 members = [
   "src/experimental",
   "src/interface",
+  "src/mmap",
   "src/ipc",
   "src/ipc/core",
   "src/ipc/mrpc",
@@ -9,6 +10,7 @@ members = [
   "src/ipc/transport",
   "src/ipc/rpc_adapter",
   "src/ipc/policy/ratelimit",
+  "src/shm",
   "src/koala",
   "src/koala-plugins/salloc",
   "src/koala-plugins/salloc/plugin",
@@ -36,7 +38,6 @@ members = [
   "src/koala_examples/rpc_hello",
   "src/koala_examples/rpc_bench",
   "src/koala_examples/masstree_analytics",
-  "src/memmap-fixed",
   "src/koalactl",
   "benchmark",
 ]

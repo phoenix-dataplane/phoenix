@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use interface::rpc::{MessageErased, RpcId, Token};
 use ipc::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
-use ipc::ptr::ShmPtr;
+use shm::ptr::ShmPtr;
 
 use crate::salloc::ReadHeap;
 use crate::MRPC_CTX;

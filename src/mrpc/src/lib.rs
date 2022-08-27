@@ -78,8 +78,11 @@ impl Context {
     }
 }
 
-// mRPC collections
-pub mod alloc;
+// Re-exports shared memory collections and data types.
+pub use shm::collections;
+pub mod alloc {
+    pub use shm::vec::Vec;
+}
 
 pub mod stub;
 

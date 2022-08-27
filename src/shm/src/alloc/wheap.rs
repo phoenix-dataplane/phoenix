@@ -12,10 +12,11 @@ use memfd::Memfd;
 use slabmalloc::GLOBAL_PAGE_POOL;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
-use ipc::ptr::ShmNonNull;
 use ipc::salloc::cmd;
+use crate::ptr::ShmNonNull;
 
-use super::{Error, SA_CTX};
+use super::ShmAllocator;
+use super::backend::{Error, SA_CTX};
 use region::WriteRegion;
 
 thread_local! {
@@ -184,8 +185,8 @@ impl SharedHeapAllocator {
     }
 }
 
-impl SharedHeapAllocator {
-    pub(crate) fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
+unsafe impl ShmAllocator for SharedHeapAllocator {
+    fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
         use slabmalloc::{AllocationError, Allocator};
         match layout.size() {
             0..=ZoneAllocator::MAX_ALLOC_SIZE => {
@@ -331,7 +332,7 @@ impl SharedHeapAllocator {
         }
     }
 
-    pub(crate) unsafe fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
+    fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
         // backend deallocation is handled by SharedRegion::drop together with global GarbageCollector
         use slabmalloc::Allocator;
         match layout.size() {
@@ -347,98 +348,6 @@ impl SharedHeapAllocator {
             _ => todo!("Handle object size larger than 1GB"),
         }
     }
-
-    pub(crate) fn allocate_zeroed(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
-        let ptr = self.allocate(layout)?;
-        // SAFETY: `alloc` returns a valid memory block
-        unsafe { ptr.as_mut_ptr_app().write_bytes(0, ptr.len()) }
-        Ok(ptr)
-    }
-
-    pub(crate) unsafe fn grow(
-        &self,
-        ptr: ShmNonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<ShmNonNull<[u8]>, AllocError> {
-        debug_assert!(
-            new_layout.size() >= old_layout.size(),
-            "`new_layout.size()` must be greater than or equal to `old_layout.size()`"
-        );
-
-        let new_ptr = self.allocate(new_layout)?;
-
-        // SAFETY: because `new_layout.size()` must be greater than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(
-            ptr.as_ptr_app(),
-            new_ptr.as_mut_ptr_app(),
-            old_layout.size(),
-        );
-        self.deallocate(ptr, old_layout);
-
-        Ok(new_ptr)
-    }
-
-    #[allow(dead_code)]
-    pub(crate) unsafe fn grow_zeroed(
-        &self,
-        ptr: ShmNonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<ShmNonNull<[u8]>, AllocError> {
-        debug_assert!(
-            new_layout.size() >= old_layout.size(),
-            "`new_layout.size()` must be greater than or equal to `old_layout.size()`"
-        );
-
-        let new_ptr = self.allocate_zeroed(new_layout)?;
-
-        // SAFETY: because `new_layout.size()` must be greater than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(
-            ptr.as_ptr_app(),
-            new_ptr.as_mut_ptr_app(),
-            old_layout.size(),
-        );
-        self.deallocate(ptr, old_layout);
-
-        Ok(new_ptr)
-    }
-
-    pub(crate) unsafe fn shrink(
-        &self,
-        ptr: ShmNonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<ShmNonNull<[u8]>, AllocError> {
-        debug_assert!(
-            new_layout.size() <= old_layout.size(),
-            "`new_layout.size()` must be smaller than or equal to `old_layout.size()`"
-        );
-
-        let new_ptr = self.allocate(new_layout)?;
-
-        // SAFETY: because `new_layout.size()` must be lower than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
-        std::ptr::copy_nonoverlapping(
-            ptr.as_ptr_app(),
-            new_ptr.as_mut_ptr_app(),
-            new_layout.size(),
-        );
-        self.deallocate(ptr, old_layout);
-
-        Ok(new_ptr)
-    }
 }
 
 mod region {
@@ -446,7 +355,7 @@ mod region {
     use std::slice;
 
     use memfd::Memfd;
-    use memmap_fixed::MmapFixed;
+    use mmap::MmapFixed;
 
     use ipc::salloc::cmd::{Command, CompletionKind};
     use libkoala::_rx_recv_impl as rx_recv_impl;
@@ -458,7 +367,7 @@ mod region {
     pub(crate) struct WriteRegion {
         mmap: MmapFixed,
         remote_addr: usize,
-        pub(crate) align: usize,
+        align: usize,
         _memfd: Memfd,
     }
 
@@ -520,9 +429,16 @@ mod region {
             self.mmap.as_mut_ptr()
         }
 
+        #[allow(unused)]
         #[inline]
         pub(crate) fn remote_addr(&self) -> usize {
             self.remote_addr
+        }
+
+        #[allow(unused)]
+        #[inline]
+        pub(crate) fn align(&self) -> usize {
+            self.align
         }
     }
 }

@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+interface = { path = "../interface" }
+shm = { path = "../shm" }
+
 serde = "1.0.137"
 thiserror = "1.0.31"
-interface = { path = "../interface" }
-ipc = { path = "../ipc" }
 spin = "0.9.3"

@@ -1,6 +1,6 @@
 use crate::shadow::vec::Vec;
 use crate::{AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
-use ipc::ptr::ShmPtr;
+use shm::ptr::ShmPtr;
 
 #[inline(always)]
 pub fn emplace(val: &Vec<u8>, sgl: &mut SgList) -> Result<(), MarshalError> {

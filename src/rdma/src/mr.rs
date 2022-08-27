@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::slice;
 
 use memfd::{Memfd, MemfdOptions};
-use memmap_fixed::MmapFixed;
+use mmap::MmapFixed;
 use thiserror::Error;
 
 use crate::{ffi, ibv, rdmacm};

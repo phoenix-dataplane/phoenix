@@ -32,7 +32,6 @@ pub(crate) use crate::shmem_ipc::{ShmReceiver, ShmSender};
 
 /// Common data structures passed between client and server
 pub mod control;
-pub mod ptr;
 
 /// Provides Range
 pub mod buf;

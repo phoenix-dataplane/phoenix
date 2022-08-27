@@ -1,3 +1,4 @@
+//! Shared memory version of std::ptr::NonNull.
 use std::fmt;
 
 use std::ptr;

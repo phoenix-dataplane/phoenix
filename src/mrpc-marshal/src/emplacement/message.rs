@@ -3,7 +3,7 @@ use crate::{
     AddressArbiter, ExcavateContext, MarshalError, RpcMessage, SgE, SgList, UnmarshalError,
 };
 
-use ipc::ptr::ShmPtr;
+use shm::ptr::ShmPtr;
 
 #[inline(always)]
 pub fn emplace<M: RpcMessage>(msg: &M, sgl: &mut SgList) -> Result<(), MarshalError> {

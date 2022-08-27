@@ -12,7 +12,8 @@ use std::ops::{self, Index, IndexMut, RangeBounds};
 use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
-use ipc::ptr::ShmPtr;
+use crate::alloc::SharedHeapAllocator;
+use crate::ptr::ShmPtr;
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
@@ -111,7 +112,7 @@ impl<T> Vec<T> {
         capacity: usize,
     ) -> Vec<T> {
         Vec {
-            buf: RawVec::from_raw_parts(ptr_app, ptr_backend, capacity),
+            buf: RawVec::from_raw_parts_in(ptr_app, ptr_backend, capacity, SharedHeapAllocator),
             len: length,
         }
     }
@@ -1365,7 +1366,12 @@ impl<T> Drop for IntoIter<T> {
                 // RawVec handles deallocation
                 let (ptr_app, ptr_backend) = self.0.buf.to_raw_parts();
                 let _ = unsafe {
-                    RawVec::from_raw_parts(ptr_app.as_ptr(), ptr_backend.as_ptr(), self.0.cap)
+                    RawVec::from_raw_parts_in(
+                        ptr_app.as_ptr(),
+                        ptr_backend.as_ptr(),
+                        self.0.cap,
+                        SharedHeapAllocator,
+                    )
                 };
             }
         }

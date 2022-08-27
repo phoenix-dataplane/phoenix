@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 use dashmap::DashMap;
 use fnv::FnvHashMap as HashMap;
@@ -21,10 +22,11 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 use crate::rref::RRef;
-use crate::salloc::gc::CS_STUB_ID_COUNTER;
 use crate::salloc::ReadHeap;
 use crate::wref::{WRef, WRefOpaque};
 use crate::{Error, Status, MRPC_CTX};
+
+static CS_STUB_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Default)]
 struct PendingWRef {

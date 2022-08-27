@@ -1,12 +1,6 @@
-use std::sync::atomic::AtomicU64;
-
 use lazy_static::lazy_static;
 
 use slabmalloc::GLOBAL_PAGE_POOL;
-
-lazy_static! {
-    pub(crate) static ref CS_STUB_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
-}
 
 lazy_static! {
     pub(crate) static ref PAGE_RECLAIMER_CTX: PageReclaimerContext =
