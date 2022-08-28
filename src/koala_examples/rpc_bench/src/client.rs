@@ -169,7 +169,11 @@ async fn run_bench(
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
                     let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    println!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    if args.log_level == "info" {
+                        tracing::info!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    } else {
+                        println!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    }
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
                     last_nbytes = nbytes;
@@ -204,23 +208,42 @@ fn run_client_thread(
 
         let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
 
-        println!(
-            "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
-            dura,
-            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
-            1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
-        );
-        // print latencies
-        println!(
-            "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-            dura,
-            Duration::from_nanos(hist.mean() as u64),
-            Duration::from_nanos(hist.min()),
-            Duration::from_nanos(hist.value_at_percentile(50.0)),
-            Duration::from_nanos(hist.value_at_percentile(95.0)),
-            Duration::from_nanos(hist.value_at_percentile(99.0)),
-            Duration::from_nanos(hist.max()),
-        );
+        if args.log_level == "info" {
+            tracing::info!(
+                "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
+                dura,
+                8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+                1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
+            );
+            tracing::info!(
+                "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+                dura,
+                Duration::from_nanos(hist.mean() as u64),
+                Duration::from_nanos(hist.min()),
+                Duration::from_nanos(hist.value_at_percentile(50.0)),
+                Duration::from_nanos(hist.value_at_percentile(95.0)),
+                Duration::from_nanos(hist.value_at_percentile(99.0)),
+                Duration::from_nanos(hist.max()),
+            );
+        } else {
+            println!(
+                "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
+                dura,
+                8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+                1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
+            );
+            // print latencies
+            println!(
+                "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+                dura,
+                Duration::from_nanos(hist.mean() as u64),
+                Duration::from_nanos(hist.min()),
+                Duration::from_nanos(hist.value_at_percentile(50.0)),
+                Duration::from_nanos(hist.value_at_percentile(95.0)),
+                Duration::from_nanos(hist.value_at_percentile(99.0)),
+                Duration::from_nanos(hist.max()),
+            );
+        }
 
         Result::<(), mrpc::Status>::Ok(())
     })?;
@@ -259,6 +282,7 @@ fn init_tokio_tracing(
         .with_target(true)
         .with_thread_ids(false)
         .with_thread_names(false)
+        .with_ansi(false)
         .compact();
 
     let env_filter = tracing_subscriber::filter::EnvFilter::builder()

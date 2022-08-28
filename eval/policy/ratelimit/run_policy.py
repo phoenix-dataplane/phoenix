@@ -77,6 +77,7 @@ subprocess.run([
     "--dump", 
     "/tmp/mrpc-eval/policy/list.json"
 ])
+time.sleep(5)
 
 with open("/tmp/mrpc-eval/policy/list.json") as f:
     data = json.load(f)
@@ -90,13 +91,8 @@ for subscription in data:
             addon_eid = eid
 
 rates = [
-    #1000
-    100000,
-    300000,
     500000,
-    700000,
     900000,
-    1100000
 ]
 for rate in rates:
     subprocess.run([
@@ -113,7 +109,7 @@ for rate in rates:
         "-b",
         str(rate)
     ])
-    time.sleep(5)
+    time.sleep(15)
 
 detach_config = os.path.join(SCRIPTDIR, "detach.toml") 
 subprocess.run([

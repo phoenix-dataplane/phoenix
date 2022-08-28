@@ -84,6 +84,7 @@ where
 
 pub fn init_log(
     config: &Config,
+    ansi: bool,
 ) -> Option<(
     tracing_appender::non_blocking::WorkerGuard,
     tracing_chrome::FlushGuard,
@@ -103,7 +104,7 @@ pub fn init_log(
         .from_env_lossy();
 
     let log_fmt_layer = tracing_subscriber::fmt::layer()
-        .event_format(KoalaFormatter { ansi: true })
+        .event_format(KoalaFormatter { ansi })
         .with_filter(log_env_filter);
 
     let registry = tracing_subscriber::registry().with(log_fmt_layer);

@@ -288,6 +288,7 @@ impl Control {
                 Ok(())
             }
             control::Request::EngineRequest(eid, request) => {
+                log::info!("Receive engine request");
                 let eid = EngineId(eid);
                 match self.runtime_manager.engine_subscriptions.get(&eid) {
                     Some(info) => {
