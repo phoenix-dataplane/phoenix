@@ -10,9 +10,8 @@ use std::alloc::Layout;
 use std::collections::TryReserveError;
 use std::collections::TryReserveErrorKind::*;
 
-use ipc::ptr::{ShmNonNull, ShmPtr};
-
-use crate::salloc::SharedHeapAllocator;
+use crate::alloc::{ShmAllocator, System};
+use crate::ptr::{ShmNonNull, ShmPtr};
 
 use super::boxed::Box;
 
@@ -23,12 +22,40 @@ enum AllocInit {
     Zeroed,
 }
 
-pub struct RawVec<T> {
+pub struct RawVec<T, A: ShmAllocator = System> {
     ptr: ShmPtr<T>,
     cap: usize,
+    alloc: A,
 }
 
 impl<T> RawVec<T> {
+    #[allow(unused)]
+    pub const NEW: Self = Self::new();
+
+    #[allow(unused)]
+    #[must_use]
+    pub const fn new() -> Self {
+        Self::new_in(System)
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity_in(capacity, System)
+    }
+
+    #[inline]
+    pub fn with_capacity_zeroed(capacity: usize) -> Self {
+        Self::with_capacity_zeroed_in(capacity, System)
+    }
+}
+
+impl<T, A: ShmAllocator> RawVec<T, A> {
+    // Tiny Vecs are dumb. Skip to:
+    // - 8 if the element size is 1, because any heap allocators is likely
+    //   to round up a request of less than 8 bytes to at least 8 bytes.
+    // - 4 if elements are moderate-sized (<= 1 KiB).
+    // - 1 otherwise, to avoid wasting too much space for very short Vecs.
     pub(crate) const MIN_NON_ZERO_CAP: usize = if mem::size_of::<T>() == 1 {
         8
     } else if mem::size_of::<T>() <= 1024 {
@@ -37,23 +64,37 @@ impl<T> RawVec<T> {
         1
     };
 
-    pub const fn new() -> Self {
+    #[must_use]
+    pub const fn new_in(alloc: A) -> Self {
         Self {
             ptr: ShmPtr::dangling(),
             cap: 0,
+            alloc,
         }
     }
 
     #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::allocate(capacity, AllocInit::Uninitialized)
+    pub fn with_capacity_in(capacity: usize, alloc: A) -> Self {
+        Self::allocate_in(capacity, AllocInit::Uninitialized, alloc)
     }
 
     #[inline]
-    pub fn with_capacity_zeroed(capacity: usize) -> Self {
-        Self::allocate(capacity, AllocInit::Zeroed)
+    pub fn with_capacity_zeroed_in(capacity: usize, alloc: A) -> Self {
+        Self::allocate_in(capacity, AllocInit::Zeroed, alloc)
     }
 
+    /// Converts the entire buffer into `Box<[MaybeUninit<T>]>` with the specified `len`.
+    ///
+    /// Note that this will correctly reconstitute any `cap` changes
+    /// that may have been performed. (See description of type for details.)
+    ///
+    /// # Safety
+    ///
+    /// * `len` must be greater than or equal to the most recently requested capacity, and
+    /// * `len` must be less than or equal to `self.capacity()`.
+    ///
+    /// Note, that the requested capacity and `self.capacity()` could differ, as
+    /// an allocator could overallocate and return a greater memory block than requested.
     pub unsafe fn into_box(self, len: usize) -> Box<[MaybeUninit<T>]> {
         debug_assert!(
             len <= self.capacity(),
@@ -68,9 +109,9 @@ impl<T> RawVec<T> {
         Box::from_raw(slice_app, slice_backend)
     }
 
-    fn allocate(capacity: usize, init: AllocInit) -> Self {
+    fn allocate_in(capacity: usize, init: AllocInit, alloc: A) -> Self {
         if mem::size_of::<T>() == 0 {
-            Self::new()
+            Self::new_in(alloc)
         } else {
             let layout = match Layout::array::<T>(capacity) {
                 Ok(layout) => layout,
@@ -81,8 +122,8 @@ impl<T> RawVec<T> {
                 Err(_) => capacity_overflow(),
             }
             let result = match init {
-                AllocInit::Uninitialized => SharedHeapAllocator.allocate(layout),
-                AllocInit::Zeroed => SharedHeapAllocator.allocate_zeroed(layout),
+                AllocInit::Uninitialized => alloc.allocate(layout),
+                AllocInit::Zeroed => alloc.allocate_zeroed(layout),
             };
             let (ptr_app, ptr_backend) = match result {
                 Ok(p) => p.to_raw_parts(),
@@ -91,20 +132,38 @@ impl<T> RawVec<T> {
             let ptr = unsafe {
                 ShmPtr::new_unchecked(ptr_app.as_mut_ptr().cast(), ptr_backend.as_mut_ptr().cast())
             };
-            Self { ptr, cap: capacity }
+            Self {
+                ptr,
+                cap: capacity,
+                alloc,
+            }
         }
     }
 
+    /// Reconstitutes a `RawVec` from a pointer, capacity, and allocator.
+    ///
+    /// # Safety
+    ///
+    /// The `ptr` must be allocated (via the given allocator `alloc`), and with the given
+    /// `capacity`.
+    /// The `capacity` cannot exceed `isize::MAX` for sized types. (only a concern on 32-bit
+    /// systems). ZST vectors may have a capacity up to `usize::MAX`.
+    /// If the `ptr` and `capacity` come from a `RawVec` created via `alloc`, then this is
+    /// guaranteed.
     #[inline]
-    pub unsafe fn from_raw_parts(ptr_app: *mut T, ptr_backend: *mut T, capacity: usize) -> Self {
+    pub unsafe fn from_raw_parts_in(
+        ptr_app: *mut T,
+        ptr_backend: *mut T,
+        capacity: usize,
+        alloc: A,
+    ) -> Self {
         Self {
             ptr: ShmPtr::new_unchecked(ptr_app, ptr_backend),
             cap: capacity,
+            alloc,
         }
     }
-}
 
-impl<T> RawVec<T> {
     #[inline]
     pub fn ptr(&self) -> *mut T {
         self.ptr.as_ptr_app()
@@ -124,6 +183,12 @@ impl<T> RawVec<T> {
         }
     }
 
+    /// Returns a shared reference to the allocator backing this `RawVec`.
+    #[inline]
+    pub fn allocator(&self) -> &A {
+        &self.alloc
+    }
+
     fn current_memory(&self) -> Option<(ShmNonNull<u8>, Layout)> {
         if mem::size_of::<T>() == 0 || self.cap == 0 {
             None
@@ -137,13 +202,15 @@ impl<T> RawVec<T> {
             }
         }
     }
-}
 
-impl<T> RawVec<T> {
     #[inline]
     pub fn reserve(&mut self, len: usize, additional: usize) {
         #[cold]
-        fn do_reserve_and_handle<T>(slf: &mut RawVec<T>, len: usize, additional: usize) {
+        fn do_reserve_and_handle<T, A: ShmAllocator>(
+            slf: &mut RawVec<T, A>,
+            len: usize,
+            additional: usize,
+        ) {
             handle_reserve(slf.grow_amortized(len, additional));
         }
 
@@ -152,11 +219,12 @@ impl<T> RawVec<T> {
         }
     }
 
-    #[inline(never)]
-    pub fn reserve_for_push(&mut self, len: usize) {
-        handle_reserve(self.grow_amortized(len, 1));
-    }
+    // #[inline(never)]
+    // pub fn reserve_for_push(&mut self, len: usize) {
+    //     handle_reserve(self.grow_amortized(len, 1));
+    // }
 
+    /// The same as `reserve`, but returns on errors instead of panicking or aborting.
     pub fn try_reserve(&mut self, len: usize, additional: usize) -> Result<(), TryReserveError> {
         if self.needs_to_grow(len, additional) {
             self.grow_amortized(len, additional)
@@ -186,7 +254,7 @@ impl<T> RawVec<T> {
     }
 }
 
-impl<T> RawVec<T> {
+impl<T, A: ShmAllocator> RawVec<T, A> {
     fn needs_to_grow(&self, len: usize, additional: usize) -> bool {
         additional > self.capacity().wrapping_sub(len)
     }
@@ -212,7 +280,7 @@ impl<T> RawVec<T> {
 
         let new_layout = Layout::array::<T>(cap);
 
-        let ptr = finish_grow(new_layout, self.current_memory())?;
+        let ptr = finish_grow(new_layout, self.current_memory(), &mut self.alloc)?;
         self.set_ptr_and_cap(ptr, cap);
         Ok(())
     }
@@ -228,7 +296,7 @@ impl<T> RawVec<T> {
         let new_layout = Layout::array::<T>(cap);
 
         // `finish_grow` is non-generic over `T`.
-        let ptr = finish_grow(new_layout, self.current_memory())?;
+        let ptr = finish_grow(new_layout, self.current_memory(), &mut self.alloc)?;
         self.set_ptr_and_cap(ptr, cap);
         Ok(())
     }
@@ -248,7 +316,7 @@ impl<T> RawVec<T> {
 
         let ptr = unsafe {
             let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-            SharedHeapAllocator
+            self.alloc
                 .shrink(ptr, layout, new_layout)
                 .map_err(|_| AllocError {
                     layout: new_layout,
@@ -261,9 +329,10 @@ impl<T> RawVec<T> {
 }
 
 #[inline(never)]
-fn finish_grow(
+fn finish_grow<A: ShmAllocator>(
     new_layout: Result<Layout, LayoutError>,
     current_memory: Option<(ShmNonNull<u8>, Layout)>,
+    alloc: &mut A,
 ) -> Result<ShmNonNull<[u8]>, TryReserveError> {
     let new_layout = new_layout.map_err(|_| CapacityOverflow)?;
 
@@ -274,10 +343,10 @@ fn finish_grow(
         unsafe {
             // The allocator checks for alignment equality
             intrinsics::assume(old_layout.align() == new_layout.align());
-            SharedHeapAllocator.grow(ptr, old_layout, new_layout)
+            alloc.grow(ptr, old_layout, new_layout)
         }
     } else {
-        SharedHeapAllocator.allocate(new_layout)
+        alloc.allocate(new_layout)
     };
 
     memory.map_err(|_| {
@@ -289,14 +358,15 @@ fn finish_grow(
     })
 }
 
-impl<T> Drop for RawVec<T> {
+impl<T, A: ShmAllocator> Drop for RawVec<T, A> {
+    /// Frees the memory owned by the `RawVec` *without* trying to drop its contents.
     fn drop(&mut self) {
         if let Some((ptr, layout)) = self.current_memory() {
             // Contents (T) are dropped by RawVec's users
 
             // SAFETY: The `ptr` must be pointing to a previously allocated
             // location on the sender shared heap.
-            unsafe { SharedHeapAllocator.deallocate(ptr, layout) }
+            self.alloc.deallocate(ptr, layout)
         }
     }
 }

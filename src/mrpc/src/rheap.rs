@@ -5,7 +5,7 @@ use std::slice;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use memfd::Memfd;
-use memmap_fixed::MmapFixed;
+use mmap::MmapFixed;
 
 use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd::ConnectResponse;

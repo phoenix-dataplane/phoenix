@@ -1,5 +1,5 @@
 [package]
-name = "memmap-fixed"
+name = "mmap"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2.103"
+nix = "0.25.0"

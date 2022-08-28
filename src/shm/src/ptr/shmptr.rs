@@ -1,3 +1,4 @@
+//! Shared memory version of std::ptr::Unique.
 use std::fmt;
 use std::marker::PhantomData;
 use std::ptr::NonNull;

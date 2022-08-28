@@ -1437,7 +1437,7 @@ dependencies = [
  "koala",
  "libc",
  "memfd",
- "memmap-fixed",
+ "mmap",
  "nix 0.23.1",
  "serde",
  "spin",
@@ -1638,13 +1638,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memmap-fixed"
-version = "0.1.0"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "memmap2"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1772,6 +1765,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mmap"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "nix 0.25.0",
+]
+
+[[package]]
 name = "mrpc"
 version = "0.1.0"
 dependencies = [
@@ -1788,13 +1789,11 @@ dependencies = [
  "libkoala",
  "log",
  "memfd",
- "memmap-fixed",
- "memmap2 0.5.7",
  "minstant",
+ "mmap",
  "nix 0.23.1",
- "slabmalloc",
- "smol",
- "spin",
+ "salloc",
+ "shm",
  "thiserror",
  "tracing",
  "uuid",
@@ -1829,8 +1828,8 @@ name = "mrpc-marshal"
 version = "0.1.0"
 dependencies = [
  "interface",
- "ipc",
  "serde",
+ "shm",
  "spin",
  "thiserror",
 ]
@@ -2193,8 +2192,8 @@ name = "prost"
 version = "0.10.1"
 dependencies = [
  "bytes",
- "mrpc",
  "prost-derive",
+ "shm",
 ]
 
 [[package]]
@@ -2362,7 +2361,7 @@ dependencies = [
  "libc",
  "log",
  "memfd",
- "memmap-fixed",
+ "mmap",
  "nix 0.25.0",
  "serde",
  "socket2",
@@ -2500,6 +2499,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
 
 [[package]]
+name = "salloc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc",
+ "lazy_static",
+ "libkoala",
+ "memfd",
+ "mmap",
+ "nix 0.25.0",
+ "shm",
+ "slabmalloc",
+ "smol",
+ "spin",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2635,6 +2653,20 @@ name = "shlex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
+
+[[package]]
+name = "shm"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "memfd",
+ "mmap",
+ "nix 0.25.0",
+ "smol",
+ "spin",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "shmem-ipc"

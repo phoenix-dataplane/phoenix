@@ -4,7 +4,6 @@ pub use ipc_core::customer;
 
 /// Re-export
 pub use ipc_core::ipc_channel;
-pub use ipc_core::ptr;
 pub use ipc_core::queue;
 pub use ipc_core::service;
 pub use ipc_core::shmem_ipc;

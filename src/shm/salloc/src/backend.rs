@@ -5,14 +5,15 @@ use thiserror::Error;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
-use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 thread_local! {
-    // Initialization is dynamically performed on the first call to with within a thread.
-    pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
+    /// Initialization is dynamically performed on the first call to with within a thread.
+    #[doc(hidden)]
+    pub static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
 }
 
-pub(crate) struct SAContext {
+pub struct SAContext {
     pub(crate) service:
         ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
@@ -24,14 +25,6 @@ impl SAContext {
         Ok(Self { service })
     }
 }
-
-pub(crate) mod gc;
-
-pub(crate) mod wheap;
-pub(crate) use wheap::SharedHeapAllocator;
-
-pub(crate) mod rheap;
-pub use rheap::ReadHeap;
 
 #[derive(Error, Debug)]
 pub enum Error {

@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::os::unix::prelude::AsRawFd;
 
 use memfd::{Memfd, MemfdOptions};
-use memmap_fixed::MmapFixed;
+use mmap::MmapFixed;
 use thiserror::Error;
 
 use interface::{AsHandle, Handle};

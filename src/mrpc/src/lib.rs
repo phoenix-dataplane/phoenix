@@ -1,26 +1,7 @@
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
-#![feature(allocator_api)]
-#![feature(nonnull_slice_from_raw_parts)]
-#![feature(min_specialization)]
 #![feature(strict_provenance)]
-// boxed.rs
-// TODO: clean up
-#![feature(exact_size_is_empty)]
-#![feature(ptr_internals)]
-#![feature(ptr_metadata)]
-#![feature(core_intrinsics)]
-#![feature(ptr_const_cast)]
-#![feature(try_reserve_kind)]
-#![feature(trusted_len)]
-#![feature(extend_one)]
 #![feature(rustc_attrs)]
-#![feature(slice_ptr_get)]
-#![feature(slice_ptr_len)]
-// GC
-#![feature(drain_filter)]
-// stub
-#![feature(hash_drain_filter)]
 // rref
 #![feature(maybe_uninit_uninit_array)]
 #![feature(maybe_uninit_array_assume_init)]
@@ -41,10 +22,15 @@ use ipc::service::ShmService;
 use libkoala::_rx_recv_impl as rx_recv_impl;
 use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
+pub mod rheap;
+pub use rheap::ReadHeap;
+
+pub use salloc::backend::SA_CTX;
+
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static MRPC_CTX: Context = {
-        crate::salloc::SA_CTX.with(|_ctx| {
+        SA_CTX.with(|_ctx| {
             // do nothing, just to ensure SA_CTX is initialized before MRPC_CTX
         });
         Context::register().expect("koala mRPC register failed")
@@ -78,13 +64,15 @@ impl Context {
     }
 }
 
-// mRPC collections
-pub mod alloc;
+// Re-exports shared memory collections and data types.
+pub use shm::collections;
+pub mod alloc {
+    use salloc::SharedHeapAllocator;
+    pub type Box<T> = shm::boxed::Box<T, SharedHeapAllocator>;
+    pub type Vec<T> = shm::vec::Vec<T, SharedHeapAllocator>;
+}
 
 pub mod stub;
-
-// TODO(wyj): change to pub(crate)
-pub mod salloc;
 
 #[macro_use]
 pub mod macros;

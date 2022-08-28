@@ -11,7 +11,7 @@ mod code_generator;
 
 const MRPC_DERIVE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-derive");
 const MRPC_MARSHAL: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
-const IPC: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ipc");
+const SHM: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../shm");
 const INTERFACE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../interface");
 const TOOLCHAIN: &'static str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -79,7 +79,7 @@ impl Builder {
             include_str!("template/Cargo.toml"),
             mrpc_derive = MRPC_DERIVE,
             mrpc_marshal = MRPC_MARSHAL,
-            ipc = IPC,
+            shm = SHM,
             interface = INTERFACE
         );
         fs::write(self.emit_crate_dir.join("Cargo.toml"), manifest).unwrap();

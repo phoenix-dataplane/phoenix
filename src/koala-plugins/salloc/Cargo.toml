@@ -12,7 +12,7 @@ crate-type = ["rlib"]
 interface = { path = "../../interface" }
 ipc = { path = "../../ipc" }
 koala = { path = "../../koala" }
-memmap-fixed = { path = "../../memmap-fixed" }
+mmap = { path = "../../mmap" }
 
 anyhow = "1.0.58"
 nix = "0.23.0"

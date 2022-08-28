@@ -12,30 +12,72 @@ use std::ops::{self, Index, IndexMut, RangeBounds};
 use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
-use ipc::ptr::ShmPtr;
+use crate::alloc::{ShmAllocator, System};
+use crate::ptr::ShmPtr;
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
 
-pub struct Vec<T> {
-    buf: RawVec<T>,
+pub struct Vec<T, A: ShmAllocator = System> {
+    buf: RawVec<T, A>,
     len: usize,
 }
 
-impl<T> Vec<T> {
+impl<T, A: ShmAllocator + Default> Vec<T, A> {
     #[inline]
-    pub const fn new() -> Vec<T> {
+    pub fn new() -> Self {
         Vec {
-            buf: RawVec::new(),
+            buf: RawVec::new_in(A::default()),
             len: 0,
         }
     }
 
     #[inline]
-    pub fn with_capacity(capacity: usize) -> Vec<T> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity_in(capacity, A::default())
+    }
+
+    pub(crate) unsafe fn from_raw_parts(
+        ptr_app: *mut T,
+        ptr_backend: *mut T,
+        length: usize,
+        capacity: usize,
+    ) -> Self {
         Vec {
-            buf: RawVec::with_capacity(capacity),
+            buf: RawVec::from_raw_parts_in(ptr_app, ptr_backend, capacity, A::default()),
+            len: length,
+        }
+    }
+}
+
+impl<T, A: ShmAllocator> Vec<T, A> {
+    #[inline]
+    pub const fn new_in(alloc: A) -> Self {
+        Vec {
+            buf: RawVec::new_in(alloc),
             len: 0,
+        }
+    }
+
+    #[inline]
+    pub fn with_capacity_in(capacity: usize, alloc: A) -> Self {
+        Vec {
+            buf: RawVec::with_capacity_in(capacity, alloc),
+            len: 0,
+        }
+    }
+
+    #[inline]
+    pub unsafe fn from_raw_parts_in(
+        ptr_app: *mut T,
+        ptr_backend: *mut T,
+        length: usize,
+        capacity: usize,
+        alloc: A,
+    ) -> Self {
+        Vec {
+            buf: RawVec::from_raw_parts_in(ptr_app, ptr_backend, capacity, alloc),
+            len: length,
         }
     }
 
@@ -92,6 +134,11 @@ impl<T> Vec<T> {
         self
     }
 
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        self
+    }
+
     /// ptr_app, ptr_backend, len, capacity
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
         let me = ManuallyDrop::new(self);
@@ -104,16 +151,28 @@ impl<T> Vec<T> {
         )
     }
 
-    pub(crate) unsafe fn from_raw_parts(
-        ptr_app: *mut T,
-        ptr_backend: *mut T,
-        length: usize,
-        capacity: usize,
-    ) -> Vec<T> {
-        Vec {
-            buf: RawVec::from_raw_parts(ptr_app, ptr_backend, capacity),
-            len: length,
+    pub(crate) fn into_raw_parts_alloc(self) -> (*mut T, *mut T, usize, usize, A) {
+        let me = ManuallyDrop::new(self);
+        let alloc = unsafe { ptr::read(me.allocator()) };
+        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        (
+            ptr_app.as_ptr(),
+            ptr_backend.as_ptr(),
+            me.len(),
+            me.capacity(),
+            alloc,
+        )
+    }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const T {
+        // We shadow the slice method of the same name to avoid going through
+        // `deref`, which creates an intermediate reference.
+        let ptr = self.buf.ptr();
+        unsafe {
+            assume(!ptr.is_null());
         }
+        ptr
     }
 
     #[inline]
@@ -125,6 +184,11 @@ impl<T> Vec<T> {
             assume(!ptr.is_null());
         }
         ptr
+    }
+
+    #[inline]
+    pub fn allocator(&self) -> &A {
+        self.buf.allocator()
     }
 
     #[inline]
@@ -264,7 +328,7 @@ impl<T> Vec<T> {
         }
 
         /* INVARIANT: vec.len() > read >= write > write-1 >= 0 */
-        struct FillGapOnDrop<'a, T> {
+        struct FillGapOnDrop<'a, T, A: ShmAllocator> {
             /* Offset of the element we want to check if it is duplicate */
             read: usize,
 
@@ -273,10 +337,10 @@ impl<T> Vec<T> {
             write: usize,
 
             /* The Vec that would need correction if `same_bucket` panicked */
-            vec: &'a mut Vec<T>,
+            vec: &'a mut Vec<T, A>,
         }
 
-        impl<'a, T> Drop for FillGapOnDrop<'a, T> {
+        impl<'a, T, A: ShmAllocator> Drop for FillGapOnDrop<'a, T, A> {
             fn drop(&mut self) {
                 /* This code gets executed when `same_bucket` panics */
 
@@ -396,7 +460,7 @@ impl<T> Vec<T> {
         self.len += count;
     }
 
-    pub fn drain<R>(&mut self, range: R) -> Drain<'_, T>
+    pub fn drain<R>(&mut self, range: R) -> Drain<'_, T, A>
     where
         R: RangeBounds<usize>,
     {
@@ -465,7 +529,10 @@ impl<T> Vec<T> {
     }
 
     #[inline]
-    pub fn split_off(&mut self, at: usize) -> Self {
+    pub fn split_off(&mut self, at: usize) -> Self
+    where
+        A: Clone,
+    {
         #[cold]
         #[inline(never)]
         fn assert_failed(at: usize, len: usize) -> ! {
@@ -477,7 +544,7 @@ impl<T> Vec<T> {
         }
 
         let other_len = self.len - at;
-        let mut other = Vec::with_capacity(other_len);
+        let mut other = Vec::with_capacity_in(other_len, self.allocator().clone());
 
         // Unsafely `set_len` and copy items to `other`.
         unsafe {
@@ -508,24 +575,6 @@ impl<T> Vec<T> {
     {
         Box::leak(vec.into_boxed_slice())
     }
-}
-
-impl<T> Vec<T> {
-    #[inline]
-    pub fn as_slice(&self) -> &[T] {
-        self
-    }
-
-    #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        // We shadow the slice method of the same name to avoid going through
-        // `deref`, which creates an intermediate reference.
-        let ptr = self.buf.ptr();
-        unsafe {
-            assume(!ptr.is_null());
-        }
-        ptr
-    }
 
     #[inline]
     pub fn len(&self) -> usize {
@@ -541,7 +590,7 @@ impl<T> Vec<T> {
     }
 }
 
-impl<T: Clone> Vec<T> {
+impl<T: Clone, A: ShmAllocator> Vec<T, A> {
     pub fn resize(&mut self, new_len: usize, value: T) {
         let len = self.len();
 
@@ -557,7 +606,7 @@ impl<T: Clone> Vec<T> {
     }
 }
 
-impl<T> Drop for Vec<T> {
+impl<T, A: ShmAllocator> Drop for Vec<T, A> {
     fn drop(&mut self) {
         // SAFETY: the Vec must be on the sender heap.
         unsafe {
@@ -570,7 +619,7 @@ impl<T> Drop for Vec<T> {
     }
 }
 
-impl<T: Default> Vec<T> {
+impl<T: Default, A: ShmAllocator> Vec<T, A> {
     pub fn resize_default(&mut self, new_len: usize) {
         let len = self.len();
 
@@ -618,7 +667,7 @@ impl<T, F: FnMut() -> T> ExtendWith<T> for ExtendFunc<F> {
     }
 }
 
-impl<T> Vec<T> {
+impl<T, A: ShmAllocator> Vec<T, A> {
     /// Extend the vector by `n` values, using the given generator.
     fn extend_with<E: ExtendWith<T>>(&mut self, n: usize, mut value: E) {
         self.reserve(n);
@@ -824,6 +873,8 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 }
 
 mod hack {
+    use crate::alloc::ShmAllocator;
+
     use super::Box;
     use super::Vec;
 
@@ -836,17 +887,17 @@ mod hack {
     }
 
     #[inline]
-    pub fn to_vec<T>(s: &[T]) -> Vec<T>
+    pub fn to_vec_in<T, A: ShmAllocator>(s: &[T], alloc: A) -> Vec<T, A>
     where
         T: Clone,
     {
-        let mut vec = Vec::with_capacity(s.len());
+        let mut vec = Vec::with_capacity_in(s.len(), alloc);
         vec.extend_from_slice(s);
         vec
     }
 }
 
-impl<T> ops::Deref for Vec<T> {
+impl<T, A: ShmAllocator> ops::Deref for Vec<T, A> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -854,28 +905,29 @@ impl<T> ops::Deref for Vec<T> {
     }
 }
 
-impl<T> ops::DerefMut for Vec<T> {
+impl<T, A: ShmAllocator> ops::DerefMut for Vec<T, A> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
     }
 }
 
-impl<T: Clone> Clone for Vec<T> {
-    fn clone(&self) -> Vec<T> {
-        hack::to_vec(&**self)
+impl<T: Clone, A: ShmAllocator + Clone> Clone for Vec<T, A> {
+    fn clone(&self) -> Vec<T, A> {
+        let alloc = self.allocator().clone();
+        hack::to_vec_in(&**self, alloc)
     }
 
     // TODO: clone_from to avoid allocation
 }
 
-impl<T: Hash> Hash for Vec<T> {
+impl<T: Hash, A: ShmAllocator> Hash for Vec<T, A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         Hash::hash(&**self, state)
     }
 }
 
-impl<T, I: SliceIndex<[T]>> Index<I> for Vec<T> {
+impl<T, I: SliceIndex<[T]>, A: ShmAllocator> Index<I> for Vec<T, A> {
     type Output = I::Output;
 
     #[inline]
@@ -884,7 +936,7 @@ impl<T, I: SliceIndex<[T]>> Index<I> for Vec<T> {
     }
 }
 
-impl<T, I: SliceIndex<[T]>> IndexMut<I> for Vec<T> {
+impl<T, I: SliceIndex<[T]>, A: ShmAllocator> IndexMut<I> for Vec<T, A> {
     #[inline]
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         IndexMut::index_mut(&mut **self, index)
@@ -894,18 +946,19 @@ impl<T, I: SliceIndex<[T]>> IndexMut<I> for Vec<T> {
 impl<T> FromIterator<T> for Vec<T> {
     #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T> {
-        <Self as SpecExtend<T, I::IntoIter>>::from_iter(iter.into_iter())
+        <Self as SpecFromIter<T, I::IntoIter>>::from_iter(iter.into_iter())
     }
 }
 
-impl<T> IntoIterator for Vec<T> {
+impl<T, A: ShmAllocator> IntoIterator for Vec<T, A> {
     type Item = T;
-    type IntoIter = IntoIter<T>;
+    type IntoIter = IntoIter<T, A>;
 
     #[inline]
-    fn into_iter(self) -> IntoIter<T> {
+    fn into_iter(self) -> IntoIter<T, A> {
         unsafe {
             let me = ManuallyDrop::new(self);
+            let alloc = ManuallyDrop::new(ptr::read(me.allocator()));
             let begin = me.buf.ptr();
             let end = if mem::size_of::<T>() == 0 {
                 arith_offset(begin as *const i8, me.len() as isize) as *const T
@@ -917,6 +970,7 @@ impl<T> IntoIterator for Vec<T> {
                 buf: me.buf.shmptr(),
                 phantom: PhantomData,
                 cap,
+                alloc,
                 ptr: begin,
                 end,
             }
@@ -924,7 +978,7 @@ impl<T> IntoIterator for Vec<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Vec<T> {
+impl<'a, T, A: ShmAllocator> IntoIterator for &'a Vec<T, A> {
     type Item = &'a T;
     type IntoIter = slice::Iter<'a, T>;
 
@@ -933,7 +987,7 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut Vec<T> {
+impl<'a, T, A: ShmAllocator> IntoIterator for &'a mut Vec<T, A> {
     type Item = &'a mut T;
     type IntoIter = slice::IterMut<'a, T>;
 
@@ -942,7 +996,7 @@ impl<'a, T> IntoIterator for &'a mut Vec<T> {
     }
 }
 
-impl<T> Extend<T> for Vec<T> {
+impl<T, A: ShmAllocator> Extend<T> for Vec<T, A> {
     #[inline]
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         <Self as SpecExtend<T, I::IntoIter>>::spec_extend(self, iter.into_iter())
@@ -959,13 +1013,14 @@ impl<T> Extend<T> for Vec<T> {
     }
 }
 
-// Specialization trait used for Vec::from_iter and Vec::extend
-trait SpecExtend<T, I> {
+/// Another specialization trait for Vec::from_iter
+/// necessary to manually prioritize overlapping specializations
+/// see [`SpecFromIter`](super::SpecFromIter) for details.
+pub(super) trait SpecFromIterNested<T, I> {
     fn from_iter(iter: I) -> Self;
-    fn spec_extend(&mut self, iter: I);
 }
 
-impl<T, I> SpecExtend<T, I> for Vec<T>
+impl<T, I> SpecFromIterNested<T, I> for Vec<T>
 where
     I: Iterator<Item = T>,
 {
@@ -979,32 +1034,137 @@ where
             None => return Vec::new(),
             Some(element) => {
                 let (lower, _) = iterator.size_hint();
-                let mut vector = Vec::with_capacity(lower.saturating_add(1));
+                let initial_capacity =
+                    cmp::max(RawVec::<T>::MIN_NON_ZERO_CAP, lower.saturating_add(1));
+                let mut vector = Vec::with_capacity(initial_capacity);
                 unsafe {
+                    // SAFETY: We requested capacity at least 1
                     ptr::write(vector.as_mut_ptr(), element);
                     vector.set_len(1);
                 }
                 vector
             }
         };
+        // must delegate to spec_extend() since extend() itself delegates
+        // to spec_from for empty Vecs
         <Vec<T> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
         vector
     }
+}
+
+impl<T, I> SpecFromIterNested<T, I> for Vec<T>
+where
+    I: TrustedLen<Item = T>,
+{
+    fn from_iter(iterator: I) -> Self {
+        let mut vector = match iterator.size_hint() {
+            (_, Some(upper)) => Vec::with_capacity(upper),
+            // TrustedLen contract guarantees that `size_hint() == (_, None)` means that there
+            // are more than `usize::MAX` elements.
+            // Since the previous branch would eagerly panic if the capacity is too large
+            // (via `with_capacity`) we do the same here.
+            _ => panic!("capacity overflow"),
+        };
+        // reuse extend specialization for TrustedLen
+        vector.spec_extend(iterator);
+        vector
+    }
+}
+
+pub(super) trait SpecFromIter<T, I> {
+    fn from_iter(iter: I) -> Self;
+}
+
+impl<T, I> SpecFromIter<T, I> for Vec<T>
+where
+    I: Iterator<Item = T>,
+{
+    default fn from_iter(iterator: I) -> Self {
+        SpecFromIterNested::from_iter(iterator)
+    }
+}
+
+impl<T> SpecFromIter<T, IntoIter<T>> for Vec<T> {
+    fn from_iter(iterator: IntoIter<T>) -> Self {
+        // A common case is passing a vector into a function which immediately
+        // re-collects into a vector. We can short circuit this if the IntoIter
+        // has not been advanced at all.
+        // When it has been advanced We can also reuse the memory and move the data to the front.
+        // But we only do so when the resulting Vec wouldn't have more unused capacity
+        // than creating it through the generic FromIterator implementation would. That limitation
+        // is not strictly necessary as Vec's allocation behavior is intentionally unspecified.
+        // But it is a conservative choice.
+        let has_advanced = iterator.buf.as_ptr_app() as *const _ != iterator.ptr;
+        if !has_advanced || iterator.len() >= iterator.cap / 2 {
+            unsafe {
+                let it = ManuallyDrop::new(iterator);
+                if has_advanced {
+                    // TODO(cjr): WARNING(cjr): Here we use as_ptr_app.
+                    ptr::copy(it.ptr, it.buf.as_ptr_app(), it.len());
+                }
+                return Vec::from_raw_parts(
+                    it.buf.as_ptr_app(),
+                    it.buf.as_ptr_backend(),
+                    it.len(),
+                    it.cap,
+                );
+            }
+        }
+
+        let mut vec = Vec::new();
+        // must delegate to spec_extend() since extend() itself delegates
+        // to spec_from for empty Vecs
+        vec.spec_extend(iterator);
+        vec
+    }
+}
+
+// Specialization trait used for Vec::from_iter and Vec::extend
+trait SpecExtend<T, I> {
+    // fn from_iter(iter: I) -> Self;
+    fn spec_extend(&mut self, iter: I);
+}
+
+impl<T, I, A: ShmAllocator> SpecExtend<T, I> for Vec<T, A>
+where
+    I: Iterator<Item = T>,
+{
+    // default fn from_iter(mut iterator: I) -> Self {
+    //     // Unroll the first iteration, as the vector is going to be
+    //     // expanded on this iteration in every case when the iterable is not
+    //     // empty, but the loop in extend_desugared() is not going to see the
+    //     // vector being full in the few subsequent loop iterations.
+    //     // So we get better branch prediction.
+    //     let mut vector = match iterator.next() {
+    //         None => return Vec::new(),
+    //         Some(element) => {
+    //             let (lower, _) = iterator.size_hint();
+    //             let mut vector = Vec::with_capacity(lower.saturating_add(1));
+    //             unsafe {
+    //                 ptr::write(vector.as_mut_ptr(), element);
+    //                 vector.set_len(1);
+    //             }
+    //             vector
+    //         }
+    //     };
+    //     <Vec<T> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
+    //     vector
+    // }
 
     default fn spec_extend(&mut self, iter: I) {
         self.extend_desugared(iter)
     }
 }
 
-impl<T, I> SpecExtend<T, I> for Vec<T>
+impl<T, I, A: ShmAllocator> SpecExtend<T, I> for Vec<T, A>
 where
     I: TrustedLen<Item = T>,
 {
-    default fn from_iter(iterator: I) -> Self {
-        let mut vector = Vec::new();
-        vector.spec_extend(iterator);
-        vector
-    }
+    // default fn from_iter(iterator: I) -> Self {
+    //     let mut vector = Vec::new();
+    //     vector.spec_extend(iterator);
+    //     vector
+    // }
 
     default fn spec_extend(&mut self, iterator: I) {
         // This is the case for a TrustedLen iterator.
@@ -1035,21 +1195,21 @@ where
     }
 }
 
-impl<'a, T: 'a, I> SpecExtend<&'a T, I> for Vec<T>
+impl<'a, T: 'a, I, A: ShmAllocator + 'a> SpecExtend<&'a T, I> for Vec<T, A>
 where
     I: Iterator<Item = &'a T>,
     T: Clone,
 {
-    default fn from_iter(iterator: I) -> Self {
-        SpecExtend::from_iter(iterator.cloned())
-    }
+    // default fn from_iter(iterator: I) -> Self {
+    //     SpecExtend::from_iter(iterator.cloned())
+    // }
 
     default fn spec_extend(&mut self, iterator: I) {
         self.spec_extend(iterator.cloned())
     }
 }
 
-impl<'a, T: 'a> SpecExtend<&'a T, slice::Iter<'a, T>> for Vec<T>
+impl<'a, T: 'a, A: ShmAllocator + 'a> SpecExtend<&'a T, slice::Iter<'a, T>> for Vec<T, A>
 where
     T: Copy,
 {
@@ -1065,7 +1225,7 @@ where
     }
 }
 
-impl<T> Vec<T> {
+impl<T, A: ShmAllocator> Vec<T, A> {
     fn extend_desugared<I: Iterator<Item = T>>(&mut self, mut iterator: I) {
         // This is the case for a general iterator.
         //
@@ -1089,7 +1249,7 @@ impl<T> Vec<T> {
     }
 
     #[inline]
-    pub fn splice<R, I>(&mut self, range: R, replace_with: I) -> Splice<'_, I::IntoIter>
+    pub fn splice<R, I>(&mut self, range: R, replace_with: I) -> Splice<'_, I::IntoIter, A>
     where
         R: RangeBounds<usize>,
         I: IntoIterator<Item = T>,
@@ -1100,7 +1260,7 @@ impl<T> Vec<T> {
         }
     }
 
-    pub fn drain_filter<F>(&mut self, filter: F) -> DrainFilter<'_, T, F>
+    pub fn drain_filter<F>(&mut self, filter: F) -> DrainFilter<'_, T, F, A>
     where
         F: FnMut(&mut T) -> bool,
     {
@@ -1122,7 +1282,7 @@ impl<T> Vec<T> {
     }
 }
 
-impl<'a, T: 'a + Copy> Extend<&'a T> for Vec<T> {
+impl<'a, T: 'a + Copy, A: ShmAllocator + 'a> Extend<&'a T> for Vec<T, A> {
     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
         self.spec_extend(iter.into_iter())
     }
@@ -1153,76 +1313,76 @@ macro_rules! __impl_slice_eq1 {
     }
 }
 
-__impl_slice_eq1! { [] Vec<A>, Vec<B> }
-__impl_slice_eq1! { [] Vec<A>, &[B] }
-__impl_slice_eq1! { [] Vec<A>, &mut [B] }
-__impl_slice_eq1! { [] &[A], Vec<B> }
-__impl_slice_eq1! { [] &mut [A], Vec<B> }
-__impl_slice_eq1! { [const N: usize] Vec<A>, [B; N] }
-__impl_slice_eq1! { [const N: usize] Vec<A>, &[B; N] }
+__impl_slice_eq1! { [S1: ShmAllocator, S2: ShmAllocator] Vec<A, S1>, Vec<B, S2> }
+__impl_slice_eq1! { [S: ShmAllocator] Vec<A, S>, &[B] }
+__impl_slice_eq1! { [S: ShmAllocator] Vec<A, S>, &mut [B] }
+__impl_slice_eq1! { [S: ShmAllocator] &[A], Vec<B, S> }
+__impl_slice_eq1! { [S: ShmAllocator] &mut [A], Vec<B, S> }
+__impl_slice_eq1! { [S: ShmAllocator, const N: usize] Vec<A, S>, [B; N] }
+__impl_slice_eq1! { [S: ShmAllocator, const N: usize] Vec<A, S>, &[B; N] }
 
-impl<T: PartialOrd> PartialOrd for Vec<T> {
+impl<T: PartialOrd, A: ShmAllocator> PartialOrd for Vec<T, A> {
     #[inline]
-    fn partial_cmp(&self, other: &Vec<T>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         PartialOrd::partial_cmp(&**self, &**other)
     }
 }
 
-impl<T: Eq> Eq for Vec<T> {}
+impl<T: Eq, A: ShmAllocator> Eq for Vec<T, A> {}
 
-impl<T: Ord> Ord for Vec<T> {
+impl<T: Ord, A: ShmAllocator> Ord for Vec<T, A> {
     #[inline]
-    fn cmp(&self, other: &Vec<T>) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         Ord::cmp(&**self, &**other)
     }
 }
 
-impl<T> Default for Vec<T> {
+impl<T, A: ShmAllocator + Default> Default for Vec<T, A> {
     /// Creates an empty `Vec<T>`.
-    fn default() -> Vec<T> {
-        Vec::new()
+    fn default() -> Vec<T, A> {
+        Vec::new_in(A::default())
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Vec<T> {
+impl<T: fmt::Debug, A: ShmAllocator> fmt::Debug for Vec<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<T> AsRef<Vec<T>> for Vec<T> {
-    fn as_ref(&self) -> &Vec<T> {
+impl<T, A: ShmAllocator> AsRef<Vec<T, A>> for Vec<T, A> {
+    fn as_ref(&self) -> &Vec<T, A> {
         self
     }
 }
 
-impl<T> AsMut<Vec<T>> for Vec<T> {
-    fn as_mut(&mut self) -> &mut Vec<T> {
+impl<T, A: ShmAllocator> AsMut<Vec<T, A>> for Vec<T, A> {
+    fn as_mut(&mut self) -> &mut Vec<T, A> {
         self
     }
 }
 
-impl<T> AsRef<[T]> for Vec<T> {
+impl<T, A: ShmAllocator> AsRef<[T]> for Vec<T, A> {
     fn as_ref(&self) -> &[T] {
         self
     }
 }
 
-impl<T> AsMut<[T]> for Vec<T> {
+impl<T, A: ShmAllocator> AsMut<[T]> for Vec<T, A> {
     fn as_mut(&mut self) -> &mut [T] {
         self
     }
 }
 
-impl<T: Clone> From<&[T]> for Vec<T> {
-    fn from(s: &[T]) -> Vec<T> {
-        hack::to_vec(s)
+impl<T: Clone, A: ShmAllocator + Default> From<&[T]> for Vec<T, A> {
+    fn from(s: &[T]) -> Vec<T, A> {
+        hack::to_vec_in(s, A::default())
     }
 }
 
-impl<T: Clone> From<&mut [T]> for Vec<T> {
-    fn from(s: &mut [T]) -> Vec<T> {
-        hack::to_vec(s)
+impl<T: Clone, A: ShmAllocator + Default> From<&mut [T]> for Vec<T, A> {
+    fn from(s: &mut [T]) -> Vec<T, A> {
+        hack::to_vec_in(s, A::default())
     }
 }
 
@@ -1235,27 +1395,28 @@ where
     }
 }
 
-impl From<&str> for Vec<u8> {
-    fn from(s: &str) -> Vec<u8> {
+impl<A: ShmAllocator + Default> From<&str> for Vec<u8, A> {
+    fn from(s: &str) -> Vec<u8, A> {
         From::from(s.as_bytes())
     }
 }
 
-pub struct IntoIter<T> {
+pub struct IntoIter<T, A: ShmAllocator = System> {
     buf: ShmPtr<T>,
     phantom: PhantomData<T>,
     cap: usize,
+    alloc: ManuallyDrop<A>,
     ptr: *const T,
     end: *const T,
 }
 
-impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
+impl<T: fmt::Debug, A: ShmAllocator> fmt::Debug for IntoIter<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IntoIter").field(&self.as_slice()).finish()
     }
 }
 
-impl<T> IntoIter<T> {
+impl<T, A: ShmAllocator> IntoIter<T, A> {
     pub fn as_slice(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.ptr, self.len()) }
     }
@@ -1269,16 +1430,16 @@ impl<T> IntoIter<T> {
     }
 }
 
-impl<T> AsRef<[T]> for IntoIter<T> {
+impl<T, A: ShmAllocator> AsRef<[T]> for IntoIter<T, A> {
     fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-unsafe impl<T: Send> Send for IntoIter<T> {}
-unsafe impl<T: Sync> Sync for IntoIter<T> {}
+unsafe impl<T: Send, A: ShmAllocator> Send for IntoIter<T, A> {}
+unsafe impl<T: Sync, A: ShmAllocator> Sync for IntoIter<T, A> {}
 
-impl<T> Iterator for IntoIter<T> {
+impl<T, A: ShmAllocator> Iterator for IntoIter<T, A> {
     type Item = T;
 
     #[inline]
@@ -1321,7 +1482,7 @@ impl<T> Iterator for IntoIter<T> {
     }
 }
 
-impl<T> DoubleEndedIterator for IntoIter<T> {
+impl<T, A: ShmAllocator> DoubleEndedIterator for IntoIter<T, A> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         unsafe {
@@ -1344,29 +1505,35 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
     }
 }
 
-impl<T> ExactSizeIterator for IntoIter<T> {
+impl<T, A: ShmAllocator> ExactSizeIterator for IntoIter<T, A> {
     fn is_empty(&self) -> bool {
         self.ptr == self.end
     }
 }
 
-impl<T> FusedIterator for IntoIter<T> {}
+impl<T, A: ShmAllocator> FusedIterator for IntoIter<T, A> {}
 
-unsafe impl<T> TrustedLen for IntoIter<T> {}
+unsafe impl<T, A: ShmAllocator> TrustedLen for IntoIter<T, A> {}
 
 // TODO: Clone for IntoIter<T>
 
-impl<T> Drop for IntoIter<T> {
+impl<T, A: ShmAllocator> Drop for IntoIter<T, A> {
     fn drop(&mut self) {
-        struct DropGuard<'a, T>(&'a mut IntoIter<T>);
+        struct DropGuard<'a, T, A: ShmAllocator>(&'a mut IntoIter<T, A>);
 
-        impl<T> Drop for DropGuard<'_, T> {
+        impl<T, A: ShmAllocator> Drop for DropGuard<'_, T, A> {
             fn drop(&mut self) {
                 // RawVec handles deallocation
-                let (ptr_app, ptr_backend) = self.0.buf.to_raw_parts();
-                let _ = unsafe {
-                    RawVec::from_raw_parts(ptr_app.as_ptr(), ptr_backend.as_ptr(), self.0.cap)
-                };
+                unsafe {
+                    let alloc = ManuallyDrop::take(&mut self.0.alloc);
+                    let (ptr_app, ptr_backend) = self.0.buf.to_raw_parts();
+                    let _ = RawVec::from_raw_parts_in(
+                        ptr_app.as_ptr(),
+                        ptr_backend.as_ptr(),
+                        self.0.cap,
+                        alloc,
+                    );
+                }
             }
         }
 
@@ -1385,7 +1552,7 @@ impl<T> Drop for IntoIter<T> {
 ///
 /// [`drain`]: struct.Vec.html#method.drain
 /// [`Vec`]: struct.Vec.html
-pub struct Drain<'a, T: 'a> {
+pub struct Drain<'a, T: 'a, A: ShmAllocator + 'a = System> {
     /// Index of tail to preserve
     tail_start: usize,
     /// Length of tail
@@ -1393,31 +1560,31 @@ pub struct Drain<'a, T: 'a> {
     /// Current remaining range to remove
     iter: slice::Iter<'a, T>,
     // NOTE(wyj): we shouldn't use ShmPtr here as we are just borrowing Vec here
-    vec: NonNull<Vec<T>>,
+    vec: NonNull<Vec<T, A>>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for Drain<'_, T> {
+impl<T: fmt::Debug, A: ShmAllocator> fmt::Debug for Drain<'_, T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain").field(&self.iter.as_slice()).finish()
     }
 }
 
-impl<'a, T> Drain<'a, T> {
+impl<'a, T, A: ShmAllocator> Drain<'a, T, A> {
     pub fn as_slice(&self) -> &[T] {
         self.iter.as_slice()
     }
 }
 
-impl<'a, T> AsRef<[T]> for Drain<'a, T> {
+impl<'a, T, A: ShmAllocator> AsRef<[T]> for Drain<'a, T, A> {
     fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-unsafe impl<T: Sync> Sync for Drain<'_, T> {}
-unsafe impl<T: Send> Send for Drain<'_, T> {}
+unsafe impl<T: Sync, A: ShmAllocator> Sync for Drain<'_, T, A> {}
+unsafe impl<T: Send, A: ShmAllocator> Send for Drain<'_, T, A> {}
 
-impl<T> Iterator for Drain<'_, T> {
+impl<T, A: ShmAllocator> Iterator for Drain<'_, T, A> {
     type Item = T;
 
     #[inline]
@@ -1432,7 +1599,7 @@ impl<T> Iterator for Drain<'_, T> {
     }
 }
 
-impl<T> DoubleEndedIterator for Drain<'_, T> {
+impl<T, A: ShmAllocator> DoubleEndedIterator for Drain<'_, T, A> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         self.iter
@@ -1441,13 +1608,13 @@ impl<T> DoubleEndedIterator for Drain<'_, T> {
     }
 }
 
-impl<T> Drop for Drain<'_, T> {
+impl<T, A: ShmAllocator> Drop for Drain<'_, T, A> {
     fn drop(&mut self) {
         /// Continues dropping the remaining elements in the `Drain`, then moves back the
         /// un-`Drain`ed elements to restore the original `Vec`.
-        struct DropGuard<'r, 'a, T>(&'r mut Drain<'a, T>);
+        struct DropGuard<'r, 'a, T, A: ShmAllocator>(&'r mut Drain<'a, T, A>);
 
-        impl<'r, 'a, T> Drop for DropGuard<'r, 'a, T> {
+        impl<'r, 'a, T, A: ShmAllocator> Drop for DropGuard<'r, 'a, T, A> {
             fn drop(&mut self) {
                 // call T::drop()
                 self.0.for_each(drop);
@@ -1483,15 +1650,15 @@ impl<T> Drop for Drain<'_, T> {
     }
 }
 
-impl<T> ExactSizeIterator for Drain<'_, T> {
+impl<T, A: ShmAllocator> ExactSizeIterator for Drain<'_, T, A> {
     fn is_empty(&self) -> bool {
         self.iter.is_empty()
     }
 }
 
-unsafe impl<T> TrustedLen for Drain<'_, T> {}
+unsafe impl<T, A: ShmAllocator> TrustedLen for Drain<'_, T, A> {}
 
-impl<T> FusedIterator for Drain<'_, T> {}
+impl<T, A: ShmAllocator> FusedIterator for Drain<'_, T, A> {}
 
 /// A splicing iterator for `Vec<T>`.
 ///
@@ -1501,12 +1668,12 @@ impl<T> FusedIterator for Drain<'_, T> {}
 /// [`splice()`]: struct.Vec.html#method.splice
 /// [`Vec`]: struct.Vec.html
 #[derive(Debug)]
-pub struct Splice<'a, I: Iterator + 'a> {
-    drain: Drain<'a, I::Item>,
+pub struct Splice<'a, I: Iterator + 'a, A: ShmAllocator + 'a = System> {
+    drain: Drain<'a, I::Item, A>,
     replace_with: I,
 }
 
-impl<I: Iterator> Iterator for Splice<'_, I> {
+impl<I: Iterator, A: ShmAllocator> Iterator for Splice<'_, I, A> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1518,15 +1685,15 @@ impl<I: Iterator> Iterator for Splice<'_, I> {
     }
 }
 
-impl<I: Iterator> DoubleEndedIterator for Splice<'_, I> {
+impl<I: Iterator, A: ShmAllocator> DoubleEndedIterator for Splice<'_, I, A> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.drain.next_back()
     }
 }
 
-impl<I: Iterator> ExactSizeIterator for Splice<'_, I> {}
+impl<I: Iterator, A: ShmAllocator> ExactSizeIterator for Splice<'_, I, A> {}
 
-impl<I: Iterator> Drop for Splice<'_, I> {
+impl<I: Iterator, A: ShmAllocator> Drop for Splice<'_, I, A> {
     fn drop(&mut self) {
         self.drain.by_ref().for_each(drop);
 
@@ -1571,7 +1738,7 @@ impl<I: Iterator> Drop for Splice<'_, I> {
 }
 
 /// Private helper methods for `Splice::drop`
-impl<T> Drain<'_, T> {
+impl<T, A: ShmAllocator> Drain<'_, T, A> {
     /// The range from `self.vec.len` to `self.tail_start` contains elements
     /// that have been moved out.
     /// Fill that range as much as possible with new elements from the `replace_with` iterator.
@@ -1610,11 +1777,11 @@ impl<T> Drain<'_, T> {
 
 /// An iterator produced by calling `drain_filter` on Vec<T>.
 #[derive(Debug)]
-pub struct DrainFilter<'a, T, F>
+pub struct DrainFilter<'a, T, F, A: ShmAllocator = System>
 where
     F: FnMut(&mut T) -> bool,
 {
-    vec: &'a mut Vec<T>,
+    vec: &'a mut Vec<T, A>,
     idx: usize,
     del: usize,
     old_len: usize,
@@ -1622,7 +1789,7 @@ where
     panic_flag: bool,
 }
 
-impl<T, F> Iterator for DrainFilter<'_, T, F>
+impl<T, F, A: ShmAllocator> Iterator for DrainFilter<'_, T, F, A>
 where
     F: FnMut(&mut T) -> bool,
 {
@@ -1659,19 +1826,19 @@ where
     }
 }
 
-impl<T, F> Drop for DrainFilter<'_, T, F>
+impl<T, F, A: ShmAllocator> Drop for DrainFilter<'_, T, F, A>
 where
     F: FnMut(&mut T) -> bool,
 {
     fn drop(&mut self) {
-        struct BackshiftOnDrop<'a, 'b, T, F>
+        struct BackshiftOnDrop<'a, 'b, T, F, A: ShmAllocator>
         where
             F: FnMut(&mut T) -> bool,
         {
-            drain: &'b mut DrainFilter<'a, T, F>,
+            drain: &'b mut DrainFilter<'a, T, F, A>,
         }
 
-        impl<'a, 'b, T, F> Drop for BackshiftOnDrop<'a, 'b, T, F>
+        impl<'a, 'b, T, F, A: ShmAllocator> Drop for BackshiftOnDrop<'a, 'b, T, F, A>
         where
             F: FnMut(&mut T) -> bool,
         {

@@ -5,7 +5,7 @@ macro_rules! numeric {
             use crate::{
                 AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError,
             };
-            use ipc::ptr::ShmPtr;
+            use shm::ptr::ShmPtr;
 
             #[inline(always)]
             pub fn emplace_repeated(val: &Vec<$ty>, sgl: &mut SgList) -> Result<(), MarshalError> {

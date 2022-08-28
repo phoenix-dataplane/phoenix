@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use ipc::ptr::ShmPtr;
+use shm::ptr::ShmPtr;
 
 pub mod emplacement;
 pub mod shadow;
