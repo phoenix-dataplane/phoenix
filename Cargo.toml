@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "src/experimental",
+  "src/dashmap",
   "src/interface",
   "src/mmap",
   "src/ipc",

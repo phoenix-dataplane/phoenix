@@ -36,7 +36,7 @@ structopt = "0.3.26"
 toml = { version = "0.5.8", features = ["preserve_order"] }
 futures = { version = "0.3.21", features = ["executor", "thread-pool"] }
 tokio = { version = "1.18.2", features = ["sync"] }
-dashmap = "5.3.4"
+dashmap = { path = "../dashmap" }
 smallvec = "1.8.0"
 json = "0.12.4"
 minstant = "0.1.1"

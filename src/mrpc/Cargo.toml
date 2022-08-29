@@ -25,7 +25,7 @@ fnv = "1.0.7"
 memfd = "0.4.1"
 lazy_static = "1.4.0"
 tracing = "0.1"
-dashmap = "5.3.4"
+dashmap = { path = "../dashmap" }
 async-executor = "1.4.1"
 arrayvec = "0.7"
 async-trait = "0.1.56"

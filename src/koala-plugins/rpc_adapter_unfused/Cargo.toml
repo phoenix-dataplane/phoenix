@@ -24,7 +24,7 @@ tokio = { version = "1.18.2", features = ["sync"] }
 thiserror = "1.0.31"
 nix = "0.23.0"
 futures = "0.3.21"
-dashmap = "5.3.4"
+dashmap = { path = "../../dashmap" }
 spin = "0.9.3"
 libloading = "0.7.3"
 serde = { version = "1.0.130", features = ["derive"] }

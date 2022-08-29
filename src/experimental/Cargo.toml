@@ -29,7 +29,7 @@ uuid = "0.8.2"
 thiserror = "1.0.29"
 shmem-ipc = "0.2.0"
 chashmap = "2.2.2"
-dashmap = "5.3.4"
+dashmap = { path = "../dashmap" }
 fnv = "1.0.7"
 toml = { version = "0.5.8", features = ["preserve_order"] }
 petgraph = "0.6.0"
