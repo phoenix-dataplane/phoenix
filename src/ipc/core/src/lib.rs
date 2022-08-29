@@ -20,6 +20,9 @@ pub mod control;
 /// Provides Range
 pub mod buf;
 
+pub mod rdma;
+pub use rdma::RawRdmaMsgTx;
+
 pub mod queue;
 
 /// Provides DomainSocket

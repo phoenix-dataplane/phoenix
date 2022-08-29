@@ -7,13 +7,20 @@ fn main() {
     println!("You need to have librdmacm and libibverbs installed in your system.");
     println!("cargo:rustc-link-lib=ibverbs");
     println!("cargo:rustc-link-lib=rdmacm");
-    println!("cargo:rustc-link-lib=rdma_verbs_wrapper");
+
+    cc::Build::new()
+        .warnings(true)
+        .opt_level(3)
+        .file("src/rdma_verbs_wrapper.c")
+        .compile("librdma_verbs_wrapper.so");
 
     cc::Build::new()
         .warnings(true)
         .opt_level(3)
         .file("src/rdma_verbs_wrapper.c")
         .compile("librdma_verbs_wrapper.a");
+
+    println!("cargo:rustc-link-lib=dylib=rdma_verbs_wrapper");
 
     let bindings = bindgen::Builder::default()
         .header("src/rdma_verbs_wrapper.h")

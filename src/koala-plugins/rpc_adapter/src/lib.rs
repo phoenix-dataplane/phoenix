@@ -22,6 +22,7 @@ pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod serialization;
 pub(crate) mod ulib;
+pub mod config;
 
 #[allow(unused)]
 pub(crate) mod pool;
@@ -58,6 +59,8 @@ impl From<ControlPathError> for interface::Error {
 
 // use crate::engine::graph::SendError;
 use tokio::sync::mpsc::error::SendError;
+use koala::engine::datapath::EngineTxMessage;
+
 impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {
         Self::SendCommand
@@ -70,4 +73,6 @@ pub(crate) enum DatapathError {
     Resource(#[from] ResourceError),
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
+    #[error("Tx queue send error: {0}")]
+    Tx(#[from] koala::engine::datapath::SendError<EngineTxMessage>),
 }

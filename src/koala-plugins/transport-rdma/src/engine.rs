@@ -9,23 +9,25 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
-use interface::{returned, AsHandle, Handle};
+use interface::{AsHandle, Handle, returned};
 use ipc::transport::rdma::{cmd, dp};
 
-use rdma::ibv;
-use rdma::rdmacm;
+use koala::rdma::ibv;
+use koala::rdma::rdmacm;
+use koala::rdma;
 
 use super::module::CustomerType;
-use super::ops::Ops;
-use super::{ApiError, DatapathError, Error};
+use koala::transport_rdma::ops::Ops;
+use super::Error;
 
 use koala::engine::datapath::node::DataPathNode;
-use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
+use koala::engine::{Decompose, Engine, EngineResult, future, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
 use koala::{log, tracing};
+use koala::transport_rdma::{ApiError, DatapathError};
 
 pub(crate) struct TransportEngine {
     pub(crate) customer: CustomerType,
@@ -348,7 +350,7 @@ impl TransportEngine {
 
     fn get_completion_from_error(&self, wr: &dp::WorkRequest, e: DatapathError) -> dp::Completion {
         use interface::{WcStatus, WorkCompletion};
-        use rdma::ffi::ibv_wc_status;
+        use koala::rdma::ffi::ibv_wc_status;
         use std::num::NonZeroU32;
 
         let (cq_handle, wr_id) = self.get_dp_error_info(wr);

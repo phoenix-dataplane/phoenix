@@ -67,3 +67,6 @@ Icon
 # Jetbrains IDE
 .idea/
 cmake-build-*/
+
+# Private folder for development
+/_private

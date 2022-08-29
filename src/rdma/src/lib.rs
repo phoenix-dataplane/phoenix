@@ -90,3 +90,5 @@ pub mod rdmacm;
 pub mod convert;
 #[allow(missing_docs)]
 pub mod mr;
+
+pub use ibv::POST_BUF_LEN;
