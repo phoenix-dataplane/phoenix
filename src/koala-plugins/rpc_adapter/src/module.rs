@@ -12,7 +12,7 @@ use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_rdma::module::RdmaTransportModule;
-use transport_rdma::ops::Ops;
+use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};
@@ -23,6 +23,7 @@ use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::acceptor::engine::AcceptorEngine;
+use crate::config::RpcAdapterConfig;
 use crate::engine::{RpcAdapterEngine, TlStorage};
 use crate::state::{Shared, State};
 
@@ -52,6 +53,7 @@ impl AcceptorEngineBuilder {
 
 pub(crate) struct RpcAdapterEngineBuilder {
     _client_pid: Pid,
+    enable_scheduler: bool,
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
@@ -65,6 +67,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
 impl RpcAdapterEngineBuilder {
     fn new(
         client_pid: Pid,
+        enable_scheduler: bool,
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
@@ -76,6 +79,7 @@ impl RpcAdapterEngineBuilder {
     ) -> Self {
         RpcAdapterEngineBuilder {
             _client_pid: client_pid,
+            enable_scheduler,
             mode,
             cmd_tx,
             cmd_rx,
@@ -103,6 +107,7 @@ impl RpcAdapterEngineBuilder {
             node: self.node,
             _mode: self.mode,
             indicator: Default::default(),
+            enable_scheduler: self.enable_scheduler,
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
             wc_read_buffer: Vec::with_capacity(BUF_LEN),
@@ -112,6 +117,7 @@ impl RpcAdapterEngineBuilder {
 }
 
 pub struct RpcAdapterModule {
+    pub config: RpcAdapterConfig,
     pub state_mgr: SharedStateManager<Shared>,
 }
 
@@ -144,8 +150,9 @@ impl RpcAdapterModule {
 }
 
 impl RpcAdapterModule {
-    pub fn new() -> Self {
+    pub fn new(config: RpcAdapterConfig) -> Self {
         RpcAdapterModule {
+            config,
             state_mgr: SharedStateManager::new(),
         }
     }
@@ -304,6 +311,7 @@ impl RpcAdapterModule {
 
         let builder = RpcAdapterEngineBuilder::new(
             client_pid,
+            self.config.enable_scheduler,
             mode,
             cmd_tx,
             cmd_rx,

@@ -8,6 +8,8 @@ pub use ipc_core::queue;
 pub use ipc_core::service;
 pub use ipc_core::shmem_ipc;
 pub use ipc_core::unix;
+pub use ipc_core::buf::Range;
+pub use ipc_core::rdma::RawRdmaMsgTx;
 
 pub use ipc_core::create_channel;
 pub use ipc_core::ChannelFlavor;
@@ -29,3 +31,5 @@ pub use salloc;
 pub use tcp_rpc_adapter;
 #[cfg(feature = "transport")]
 pub use transport;
+#[cfg(feature = "scheduler")]
+pub use scheduler;

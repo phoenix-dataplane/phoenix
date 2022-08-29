@@ -16,3 +16,4 @@ pub(crate) use node::{
 };
 
 pub mod meta_pool;
+pub mod fusion_layout;

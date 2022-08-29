@@ -71,6 +71,9 @@ transport = "Rdma"
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
+config_string = '''
+enable_scheduler = true
+'''
 
 
 [[modules]]
