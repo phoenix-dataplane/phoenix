@@ -190,6 +190,11 @@ impl RpcAdapterEngine {
             .unwrap()
             .downcast::<SchedulingMode>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let enable_scheduler = *local
+            .remove("enable_scheduler")
+            .unwrap()
+            .downcast::<bool>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let odp_mr = *local
             .remove("odp_mr")
             .unwrap()
@@ -249,6 +254,7 @@ impl RpcAdapterEngine {
             node,
             _mode: mode,
             indicator: Default::default(),
+            enable_scheduler,
             wc_read_buffer,
             salloc,
         };
@@ -262,9 +268,8 @@ enum Status {
     Disconnected,
 }
 
-use crate::engine::channel::TryRecvError;
 use crate::ulib::get_ops;
-use scheduler::fusion_layout::HEAD_META_LEN;
+use koala::engine::datapath::fusion_layout::HEAD_META_LEN;
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
@@ -590,7 +595,6 @@ impl RpcAdapterEngine {
         meta_ref: &MessageMeta,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
-        use minstant::Instant;
         let call_id = meta_ref.call_id;
         let cmid = &conn_ctx.cmid;
 
@@ -626,7 +630,7 @@ impl RpcAdapterEngine {
         // post send message meta
         let ops = get_ops();
         self.tx_outputs()[0].send(EngineTxMessage::SchedMessage {
-            0: ops as usize,
+            0: ops as *const Ops as usize,
             1: cmid.as_handle(),
             2: RawRdmaMsgTx {
                 mr: mr_address,
@@ -645,7 +649,7 @@ impl RpcAdapterEngine {
                 tracing::trace!("post_send_imm, len={}", sge.len);
             }
             self.tx_outputs()[0].send(EngineTxMessage::SchedMessage {
-                0: ops as usize,
+                0: ops as *const Ops as usize,
                 1: cmid.as_handle(),
                 2: RawRdmaMsgTx {
                     mr: mr_address,

@@ -24,7 +24,7 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 const ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 pub struct Ops {
-    pub(crate) id: u32,
+    pub id: u32,
     pub(crate) state: State,
 }
 

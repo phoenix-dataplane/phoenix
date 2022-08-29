@@ -13,7 +13,7 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use ipc::RawRdmaMsgTx;
 use koala::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
-use koala::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
+use koala::engine::{Decompose, Engine, EngineResult, future, Indicator};
 use koala::{impl_vertex_for_engine, log};
 use koala::storage::{ResourceCollection, SharedStorage};
 use rdma::POST_BUF_LEN;
@@ -23,6 +23,7 @@ use transport_rdma::DatapathError;
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);
 
+#[allow(unused)]
 impl FlattenKey {
     fn new(ops: &Ops, handle: &Handle) -> Self {
         FlattenKey {
@@ -44,6 +45,7 @@ impl Debug for FlattenKey {
 
 const MAX_INTERVAL_TIME: Duration = Duration::new(0, 5e3 as u32);
 
+
 struct PolicyState {
     ops: &'static Ops,
     handle: Handle,
@@ -53,6 +55,7 @@ struct PolicyState {
     pub(crate) imm_send_flag: bool,
 }
 
+#[allow(unused)]
 impl PolicyState {
     #[inline(always)]
     fn should_send(&self) -> bool {
@@ -285,7 +288,7 @@ enum Status {
 }
 
 use Status::Progress;
-use crate::fusion_layout::{BufferPage, PAGE_SIZE};
+use koala::engine::datapath::fusion_layout::{BufferPage, PAGE_SIZE};
 use crate::stacked_buffer::StackedBuffer;
 
 static DEBUG_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -325,9 +328,9 @@ impl SchedulerEngine {
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         let mut cnt = 0;
-        let node = &self.node;
-        let input_vec = &mut node.tx_input;
-        let rx_output_vec = &mut node.rx_output;
+        let node = &mut self.node;
+        let input_vec = &mut node.tx_inputs;
+        let rx_output_vec = &mut node.rx_outputs;
 
         // todo(xyc): optimize brute-force polling
         for (idx, tx_input) in input_vec.iter_mut().enumerate() {

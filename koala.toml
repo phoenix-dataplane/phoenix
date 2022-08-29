@@ -62,6 +62,9 @@ build_cache = "/tmp/koala/build-cache"
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
+config_string = '''
+enable_scheduler = true
+'''
 
 
 # Addons being here

@@ -49,11 +49,11 @@ impl BufferPage {
     }
 
     #[inline(always)]
-    pub(crate) fn page_ptr(&mut self) -> *mut u8 {
+    pub fn page_ptr(&mut self) -> *mut u8 {
         self.data.as_mut_ptr()
     }
 
-    pub(crate) fn can_hold(&self, len: usize, is_rpc_ending: bool) -> bool {
+    pub fn can_hold(&self, len: usize, is_rpc_ending: bool) -> bool {
         (self.sge_count as usize) < MAX_SGMT
             && (self.current_offset - HEAD_META_LEN as u16
                 + Self::meta_calc(is_rpc_ending as u8, self.sge_count)
@@ -61,7 +61,7 @@ impl BufferPage {
                 <= PAGE_SIZE as u16
     }
 
-    pub(crate) fn copy_in(&mut self, range: ipc::buf::Range, rpc_ending: Option<RpcId>) {
+    pub fn copy_in(&mut self, range: ipc::buf::Range, rpc_ending: Option<RpcId>) {
         assert!(self.can_hold(range.len as usize, rpc_ending.is_some()));
         unsafe {
             ptr::copy_nonoverlapping(
@@ -80,7 +80,7 @@ impl BufferPage {
         self.sge_count += 1;
     }
 
-    pub(crate) fn finish(&mut self) -> ipc::buf::Range {
+    pub fn finish(&mut self) -> ipc::buf::Range {
         let meta_ptr = self.page_ptr() as *mut u8;
 
         // meta head
@@ -112,11 +112,11 @@ impl BufferPage {
         }
     }
 
-    pub(crate) fn associated_rpcs(&self) -> std::slice::Iter<RpcId> {
+    pub fn associated_rpcs(&self) -> std::slice::Iter<RpcId> {
         (&self.finished_rpc_arr[0..(self.ending_count as usize)]).iter()
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.current_offset = HEAD_META_LEN as u16;
         self.ending_count = 0;
         self.sge_count = 0;

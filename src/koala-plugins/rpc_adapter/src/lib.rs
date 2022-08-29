@@ -22,6 +22,7 @@ pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod serialization;
 pub(crate) mod ulib;
+pub mod config;
 
 #[allow(unused)]
 pub(crate) mod pool;
