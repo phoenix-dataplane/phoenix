@@ -1,3 +1,6 @@
+flush = false
+detach_subscription = false
+
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"

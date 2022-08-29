@@ -26,7 +26,6 @@ use transport_rdma::ops::Ops;
 use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
-use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
@@ -247,7 +246,7 @@ impl RpcAdapterEngine {
             cmd_rx,
             node,
             ctrl_buf,
-            version: 2,
+            version: 1,
             _mode: mode,
             indicator: Default::default(),
             wc_read_buffer,
@@ -392,14 +391,6 @@ impl RpcAdapterEngine {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RpcStrategy {
-    /// The entire message is encapuslated into one message, transmitted with one send/recv
-    Fused,
-    /// The message is marshaled into an SgList, and transmitted with multiple send/recv operations.
-    Standard,
-}
-
 impl RpcAdapterEngine {
     fn get_or_init_odp_mr(&mut self) -> &mut ulib::uverbs::MemoryRegion<u8> {
         // this function is not supposed to be called concurrently.
@@ -411,21 +402,6 @@ impl RpcAdapterEngine {
             self.odp_mr = Some(ulib::uverbs::MemoryRegion::<u8>::new(odp_mr).unwrap());
         }
         self.odp_mr.as_mut().unwrap()
-    }
-
-    #[inline]
-    fn choose_strategy(sglist: &SgList) -> RpcStrategy {
-        // See if the total length can fit into a meta buffer
-        let serialized_size: usize = sglist
-            .0
-            .iter()
-            .map(|sge| mem::size_of::<u32>() + sge.len)
-            .sum();
-        if serialized_size < MetaBuffer::capacity() {
-            RpcStrategy::Fused
-        } else {
-            RpcStrategy::Standard
-        }
     }
 
     fn send_engine_version(&mut self, conn_ctx: &ConnectionContext) -> Result<(), DatapathError> {
@@ -462,75 +438,6 @@ impl RpcAdapterEngine {
         Ok(())
     }
     
-    fn send_fused(
-        &mut self,
-        conn_ctx: &ConnectionContext,
-        mut meta_buf_ptr: MetaBufferPtr,
-        sglist: &SgList,
-    ) -> Result<Status, DatapathError> {
-        use ulib::uverbs::SendFlags;
-
-        let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
-        let msg_type = unsafe { &*meta_buf_ptr.as_meta_ptr() }.msg_type;
-        let cmid = &conn_ctx.cmid;
-        let ctx = RpcId::new(cmid.as_handle(), call_id).encode_u64();
-
-        // TODO(cjr): XXX, this credit implementation has big flaws
-        if msg_type == RpcMsgType::Request {
-            conn_ctx.credit.fetch_sub(1, Ordering::AcqRel);
-            self.pending_recv += 1;
-            conn_ctx
-                .outstanding_req
-                .lock()
-                .push_back(ReqContext { call_id, sg_len: 1 });
-        }
-
-        let off = meta_buf_ptr.0.as_ptr().expose_addr();
-        let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
-
-        // TODO(cjr): impl Serialize for SgList
-        // Serialize the sglist
-        // write the lens to MetaBuffer
-        meta_buf.num_sge = sglist.0.len() as u32;
-
-        let mut value_len = 0;
-        let lens_buf = meta_buf.length_delimited.as_mut_ptr().cast::<u32>();
-        let value_buf = unsafe { lens_buf.add(sglist.0.len()).cast::<u8>() };
-
-        for (i, sge) in sglist.0.iter().enumerate() {
-            // SAFETY: we have done sanity check before in choose_strategy
-            unsafe { lens_buf.add(i).write(sge.len as u32) };
-            unsafe {
-                ptr::copy_nonoverlapping(sge.ptr as *mut u8, value_buf.add(value_len), sge.len);
-            }
-            value_len += sge.len;
-        }
-
-        // write the values to MetaBuffer
-        meta_buf.value_len = value_len as u32;
-
-        let odp_mr = self.get_or_init_odp_mr();
-
-        // post send with imm
-        // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
-        let send_flags = if meta_buf.len() <= MAX_INLINE_DATA {
-            SendFlags::INLINE
-        } else {
-            SendFlags::empty()
-        };
-        unsafe {
-            cmid.post_send_with_imm(
-                odp_mr,
-                off..off + meta_buf.len(),
-                ctx,
-                send_flags | SendFlags::SIGNALED,
-                0,
-            )?;
-        }
-
-        Ok(Progress(1))
-    }
-
     fn send_standard(
         &mut self,
         conn_ctx: &ConnectionContext,
@@ -553,10 +460,6 @@ impl RpcAdapterEngine {
                 call_id,
                 sg_len: sglist.0.len() + 1,
             });
-        }
-
-        if conn_ctx.local_version.load(Ordering::Acquire) != self.version {
-            self.send_engine_version(&conn_ctx)?;
         }
 
         // Sender posts send requests from the SgList
@@ -659,16 +562,7 @@ impl RpcAdapterEngine {
             };
             // timer.tick();
 
-
-            let status = if conn_ctx.remote_version.load(Ordering::Acquire) == self.version {
-                // TODO(cjr): Examine the SgList and optimize for small messages
-                match Self::choose_strategy(&sglist) {
-                    RpcStrategy::Fused => self.send_fused(&conn_ctx, msg.meta_buf_ptr, &sglist)?,
-                    RpcStrategy::Standard => self.send_standard(&conn_ctx, meta_ref, &sglist)?,
-                }
-            } else {
-                self.send_standard(&conn_ctx, &meta_ref, &sglist)?
-            };
+            let status = self.send_standard(&conn_ctx, &meta_ref, &sglist)?;
 
             // timer.tick();
             // log::info!("check_input_queue: {}", timer);
@@ -676,37 +570,6 @@ impl RpcAdapterEngine {
         }
 
         Ok(Progress(0))
-    }
-
-    fn reshape_fused_sg_list(sg_list: &mut SgList) {
-        use std::ptr::Unique;
-
-        assert_eq!(sg_list.0.len(), 1);
-
-        let meta_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MetaBuffer).unwrap();
-        let meta_buf = unsafe { meta_buf_ptr.as_ref() };
-        // tracing::trace!("reshape_fused_sg_list: meta_buf: {:?}", meta_buf);
-
-        // modify the first sge in place
-        sg_list.0[0].len = mem::size_of::<MessageMeta>();
-
-        let num_sge = meta_buf.num_sge as usize;
-        let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
-        debug_assert!(_prefix.is_empty() && _suffix.is_empty());
-
-        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
-        let mut value_offset = 0;
-
-        for i in 0..num_sge {
-            sg_list.0.push(SgE {
-                ptr: value_buf_base + value_offset,
-                len: lens[i] as usize,
-            });
-
-            value_offset += lens[i] as usize;
-        }
-
-        // tracing::trace!("reshape_fused_sg_list: sg_list: {:?}", sg_list);
     }
 
     fn process_control_message(
@@ -806,14 +669,14 @@ impl RpcAdapterEngine {
                             // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                // if wc.wr_id == u64::MAX {
-                                //     self.ctrl_buf.in_use = false;
-                                // } else {
-                                //     let rpc_id = RpcId::decode_u64(wc.wr_id);
-                                //     self.rx_outputs()[0]
-                                //         .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
-                                //         .unwrap();
-                                // }
+                                if wc.wr_id == u64::MAX {
+                                    self.ctrl_buf.in_use = false;
+                                } else {
+                                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                                    self.rx_outputs()[0]
+                                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
+                                        .unwrap();
+                                }
                             }
                         }
                         WcOpcode::Recv => {
@@ -849,18 +712,12 @@ impl RpcAdapterEngine {
                                 // let mut timer = crate::timer::Timer::new();
 
                                 use std::ops::DerefMut;
-                                let mut recv_ctx =
+                                let recv_ctx =
                                     mem::take(conn_ctx.receiving_ctx.lock().deref_mut());
 
                                 if recv_ctx.sg_list.0[0].len == mem::size_of::<ControlMessage>() {
                                     self.process_control_message(recv_ctx.sg_list, &conn_ctx)?;
                                 } else {
-                                    // check if it is an eager message
-                                    if recv_ctx.sg_list.0.len() == 1 {
-                                        // got an eager message
-                                        Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
-                                    }
-
                                     // timer.tick();
                                     // 200-500ns
                                     let recv_id = self.unmarshal_and_deliver_up(

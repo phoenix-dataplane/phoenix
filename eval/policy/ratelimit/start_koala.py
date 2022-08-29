@@ -11,7 +11,7 @@ workdir = os.path.expanduser(workdir)
 
 os.chdir(workdir)
 os.makedirs("/tmp/mrpc-eval/", exist_ok=True)
-subprocess.Popen([
+subprocess.run([
     "cargo", 
     "run",
     "--release",

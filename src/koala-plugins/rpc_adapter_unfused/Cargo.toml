@@ -1,5 +1,5 @@
 [package]
-name = "koala-rpc_adapter"
+name = "koala-rpc_adapter_unfused"
 version = "0.1.0"
 edition = "2021"
 

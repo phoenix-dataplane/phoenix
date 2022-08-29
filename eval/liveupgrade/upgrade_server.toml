@@ -1,0 +1,9 @@
+name = "upgrade_server"
+description = "Upgrade server RpcAdapter"
+group = "upgrade_server"
+timeout_secs = 600
+
+[[worker]]
+host = "danyang-03"
+bin = "upgrade"
+args = "--config eval/liveupgrade/rpc_adapter.toml"

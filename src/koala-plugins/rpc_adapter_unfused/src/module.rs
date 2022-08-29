@@ -103,7 +103,7 @@ impl RpcAdapterEngineBuilder {
             cmd_rx: self.cmd_rx,
             node: self.node,
             ctrl_buf: ControlMsgBuffer::new(),
-            version: 2,
+            version: 1,
             _mode: self.mode,
             indicator: Default::default(),
             recv_mr_usage: fnv::FnvHashMap::default(),
@@ -262,7 +262,7 @@ impl KoalaModule for RpcAdapterModule {
         match ty {
             Self::RPC_ACCEPTOR_ENGINE => {
                 let engine =
-                    unsafe { AcceptorEngine::restore(local, shared, global, node, plugged, prev_version)? };
+                    unsafe { AcceptorEngine::restore(local, shared, global, node, plugged, prev_version)? }; 
                 Ok(Box::new(engine))
             }
             Self::RPC_ADAPTER_ENGINE => {

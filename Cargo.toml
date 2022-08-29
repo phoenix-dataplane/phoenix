@@ -19,6 +19,8 @@ members = [
   "src/koala-plugins/transport-rdma/plugin",
   "src/koala-plugins/rpc_adapter",
   "src/koala-plugins/rpc_adapter/plugin",
+  "src/koala-plugins/rpc_adapter_unfused",
+  "src/koala-plugins/rpc_adapter_unfused/plugin",
   "src/koala-plugins/mrpc",
   "src/koala-plugins/mrpc/plugin",
   "src/koala-plugins/policy/ratelimit",

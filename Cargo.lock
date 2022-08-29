@@ -1414,6 +1414,7 @@ dependencies = [
  "rdma",
  "serde",
  "spin",
+ "static_assertions",
  "thiserror",
  "tokio",
  "toml",
@@ -1424,6 +1425,42 @@ name = "koala-rpc_adapter-plugin"
 version = "0.1.0"
 dependencies = [
  "koala-rpc_adapter",
+]
+
+[[package]]
+name = "koala-rpc_adapter_unfused"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-rdma",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "rdma",
+ "serde",
+ "spin",
+ "static_assertions",
+ "thiserror",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "koala-rpc_adapter_unfused-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-rpc_adapter_unfused",
 ]
 
 [[package]]
