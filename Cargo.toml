@@ -38,6 +38,7 @@ members = [
   "src/koala_examples/alltoall",
   "src/koala_examples/rpc_hello",
   "src/koala_examples/rpc_bench",
+  "src/koala_examples/rpc_bench_plus",
   "src/koala_examples/masstree_analytics",
   "src/koalactl",
   "benchmark",

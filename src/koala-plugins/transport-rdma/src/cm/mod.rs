@@ -1,4 +1,4 @@
-// use fnv::FnvHashMap as HashMap;
+use fnv::FnvHashMap as HashMap;
 use std::collections::VecDeque;
 use std::io;
 use std::os::unix::io::AsRawFd;

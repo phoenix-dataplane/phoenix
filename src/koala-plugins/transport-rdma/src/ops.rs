@@ -17,6 +17,7 @@ use koala::log;
 
 use super::state::{EventChannel, Resource, State};
 use super::{ApiError, DatapathError};
+use rdma::RawRdmaMsgTx;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -29,6 +30,12 @@ impl Clone for Ops {
         let shared = Arc::clone(&self.state.shared);
         let state = State::new(shared);
         Ops { state }
+    }
+}
+
+impl Debug for Ops {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Ops")
     }
 }
 
@@ -99,6 +106,28 @@ impl Ops {
         let flags: ibv::SendFlags = send_flags.into();
         cmid.post_send(wr_id, buf, &mr, flags.0)
             .map_err(DatapathError::RdmaCm)?;
+        Ok(())
+    }
+
+    /*
+     * NOT a general-purpose function. is_tail is part of the logic of RPC communication.
+     */
+    #[inline]
+    pub unsafe fn post_send_batch<'a, I>(
+        &self,
+        cmid_handle: Handle,
+        data: I,
+    ) -> std::result::Result<(), DatapathError>
+    where
+        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
+    {
+        self.resource()
+            .cmid_table
+            .get_dp(&cmid_handle)?
+            .qp()
+            .unwrap()
+            .post_send_batch(data)
+            .map_err(DatapathError::Ibv)?;
         Ok(())
     }
 
