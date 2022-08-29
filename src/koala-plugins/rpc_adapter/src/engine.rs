@@ -806,14 +806,14 @@ impl RpcAdapterEngine {
                             // send completed,  do nothing
                             if wc.wc_flags.contains(WcFlags::WITH_IMM) {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
-                                // if wc.wr_id == u64::MAX {
-                                //     self.ctrl_buf.in_use = false;
-                                // } else {
-                                //     let rpc_id = RpcId::decode_u64(wc.wr_id);
-                                //     self.rx_outputs()[0]
-                                //         .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
-                                //         .unwrap();
-                                // }
+                                if wc.wr_id == u64::MAX {
+                                    self.ctrl_buf.in_use = false;
+                                } else {
+                                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                                    self.rx_outputs()[0]
+                                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
+                                        .unwrap();
+                                }
                             }
                         }
                         WcOpcode::Recv => {
