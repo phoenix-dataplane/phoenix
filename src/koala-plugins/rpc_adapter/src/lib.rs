@@ -57,9 +57,8 @@ impl From<ControlPathError> for interface::Error {
 }
 
 // use crate::engine::graph::SendError;
-use crate::engine::graph::EngineRxMessage;
-use crate::engine::graph::EngineTxMessage;
 use tokio::sync::mpsc::error::SendError;
+use koala::engine::datapath::EngineTxMessage;
 
 impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {
@@ -74,5 +73,5 @@ pub(crate) enum DatapathError {
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
     #[error("Tx queue send error: {0}")]
-    Tx(#[from] crate::engine::graph::SendError<EngineTxMessage>),
+    Tx(#[from] koala::engine::datapath::SendError<EngineTxMessage>),
 }

@@ -67,8 +67,6 @@
 // allow int_roundings for koala
 #![cfg_attr(feature = "koala", feature(int_roundings))]
 
-use interface::rpc::{ImmFlags, RpcId};
-
 /// Direct access to low-level libverbs FFI.
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::missing_safety_doc))]
 #[allow(non_upper_case_globals)]
@@ -93,33 +91,4 @@ pub mod convert;
 #[allow(missing_docs)]
 pub mod mr;
 
-/// Structure transmitted between rpc engine, schduler engine and rdma API
-#[derive(Debug, Clone)]
-pub struct RawRdmaMsgTx {
-    /// Raw MR pointer
-    pub mr: u64,
-    /// Absolute base address and length. No corresponding MR required
-    pub range: ipc::buf::Range,
-    /// RPC identifier
-    pub rpc_id: RpcId,
-}
-
-impl RawRdmaMsgTx {
-    /// Return true if all bits in flags are set.
-    #[inline(always)]
-    pub fn has_all(&self, flags: ImmFlags) -> bool {
-        self.rpc_id.flag_bits.has_all(flags)
-    }
-
-    /// Return true if any bit in flags is set.
-    #[inline(always)]
-    pub fn has_any(&self, flags: ImmFlags) -> bool {
-        self.rpc_id.flag_bits.has_any(flags)
-    }
-
-    /// Helper function to set inside rpc_id.flag_bits
-    #[inline(always)]
-    pub fn set_flag(&mut self, flags: ImmFlags) {
-        self.rpc_id.flag_bits.set(flags)
-    }
-}
+pub use ibv::POST_BUF_LEN;

@@ -1149,6 +1149,7 @@ dependencies = [
  "ipc-ratelimit",
  "ipc-rpc_adapter",
  "ipc-salloc",
+ "ipc-scheduler",
  "ipc-transport",
 ]
 
@@ -1225,6 +1226,16 @@ dependencies = [
 
 [[package]]
 name = "ipc-salloc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-scheduler"
 version = "0.1.0"
 dependencies = [
  "interface",
@@ -1451,6 +1462,30 @@ name = "koala-salloc-plugin"
 version = "0.1.0"
 dependencies = [
  "koala-salloc",
+]
+
+[[package]]
+name = "koala-scheduler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "koala",
+ "minstant",
+ "nix 0.23.1",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "koala-scheduler-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-scheduler",
 ]
 
 [[package]]
@@ -2357,6 +2392,7 @@ dependencies = [
  "bindgen",
  "cc",
  "interface",
+ "ipc",
  "lazy_static",
  "libc",
  "log",
@@ -2450,6 +2486,21 @@ dependencies = [
  "futures",
  "hdrhistogram",
  "minstant",
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rpc_bench_plus"
+version = "0.1.0"
+dependencies = [
+ "futures",
  "mrpc",
  "mrpc-build",
  "prost",

@@ -35,7 +35,7 @@ pub(crate) trait FromBorrow<Borrowed> {
 }
 
 #[inline]
-fn get_ops() -> &'static Ops {
+pub(crate) fn get_ops() -> &'static Ops {
     use super::engine::ELS;
     ELS.with(|els| &els.borrow().as_ref().unwrap().ops)
 }

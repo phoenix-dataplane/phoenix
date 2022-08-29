@@ -3,10 +3,11 @@
 use std::io;
 use std::net::SocketAddr;
 use std::slice;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use interface::{returned, AsHandle, Handle};
+use ipc::RawRdmaMsgTx;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
@@ -17,11 +18,13 @@ use koala::log;
 
 use super::state::{EventChannel, Resource, State};
 use super::{ApiError, DatapathError};
-use rdma::RawRdmaMsgTx;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
+const ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
+
 pub struct Ops {
+    pub(crate) id: u32,
     pub(crate) state: State,
 }
 
@@ -29,24 +32,23 @@ impl Clone for Ops {
     fn clone(&self) -> Self {
         let shared = Arc::clone(&self.state.shared);
         let state = State::new(shared);
-        Ops { state }
-    }
-}
-
-impl Debug for Ops {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Ops")
+        Ops { id: self.id, state }
     }
 }
 
 impl Ops {
     pub(crate) fn new(state: State) -> Self {
-        Self { state }
+        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
+        Self { id, state }
     }
 
     #[inline]
     pub fn resource(&self) -> &Resource {
         &self.state.shared.resource
+    }
+
+    pub unsafe fn from_addr(addr: usize) -> &'static Self {
+        unsafe { &*(addr as *const Self) }
     }
 }
 
@@ -118,8 +120,8 @@ impl Ops {
         cmid_handle: Handle,
         data: I,
     ) -> std::result::Result<(), DatapathError>
-    where
-        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
+        where
+            I: ExactSizeIterator<Item=&'a RawRdmaMsgTx>,
     {
         self.resource()
             .cmid_table
@@ -617,7 +619,7 @@ impl Ops {
         );
 
         use super::state::DEFAULT_CTXS;
-        let index = ctx.0 .0 as usize;
+        let index = ctx.0.0 as usize;
         if index >= DEFAULT_CTXS.len() {
             return Err(ApiError::NotFound);
         }
@@ -664,7 +666,7 @@ impl Ops {
         let cmid = self.resource().cmid_table.get(&cmid_handle)?;
         // use the context to distinguish if the connection is disconnected
         if let Ok(0) =
-            unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+        unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
         {
             cmid.disconnect().map_err(ApiError::RdmaCm)?;
         }

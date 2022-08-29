@@ -1,27 +1,24 @@
-use crate::engine::{
-    future, EngineLocalStorage, EngineRxMessage, RxIQueue, RxOQueue, TxIQueue, TxOQueue, Vertex,
-};
-use crate::engine::{Engine, EngineResult, Indicator};
-use crate::node::Node;
-use crate::scheduler::fusion_layout::{BufferPage, PAGE_SIZE};
-use crate::transport::rdma::DatapathError;
-use interface::engine::{EngineType, SchedulingMode};
+use interface::engine::SchedulingMode;
 use interface::rpc::{ImmFlags, RpcId, TransportStatus};
 use interface::Handle;
-use log::trace;
 use minstant::Instant;
-use rdma::ibv::POST_BUF_LEN;
-use rdma::RawRdmaMsgTx;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::hash::Hash;
 use std::mem;
 use std::mem::MaybeUninit;
-use std::ops::DerefMut;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::pin::Pin;
+use std::sync::atomic::AtomicU32;
 use std::time::Duration;
+use futures::future::BoxFuture;
+use ipc::RawRdmaMsgTx;
+use koala::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
+use koala::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
+use koala::{impl_vertex_for_engine, log};
+use koala::storage::{ResourceCollection, SharedStorage};
+use rdma::POST_BUF_LEN;
+use transport_rdma::ops::Ops;
+use transport_rdma::DatapathError;
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);
@@ -62,7 +59,7 @@ impl PolicyState {
         return self.buffered_length > 4096
             || self.local_buffer.len() > 3
             || (self.local_buffer.len() > 0
-                && (self.imm_send_flag || self.last_timestamp.elapsed().ge(&MAX_INTERVAL_TIME)));
+            && (self.imm_send_flag || self.last_timestamp.elapsed().ge(&MAX_INTERVAL_TIME)));
     }
 
     #[inline(always)]
@@ -245,64 +242,39 @@ impl BufferPool {
 }
 
 pub struct SchedulerEngine {
-    pub(crate) node: Arc<Mutex<Node>>,
-    pub(crate) indicator: Option<Indicator>,
+    pub(crate) node: DataPathNode,
+    pub(crate) indicator: Indicator,
     pub(crate) _mode: SchedulingMode,
     // without requirement for sychronization, we do not use Mutex wrapper
     policy_state: HashMap<FlattenKey, PolicyState>,
     pub(crate) buffer_pool: BufferPool,
-    pub(crate) tls: Box<TlStorage>,
     //     counter: usize,
     //     recording: StackedBuffer<(u32,u32),128>
 }
 
-crate::unimplemented_ungradable!(SchedulerEngine);
+impl_vertex_for_engine!(SchedulerEngine, node);
 
-impl Vertex for SchedulerEngine {
-    fn id(&self) -> &str {
-        unimplemented!()
+impl Decompose for SchedulerEngine {
+    fn flush(&mut self) -> anyhow::Result<()> {
+        todo!()
     }
 
-    fn engine_type(&self) -> EngineType {
-        self.node.lock().unwrap().engine_type
-    }
-
-    fn tx_inputs(&mut self) -> &mut Vec<TxIQueue> {
-        unimplemented!()
-    }
-
-    fn tx_outputs(&mut self) -> &mut Vec<TxOQueue> {
-        unimplemented!()
-    }
-
-    fn rx_inputs(&mut self) -> &mut Vec<RxIQueue> {
-        unimplemented!()
-    }
-
-    fn rx_outputs(&mut self) -> &mut Vec<RxOQueue> {
-        unimplemented!()
+    fn decompose(self: Box<Self>, shared: &mut SharedStorage, global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
+        todo!()
     }
 }
 
 impl Engine for SchedulerEngine {
-    type Future = impl Future<Output = EngineResult>;
-
-    fn entry(mut self) -> Self::Future {
-        Box::pin(async move { self.mainloop().await })
+    fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
+        Box::pin(async move { self.get_mut().mainloop().await })
     }
 
-    fn set_tracker(&mut self, indicator: Indicator) {
-        self.indicator = Some(indicator);
-    }
-
-    fn description(&self) -> String {
+    fn description(self: Pin<&Self>) -> String {
         format!("SchedulerEngine, scheduling over rdma operations")
     }
 
-    #[inline]
-    unsafe fn els(&self) -> Option<&'static dyn EngineLocalStorage> {
-        let tls = self.tls.as_ref() as *const TlStorage;
-        Some(&*tls)
+    fn tracker(self: Pin<&mut Self>) -> &mut Indicator {
+        &mut self.get_mut().indicator
     }
 }
 
@@ -312,13 +284,9 @@ enum Status {
     Disconnected,
 }
 
-use crate::engine::channel::SendError;
-use crate::engine::graph::{EngineTxMessage, TryRecvError};
-use crate::rpc_adapter::engine::TlStorage;
-use crate::scheduler::engine::FusingState::{Exhausted, FreeStart, Fusing, HoldingOne};
-use crate::scheduler::stacked_buffer::StackedBuffer;
-use crate::transport::rdma::ops::Ops;
 use Status::Progress;
+use crate::fusion_layout::{BufferPage, PAGE_SIZE};
+use crate::stacked_buffer::StackedBuffer;
 
 static DEBUG_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -346,7 +314,7 @@ impl SchedulerEngine {
             }
             // timer.tick();
 
-            self.indicator.as_ref().unwrap().set_nwork(n_work);
+            self.indicator.set_nwork(n_work);
             // if n_work>0 || n_work2>0 {
             //     log::info!("Scheduler mainloop: {} {} {}",n_work,n_work2,timer);
             // }
@@ -357,15 +325,14 @@ impl SchedulerEngine {
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         let mut cnt = 0;
-        let mut node_guard = self.node.lock().unwrap();
-        let node = node_guard.deref_mut();
+        let node = &self.node;
         let input_vec = &mut node.tx_input;
         let rx_output_vec = &mut node.rx_output;
 
         // todo(xyc): optimize brute-force polling
         for (idx, tx_input) in input_vec.iter_mut().enumerate() {
             // In this inside code block, (ops, handle) won't change.
-            let mut local_buffer: StackedBuffer<RawRdmaMsgTx, POST_BUF_LEN> = StackedBuffer::new();
+            let mut local_buffer: StackedBuffer<RawRdmaMsgTx, { POST_BUF_LEN }> = StackedBuffer::new();
             let mut fetch_next: bool;
             // Safety: only when len>0 could we use these.
             let mut target_ops: &Ops = unsafe { MaybeUninit::uninit().assume_init() };
@@ -373,8 +340,8 @@ impl SchedulerEngine {
             while local_buffer.len() < POST_BUF_LEN {
                 fetch_next = match tx_input.try_recv() {
                     Ok(engine_msg) => match engine_msg {
-                        EngineTxMessage::SchedMessage(ops, handle, rpc_msg) => {
-                            target_ops = ops;
+                        EngineTxMessage::SchedMessage(ops_handle, handle, rpc_msg) => {
+                            target_ops = unsafe { Ops::from_addr(ops_handle) };
                             target_handle = handle;
                             local_buffer.append(rpc_msg);
                             true
@@ -479,6 +446,8 @@ enum FusingState<'a> {
     Exhausted,
 }
 
+use FusingState::{FreeStart, HoldingOne, Fusing, Exhausted};
+
 impl SchedulerEngine {
     fn _post_queue_fused<'a, I>(
         ops: &Ops,
@@ -486,8 +455,8 @@ impl SchedulerEngine {
         iter: I,
         buffer_pool: &mut BufferPool,
     ) -> Result<(), DatapathError>
-    where
-        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
+        where
+            I: ExactSizeIterator<Item=&'a RawRdmaMsgTx>,
     {
         let mut temp_arr: [MaybeUninit<RawRdmaMsgTx>; POST_BUF_LEN] =
             unsafe { MaybeUninit::uninit().assume_init() };
@@ -678,14 +647,13 @@ impl SchedulerEngine {
 }
 
 impl SchedulerEngine {
-    pub(crate) fn new(node: Node, mode: SchedulingMode, ops: Ops) -> Self {
+    pub(crate) fn new(node: DataPathNode, mode: SchedulingMode) -> Self {
         SchedulerEngine {
-            node: Arc::new(Mutex::new(node)),
-            indicator: None,
+            node,
+            indicator: Default::default(),
             _mode: mode,
             policy_state: Default::default(),
             buffer_pool: BufferPool::new(1024 * 1024 * 128 / PAGE_SIZE), // 128Mb
-            tls: Box::new(TlStorage { ops }),
             // counter:0,
             // recording:StackedBuffer::new()
         }

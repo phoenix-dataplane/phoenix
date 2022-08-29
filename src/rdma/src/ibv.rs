@@ -12,7 +12,8 @@ const PORT_NUM: u8 = 1;
 /// Maximum size of post by scheduler
 pub const POST_BUF_LEN: usize = 32;
 
-use crate::{ffi, RawRdmaMsgTx};
+use crate::ffi;
+use ipc::RawRdmaMsgTx;
 pub use ffi::ibv_qp_type;
 pub use ffi::ibv_wc;
 pub use ffi::ibv_wc_opcode;

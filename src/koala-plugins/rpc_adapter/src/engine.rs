@@ -12,13 +12,13 @@ use fnv::FnvHashMap;
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
-use interface::{AsHandle, Handle};
+use interface::rpc::{ImmFlags, MessageMeta, RpcId, RpcMsgType, TransportStatus};
+use interface::{AsHandle, Handle, WorkCompletion};
 use ipc::mrpc::cmd;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
+use ipc::{Range, RawRdmaMsgTx};
 use ipc::rpc_adapter::control_plane;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
-use rdma::RawRdmaMsgTx;
 
 use mrpc::unpack::UnpackFromSgE;
 use salloc::state::State as SallocState;
@@ -28,7 +28,7 @@ use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
 use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
-use koala::engine::datapath::DataPathNode;
+use koala::engine::datapath::{DataPathNode, TryRecvError};
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
@@ -81,6 +81,8 @@ pub(crate) struct RpcAdapterEngine {
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
+
+    pub(crate) enable_scheduler: bool,
 
     // work completion read buffer
     pub(crate) wc_read_buffer: Vec<interface::WorkCompletion>,
@@ -261,8 +263,8 @@ enum Status {
 }
 
 use crate::engine::channel::TryRecvError;
-use crate::rpc_adapter::ulib::get_ops;
-use crate::scheduler::fusion_layout::HEAD_META_LEN;
+use crate::ulib::get_ops;
+use scheduler::fusion_layout::HEAD_META_LEN;
 use Status::Progress;
 
 impl Engine for RpcAdapterEngine {
@@ -593,7 +595,7 @@ impl RpcAdapterEngine {
         let cmid = &conn_ctx.cmid;
 
         // TODO(cjr): XXX, this credit implementation has some issues
-        trace!("check_input_queue, sglist: {:0x?}", sglist);
+        log::trace!("check_input_queue, sglist: {:0x?}", sglist);
         if meta_ref.msg_type == RpcMsgType::Request {
             conn_ctx
                 .credit
@@ -624,7 +626,7 @@ impl RpcAdapterEngine {
         // post send message meta
         let ops = get_ops();
         self.tx_outputs()[0].send(EngineTxMessage::SchedMessage {
-            0: ops,
+            0: ops as usize,
             1: cmid.as_handle(),
             2: RawRdmaMsgTx {
                 mr: mr_address,
@@ -643,7 +645,7 @@ impl RpcAdapterEngine {
                 tracing::trace!("post_send_imm, len={}", sge.len);
             }
             self.tx_outputs()[0].send(EngineTxMessage::SchedMessage {
-                0: ops,
+                0: ops as usize,
                 1: cmid.as_handle(),
                 2: RawRdmaMsgTx {
                     mr: mr_address,
@@ -752,13 +754,14 @@ impl RpcAdapterEngine {
                     for call_id in &call_ids[..1] {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&RpcId(conn_id, *call_id))
+                            .remove(&RpcId::new(conn_id, *call_id, 0))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(cmid, &recv_mrs[..])?;
                     }
                     // timer.tick();
                     // log::info!("ReclaimRecvBuf: {}", timer);
                 }
+                _ => { unreachable!() }
             },
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
@@ -893,7 +896,7 @@ impl RpcAdapterEngine {
         if self.enable_scheduler {
             assert!(wc.wc_flags.contains(WcFlags::WITH_IMM));
         }
-        // todo(xyc): network byte order ???
+        // todo(xyc): network byte order
         if self.enable_scheduler && ImmFlags(wc.imm_data as u8).has_all(ImmFlags::FUSE_PKT) {
             // extract sges from fused message
             let meta_ptr = wr_ctx.buffer_addr as *const u8;
@@ -964,7 +967,7 @@ impl RpcAdapterEngine {
             let sge = SgE {
                 ptr: wr_ctx.buffer_addr,
                 len: wc.byte_len as _, // note this byte_len is only valid for
-                                       // recv request
+                // recv request
             };
             let mut recv_ctx = conn_ctx.receiving_ctx.lock();
             recv_ctx.sg_list.0.push(sge);
