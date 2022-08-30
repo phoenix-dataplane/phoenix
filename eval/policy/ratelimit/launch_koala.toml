@@ -4,12 +4,12 @@ group = "launch_koala"
 timeout_secs = 600
 
 [[worker]]
-host = "danyang-02"
+host = "danyang-05"
 bin = "koala"
 args = "--no-ansi"
 
 [[worker]]
-host = "danyang-03"
+host = "danyang-06"
 bin = "koala"
 args = "--no-ansi"
 dependencies = [0] # launch in order, no very necessary

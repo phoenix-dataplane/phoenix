@@ -27,7 +27,7 @@ workload = subprocess.Popen([
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"), 
 ], stdout=subprocess.DEVNULL)
-time.sleep(10)
+time.sleep(5)
 
 subprocess.run([
     "cargo", 
@@ -66,7 +66,7 @@ subprocess.run([
     "--sid", 
     str(mrpc_sid),
 ])
-time.sleep(5)
+time.sleep(1)
 subprocess.run([
     "cargo",
     "run", 
@@ -77,7 +77,7 @@ subprocess.run([
     "--dump", 
     "/tmp/mrpc-eval/policy/list.json"
 ])
-time.sleep(5)
+time.sleep(1)
 
 with open("/tmp/mrpc-eval/policy/list.json") as f:
     data = json.load(f)
@@ -109,7 +109,7 @@ for rate in rates:
         "-b",
         str(rate)
     ])
-    time.sleep(15)
+    time.sleep(1)
 
 detach_config = os.path.join(SCRIPTDIR, "detach.toml") 
 subprocess.run([

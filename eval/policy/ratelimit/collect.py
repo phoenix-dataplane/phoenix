@@ -63,8 +63,8 @@ def read_backend_log(path):
     )
     return logs
 
-rates = read_rates("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-02.stdout")
-logs = read_backend_log("/tmp/mrpc-eval/launch_koala/koala_danyang-02.stdout")
+rates = read_rates("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
+logs = read_backend_log("/tmp/mrpc-eval/launch_koala/koala_danyang-05.stdout")
 all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 base_ts = min(all_ts)
@@ -81,11 +81,11 @@ max_ts = max(all_ts)
 import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots(figsize=(8, 6))
-ax.fill_between(rates["timestamp"], rates["rate"], step="pre", color="#a29bfe", alpha=0.7, linewidth=0)
+ax.fill_between(rates["timestamp"], rates["rate"], step="pre", color="#d35400", alpha=0.5, linewidth=0)
 ax.set_xlim(0, max_ts)
 ax.set_ylim(0, 1000)
-ax.set_xticks([0, 15, 30, 45])
-ax.set_xlabel("Time", fontsize=30)
+# ax.set_xticks([0, 15, 30, 45])
+ax.set_xlabel("Time (sec)", fontsize=30)
 ax.set_ylabel("Rate (Krps)", fontsize=30)
 ax.tick_params(axis="x", labelsize=25)
 ax.tick_params(axis="y", labelsize=25)
@@ -96,16 +96,16 @@ for _, row in logs.iterrows():
     anno = None
     if op == "attach":
         rate = RATES.pop(0)
-        anno = "{:d} Krps".format(rate)
+        anno = "{:d}K".format(rate)
     elif op == "request":
         rate = RATES.pop(0)
-        if len(rates) == 0:
-            anno = "Unlimited"
+        if len(RATES) == 0:
+            anno = "Unlimit"
             rate = 860
         else:
-            anno = "{:d} Krps".format(rate)
+            anno = "{:d}K".format(rate)
     elif op == "detach":
-        anno = "Remove RL"
+        anno = "-RL"
     if rate is None:
         y_coord = rates["rate"][0]
     else:
@@ -119,7 +119,7 @@ for _, row in logs.iterrows():
         arrowprops={
             "arrowstyle": "->",
         },
-        fontsize=16,
+        fontsize=20,
     )
 
-plt.savefig("/tmp/mrpc-eval/policy/ratelimit/rate.pdf", bbox_inches='tight')
+plt.savefig("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rate.pdf", bbox_inches='tight')
