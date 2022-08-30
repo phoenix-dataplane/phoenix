@@ -17,8 +17,8 @@ toml = { version = "0.5.8", features = ["preserve_order"] }
 bincode = "1.3.3"
 static_assertions = "1.1.0"
 
-koala = { path = "../../koala" }
-ipc = { path = "../../ipc", features = ["scheduler"] }
-rdma = { path = "../../rdma" }
-interface = { path = "../../interface" }
-transport_rdma = { path = "../transport-rdma", package = "koala-transport-rdma" }
+koala = { path = "../.." }
+ipc = { path = "../../../ipc", features = ["scheduler"] }
+rdma = { path = "../../../rdma" }
+interface = { path = "../../../interface" }
+transport_rdma = { path = "../../../koala-plugins/transport-rdma", package = "koala-transport-rdma" }
