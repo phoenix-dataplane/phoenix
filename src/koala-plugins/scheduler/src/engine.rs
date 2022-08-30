@@ -5,16 +5,17 @@ use minstant::Instant;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
-use std::mem;
+use std::{mem, ptr};
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
+use anyhow::anyhow;
 use futures::future::BoxFuture;
 use ipc::RawRdmaMsgTx;
 use koala::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
-use koala::engine::{Decompose, Engine, EngineResult, future, Indicator};
-use koala::{impl_vertex_for_engine, log};
+use koala::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
+use koala::{impl_vertex_for_engine, log, tracing};
 use koala::storage::{ResourceCollection, SharedStorage};
 use rdma::POST_BUF_LEN;
 use transport_rdma::ops::Ops;
@@ -259,11 +260,60 @@ impl_vertex_for_engine!(SchedulerEngine, node);
 
 impl Decompose for SchedulerEngine {
     fn flush(&mut self) -> anyhow::Result<()> {
-        todo!()
+        while !self.tx_inputs()[0].is_empty() {
+            self.check_input_queue()?;
+        }
+        Ok(())
     }
 
     fn decompose(self: Box<Self>, shared: &mut SharedStorage, global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
-        todo!()
+        let mut engine = *self;
+
+        let mut collections = ResourceCollection::with_capacity(13);
+        tracing::trace!("dumping Scheduler states...");
+
+        let node = unsafe {
+            collections.insert("mode".to_string(), Box::new(ptr::read(&engine._mode)));
+            collections.insert("policy_state".to_string(), Box::new(ptr::read(&engine.policy_state)));
+            collections.insert("buffer_pool".to_string(), Box::new(ptr::read(&engine.buffer_pool)));
+            ptr::read(&engine.node)
+        };
+        mem::forget(engine);
+        (collections, node)
+    }
+}
+
+impl SchedulerEngine {
+    pub(crate) fn restore(
+        mut local: ResourceCollection,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+        node: DataPathNode,
+        _plugged: &ModuleCollection,
+        _prev_version: Version,
+    ) -> anyhow::Result<Self> {
+        let mode = *local
+            .remove("mode")
+            .unwrap()
+            .downcast::<SchedulingMode>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let policy_state = *local
+            .remove("policy_state")
+            .unwrap()
+            .downcast::<HashMap<FlattenKey, PolicyState>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let buffer_pool = *local
+            .remove("mode")
+            .unwrap()
+            .downcast::<BufferPool>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        Ok(SchedulerEngine {
+            node,
+            indicator: Default::default(),
+            _mode: mode,
+            policy_state,
+            buffer_pool,
+        })
     }
 }
 
@@ -450,6 +500,8 @@ enum FusingState<'a> {
 }
 
 use FusingState::{FreeStart, HoldingOne, Fusing, Exhausted};
+use koala::envelop::ResourceDowncast;
+use koala::module::{ModuleCollection, Version};
 
 impl SchedulerEngine {
     fn _post_queue_fused<'a, I>(

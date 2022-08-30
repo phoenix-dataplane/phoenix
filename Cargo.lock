@@ -1471,12 +1471,16 @@ dependencies = [
  "anyhow",
  "bincode",
  "futures",
+ "interface",
  "ipc",
  "koala",
+ "koala-transport-rdma",
  "minstant",
  "nix 0.23.1",
+ "rdma",
  "serde",
  "serde_json",
+ "static_assertions",
  "thiserror",
  "toml",
 ]
@@ -2486,21 +2490,6 @@ dependencies = [
  "futures",
  "hdrhistogram",
  "minstant",
- "mrpc",
- "mrpc-build",
- "prost",
- "smol",
- "structopt",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "rpc_bench_plus"
-version = "0.1.0"
-dependencies = [
- "futures",
  "mrpc",
  "mrpc-build",
  "prost",
