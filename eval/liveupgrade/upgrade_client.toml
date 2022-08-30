@@ -4,6 +4,6 @@ group = "upgrade_client"
 timeout_secs = 600
 
 [[worker]]
-host = "danyang-02"
+host = "danyang-05"
 bin = "upgrade"
 args = "--config eval/liveupgrade/rpc_adapter.toml"

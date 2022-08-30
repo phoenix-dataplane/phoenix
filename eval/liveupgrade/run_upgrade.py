@@ -23,7 +23,7 @@ workload = subprocess.Popen([
     "-o",
     "/tmp/mrpc-eval",
     "--benchmark", 
-    os.path.join(SCRIPTDIR, "rpc_bench_tput_2kb.toml"), 
+    os.path.join(SCRIPTDIR, "rpc_bench_tput_32b.toml"), 
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"), 
 ], stdout=subprocess.DEVNULL)

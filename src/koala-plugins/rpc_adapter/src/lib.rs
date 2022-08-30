@@ -20,11 +20,11 @@ pub mod module;
 pub mod state;
 
 pub(crate) mod acceptor;
+pub(crate) mod ctrl_buf;
+pub(crate) mod ctrl_msg;
 pub(crate) mod engine;
 pub(crate) mod serialization;
 pub(crate) mod ulib;
-pub(crate) mod ctrl_buf;
-pub(crate) mod ctrl_msg;
 
 #[allow(unused)]
 pub(crate) mod pool;

@@ -261,13 +261,15 @@ impl KoalaModule for RpcAdapterModule {
     ) -> Result<Box<dyn Engine>> {
         match ty {
             Self::RPC_ACCEPTOR_ENGINE => {
-                let engine =
-                    unsafe { AcceptorEngine::restore(local, shared, global, node, plugged, prev_version)? }; 
+                let engine = unsafe {
+                    AcceptorEngine::restore(local, shared, global, node, plugged, prev_version)?
+                };
                 Ok(Box::new(engine))
             }
             Self::RPC_ADAPTER_ENGINE => {
-                let engine =
-                    unsafe { RpcAdapterEngine::restore(local, shared, global, node, plugged, prev_version)? };
+                let engine = unsafe {
+                    RpcAdapterEngine::restore(local, shared, global, node, plugged, prev_version)?
+                };
                 Ok(Box::new(engine))
             }
             _ => bail!("invalid engine type {:?}", ty),

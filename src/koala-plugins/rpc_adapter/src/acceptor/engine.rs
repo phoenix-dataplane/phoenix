@@ -67,10 +67,7 @@ impl AcceptorEngine {
         _prev_version: Version,
     ) -> Result<Self> {
         log::debug!("restoring RpcAcceptorEngine states...");
-        let state = *local
-            .remove("state")
-            .unwrap()
-            .downcast_unchecked::<State>();
+        let state = *local.remove("state").unwrap().downcast_unchecked::<State>();
         let tls = *local
             .remove("tls")
             .unwrap()

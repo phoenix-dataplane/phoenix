@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -169,8 +169,10 @@ impl Resource {
         credit: usize,
         local_version: u64,
     ) -> Result<(), ResourceError> {
-        self.cmid_table
-            .insert(cmid.as_handle(), ConnectionContext::new(cmid, credit, local_version))
+        self.cmid_table.insert(
+            cmid.as_handle(),
+            ConnectionContext::new(cmid, credit, local_version),
+        )
     }
 }
 

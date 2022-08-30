@@ -63,10 +63,21 @@ def read_backend_log(client_log, server_log):
     )
     return logs
 
-rates = read_rates("/tmp/mrpc-eval/liveupgrade/rpc_bench_tput_2kb/rpc_bench_client_danyang-02.stdout")
-SERVER = "/tmp/mrpc/launch_koala/koala_danyang-03.stdout"
-CLIENT = "/tmp/mrpc/launch_koala/koala_danyang-02.stdout"
+rates = read_rates("/tmp/mrpc-eval/liveupgrade/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
+SERVER = "/tmp/mrpc-eval/launch_koala/koala_danyang-06.stdout"
+CLIENT = "/tmp/mrpc-eval/launch_koala/koala_danyang-05.stdout"
 logs = read_backend_log(CLIENT, SERVER)
+rates.to_csv(
+    "/tmp/mrpc-eval/liveupgrade/rpc_bench_tput_32b/rates.csv",
+    sep=",",
+    header=True,
+)
+logs.to_csv(
+    "/tmp/mrpc-eval/liveupgrade/rpc_bench_tput_32b/server_log.csv",
+    sep=",",
+    header=True,
+)
+
 all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 base_ts = min(all_ts)
@@ -81,22 +92,21 @@ all_ts.extend([x for x in logs['timestamp']])
 max_ts = max(all_ts)
 
 import matplotlib.pyplot as plt
-
 def find_closest_rate(rates, ts):
     min_diff = None
     target_rate = None
-    for row in rates.iterrows():
+    for _, row in rates.iterrows():
         if min_diff is None or (row["timestamp"] > ts and row["timestamp"] - ts < min_diff):
             min_diff = row["timestamp"] - ts
             target_rate = row["rate"]
     return target_rate
 
 fig, ax = plt.subplots(figsize=(8, 6))
-ax.fill_between(rates["timestamp"], rates["rate"], step="pre", color="#a29bfe", alpha=0.7, linewidth=0)
+ax.fill_between(rates["timestamp"], rates["rate"], step="pre", color="#a29bfe", alpha=0.5, linewidth=0)
 ax.set_xlim(0, max_ts)
 ax.set_ylim(0, 1000)
-ax.set_xticks([0, 15, 30, 45])
-ax.set_xlabel("Time", fontsize=30)
+ax.set_xticks([0, 5, 10, 15])
+ax.set_xlabel("Time (sec)", fontsize=30)
 ax.set_ylabel("Rate (Krps)", fontsize=30)
 ax.tick_params(axis="x", labelsize=25)
 ax.tick_params(axis="y", labelsize=25)
@@ -118,7 +128,7 @@ for _, row in logs.iterrows():
         arrowprops={
             "arrowstyle": "->",
         },
-        fontsize=16,
+        fontsize=20,
     )
 
-plt.savefig("/tmp/mrpc-eval/liveupgrade/rate.pdf", bbox_inches='tight')
+plt.savefig("/tmp/mrpc-eval/liveupgrade/rpc_bench_tput_32b/rate.pdf", bbox_inches='tight')

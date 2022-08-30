@@ -63,8 +63,8 @@ def read_backend_log(path):
     )
     return logs
 
-rates = read_rates("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-02.stdout")
-logs = read_backend_log("/tmp/mrpc-eval/launch_koala/koala_danyang-02.stdout")
+rates = read_rates("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
+logs = read_backend_log("/tmp/mrpc-eval/launch_koala/koala_danyang-05.stdout")
 all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 base_ts = min(all_ts)

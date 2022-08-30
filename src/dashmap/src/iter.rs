@@ -265,11 +265,10 @@ impl<'a, K: Eq + Hash, V, S: 'a + BuildHasher + Clone, M: Map<'a, K, V, S>> Iter
                 let mut guard = unsafe { self.map._yield_write_shard(self.shard_i) };
 
                 let sref: &mut HashMap<K, V, S> = unsafe { util::change_lifetime_mut(&mut *guard) };
-                
+
                 if sref.is_empty() {
                     self.shard_i += 1;
-                }
-                else {
+                } else {
                     let iter = sref.iter_mut();
                     self.current = Some((Arc::new(guard), iter));
                     self.shard_i += 1;

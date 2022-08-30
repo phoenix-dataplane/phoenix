@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

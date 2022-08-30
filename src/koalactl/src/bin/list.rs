@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 #[macro_use]
 extern crate prettytable;
 use prettytable::Table;
-use uuid::Uuid;
 use structopt::StructOpt;
+use uuid::Uuid;
 
 use ipc::control::{Request, Response, ResponseKind};
 use ipc::unix::DomainSocket;
@@ -72,7 +72,7 @@ fn main() {
             if let Some(path) = opts.dump {
                 let f = File::create(path).expect("unable to create file");
                 let writer = BufWriter::new(f);
-                serde_json::to_writer_pretty(writer, &subscriptions).unwrap(); 
+                serde_json::to_writer_pretty(writer, &subscriptions).unwrap();
             } else {
                 let mut services = HashMap::with_capacity(subscriptions.len());
                 let mut engine_tables = HashMap::new();

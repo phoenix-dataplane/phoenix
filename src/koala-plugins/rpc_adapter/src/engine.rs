@@ -182,10 +182,7 @@ impl RpcAdapterEngine {
         _prev_version: Version,
     ) -> Result<Self> {
         tracing::trace!("restoring RpcAdapterEngine states...");
-        let state = *local
-            .remove("state")
-            .unwrap()
-            .downcast_unchecked::<State>();
+        let state = *local.remove("state").unwrap().downcast_unchecked::<State>();
         let tls = *local
             .remove("tls")
             .unwrap()
@@ -455,13 +452,13 @@ impl RpcAdapterEngine {
         while self.ctrl_buf.in_use {
             self.check_transport_service()?;
         }
-        
+
         conn_ctx
             .local_version
             .store(self.version, Ordering::Release);
         Ok(())
     }
-    
+
     fn send_fused(
         &mut self,
         conn_ctx: &ConnectionContext,
@@ -659,7 +656,6 @@ impl RpcAdapterEngine {
             };
             // timer.tick();
 
-
             let status = if conn_ctx.remote_version.load(Ordering::Acquire) == self.version {
                 // TODO(cjr): Examine the SgList and optimize for small messages
                 match Self::choose_strategy(&sglist) {
@@ -811,7 +807,10 @@ impl RpcAdapterEngine {
                                 } else {
                                     let rpc_id = RpcId::decode_u64(wc.wr_id);
                                     self.rx_outputs()[0]
-                                        .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
+                                        .send(EngineRxMessage::Ack(
+                                            rpc_id,
+                                            TransportStatus::Success,
+                                        ))
                                         .unwrap();
                                 }
                             }
@@ -873,7 +872,7 @@ impl RpcAdapterEngine {
                                     // keep them outstanding because they will be used by the user
                                     self.recv_mr_usage
                                         .insert(recv_id, recv_ctx.recv_buffer_handles);
-                                }                                    
+                                }
                                 // timer.tick();
                                 // log::info!("check_transport_service: {}", timer);
                             }
@@ -1110,9 +1109,9 @@ impl RpcAdapterEngine {
                     // accept connection after we get the AddrMap updated
                     let id = Arc::try_unwrap(pre_id).unwrap().accept(None).await?;
                     let handle = id.as_handle();
-                    
+
                     self.state.resource().insert_cmid(id, 128, self.version)?;
-                    
+
                     let conn_ctx = self.state.resource().cmid_table.get(&handle)?;
                     self.send_engine_version(&conn_ctx).unwrap();
                     // NOTE(wyj): may not be necessary
