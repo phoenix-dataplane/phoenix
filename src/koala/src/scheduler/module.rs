@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use anyhow::{bail};
 use crate::engine::{Engine, EnginePair, EngineType};
 use crate::engine::datapath::DataPathNode;
-use crate::module::{KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo};
+use crate::module::{KoalaModule, ModuleCollection, NewEngineRequest, Service, ServiceInfo};
 // use crate::state_mgr::SharedStateManager;
 use crate::storage::{ResourceCollection, SharedStorage};
 use crate::module::Version;

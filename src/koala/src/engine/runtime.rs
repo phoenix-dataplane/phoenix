@@ -10,8 +10,15 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 use minstant::Instant;
+use semver::Version;
 use spin::Mutex;
 use thiserror::Error;
+use interface::engine::SchedulingMode::Dedicate;
+use crate::engine::datapath::DataPathNode;
+use crate::engine::{Engine, EngineType, Vertex};
+use crate::scheduler::engine::SchedulerEngine;
+use crate::scheduler::module::SchedulerModule;
+use crate::log;
 
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
@@ -119,6 +126,8 @@ pub(crate) struct Runtime {
     pub(crate) control_requests: Mutex<Vec<(EngineId, Vec<u8>, UCred)>>,
 
     pub(crate) runtime_manager: Weak<RuntimeManager>,
+
+    pub(crate) scheduler: Mutex<Option<EngineContainer>>,
 }
 
 impl Runtime {
@@ -138,6 +147,34 @@ impl Runtime {
             control_requests: Mutex::new(Vec::new()),
 
             runtime_manager: rm,
+
+            scheduler: Mutex::new(None),
+        }
+    }
+
+    fn lazy_create_scheduler(&self, engines: &mut Vec<(EngineId, EngineContainer)>) {
+        use crate::engine::datapath::channel;
+        for (eng_id, eng_ctn) in engines {
+            if eng_ctn.engine_type() == EngineType("RpcAdapterEngine") {
+                let mut eng = eng_ctn.engine_mut();
+                assert_eq!(eng.tx_outputs().len(), 0);
+                assert_eq!(eng.rx_inputs().len(), 0);
+                let (tx_sender, tx_receiver) = channel::create_channel(channel::ChannelFlavor::Sequential);
+                let (rx_sender, rx_receiver) = channel::create_channel(channel::ChannelFlavor::Sequential);
+                eng.tx_outputs().push(tx_sender);
+                eng.rx_inputs().push(rx_receiver);
+                let mut guard = self.scheduler.lock();
+                if guard.is_none() {
+                    let scheduler = SchedulerEngine::new(DataPathNode::new(), Dedicate);
+                    let container = EngineContainer::new(
+                        Box::new(scheduler), SchedulerModule::SCHEDULER_ENGINE,
+                        Version::new(1, 0, 0));
+                    *guard = Some(container);
+                }
+                guard.as_mut().unwrap().engine_mut().tx_inputs().push(tx_receiver);
+                guard.as_mut().unwrap().engine_mut().rx_outputs().push(rx_sender);
+                log::debug!("Connect rpc_adapter-{} to scheduler",eng_id.0);
+            }
         }
     }
 
@@ -160,7 +197,7 @@ impl Runtime {
     }
 
     /// Submit a scheduling group to the runtime
-    pub(crate) fn add_group(&self, group: SchedulingGroup, dedicated: bool) {
+    pub(crate) fn add_group(&self, mut group: SchedulingGroup, dedicated: bool) {
         // TODO(cjr): FIXME
         // immediate update the dedicate bit
         // Check in the manager and update this dedicate bit should be atomic
@@ -170,6 +207,7 @@ impl Runtime {
         // }
         self.dedicated.fetch_or(dedicated, Ordering::Release);
 
+        self.lazy_create_scheduler(&mut group.engines);
         let submission = RuntimeSubmission::NewGroup(group);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -179,8 +217,9 @@ impl Runtime {
     pub(crate) fn attach_engines_to_group(
         &self,
         gid: GroupId,
-        engines: Vec<(EngineId, EngineContainer)>,
+        mut engines: Vec<(EngineId, EngineContainer)>,
     ) {
+        self.lazy_create_scheduler(&mut engines);
         let submission = RuntimeSubmission::AttachToGroup(gid, engines);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -277,6 +316,37 @@ impl Runtime {
                     }
                 }
             }
+            {
+                let mut guard = self.scheduler.lock();
+                if guard.is_some() {
+                    guard.as_mut().unwrap().engine_mut().set_els();
+
+                    // bind to a variable first (otherwise engine is borrowed in the match expression)
+                    let ret = guard.as_mut().unwrap().future().poll(&mut cx);
+                    match ret {
+                        Poll::Pending => {
+                            let tracker = guard.as_mut().unwrap().engine_mut().tracker();
+                            // has_work += tracker.nwork();
+                            if tracker.nwork() > 0 {
+                                last_event_ts = Instant::now();
+                            }
+                            tracker.set_nwork(0);
+                        }
+                        Poll::Ready(EngineResult::Ok(())) => {
+                            log::info!(
+                                "Engine [{}] completed, shutting down...",
+                                guard.as_ref().unwrap().engine().description()
+                            );
+                            *guard = None;
+                        }
+                        Poll::Ready(EngineResult::Err(e)) => {
+                            log::error!("Engine [{}] error: {}", guard.as_ref().unwrap().engine().description(), e);
+                            *guard = None;
+                        }
+                    }
+                }
+                drop(guard);
+            }
 
             // garbage collect every several rounds, maybe move to another thread.
             for (group_index, engine_index) in shutdown.drain(..).rev() {
@@ -302,11 +372,11 @@ impl Runtime {
             // move newly added runtime to the scheduling queue
             if Ok(true)
                 == self.new_pending.compare_exchange(
-                    true,
-                    false,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                )
+                true,
+                false,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
             {
                 let mut running = self.running.borrow_mut();
                 for submission in self.pending.lock().drain(..) {
@@ -332,11 +402,11 @@ impl Runtime {
 
             if Ok(true)
                 == self.new_suspend.compare_exchange(
-                    true,
-                    false,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                )
+                true,
+                false,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
             {
                 let mut engine_ids = {
                     let mut guard = self.suspend_requests.lock();
@@ -369,11 +439,11 @@ impl Runtime {
 
             if Ok(true)
                 == self.new_ctrl_request.compare_exchange(
-                    true,
-                    false,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                )
+                true,
+                false,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
             {
                 let mut guard = self.control_requests.lock();
                 for (target_eid, request, cred) in guard.drain(..) {

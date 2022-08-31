@@ -376,7 +376,9 @@ impl RpcAdapterEngine {
                 }
             }
             // timer.tick();
-            self.forwarding_scheduler_ack()?;
+            if self.enable_scheduler {
+                self.forwarding_scheduler_ack()?;
+            }
 
             if fastrand::usize(..1000) < 1 {
                 // check input command queue, ~50ns
