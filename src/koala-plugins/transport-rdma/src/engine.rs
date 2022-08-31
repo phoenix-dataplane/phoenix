@@ -12,8 +12,9 @@ use interface::engine::SchedulingMode;
 use interface::{AsHandle, Handle, returned};
 use ipc::transport::rdma::{cmd, dp};
 
-use rdma::ibv;
-use rdma::rdmacm;
+use koala::rdma::ibv;
+use koala::rdma::rdmacm;
+use koala::rdma;
 
 use super::module::CustomerType;
 use koala::transport_rdma::ops::Ops;
@@ -349,7 +350,7 @@ impl TransportEngine {
 
     fn get_completion_from_error(&self, wr: &dp::WorkRequest, e: DatapathError) -> dp::Completion {
         use interface::{WcStatus, WorkCompletion};
-        use rdma::ffi::ibv_wc_status;
+        use koala::rdma::ffi::ibv_wc_status;
         use std::num::NonZeroU32;
 
         let (cq_handle, wr_id) = self.get_dp_error_info(wr);

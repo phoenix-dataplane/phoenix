@@ -12,7 +12,7 @@ crate-type = ["rlib"]
 interface = { path = "../../interface" }
 ipc = { path = "../../ipc" }
 koala = { path = "../../koala" }
-rdma = { path = "../../rdma", features = ["koala"] }
+#rdma = { path = "../../rdma", features = ["koala"] }
 
 tokio = { version = "1.18.2", features = ["sync"] }
 anyhow = "1.0.58"
