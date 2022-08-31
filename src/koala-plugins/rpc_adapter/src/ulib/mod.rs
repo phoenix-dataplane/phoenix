@@ -2,9 +2,10 @@ use std::borrow::Borrow;
 use std::io;
 
 use thiserror::Error;
+use koala::transport_rdma::ApiError;
 
-use transport_rdma::ops::Ops;
-use transport_rdma::{ApiError, DatapathError};
+use koala::transport_rdma::ops::Ops;
+use koala::transport_rdma::DatapathError;
 
 #[allow(dead_code)]
 pub(crate) mod fp;

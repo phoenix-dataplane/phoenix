@@ -3,6 +3,7 @@ use std::mem::MaybeUninit;
 
 /// A zero-cost buffer allocated on the stack.
 /// Safety: users should manually care the safety, including uninitialized memory and boundary.
+#[allow(unused)]
 pub(crate) struct StackedBuffer<T: Sized, const COUNT: usize> {
     buf: [MaybeUninit<T>; COUNT],
     len: usize,

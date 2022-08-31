@@ -73,7 +73,7 @@ impl Builder {
 
         let ast: syn::File = syn::parse2(tokens)?;
         let code = prettyplease::unparse(&ast);
-        fs::write(self.emit_crate_dir.join("src/lib.rs"), &code).unwrap();
+        fs::write(self.emit_crate_dir.join("src/mod"), &code).unwrap();
 
         let manifest = format!(
             include_str!("template/Cargo.toml"),

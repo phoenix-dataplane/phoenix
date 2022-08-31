@@ -13,13 +13,13 @@ use std::time::Duration;
 use anyhow::anyhow;
 use futures::future::BoxFuture;
 use ipc::RawRdmaMsgTx;
-use koala::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
-use koala::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
-use koala::{impl_vertex_for_engine, log, tracing};
-use koala::storage::{ResourceCollection, SharedStorage};
+use crate::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
+use crate::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
+use crate::{log, tracing};
+use crate::storage::{ResourceCollection, SharedStorage};
 use rdma::POST_BUF_LEN;
-use transport_rdma::ops::Ops;
-use transport_rdma::DatapathError;
+use crate::transport_rdma::ops::Ops;
+use crate::transport_rdma::DatapathError;
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);
@@ -256,7 +256,22 @@ pub struct SchedulerEngine {
     //     recording: StackedBuffer<(u32,u32),128>
 }
 
-impl_vertex_for_engine!(SchedulerEngine, node);
+// Manually implemented because of namespace.
+impl Vertex for SchedulerEngine {
+    #[inline]
+    fn tx_inputs(&mut self) -> &mut Vec<crate::engine::datapath::graph::TxIQueue> {
+        &mut self.node.tx_inputs
+    }
+    fn tx_outputs(&mut self) -> &mut Vec<crate::engine::datapath::graph::TxOQueue> {
+        &mut self.node.tx_outputs
+    }
+    fn rx_inputs(&mut self) -> &mut Vec<crate::engine::datapath::graph::RxIQueue> {
+        &mut self.node.rx_inputs
+    }
+    fn rx_outputs(&mut self) -> &mut Vec<crate::engine::datapath::graph::RxOQueue> {
+        &mut self.node.rx_outputs
+    }
+}
 
 impl Decompose for SchedulerEngine {
     fn flush(&mut self) -> anyhow::Result<()> {
@@ -266,10 +281,10 @@ impl Decompose for SchedulerEngine {
         Ok(())
     }
 
-    fn decompose(self: Box<Self>, shared: &mut SharedStorage, global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
+    fn decompose(self: Box<Self>, _shared: &mut SharedStorage, _global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
         let mut engine = *self;
 
-        let mut collections = ResourceCollection::with_capacity(13);
+        let mut collections = ResourceCollection::with_capacity(5);
         tracing::trace!("dumping Scheduler states...");
 
         let node = unsafe {
@@ -338,9 +353,10 @@ enum Status {
 }
 
 use Status::Progress;
-use koala::engine::datapath::fusion_layout::{BufferPage, PAGE_SIZE};
-use crate::stacked_buffer::StackedBuffer;
+use crate::engine::datapath::fusion_layout::{BufferPage, PAGE_SIZE};
+use crate::scheduler::stacked_buffer::StackedBuffer;
 
+#[allow(unused)]
 static DEBUG_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 impl SchedulerEngine {
@@ -367,7 +383,7 @@ impl SchedulerEngine {
             }
             // timer.tick();
 
-            self.indicator.set_nwork(n_work);
+            self.indicator.set_nwork(n_work + n_work2);
             // if n_work>0 || n_work2>0 {
             //     log::info!("Scheduler mainloop: {} {} {}",n_work,n_work2,timer);
             // }
@@ -414,7 +430,6 @@ impl SchedulerEngine {
                     Err(TryRecvError::Empty) => false,
                     Err(TryRecvError::Disconnected) => {
                         // todo(xyc): GC for disconnected engine
-                        fetch_next = false;
                         return Ok(Status::Disconnected);
                     }
                 };
@@ -500,8 +515,8 @@ enum FusingState<'a> {
 }
 
 use FusingState::{FreeStart, HoldingOne, Fusing, Exhausted};
-use koala::envelop::ResourceDowncast;
-use koala::module::{ModuleCollection, Version};
+use crate::envelop::ResourceDowncast;
+use crate::module::{ModuleCollection, Version};
 
 impl SchedulerEngine {
     fn _post_queue_fused<'a, I>(

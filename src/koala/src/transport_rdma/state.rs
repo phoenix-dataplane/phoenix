@@ -14,27 +14,26 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use koala::resource::ResourceTable;
-use koala::state_mgr::ProcessShared;
-use koala::tracing;
+use crate::resource::ResourceTable;
+use crate::state_mgr::ProcessShared;
 
-use super::cm::CmEventManager;
-use super::ApiError;
+use crate::transport_rdma::cm_manager::CmEventManager;
+use crate::transport_rdma::ApiError;
 
 // TODO(cjr): Make this global lock more fine-grained.
-pub(crate) struct State {
-    pub(crate) shared: Arc<Shared>,
+pub struct State {
+    pub shared: Arc<Shared>,
 }
 
 impl State {
-    pub(crate) fn new(shared: Arc<Shared>) -> Self {
+    pub fn new(shared: Arc<Shared>) -> Self {
         State { shared }
     }
 }
 
 impl State {
     #[inline]
-    pub(crate) fn resource(&self) -> &Resource {
+    pub fn resource(&self) -> &Resource {
         &self.shared.resource
     }
 }
@@ -42,7 +41,7 @@ impl State {
 pub struct Shared {
     // Control path operations must be per-process level
     // We use an async-friendly Mutex here
-    pub(crate) cm_manager: tokio::sync::Mutex<CmEventManager>,
+    pub cm_manager: tokio::sync::Mutex<CmEventManager>,
     // Pid as the identifier of this process
     pub pid: Pid,
     // Resources
@@ -74,8 +73,8 @@ lazy_static! {
         open_default_verbs().expect("Open default RDMA context failed.");
 }
 
-pub(crate) struct PinnedContext {
-    pub(crate) verbs: ManuallyDrop<ibv::Context>,
+pub struct PinnedContext {
+    pub verbs: ManuallyDrop<ibv::Context>,
     _pin: PhantomPinned,
 }
 
@@ -88,8 +87,8 @@ impl PinnedContext {
     }
 }
 
-pub(crate) struct DefaultContext {
-    pub(crate) pinned_ctx: Pin<Box<PinnedContext>>,
+pub struct DefaultContext {
+    pub pinned_ctx: Pin<Box<PinnedContext>>,
     gid_table: Vec<ibv::Gid>,
 }
 
@@ -145,7 +144,7 @@ impl Deref for EventChannel {
 }
 
 impl EventChannel {
-    pub(crate) fn new(inner: rdmacm::EventChannel) -> Self {
+    pub fn new(inner: rdmacm::EventChannel) -> Self {
         Self {
             inner,
             event_queue: spin::Mutex::new(VecDeque::new()),
@@ -155,7 +154,7 @@ impl EventChannel {
     /// Get an event that matches the event type.
     ///
     /// If there's any event matches, return the first one matched. Otherwise, returns None.
-    pub(crate) fn get_one_cm_event(
+    pub fn get_one_cm_event(
         &self,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<rdmacm::CmEvent> {
@@ -167,11 +166,11 @@ impl EventChannel {
         }
     }
 
-    pub(crate) fn add_event(&self, cm_event: rdmacm::CmEvent) {
+    pub fn add_event(&self, cm_event: rdmacm::CmEvent) {
         self.event_queue.lock().push_back(cm_event);
     }
 
-    pub(crate) fn clear_event_queue(&self) {
+    pub fn clear_event_queue(&self) {
         self.event_queue.lock().clear();
     }
 }

@@ -23,8 +23,8 @@ use koala::storage::{ResourceCollection, SharedStorage};
 use crate::cm::engine::CmEngine;
 use crate::config::RdmaTransportConfig;
 use crate::engine::TransportEngine;
-use crate::ops::Ops;
-use crate::state::{Shared, State};
+use koala::transport_rdma::ops::Ops;
+use koala::transport_rdma::state::{Shared, State};
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;

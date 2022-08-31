@@ -6,18 +6,18 @@ use std::slice;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use interface::{returned, AsHandle, Handle};
+use interface::{AsHandle, Handle, returned};
 use ipc::RawRdmaMsgTx;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use koala::engine::future;
-use koala::log;
+use crate::engine::future;
+use crate::transport_rdma::ApiError;
 
-use super::state::{EventChannel, Resource, State};
-use super::{ApiError, DatapathError};
+use crate::transport_rdma::state::{EventChannel, Resource, State};
+use crate::transport_rdma::DatapathError;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -25,7 +25,7 @@ const ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 pub struct Ops {
     pub id: u32,
-    pub(crate) state: State,
+    pub state: State,
 }
 
 impl Clone for Ops {
@@ -37,7 +37,7 @@ impl Clone for Ops {
 }
 
 impl Ops {
-    pub(crate) fn new(state: State) -> Self {
+    pub fn new(state: State) -> Self {
         let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
         Self { id, state }
     }
@@ -48,7 +48,7 @@ impl Ops {
     }
 
     pub unsafe fn from_addr(addr: usize) -> &'static Self {
-        unsafe { &*(addr as *const Self) }
+        &*(addr as *const Self)
     }
 }
 
@@ -618,7 +618,7 @@ impl Ops {
             cq_context
         );
 
-        use super::state::DEFAULT_CTXS;
+        use crate::transport_rdma::state::DEFAULT_CTXS;
         let index = ctx.0.0 as usize;
         if index >= DEFAULT_CTXS.len() {
             return Err(ApiError::NotFound);
@@ -751,7 +751,7 @@ impl Ops {
 
     pub fn get_default_contexts(&self) -> Result<Vec<returned::VerbsContext>> {
         log::debug!("GetDefaultContexts");
-        use super::state::DEFAULT_CTXS;
+        use crate::transport_rdma::state::DEFAULT_CTXS;
         let ctx_list = DEFAULT_CTXS
             .iter()
             .enumerate()

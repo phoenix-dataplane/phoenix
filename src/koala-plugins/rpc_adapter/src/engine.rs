@@ -22,7 +22,7 @@ use mrpc_marshal::{ExcavateContext, SgE, SgList};
 
 use mrpc::unpack::UnpackFromSgE;
 use salloc::state::State as SallocState;
-use transport_rdma::ops::Ops;
+use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
@@ -673,8 +673,6 @@ impl RpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use koala::engine::datapath::TryRecvError;
-
         // The order of polling and sending is important!
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
@@ -892,7 +890,7 @@ impl RpcAdapterEngine {
     }
 
     fn handle_recv(&mut self, wc: &WorkCompletion) -> Result<(), DatapathError> {
-        use interface::{WcFlags, WcOpcode, WcStatus};
+        use interface::WcFlags;
         let wr_ctx = self.state.resource().wr_contexts.get(&wc.wr_id)?;
         let cmid_handle = wr_ctx.conn_id;
         let conn_ctx = self.state.resource().cmid_table.get(&cmid_handle)?;
@@ -999,7 +997,7 @@ impl RpcAdapterEngine {
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
         // check completion, and replenish some recv requests
-        use interface::{WcFlags, WcOpcode, WcStatus};
+        use interface::{WcOpcode, WcStatus};
 
         let cq = self.state.get_or_init_cq();
 

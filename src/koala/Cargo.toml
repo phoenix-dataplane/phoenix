@@ -12,6 +12,7 @@ crate-type = ["dylib"]
 interface = { path = "../interface" }
 ipc = { path = "../ipc" }
 prost-build = { path = "../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
+rdma = { path = "../rdma"}
 # minitrace = { path = "../../../minitrace-rust/minitrace" }
 
 chrono = "0.4.19"
@@ -45,3 +46,4 @@ itertools = "0.10.3"
 libloading = "0.7.3"
 petgraph = "0.6.2"
 semver = "1.0.12"
+mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }

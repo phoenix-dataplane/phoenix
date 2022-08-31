@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use anyhow::{anyhow, bail};
-use koala::addon::Version;
-use koala::engine::{Engine, EnginePair, EngineType};
-use koala::engine::datapath::DataPathNode;
-use koala::module::{KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo};
-use koala::state_mgr::SharedStateManager;
-use koala::storage::{ResourceCollection, SharedStorage};
-use crate::engine::SchedulerEngine;
+use anyhow::{bail};
+use crate::engine::{Engine, EnginePair, EngineType};
+use crate::engine::datapath::DataPathNode;
+use crate::module::{KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo};
+// use crate::state_mgr::SharedStateManager;
+use crate::storage::{ResourceCollection, SharedStorage};
+use crate::module::Version;
+use crate::scheduler::engine::SchedulerEngine;
 
 
 pub struct SchedulerModule {}
@@ -43,12 +43,12 @@ impl KoalaModule for SchedulerModule {
 
     fn decompose(self: Box<Self>) -> ResourceCollection {
         // let module = *self;
-        let mut collections = ResourceCollection::new();
+        let collections = ResourceCollection::new();
         // collections.insert("config".to_string(), Box::new(module.config));
         collections
     }
 
-    fn migrate(&mut self, prev_module: Box<dyn KoalaModule>) {
+    fn migrate(&mut self, _prev_module: Box<dyn KoalaModule>) {
         // till now, do nothing
         // let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
     }

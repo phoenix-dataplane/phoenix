@@ -12,7 +12,7 @@ use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_rdma::module::RdmaTransportModule;
-use transport_rdma::ops::Ops;
+use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};
