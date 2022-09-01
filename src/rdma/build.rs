@@ -13,6 +13,11 @@ fn main() {
         .warnings(true)
         .opt_level(3)
         .file("src/rdma_verbs_wrapper.c")
+        .compile("librdma_verbs_wrapper.a");
+    cc::Build::new()
+        .warnings(true)
+        .opt_level(3)
+        .file("src/rdma_verbs_wrapper.c")
         .compile("librdma_verbs_wrapper.so");
 
     let bindings = bindgen::Builder::default()
