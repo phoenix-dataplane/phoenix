@@ -72,3 +72,9 @@ config_string = '''
 requests_per_sec = 1000
 bucket_size = 1000
 '''
+
+[[scheduling]]
+service = "Mrpc"
+[scheduling.mode]
+mode = "GroupShared"
+spec = 2

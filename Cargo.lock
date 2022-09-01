@@ -1297,6 +1297,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "chrono",
+ "crc32fast",
  "crossbeam",
  "dashmap",
  "fnv",

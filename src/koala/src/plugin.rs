@@ -1,10 +1,15 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::bail;
+use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
+use interface::engine::SchedulingMode;
+use itertools::Itertools;
 
 use ipc::control::PluginDescriptor;
 
@@ -84,9 +89,12 @@ pub(crate) struct ServiceRegistry {
 pub struct PluginCollection {
     pub(crate) modules: DashMap<String, Box<dyn KoalaModule>>,
     pub(crate) addons: DashMap<String, Box<dyn KoalaAddon>>,
-    pub(crate) engine_registry: DashMap<EngineType, Plugin>,
+    pub(crate) engine_registry: DashMap<EngineType, (Plugin, Option<SchedulingMode>)>,
     pub(crate) service_registry: DashMap<Service, ServiceRegistry>,
     dependency_graph: Mutex<EngineGraph>,
+    /// signature of different scheduling groups
+    /// that service engines (addon engines are excluded) will create
+    scheduling_group_signatures: Mutex<HashMap<u32, String>>,
 
     // There seems to be a fundmental problem of dlclose with thread-local destructors.
     //
@@ -144,6 +152,7 @@ impl PluginCollection {
             engine_registry: DashMap::new(),
             service_registry: DashMap::new(),
             dependency_graph: Mutex::new(EngineGraph::new()),
+            scheduling_group_signatures: Mutex::new(HashMap::new()),
             libraries: ManuallyDrop::new(DashMap::new()),
         }
     }
@@ -191,8 +200,14 @@ impl PluginCollection {
         };
         let engines = new_addon.engines();
         for engine in engines {
-            self.engine_registry.insert(*engine, plugin.clone());
+            self.engine_registry.insert(*engine, (plugin.clone(), None));
             tracing::info!("Registered addon engine {:?}", engine);
+        }
+        let scheduling_specs = new_addon.scheduling_specs();
+        for (engine_type, spec) in scheduling_specs {
+            if let Some(mut entry) = self.engine_registry.get_mut(engine_type) {
+                entry.value_mut().1 = Some(*spec)
+            }
         }
 
         self.addons.insert(addon.name.clone(), new_addon);
@@ -275,7 +290,13 @@ impl PluginCollection {
             upgraded_engine_types.extend(engines.iter().copied());
             graph_guard.add_engines(engines.iter().copied());
             for engine in engines {
-                self.engine_registry.insert(*engine, plugin.clone());
+                self.engine_registry.insert(*engine, (plugin.clone(), None));
+            }
+            let scheduling_specs = module.scheduling_specs();
+            for (engine_type, spec) in scheduling_specs {
+                if let Some(mut entry) = self.engine_registry.get_mut(engine_type) {
+                    entry.value_mut().1 = Some(*spec)
+                }
             }
         }
         for (name, module) in new_modules.into_iter() {
@@ -315,6 +336,42 @@ impl PluginCollection {
 
                 let groups = service_info.scheduling_groups;
                 let union_find = GroupUnionFind::new(groups);
+
+                let mut submit_groups = HashMap::new();
+                let mut singleton_id = union_find.size();
+                for engine in dependencies.iter().copied() {
+                    let representative =
+                        union_find.find_representative(engine).unwrap_or_else(|| {
+                            singleton_id += 1;
+                            singleton_id - 1
+                        });
+                    let group = submit_groups.entry(representative).or_insert_with(Vec::new);
+                    group.push(engine);
+                }
+                let mut signatures = self.scheduling_group_signatures.lock().unwrap();
+                for (_, group) in submit_groups {
+                    let mut hasher = Crc32Hasher::new();
+                    for engine in group.iter() {
+                        Hash::hash(engine, &mut hasher);
+                    }
+                    let hash = hasher.finalize();
+                    let group = group.into_iter().map(|x| x.0).join(" ");
+                    match signatures.entry(hash) {
+                        Entry::Occupied(e) => {
+                            if &*group != &**e.get() {
+                                tracing::warn!(
+                                    "Scheduling group signatures collided, Group 1: [{}], Group 2: [{}]",
+                                    group,
+                                    e.get(),
+                                );
+                            }
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(group);
+                        }
+                    }
+                }
+
                 let service = ServiceRegistry {
                     engines: dependencies,
                     tx_channels,

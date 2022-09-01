@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io;
 use std::os::unix::ucred::UCred;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Weak;
 use std::task::{Context, Poll};
 use std::thread;
@@ -95,15 +95,28 @@ enum RuntimeSubmission {
     AttachToGroup(GroupId, Vec<(EngineId, EngineContainer)>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum RuntimeMode {
+    Compact = 1,
+    Dedicated = 2,
+    GroupShared = 3,
+}
+
 pub(crate) struct Runtime {
     /// runtime id
     pub(crate) id: RuntimeId,
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<RefCell<SchedulingGroup>>>,
+    // number of active scheduling groups
+    active_cnt: AtomicUsize,
 
     // Whether the engine is dedicated or shared.
-    pub(crate) dedicated: AtomicBool,
+    mode: AtomicU8,
+    // For dedicated or scheduling group shared runtime,
+    // the signature for the type of scheduling group it is running
+    group_signature: AtomicU32,
 
     pub(crate) new_pending: AtomicBool,
     pending: Mutex<Vec<RuntimeSubmission>>,
@@ -126,7 +139,11 @@ impl Runtime {
         Runtime {
             id,
             running: RefCell::new(Vec::new()),
-            dedicated: AtomicBool::new(false),
+            active_cnt: AtomicUsize::new(0),
+
+            mode: AtomicU8::new(0),
+            group_signature: AtomicU32::new(0),
+
             new_pending: AtomicBool::new(false),
             pending: Mutex::new(Vec::new()),
 
@@ -144,32 +161,80 @@ impl Runtime {
     /// Returns true if there is no runnable engine or pending engine.
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
-        self.is_spinning() && self.pending.lock().is_empty()
+        let active = self.active_cnt.load(Ordering::Relaxed) == 0;
+        let pending = self.pending.lock().is_empty();
+        active && pending
     }
 
-    /// Returns true if there is no runnable engine.
+    /// Try to acquire this runtime to submit a scheduling group
+    /// SAFETY: this operation should only be executed by the runtime manager
+    /// while holding the mutex lock to `Inner`,
+    /// and should immediately followed by `add_group`,
+    /// without holding the lock,
+    /// otherwise, mode might be overwritten.
+    ///
+    /// * quota: maximum allowed number of scheduling groups
+    ///     that co-locate on this runtime (including the one to be submit)
     #[inline]
-    pub(crate) fn is_spinning(&self) -> bool {
-        self.running.try_borrow().map_or(false, |r| r.is_empty())
-    }
-
-    /// Returns true if the runtime is dedicated to a single scheduling group.
-    #[inline]
-    pub(crate) fn is_dedicated(&self) -> bool {
-        self.dedicated.load(Ordering::Acquire)
+    pub(crate) fn try_acquire(
+        &self,
+        mode: RuntimeMode,
+        group_signature: Option<u32>,
+        quota: Option<usize>,
+    ) -> bool {
+        // NOTE(wyj): Relaxed ordering should be fine
+        let scheduled_groups = self.active_cnt.load(Ordering::Relaxed) + self.pending.lock().len();
+        if scheduled_groups == 0 {
+            // the runtime is empty, and since engines are only submitted to the runtime
+            // when holding the runtime manager's inner lock, we have exclusvie access
+            // to the runtime, no other threads will submit engines to the runtime
+            // the runtime is guaranteed to be empty before we submit a group,
+            // we can safely modify the runtime mode
+            // SAFETY: Relaxed should be fine
+            // we only load / store
+            self.mode.store(mode as u8, Ordering::Relaxed);
+            if mode == RuntimeMode::Dedicated || mode == RuntimeMode::GroupShared {
+                self.group_signature
+                    .store(group_signature.unwrap(), Ordering::Relaxed);
+            }
+            true
+        } else {
+            // runtime is not empty, but it may become empty later
+            // other threads will not submit new engines to the runtime,
+            // since we are holding the mutex lock.
+            // Currently running engines may shutdown, hence runtime may becomes empty
+            let curr_mode = self.mode.load(Ordering::Relaxed);
+            if curr_mode != mode as u8 {
+                false
+            } else {
+                match mode {
+                    RuntimeMode::Dedicated => false,
+                    RuntimeMode::Compact => {
+                        if let Some(quota) = quota {
+                            quota >= scheduled_groups + 1
+                        } else {
+                            true
+                        }
+                    }
+                    RuntimeMode::GroupShared => {
+                        let curr_signature = self.group_signature.load(Ordering::Relaxed);
+                        if curr_signature == group_signature.unwrap() {
+                            if let Some(quota) = quota {
+                                quota >= scheduled_groups + 1
+                            } else {
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Submit a scheduling group to the runtime
-    pub(crate) fn add_group(&self, group: SchedulingGroup, dedicated: bool) {
-        // TODO(cjr): FIXME
-        // immediate update the dedicate bit
-        // Check in the manager and update this dedicate bit should be atomic
-        // E.g.
-        // if self.runtimes[rid].dedicated.compare_exchange(xxx) {
-        //     self.add_group(group);
-        // }
-        self.dedicated.fetch_or(dedicated, Ordering::Release);
-
+    pub(crate) fn add_group(&self, group: SchedulingGroup) {
         let submission = RuntimeSubmission::NewGroup(group);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -290,6 +355,8 @@ impl Runtime {
                 log::info!("Engine [{}] shutdown successfully", desc);
                 if running[group_index].borrow_mut().engines.is_empty() {
                     // All engines in the scheduling group has shutdown
+                    // NOTE(wyj): Relaxed ordering should be fine
+                    self.active_cnt.fetch_sub(1, Ordering::Relaxed);
                     running.swap_remove(group_index);
                 }
                 // This should be fine because runtime will be dropped later than RuntimeManager.
@@ -312,6 +379,8 @@ impl Runtime {
                 for submission in self.pending.lock().drain(..) {
                     match submission {
                         RuntimeSubmission::NewGroup(group) => {
+                            // NOTE(wyj): Relaxed ordering should be fine
+                            self.active_cnt.fetch_add(1, Ordering::Relaxed);
                             running.push(RefCell::new(group));
                         }
                         RuntimeSubmission::AttachToGroup(group_id, engines) => {
