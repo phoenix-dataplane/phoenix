@@ -10,9 +10,9 @@ crate-type = ["dylib"]
 
 [dependencies]
 interface = { path = "../interface" }
-ipc = { path = "../ipc" }
+ipc = { path = "../ipc", features = ["mrpc"] } # This is weird
 prost-build = { path = "../3rdparty/prost/prost-build", features = ["mrpc-backend"] }
-rdma = { path = "../rdma"}
+rdma = { path = "../rdma", features = ["koala"] }
 # minitrace = { path = "../../../minitrace-rust/minitrace" }
 
 chrono = "0.4.19"

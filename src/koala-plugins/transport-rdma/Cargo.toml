@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 interface = { path = "../../interface" }
-ipc = { path = "../../ipc" }
+ipc = { path = "../../ipc", features = ["transport"] }
 koala = { path = "../../koala" }
 #rdma = { path = "../../rdma", features = ["koala"] }
 
