@@ -12,6 +12,7 @@ use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 use anyhow::anyhow;
 use futures::future::BoxFuture;
+use smallvec::SmallVec;
 use ipc::RawRdmaMsgTx;
 use crate::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
 use crate::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
@@ -398,6 +399,8 @@ impl SchedulerEngine {
         let input_vec = &mut node.tx_inputs;
         let rx_output_vec = &mut node.rx_outputs;
 
+        let mut removed = SmallVec::<[usize;8]>::new();
+
         // todo(xyc): optimize brute-force polling
         for (idx, tx_input) in input_vec.iter_mut().enumerate() {
             // In this inside code block, (ops, handle) won't change.
@@ -429,8 +432,8 @@ impl SchedulerEngine {
                     },
                     Err(TryRecvError::Empty) => false,
                     Err(TryRecvError::Disconnected) => {
-                        // todo(xyc): GC for disconnected engine
-                        return Ok(Status::Disconnected);
+                        removed.push(idx);
+                        false
                     }
                 };
                 if !fetch_next {
@@ -469,6 +472,18 @@ impl SchedulerEngine {
                 }
             }
         }
+
+
+        // GC for rpc_adapter
+        if removed.len()>0 {
+            removed.sort_unstable();
+            removed.reverse();
+            for i in removed{
+                input_vec.remove(i);
+                rx_output_vec.remove(i);
+            }
+        }
+
         Ok(Progress(cnt))
     }
 
