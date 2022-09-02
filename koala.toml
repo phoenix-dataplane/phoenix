@@ -43,6 +43,14 @@ command_max_interval_ms = 1000
 '''
 
 [[modules]]
+name = "TcpTransport"
+lib_path = "/tmp/koala/plugins/libkoala_transport_tcp_plugin.so"
+config_string = '''
+prefix = "/tmp/koala"
+engine_basename = "transport-engine-tcp"
+'''
+
+[[modules]]
 name = "Salloc"
 lib_path = "/tmp/koala/plugins/libkoala_salloc_plugin.so"
 config_string = '''
@@ -57,11 +65,17 @@ config_string = '''
 prefix = "/tmp/koala"
 engine_basename = "mrpc-engine"
 build_cache = "/tmp/koala/build-cache"
+transport = Rdma
 '''
 
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
+
+
+[[modules]]
+name = "TcpRpcAdapter"
+lib_path = "/tmp/koala/plugins/libkoala_tcp_rpc_adapter_plugin.so"
 
 
 # Addons being here

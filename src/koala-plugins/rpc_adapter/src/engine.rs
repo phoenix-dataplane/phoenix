@@ -17,9 +17,8 @@ use interface::{AsHandle, Handle};
 use ipc::mrpc::cmd;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use ipc::rpc_adapter::control_plane;
-use mrpc_marshal::{ExcavateContext, SgE, SgList};
-
 use mrpc::unpack::UnpackFromSgE;
+use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use salloc::state::State as SallocState;
 use transport_rdma::ops::Ops;
 
@@ -505,7 +504,6 @@ impl RpcAdapterEngine {
         let cmid = &conn_ctx.cmid;
 
         // TODO(cjr): XXX, this credit implementation has some issues
-        log::debug!("check_input_queue, sglist: {:0x?}", sglist);
         if meta_ref.msg_type == RpcMsgType::Request {
             conn_ctx
                 .credit

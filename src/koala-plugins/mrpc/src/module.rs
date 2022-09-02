@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
+use ipc::mrpc::control_plane::TransportType;
 use ipc::mrpc::{cmd, dp};
 
 use koala::engine::{EnginePair, EngineType};
@@ -108,6 +109,21 @@ impl MrpcModule {
         0,
         0,
     )];
+
+    pub const TCP_DEPENDENCIES: &'static [EnginePair] =
+        &[(MrpcModule::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine"))];
+    pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
+        MrpcModule::MRPC_ENGINE,
+        EngineType("TcpRpcAdapterEngine"),
+        0,
+        0,
+    )];
+    pub const TCP_RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
+        EngineType("TcpRpcAdapterEngine"),
+        MrpcModule::MRPC_ENGINE,
+        0,
+        0,
+    )];
 }
 
 impl MrpcModule {
@@ -121,13 +137,24 @@ impl MrpcModule {
 
 impl KoalaModule for MrpcModule {
     fn service(&self) -> Option<ServiceInfo> {
-        let group = vec![Self::MRPC_ENGINE, EngineType("RpcAdapterEngine")];
-        let service = ServiceInfo {
-            service: MrpcModule::SERVICE,
-            engine: MrpcModule::MRPC_ENGINE,
-            tx_channels: MrpcModule::TX_CHANNELS,
-            rx_channels: MrpcModule::RX_CHANNELS,
-            scheduling_groups: vec![group],
+        let service = if self.config.transport == TransportType::Tcp {
+            let group = vec![Self::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine")];
+            ServiceInfo {
+                service: MrpcModule::SERVICE,
+                engine: MrpcModule::MRPC_ENGINE,
+                tx_channels: MrpcModule::TCP_TX_CHANNELS,
+                rx_channels: MrpcModule::TCP_RX_CHANNELS,
+                scheduling_groups: vec![group],
+            }
+        } else {
+            let group = vec![Self::MRPC_ENGINE, EngineType("RpcAdapterEngine")];
+            ServiceInfo {
+                service: MrpcModule::SERVICE,
+                engine: MrpcModule::MRPC_ENGINE,
+                tx_channels: MrpcModule::TX_CHANNELS,
+                rx_channels: MrpcModule::RX_CHANNELS,
+                scheduling_groups: vec![group],
+            }
         };
         Some(service)
     }
@@ -137,7 +164,11 @@ impl KoalaModule for MrpcModule {
     }
 
     fn dependencies(&self) -> &[EnginePair] {
-        MrpcModule::DEPENDENCIES
+        if self.config.transport == TransportType::Tcp {
+            MrpcModule::TCP_DEPENDENCIES
+        } else {
+            MrpcModule::DEPENDENCIES
+        }
     }
 
     fn check_compatibility(&self, _prev: Option<&Version>, _curr: &HashMap<&str, Version>) -> bool {
@@ -193,9 +224,12 @@ impl KoalaModule for MrpcModule {
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let cmd_tx = shared
-                .command_path
-                .get_sender(&EngineType("RpcAdapterEngine"))?;
+            let engine_type = if self.config.transport == TransportType::Tcp {
+                EngineType("TcpRpcAdapterEngine")
+            } else {
+                EngineType("RpcAdapterEngine")
+            };
+            let cmd_tx = shared.command_path.get_sender(&engine_type)?;
             let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
 
             let builder = MrpcEngineBuilder::new(

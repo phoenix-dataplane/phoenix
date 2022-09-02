@@ -2,10 +2,12 @@ use serde::{Deserialize, Serialize};
 
 type IResult<T> = Result<T, interface::Error>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransportType {
+    #[serde(alias = "Rdma")]
     Rdma,
-    Socket,
+    #[serde(alias = "Tcp")]
+    Tcp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

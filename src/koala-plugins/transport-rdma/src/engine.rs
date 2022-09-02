@@ -369,7 +369,7 @@ impl TransportEngine {
     /// NOTE(cjr): There's no fundamental difference between the failure on
     /// post_send and the failure on poll_cq for the same work request.
     /// The general practice is to return the error early, but we can
-    /// postphone the error returning in order to achieve asynchronous IPC.
+    /// postpone the error returning in order to achieve asynchronous IPC.
     ///
     /// However, the completion order can be changed due to some errors
     /// happen on request posting stage.
