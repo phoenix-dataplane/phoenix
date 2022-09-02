@@ -70,6 +70,7 @@ pub mod alloc {
     use salloc::SharedHeapAllocator;
     pub type Box<T> = shm::boxed::Box<T, SharedHeapAllocator>;
     pub type Vec<T> = shm::vec::Vec<T, SharedHeapAllocator>;
+    pub type String = shm::string::String<SharedHeapAllocator>;
 }
 
 pub mod stub;

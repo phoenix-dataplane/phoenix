@@ -943,9 +943,9 @@ impl<T, I: SliceIndex<[T]>, A: ShmAllocator> IndexMut<I> for Vec<T, A> {
     }
 }
 
-impl<T> FromIterator<T> for Vec<T> {
+impl<T, A: ShmAllocator + Default> FromIterator<T> for Vec<T, A> {
     #[inline]
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T, A> {
         <Self as SpecFromIter<T, I::IntoIter>>::from_iter(iter.into_iter())
     }
 }
@@ -1020,7 +1020,7 @@ pub(super) trait SpecFromIterNested<T, I> {
     fn from_iter(iter: I) -> Self;
 }
 
-impl<T, I> SpecFromIterNested<T, I> for Vec<T>
+impl<T, I, A: ShmAllocator + Default> SpecFromIterNested<T, I> for Vec<T, A>
 where
     I: Iterator<Item = T>,
 {
@@ -1047,7 +1047,7 @@ where
         };
         // must delegate to spec_extend() since extend() itself delegates
         // to spec_from for empty Vecs
-        <Vec<T> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
+        <Vec<T, A> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
         vector
     }
 }
@@ -1075,7 +1075,7 @@ pub(super) trait SpecFromIter<T, I> {
     fn from_iter(iter: I) -> Self;
 }
 
-impl<T, I> SpecFromIter<T, I> for Vec<T>
+impl<T, I, A: ShmAllocator + Default> SpecFromIter<T, I> for Vec<T, A>
 where
     I: Iterator<Item = T>,
 {
@@ -1084,7 +1084,7 @@ where
     }
 }
 
-impl<T> SpecFromIter<T, IntoIter<T>> for Vec<T> {
+impl<T, A: ShmAllocator + Default> SpecFromIter<T, IntoIter<T>> for Vec<T, A> {
     fn from_iter(iterator: IntoIter<T>) -> Self {
         // A common case is passing a vector into a function which immediately
         // re-collects into a vector. We can short circuit this if the IntoIter
@@ -1373,6 +1373,22 @@ impl<T, A: ShmAllocator> AsMut<[T]> for Vec<T, A> {
         self
     }
 }
+
+// Evil functions
+impl<T: Clone, B: std::alloc::Allocator, A: ShmAllocator + Default> From<std::vec::Vec<T, B>>
+    for Vec<T, A>
+{
+    fn from(s: std::vec::Vec<T, B>) -> Vec<T, A> {
+        hack::to_vec_in(s.as_slice(), A::default())
+    }
+}
+
+impl<T: Clone, A: ShmAllocator> From<Vec<T, A>> for std::vec::Vec<T> {
+    fn from(s: Vec<T, A>) -> std::vec::Vec<T> {
+        s.into_iter().collect()
+    }
+}
+// Evil functions
 
 impl<T: Clone, A: ShmAllocator + Default> From<&[T]> for Vec<T, A> {
     fn from(s: &[T]) -> Vec<T, A> {
