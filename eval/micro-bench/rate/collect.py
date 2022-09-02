@@ -2,11 +2,16 @@
 from typing import List
 import glob
 import numpy as np
+import sys
 
+OD = "/tmp/mrpc-eval"
+if len(sys.argv) >= 2:
+    OD = sys.argv[1]
 
 # x-axis: # client threads
 # y-axis: goodput in Mrpcs
 # output in csv: Client threads,RPC Rate (Mrps),Solution
+
 
 def get_goodput(path: str) -> List[float]:
     goodputs = []
@@ -17,6 +22,7 @@ def get_goodput(path: str) -> List[float]:
                 rate = words[-2]
                 goodputs.append(rate)
     return goodputs[1:]
+
 
 def get_rate(ncores: int, path: str) -> List[float]:
     rates = [[] for i in range(ncores)]
@@ -43,7 +49,9 @@ def get_rate(ncores: int, path: str) -> List[float]:
 
 # /tmp/mrpc-eval/benchmark/rpc_bench_rate_32/rpc_bench_rate_32b_1c/rpc_bench_client_danyang-05.stderr
 
+
 xticks = [(1 << i) for i in range(0, 4)]
+
 
 def load_result(solution, f: str):
     # print(f)
@@ -54,6 +62,7 @@ def load_result(solution, f: str):
     for r in rates:
         print(f'{num_cores},{r / 1e6},{solution}')
 
+
 solution = 'mRPC'
-for f in glob.glob("/tmp/mrpc-eval/benchmark/rpc_bench_rate_32/rpc_bench_rate_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_rate_32/rpc_bench_rate_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)

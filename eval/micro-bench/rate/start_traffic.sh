@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
+OD=/tmp/mrpc-eval
+if [[ $# -ge 1 ]]; then
+    OD=$1
+fi
 
 # concurrency = 32
 sed -i 's/\(.*\)concurrency 1\(.*\)/\1concurrency 32\2/g' ../../../benchmark/benchmark/rpc_bench_rate/*.toml
-cargo rr --bin launcher -- --output-dir /tmp/mrpc-eval --benchmark ../../../benchmark/benchmark/rpc_bench_rate --group rpc_bench_rate --configfile ./config.toml
-mv /tmp/mrpc-eval/benchmark/rpc_bench_rate /tmp/mrpc-eval/benchmark/rpc_bench_rate_32
+cargo rr --bin launcher -- --output-dir ${OD} --benchmark ../../../benchmark/benchmark/rpc_bench_rate --group rpc_bench_rate --configfile ./config.toml
+mv ${OD}/benchmark/rpc_bench_rate ${OD}/benchmark/rpc_bench_rate_32

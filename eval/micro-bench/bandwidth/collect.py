@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 from typing import List
 import glob
+import sys
 
+OD = "/tmp/mrpc-eval"
+if len(sys.argv) >= 2:
+    OD = sys.argv[1]
 
 # x-axis: message size in KB
 # y-axis: goodput in Gb/s
 # output in csv: solution,RPC size,goodput
+
 
 def convert_msg_size(s: str) -> int:
     if s.endswith('gb'):
@@ -36,6 +41,7 @@ def get_goodput(path: str) -> List[float]:
 
 xticks = [(2 << i) for i in range(0, 14, 2)]
 
+
 def load_result(solution, f: str):
     # print(f)
     msg_size_text = f.split('/')[-2].split('_')[-1]
@@ -49,10 +55,11 @@ def load_result(solution, f: str):
     for g in goodputs:
         print(f'{msg_size_kb},{g},{solution}')
 
+
 solution = 'mRPC (32)'
-for f in glob.glob("/tmp/mrpc-eval/benchmark/rpc_bench_tput_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)
 
 solution = 'mRPC (1)'
-for f in glob.glob("/tmp/mrpc-eval/benchmark/rpc_bench_tput_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)
