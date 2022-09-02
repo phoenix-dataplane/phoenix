@@ -4,7 +4,6 @@ if [[ $# -ge 1 ]]; then
     OD=$1
 fi
 
-workdir=`dirname $(realpath $0)`
-cd $workdir
-
+WORKDIR=`dirname $(realpath $0)`
+cd $WORKDIR
 cargo rr --bin launcher -- -o ${OD} --benchmark ./launch_koala.toml --configfile ./config.toml --timeout 600
