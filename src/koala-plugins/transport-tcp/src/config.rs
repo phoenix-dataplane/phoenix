@@ -1,19 +1,24 @@
 use std::path::PathBuf;
 
-use ipc::mrpc::control_plane::TransportType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MrpcConfig {
+pub struct TcpTransportConfig {
     pub prefix: PathBuf,
     pub engine_basename: String,
-    #[serde(alias = "build_cache")]
-    pub build_cache: PathBuf,
-    pub transport: TransportType,
 }
 
-impl MrpcConfig {
+impl Default for TcpTransportConfig {
+    fn default() -> Self {
+        TcpTransportConfig {
+            prefix: PathBuf::from("/tmp/koala"),
+            engine_basename: String::from("transport-engine-tcp"),
+        }
+    }
+}
+
+impl TcpTransportConfig {
     pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
         let config = toml::from_str(&config.unwrap_or(""))?;
         Ok(config)

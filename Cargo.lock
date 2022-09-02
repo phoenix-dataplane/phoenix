@@ -729,6 +729,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "errno"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
+dependencies = [
+ "errno-dragonfly",
+ "libc",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "errno-dragonfly"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1150,6 +1171,7 @@ dependencies = [
  "ipc-ratelimit",
  "ipc-rpc_adapter",
  "ipc-salloc",
+ "ipc-tcp_rpc_adapter",
  "ipc-transport",
 ]
 
@@ -1245,6 +1267,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipc-tcp_rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "ipc-transport"
 version = "0.1.0"
 dependencies = [
@@ -1320,14 +1352,18 @@ dependencies = [
  "lazy_static",
  "libc",
  "libloading",
+ "memfd",
+ "memmap2 0.5.7",
  "minstant",
  "nix 0.23.1",
  "num_cpus",
  "petgraph",
  "prost-build",
+ "scheduler",
  "semver 1.0.13",
  "serde",
  "smallvec 1.9.0",
+ "socket2",
  "spin",
  "static_assertions",
  "structopt",
@@ -1338,7 +1374,9 @@ dependencies = [
  "tracing-appender",
  "tracing-chrome",
  "tracing-subscriber",
+ "unique",
  "uuid",
+ "version",
 ]
 
 [[package]]
@@ -1489,6 +1527,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-tcp_rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "koala-mrpc",
+ "koala-salloc",
+ "koala-transport-tcp",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "serde",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "koala-tcp_rpc_adapter-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-tcp_rpc_adapter",
+]
+
+[[package]]
 name = "koala-transport-rdma"
 version = "0.1.0"
 dependencies = [
@@ -1516,6 +1589,36 @@ name = "koala-transport-rdma-plugin"
 version = "0.1.0"
 dependencies = [
  "koala-transport-rdma",
+]
+
+[[package]]
+name = "koala-transport-tcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "lazy_static",
+ "memoffset 0.6.5",
+ "mio 0.7.14",
+ "nix 0.23.1",
+ "serde",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "koala-transport-tcp-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-transport-tcp",
 ]
 
 [[package]]
@@ -2563,6 +2666,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "scheduler"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fa43f074ab0432dea0abfafb02b211ff81fb4119617d1c9148a5e7b9c372038"
+dependencies = [
+ "errno",
+ "libc",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2793,9 +2906,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.4.4"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66d72b759436ae32898a2af0a14218dbf55efde3feeb170eb623637db85ee1e0"
+checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
 dependencies = [
  "libc",
  "winapi 0.3.9",
@@ -3155,6 +3268,12 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
+name = "version"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a449064fee414fcc201356a3e6c1510f6c8829ed28bb06b91c54ebe208ce065"
 
 [[package]]
 name = "version_check"

@@ -305,6 +305,13 @@ impl WorkCompletion {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MappedAddrStatus {
+    Unmapped,
+    Mapped,
+    Irrelevant,
+}
+
 // TODO(cjr): add more static asserts to make sure WorkCompletion is compatible with ibv_wc
 mod sa {
     use super::*;

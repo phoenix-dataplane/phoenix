@@ -23,5 +23,7 @@ pub use ratelimit;
 pub use rpc_adapter;
 #[cfg(feature = "salloc")]
 pub use salloc;
+#[cfg(feature = "tcp_rpc_adapter")]
+pub use tcp_rpc_adapter;
 #[cfg(feature = "transport")]
 pub use transport;
