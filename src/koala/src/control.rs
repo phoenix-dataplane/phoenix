@@ -12,6 +12,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail};
 use ipc::control::Response;
 use ipc::control::ResponseKind;
+use itertools::Itertools;
 use nix::unistd::Pid;
 
 use interface::engine::SchedulingMode;
@@ -35,6 +36,7 @@ pub struct Control {
     runtime_manager: Arc<RuntimeManager>,
     plugins: Arc<PluginCollection>,
     upgrader: EngineUpgrader,
+    scheduling_override: HashMap<String, SchedulingMode>,
 }
 
 impl Control {
@@ -42,7 +44,7 @@ impl Control {
         &self,
         service: Service,
         client_path: &Path,
-        mode: SchedulingMode,
+        service_mode: SchedulingMode,
         cred: &UCred,
     ) -> anyhow::Result<()> {
         let pid = Pid::from_raw(cred.pid.unwrap());
@@ -81,9 +83,9 @@ impl Control {
         // crate auxiliary engines in (reverse) topological order
         for aux_engine_type in service_registry.engines.split_last().unwrap().1 {
             let plugin = self.plugins.engine_registry.get(aux_engine_type).unwrap();
-            let module_name = match plugin.value() {
-                Plugin::Module(module) => module,
-                Plugin::Addon(_) => panic!("service engine {:?} is an addon", aux_engine_type),
+            let (module_name, specified_mode) = match plugin.value() {
+                (Plugin::Module(module), mode) => (module, *mode),
+                (Plugin::Addon(_), _) => panic!("service engine {:?} is an addon", aux_engine_type),
             };
             let mut module = self.plugins.modules.get_mut(module_name).unwrap();
             tracing::info!(
@@ -93,7 +95,11 @@ impl Control {
                 pid
             );
             let node = nodes.remove(aux_engine_type).unwrap_or(DataPathNode::new());
-            let request = NewEngineRequest::Auxiliary { pid, mode };
+            let specified_mode = specified_mode.unwrap_or(service_mode);
+            let request = NewEngineRequest::Auxiliary {
+                pid,
+                mode: specified_mode,
+            };
             let engine = module.create_engine(
                 *aux_engine_type,
                 request,
@@ -116,7 +122,7 @@ impl Control {
                 let entry = containers_to_submit
                     .entry(representative)
                     .or_insert_with(Vec::new);
-                entry.push(container);
+                entry.push((container, specified_mode));
             }
         }
 
@@ -127,15 +133,16 @@ impl Control {
             .engine_registry
             .get(service_engine_type)
             .unwrap();
-        let module_name = match plugin.value() {
-            Plugin::Module(module) => module,
-            Plugin::Addon(_) => panic!("service engine {:?} is an addon", service_engine_type),
+        let (module_name, specified_mode) = match plugin.value() {
+            (Plugin::Module(module), mode) => (module, *mode),
+            (Plugin::Addon(_), _) => panic!("service engine {:?} is an addon", service_engine_type),
         };
         let mut module = self.plugins.modules.get_mut(module_name).unwrap();
+        let specified_mode = specified_mode.unwrap_or(service_mode);
         let request = NewEngineRequest::Service {
             sock: &self.sock,
             client_path,
-            mode,
+            mode: specified_mode,
             cred,
         };
         let node = nodes
@@ -172,20 +179,29 @@ impl Control {
         let entry = containers_to_submit
             .entry(representative)
             .or_insert_with(Vec::new);
-        entry.push(container);
+        entry.push((container, specified_mode));
 
+        let mut groups_to_submit = Vec::with_capacity(containers_to_submit.len());
+        for (_, containers) in containers_to_submit {
+            if !containers.iter().map(|x| x.1).all_equal() {
+                tracing::error!(
+                    "Containers within a scheduling group has different scheduling modes, service: {:?}",
+                    service
+                );
+            }
+            let mode = containers[0].1;
+            let raw_containers = containers.into_iter().map(|x| x.0).collect::<Vec<_>>();
+            groups_to_submit.push((raw_containers, mode));
+        }
         let sid = self.runtime_manager.new_subscription(pid, subscription);
-        let engines_count = containers_to_submit
-            .iter()
-            .map(|(_, engines)| engines.len())
-            .sum();
+        let engines_count = groups_to_submit.iter().map(|(c, _)| c.len()).sum();
         self.runtime_manager
             .service_subscriptions
             .get_mut(&(pid, sid))
             .unwrap()
             .1 = engines_count;
 
-        for (_, containers) in containers_to_submit {
+        for (containers, mode) in groups_to_submit {
             self.runtime_manager
                 .submit_group(pid, sid, containers, mode);
         }
@@ -224,11 +240,18 @@ impl Control {
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
         tracing::info!("Control plane initialized");
 
+        let scheduling_override = config
+            .scheduling
+            .into_iter()
+            .map(|x| (x.service, x.mode.into()))
+            .collect();
+
         Control {
             sock,
             runtime_manager: Arc::clone(&runtime_manager),
             plugins,
             upgrader,
+            scheduling_override,
         }
     }
 
@@ -284,7 +307,12 @@ impl Control {
                     .get(&service)
                     .ok_or(anyhow!("service {:?} not found", sender))?
                     .key();
-                self.create_service(service, client_path, mode, cred)?;
+                let mode_override = self
+                    .scheduling_override
+                    .get(&service_name)
+                    .map(|x| *x)
+                    .unwrap_or(mode);
+                self.create_service(service, client_path, mode_override, cred)?;
                 Ok(())
             }
             control::Request::EngineRequest(eid, request) => {

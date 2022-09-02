@@ -15,6 +15,8 @@ pub use ipc_core::{Error, IpcRecvError, IpcSendError, RecvFdError, TryRecvError}
 
 #[cfg(feature = "mrpc")]
 pub use mrpc;
+#[cfg(feature = "qos")]
+pub use qos;
 #[cfg(feature = "ratelimit")]
 pub use ratelimit;
 #[cfg(feature = "rpc_adapter")]

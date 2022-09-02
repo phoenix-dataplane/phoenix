@@ -39,6 +39,9 @@ pub struct Args {
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
 
+    #[structopt(long)]
+    pub log_latency: bool,
+
     /// Request size.
     #[structopt(short, long, default_value = "1000000")]
     pub req_size: usize,
@@ -87,6 +90,16 @@ async fn run_bench(
     reqs: &[WRef<HelloRequest>],
     tid: usize,
 ) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
+    macro_rules! my_print {
+        ($($arg:tt)*) => {
+            if args.log_level == "info" {
+                tracing::info!($($arg)*);
+            } else {
+                println!($($arg)*);
+            }
+        }
+    }
+
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
 
     let mut rpc_size = vec![0; args.concurrency];
@@ -144,7 +157,6 @@ async fn run_bench(
                 }
 
                 rcnt += 1;
-
                 if rcnt == args.warmup {
                     warmup_end = Instant::now();
                 }
@@ -169,10 +181,18 @@ async fn run_bench(
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
                     let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    if args.log_level == "info" {
-                        tracing::info!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    if args.log_latency {
+                        my_print!(
+                            "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                            tid,
+                            rps,
+                            bw,
+                            Duration::from_nanos(hist.value_at_percentile(95.0)),
+                            Duration::from_nanos(hist.value_at_percentile(99.0)),
+                        );
+                        hist.clear();
                     } else {
-                        println!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                        my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                     }
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
@@ -190,6 +210,16 @@ fn run_client_thread(
     tid: usize,
     args: &Args,
 ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+    macro_rules! my_print {
+        ($($arg:tt)*) => {
+            if args.log_level == "info" {
+                tracing::info!($($arg)*);
+            } else {
+                println!($($arg)*);
+            }
+        }
+    }
+
     let client = GreeterClient::connect((
         args.ip.as_str(),
         args.port + (tid % args.num_server_threads) as u16,
@@ -208,42 +238,23 @@ fn run_client_thread(
 
         let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
 
-        if args.log_level == "info" {
-            tracing::info!(
-                "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
-                dura,
-                8e-9 * total_bytes as f64 / dura.as_secs_f64(),
-                1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
-            );
-            tracing::info!(
-                "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-                dura,
-                Duration::from_nanos(hist.mean() as u64),
-                Duration::from_nanos(hist.min()),
-                Duration::from_nanos(hist.value_at_percentile(50.0)),
-                Duration::from_nanos(hist.value_at_percentile(95.0)),
-                Duration::from_nanos(hist.value_at_percentile(99.0)),
-                Duration::from_nanos(hist.max()),
-            );
-        } else {
-            println!(
-                "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
-                dura,
-                8e-9 * total_bytes as f64 / dura.as_secs_f64(),
-                1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
-            );
-            // print latencies
-            println!(
-                "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-                dura,
-                Duration::from_nanos(hist.mean() as u64),
-                Duration::from_nanos(hist.min()),
-                Duration::from_nanos(hist.value_at_percentile(50.0)),
-                Duration::from_nanos(hist.value_at_percentile(95.0)),
-                Duration::from_nanos(hist.value_at_percentile(99.0)),
-                Duration::from_nanos(hist.max()),
-            );
-        }
+        my_print!(
+            "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
+            dura,
+            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+            1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
+        );
+        // print latencies
+        my_print!(
+            "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+            dura,
+            Duration::from_nanos(hist.mean() as u64),
+            Duration::from_nanos(hist.min()),
+            Duration::from_nanos(hist.value_at_percentile(50.0)),
+            Duration::from_nanos(hist.value_at_percentile(95.0)),
+            Duration::from_nanos(hist.value_at_percentile(99.0)),
+            Duration::from_nanos(hist.max()),
+        );
 
         Result::<(), mrpc::Status>::Ok(())
     })?;

@@ -1,0 +1,11 @@
+addon_engine = "QosEngine"
+tx_channels_replacements = [
+    ["MrpcEngine", "QosEngine", 0, 0],
+    ["QosEngine", "RpcAdapterEngine", 0, 0],
+]
+rx_channels_replacements = []
+group = ["MrpcEngine", "RpcAdapterEngine"]
+op = "attach"
+config_string = '''
+latency_budget_microsecs = 0 
+'''

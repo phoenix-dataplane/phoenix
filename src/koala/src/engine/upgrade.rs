@@ -166,7 +166,7 @@ async fn attach_addon<I>(
 
     // get the addon from the engine_registry
     let mut plugin = match plugins.engine_registry.get_mut(&addon) {
-        Some(plugin) => match plugin.value() {
+        Some(plugin) => match &plugin.value().0 {
             Plugin::Module(_) => {
                 log::error!("Engine type {:?} is not an addon", addon);
                 rm.global_resource_mgr.register_subscription_shutdown(pid);
@@ -635,7 +635,7 @@ async fn upgrade_client(
                     // to point to &'static str in the new shared library
                     // otherwise, these `EngineType` become invalid after old library is unloaded
                     let engine_ty_relocated = *plugin.key();
-                    if let Plugin::Addon(_) = plugin.value() {
+                    if let Plugin::Addon(_) = &plugin.value().0 {
                         // `EngineType` in `ServiceRegistry` should already been relocated
                         // but not for the addons in `ServiceSubscription`
                         *subscribed_engine_ty = engine_ty_relocated;
@@ -689,7 +689,7 @@ async fn upgrade_client(
                             .insert(engine_ty_relocated, rx_outputs);
                     }
 
-                    let (engine, new_version) = match plugin.value() {
+                    let (engine, new_version) = match &plugin.value().0 {
                         Plugin::Module(module_name) => {
                             let mut module = plugins.modules.get_mut(module_name).unwrap();
                             let new_version = module.version();

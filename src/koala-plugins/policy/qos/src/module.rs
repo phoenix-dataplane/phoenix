@@ -1,7 +1,4 @@
-use std::collections::VecDeque;
-
 use anyhow::{bail, Result};
-use minstant::Instant;
 use nix::unistd::Pid;
 
 use koala::addon::{KoalaAddon, Version};
@@ -9,47 +6,50 @@ use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EngineType};
 use koala::storage::ResourceCollection;
 
-use super::engine::RateLimitEngine;
-use crate::config::RateLimitConfig;
+use super::engine::QosEngine;
+use crate::config::QosConfig;
 
-pub(crate) struct RateLimitEngineBuilder {
+pub(crate) struct QosEngineBuilder {
     node: DataPathNode,
-    config: RateLimitConfig,
+    client_pid: Pid,
+    config: QosConfig,
 }
 
-impl RateLimitEngineBuilder {
-    fn new(node: DataPathNode, config: RateLimitConfig) -> Self {
-        RateLimitEngineBuilder { node, config }
+impl QosEngineBuilder {
+    fn new(node: DataPathNode, client_pid: Pid, config: QosConfig) -> Self {
+        QosEngineBuilder {
+            node,
+            client_pid,
+            config,
+        }
     }
 
-    fn build(self) -> Result<RateLimitEngine> {
-        Ok(RateLimitEngine {
+    fn build(self) -> Result<QosEngine> {
+        Ok(QosEngine {
             node: self.node,
             indicator: Default::default(),
+            client_pid: self.client_pid,
             config: self.config,
-            last_ts: Instant::now(),
-            num_tokens: self.config.bucket_size as _,
-            queue: VecDeque::new(),
         })
     }
 }
 
-pub struct RateLimitAddon {
-    config: RateLimitConfig,
+pub struct QosAddon {
+    config: QosConfig,
 }
 
-impl RateLimitAddon {
-    pub const RATE_LIMIT_ENGINE: EngineType = EngineType("RateLimitEngine");
-    pub const ENGINES: &'static [EngineType] = &[RateLimitAddon::RATE_LIMIT_ENGINE];
+impl QosAddon {
+    pub const QOS_ENGINE: EngineType = EngineType("QosEngine");
+    pub const ENGINES: &'static [EngineType] = &[QosAddon::QOS_ENGINE];
 }
 
-impl RateLimitAddon {
-    pub fn new(config: RateLimitConfig) -> Self {
-        RateLimitAddon { config }
+impl QosAddon {
+    pub fn new(config: QosConfig) -> Self {
+        QosAddon { config }
     }
 }
 
-impl KoalaAddon for RateLimitAddon {
+impl KoalaAddon for QosAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
         true
     }
@@ -65,7 +65,7 @@ impl KoalaAddon for RateLimitAddon {
     fn migrate(&mut self, _prev_addon: Box<dyn KoalaAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
-        RateLimitAddon::ENGINES
+        QosAddon::ENGINES
     }
 
     fn update_config(&mut self, config: &str) -> Result<()> {
@@ -76,14 +76,14 @@ impl KoalaAddon for RateLimitAddon {
     fn create_engine(
         &mut self,
         ty: EngineType,
-        _pid: Pid,
+        pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != RateLimitAddon::RATE_LIMIT_ENGINE {
+        if ty != QosAddon::QOS_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = RateLimitEngineBuilder::new(node, self.config);
+        let builder = QosEngineBuilder::new(node, pid, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }
@@ -95,11 +95,11 @@ impl KoalaAddon for RateLimitAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != RateLimitAddon::RATE_LIMIT_ENGINE {
+        if ty != QosAddon::QOS_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let engine = RateLimitEngine::restore(local, node, prev_version)?;
+        let engine = QosEngine::restore(local, node, prev_version)?;
         Ok(Box::new(engine))
     }
 }
