@@ -28,4 +28,4 @@ pub mod storage;
 pub(crate) mod dependency;
 
 #[allow(unused)]
-pub(crate) mod timer;
+pub mod timer;

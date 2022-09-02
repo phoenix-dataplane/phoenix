@@ -2,6 +2,8 @@ pub use anyhow::Result;
 use nix::unistd::Pid;
 pub use semver::Version;
 
+use interface::engine::SchedulingMode;
+
 use crate::engine::datapath::node::DataPathNode;
 use crate::engine::{Engine, EngineType};
 use crate::envelop::TypeTagged;
@@ -28,6 +30,12 @@ pub trait KoalaAddon: TypeTagged + Send + Sync + 'static {
 
     /// All addon engines provided in this module
     fn engines(&self) -> &[EngineType];
+
+    /// Specify scheduling modes for some engines
+    #[inline]
+    fn scheduling_specs(&self) -> &[(EngineType, SchedulingMode)] {
+        &[]
+    }
 
     /// Live update addon's (RPC policy's) configuration.
     fn update_config(&mut self, config: &str) -> Result<()>;

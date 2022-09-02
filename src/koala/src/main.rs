@@ -19,6 +19,8 @@ struct Opts {
     /// Koala config path
     #[structopt(short, long, default_value = "koala.toml")]
     config: PathBuf,
+    #[structopt(long)]
+    no_ansi: bool,
 }
 
 static TERMINATE: AtomicBool = AtomicBool::new(false);
@@ -36,7 +38,7 @@ fn main() -> Result<()> {
     // init log setting from "KOALA_LOG", print messages with level lower than specified to stdout
     // print messages with level higher than KOALA_TRACING_EVENT to file
     // collect traces to tracing.json and save to output_dir.
-    let _guards = logging::init_log(&config);
+    let _guards = logging::init_log(&config, !opts.no_ansi);
 
     // create runtime manager
     let runtime_manager = Arc::new(RuntimeManager::new(&config));

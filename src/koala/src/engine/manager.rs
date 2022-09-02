@@ -2,25 +2,28 @@
 //! creating/destructing runtimes, map runtimes to cores, balance the work
 //! among different runtimes, and even dynamically scale out/down the runtimes.
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 
+use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
-use interface::engine::SchedulingMode;
 use nix::unistd::Pid;
 
 use super::container::EngineContainer;
 use super::datapath::graph::DataPathGraph;
 use super::group::GroupId;
+use super::runtime::RuntimeMode;
 use super::runtime::{self, Runtime};
 use super::EngineType;
 use super::SchedulingGroup;
 use crate::config::Config;
 use crate::module::Service;
 use crate::storage::ResourceCollection;
+use interface::engine::SchedulingMode;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -100,13 +103,6 @@ pub struct RuntimeManager {
     pub(crate) global_resource_mgr: GlobalResourceManager,
 }
 
-// impl Drop for RuntimeManager {
-//     fn drop(&mut self) {
-//         dbg!(&self.engine_subscriptions);
-//         dbg!(&self.service_subscriptions.len());
-//     }
-// }
-
 pub struct Inner {
     // the number of runtimes are at most u64::MAX
     runtime_counter: u64,
@@ -115,68 +111,39 @@ pub struct Inner {
 }
 
 impl Inner {
-    fn schedule_dedicate(
+    fn schedule(
         &mut self,
         pid: Pid,
         sid: SubscriptionId,
         group: SchedulingGroup,
         rm: &Arc<RuntimeManager>,
+        mode: SchedulingMode,
     ) {
-        // find a spare runtime
-        // NOTE(wyj): iterating over HashMap should be fine
-        // as submitting a new engine is not on fast path
-        // Moreover, there are only limited number of runtimes
-        let rid = match self.runtimes.iter().find(|(_i, r)| r.is_empty()) {
-            Some((rid, _runtime)) => *rid,
-            None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
+        let (runtime_mode, quota) = match mode {
+            SchedulingMode::Dedicate => (RuntimeMode::Dedicated, None),
+            SchedulingMode::Compact => (RuntimeMode::Compact, None),
+            SchedulingMode::GroupShared(quota) => (RuntimeMode::GroupShared, Some(quota)),
+            SchedulingMode::Spread => unimplemented!(),
         };
-
-        for (eid, engine) in group.engines.iter() {
-            let engine_type = engine.engine_type();
-            let engine_info = EngineInfo {
-                pid,
-                sid,
-                rid,
-                gid: group.id,
-                scheduling_mode: SchedulingMode::Dedicate,
-                engine_type,
-            };
-            tracing::info!(
-                "Submitting engine {:?} (pid={:?}, sid={:?}, gid={:?}) to runtime (rid={:?})",
-                engine_type,
-                pid,
-                sid,
-                group.id,
-                rid,
-            );
-            let prev = rm.engine_subscriptions.insert(*eid, engine_info);
-            assert!(prev.is_none(), "eid={:?} is already used", eid);
+        let mut hasher = Crc32Hasher::new();
+        let group_engines = group.engines.iter().map(|x| x.1.engine_type());
+        for engine in group_engines {
+            Hash::hash(&engine, &mut hasher);
         }
+        let group_signature = hasher.finalize();
 
-        self.runtimes[&rid].add_group(group, true);
-        // a runtime will not be parked when having pending engines, so in theory, we can check
-        // whether the runtime and only unpark it when it's in parked state.
-        self.handles[&rid].thread().unpark();
-    }
-
-    fn schedule_compact(
-        &mut self,
-        pid: Pid,
-        sid: SubscriptionId,
-        group: SchedulingGroup,
-        rm: &Arc<RuntimeManager>,
-    ) {
-        // find a spare runtime
-        // NOTE(wyj): iterating over HashMap should be fine
-        // as submitting a new engine is not on fast path
-        // Moreover, there are only limited number of runtimes
         let rid = match self
             .runtimes
             .iter()
-            .find(|(_i, r)| r.is_empty() || !r.is_dedicated())
+            .find(|(_i, r)| r.try_acquire(runtime_mode, Some(group_signature), quota))
         {
             Some((rid, _runtime)) => *rid,
-            None => self.start_runtime(self.runtime_counter as usize, Arc::clone(rm)),
+            None => self.start_runtime(
+                self.runtime_counter as usize,
+                runtime_mode,
+                Some(group_signature),
+                Arc::clone(rm),
+            ),
         };
 
         for (eid, engine) in group.engines.iter() {
@@ -186,7 +153,7 @@ impl Inner {
                 sid,
                 rid,
                 gid: group.id,
-                scheduling_mode: SchedulingMode::Dedicate,
+                scheduling_mode: mode,
                 engine_type,
             };
             tracing::info!(
@@ -201,7 +168,7 @@ impl Inner {
             assert!(prev.is_none(), "eid={:?} is already used", eid);
         }
 
-        self.runtimes[&rid].add_group(group, false);
+        self.runtimes[&rid].add_group(group);
         // a runtime will not be parked when having pending engines, so in theory, we can check
         // whether the runtime and only unpark it when it's in parked state.
         self.handles[&rid].thread().unpark();
@@ -282,15 +249,7 @@ impl RuntimeManager {
         );
         let group = SchedulingGroup::new(gid, submission);
 
-        match mode {
-            SchedulingMode::Dedicate => {
-                inner.schedule_dedicate(pid, sid, group, self);
-            }
-            SchedulingMode::Compact => {
-                inner.schedule_compact(pid, sid, group, self);
-            }
-            SchedulingMode::Spread => unimplemented!(),
-        }
+        inner.schedule(pid, sid, group, self, mode);
     }
 
     /// Create a new engine group for service subscription
@@ -324,10 +283,18 @@ impl RuntimeManager {
 }
 
 impl Inner {
-    fn start_runtime(&mut self, _core: usize, rm: Arc<RuntimeManager>) -> RuntimeId {
+    fn start_runtime(
+        &mut self,
+        _core: usize,
+        mode: RuntimeMode,
+        group_signature: Option<u32>,
+        rm: Arc<RuntimeManager>,
+    ) -> RuntimeId {
         let runtime_id = RuntimeId(self.runtime_counter);
         self.runtime_counter = self.runtime_counter.checked_add(1).unwrap();
         let runtime = Arc::new(Runtime::new(runtime_id, Arc::downgrade(&rm)));
+        let flag = runtime.try_acquire(mode, group_signature, None);
+        assert!(flag);
         self.runtimes.insert(runtime_id, Arc::clone(&runtime));
 
         let handle = thread::Builder::new()

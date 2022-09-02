@@ -62,4 +62,14 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> Result<()> {
         Ok(())
     }
+
+    /// NOTE(wyj): temporary API
+    /// engines should not have thread/runtime local states in the fugture
+    /// Preform preparatory work before detaching the engine from runtime
+    /// e.g., clean thread-local states
+    #[inline]
+    fn pre_detach(&mut self) -> Result<()> {
+        // empty default impl
+        Ok(())
+    }
 }

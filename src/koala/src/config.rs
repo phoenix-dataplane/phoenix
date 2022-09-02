@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use interface::engine::CustomSchedulingSpec;
 use serde::{Deserialize, Serialize};
 
 use ipc::control::PluginDescriptor;
@@ -36,6 +37,12 @@ pub struct Group {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulingPolicy {
+    pub service: String,
+    pub mode: CustomSchedulingSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub log_level: String,
@@ -43,8 +50,12 @@ pub struct Config {
     pub tracing: TracingConfig,
     pub profiling: ProfilingConfig,
     pub control: Control,
+    #[serde(default)]
     pub modules: Vec<PluginDescriptor>,
+    #[serde(default)]
     pub addons: Vec<PluginDescriptor>,
+    #[serde(default)]
+    pub scheduling: Vec<SchedulingPolicy>,
 }
 
 impl Config {

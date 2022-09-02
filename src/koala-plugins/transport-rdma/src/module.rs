@@ -101,6 +101,9 @@ impl RdmaTransportModule {
     )];
 
     pub const SERIVCE: Service = Service("RdmaTransport");
+
+    pub const SCHEDULING_SPECS: &'static [(EngineType, SchedulingMode)] =
+        &[(RdmaTransportModule::RDMA_CM_ENGINE, SchedulingMode::Compact)];
 }
 
 impl RdmaTransportModule {
@@ -126,6 +129,10 @@ impl KoalaModule for RdmaTransportModule {
 
     fn engines(&self) -> &[EngineType] {
         Self::ENGINES
+    }
+
+    fn scheduling_specs(&self) -> &[(EngineType, SchedulingMode)] {
+        Self::SCHEDULING_SPECS
     }
 
     fn dependencies(&self) -> &[EnginePair] {

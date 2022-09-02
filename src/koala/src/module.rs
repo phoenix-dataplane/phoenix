@@ -64,6 +64,12 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// Engine types provided by the module
     fn engines(&self) -> &[EngineType];
 
+    /// Specify scheduling modes for some engines
+    #[inline]
+    fn scheduling_specs(&self) -> &[(EngineType, SchedulingMode)] {
+        &[]
+    }
+
     /// Dependencies between the engines
     /// It may include external engines
     /// Dependencies should not include other services' engines

@@ -5,14 +5,14 @@ use minstant::Instant;
 use smallvec::SmallVec;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Timer {
+pub struct Timer {
     start: Instant,
     durations: SmallVec<[Duration; 8]>,
 }
 
 impl Timer {
     #[inline]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             start: Instant::now(),
             durations: Default::default(),
@@ -20,7 +20,7 @@ impl Timer {
     }
 
     #[inline]
-    pub(crate) fn tick(&mut self) {
+    pub fn tick(&mut self) {
         self.durations.push(self.start.elapsed());
     }
 }

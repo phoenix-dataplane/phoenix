@@ -10,5 +10,6 @@ ipc-core = { path = "core" }
 mrpc = { path = "mrpc", package = "ipc-mrpc", optional = true }
 salloc = { path = "salloc", package = "ipc-salloc", optional = true }
 transport = { path = "transport", package = "ipc-transport", optional = true }
-ratelimit = { path = "policy/ratelimit", package = "ipc-ratelimit", optional = true }
 rpc_adapter = { path = "rpc_adapter", package = "ipc-rpc_adapter", optional = true }
+ratelimit = { path = "policy/ratelimit", package = "ipc-ratelimit", optional = true }
+qos = { path = "policy/qos", package = "ipc-qos", optional = true }

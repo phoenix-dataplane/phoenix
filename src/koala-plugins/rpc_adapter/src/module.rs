@@ -136,6 +136,11 @@ impl RpcAdapterModule {
             EngineType("RdmaCmEngine"),
         ),
     ];
+
+    pub const SCHEDULING_SPECS: &'static [(EngineType, SchedulingMode)] = &[(
+        RpcAdapterModule::RPC_ACCEPTOR_ENGINE,
+        SchedulingMode::Compact,
+    )];
 }
 
 impl RpcAdapterModule {
@@ -153,6 +158,10 @@ impl KoalaModule for RpcAdapterModule {
 
     fn engines(&self) -> &[EngineType] {
         Self::ENGINES
+    }
+
+    fn scheduling_specs(&self) -> &[(EngineType, SchedulingMode)] {
+        Self::SCHEDULING_SPECS
     }
 
     fn dependencies(&self) -> &[EnginePair] {
