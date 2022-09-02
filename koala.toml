@@ -73,6 +73,13 @@ requests_per_sec = 1000
 bucket_size = 1000
 '''
 
+[[addons]]
+name = "Qos"
+lib_path = "/tmp/koala/plugins/libkoala_qos_plugin.so"
+config_string = '''
+latency_budget_microsecs = 10
+'''
+
 [[scheduling]]
 service = "Mrpc"
 [scheduling.mode]

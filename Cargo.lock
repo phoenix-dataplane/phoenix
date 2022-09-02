@@ -1146,6 +1146,7 @@ version = "0.1.0"
 dependencies = [
  "ipc-core",
  "ipc-mrpc",
+ "ipc-qos",
  "ipc-ratelimit",
  "ipc-rpc_adapter",
  "ipc-salloc",
@@ -1195,6 +1196,16 @@ dependencies = [
 
 [[package]]
 name = "ipc-mrpc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-qos"
 version = "0.1.0"
 dependencies = [
  "interface",
@@ -1366,6 +1377,29 @@ name = "koala-mrpc-plugin"
 version = "0.1.0"
 dependencies = [
  "koala-mrpc",
+]
+
+[[package]]
+name = "koala-qos"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "koala",
+ "minstant",
+ "nix 0.23.1",
+ "serde",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "koala-qos-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-qos",
 ]
 
 [[package]]

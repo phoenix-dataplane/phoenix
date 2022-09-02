@@ -421,9 +421,16 @@ impl Runtime {
                         .drain_filter(|e| engine_ids.contains(&e.0));
                     engines.extend(group_engines_suspend);
                 }
-                for (engine_id, engine) in engines {
+                for (engine_id, mut engine) in engines {
+                    if let Err(err) = engine.engine_mut().pre_detach() {
+                        tracing::error!(
+                            "Failed to detach engine {:?} from runtime, error={:?}",
+                            engine.engine().description().to_string(),
+                            err,
+                        );
+                    }
                     tracing::info!(
-                        "Engine {:?} revmoed from runtime",
+                        "Engine {:?} detached from runtime",
                         engine.engine().description().to_string()
                     );
                     self.suspended

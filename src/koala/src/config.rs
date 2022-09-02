@@ -50,8 +50,11 @@ pub struct Config {
     pub tracing: TracingConfig,
     pub profiling: ProfilingConfig,
     pub control: Control,
+    #[serde(default)]
     pub modules: Vec<PluginDescriptor>,
+    #[serde(default)]
     pub addons: Vec<PluginDescriptor>,
+    #[serde(default)]
     pub scheduling: Vec<SchedulingPolicy>,
 }
 
