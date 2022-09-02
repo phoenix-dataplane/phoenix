@@ -64,5 +64,9 @@ def load_result(solution, f: str):
 
 
 solution = 'mRPC'
-for f in glob.glob(OD+"/benchmark/rpc_bench_rate_32/rpc_bench_rate_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_rate_rdma_32/rpc_bench_rate_*/rpc_bench_client_danyang-05.stdout"):
+    load_result(solution, f)
+
+solution = 'mRPC-TCP'
+for f in glob.glob(OD+"/benchmark/rpc_bench_rate_tcp_32/rpc_bench_rate_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)

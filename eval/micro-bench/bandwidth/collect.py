@@ -57,9 +57,17 @@ def load_result(solution, f: str):
 
 
 solution = 'mRPC (32)'
-for f in glob.glob(OD+"/benchmark/rpc_bench_tput_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_rdma_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)
 
 solution = 'mRPC (1)'
-for f in glob.glob(OD+"/benchmark/rpc_bench_tput_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_rdma_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+    load_result(solution, f)
+
+solution = 'mRPC-TCP (32)'
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+    load_result(solution, f)
+
+solution = 'mRPC-TCP (1)'
+for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)

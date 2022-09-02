@@ -65,7 +65,7 @@ config_string = '''
 prefix = "/tmp/koala"
 engine_basename = "mrpc-engine"
 build_cache = "/tmp/koala/build-cache"
-transport = Rdma
+transport = "Rdma"
 '''
 
 [[modules]]
