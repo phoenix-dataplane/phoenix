@@ -1,45 +1,53 @@
+#!/usr/bin/env python3
 import json
 import subprocess
 import pathlib
 import os
 import time
 import toml
+import sys
+
+OD = "/tmp/mrpc-eval"
+if len(sys.argv) >= 2:
+    OD = sys.argv[1]
+
 SCRIPTDIR = pathlib.Path(__file__).parent.resolve()
 CONFIG_PATH = os.path.join(SCRIPTDIR, "config.toml")
 
 config = toml.load(CONFIG_PATH)
 workdir = config["workdir"]
 workdir = os.path.expanduser(workdir)
+os.environ['KOALA_PREFIX'] = config['env']['KOALA_PREFIX']
 
 os.chdir(workdir)
-os.makedirs("/tmp/mrpc-eval/policy/ratelimit", exist_ok=True)
+os.makedirs(OD+"/policy/ratelimit", exist_ok=True)
 workload = subprocess.Popen([
-    "cargo", 
+    "cargo",
     "run",
     "--release",
     "--bin",
     "launcher",
     "--",
     "-o",
-    "/tmp/mrpc-eval",
-    "--benchmark", 
-    os.path.join(SCRIPTDIR, "rpc_bench_tput_32b.toml"), 
+    OD,
+    "--benchmark",
+    os.path.join(SCRIPTDIR, "rpc_bench_tput_32b.toml"),
     "--configfile",
-    os.path.join(SCRIPTDIR, "config.toml"), 
+    os.path.join(SCRIPTDIR, "config.toml"),
 ], stdout=subprocess.DEVNULL)
 time.sleep(5)
 
 subprocess.run([
-    "cargo", 
-    "run", 
+    "cargo",
+    "run",
     "--release",
     "--bin",
-    "list", 
-    "--", 
-    "--dump", 
-    "/tmp/mrpc-eval/policy/list.json"
+    "list",
+    "--",
+    "--dump",
+    OD+"/policy/list.json"
 ])
-with open("/tmp/mrpc-eval/policy/list.json") as f:
+with open(OD+"/policy/list.json") as f:
     data = json.load(f)
 mrpc_pid = None
 mrpc_sid = None
@@ -60,26 +68,26 @@ subprocess.run([
     "addonctl",
     "--",
     "--config",
-    attach_config, 
-    "--pid", 
+    attach_config,
+    "--pid",
     str(mrpc_pid),
-    "--sid", 
+    "--sid",
     str(mrpc_sid),
 ])
 time.sleep(1)
 subprocess.run([
     "cargo",
-    "run", 
-    "--release", 
+    "run",
+    "--release",
     "--bin",
-    "list", 
-    "--", 
-    "--dump", 
-    "/tmp/mrpc-eval/policy/list.json"
+    "list",
+    "--",
+    "--dump",
+    OD+"/policy/list.json"
 ])
 time.sleep(1)
 
-with open("/tmp/mrpc-eval/policy/list.json") as f:
+with open(OD+"/policy/list.json") as f:
     data = json.load(f)
 addon_eid = None
 for subscription in data:
@@ -104,14 +112,14 @@ for rate in rates:
         "--",
         "--eid",
         str(addon_eid),
-        "-r", 
+        "-r",
         str(rate),
         "-b",
         str(rate)
     ])
     time.sleep(1)
 
-detach_config = os.path.join(SCRIPTDIR, "detach.toml") 
+detach_config = os.path.join(SCRIPTDIR, "detach.toml")
 subprocess.run([
     "cargo",
     "run",
@@ -120,10 +128,10 @@ subprocess.run([
     "addonctl",
     "--",
     "--config",
-    detach_config, 
-    "--pid", 
+    detach_config,
+    "--pid",
     str(mrpc_pid),
-    "--sid", 
+    "--sid",
     str(mrpc_sid),
 ])
 
