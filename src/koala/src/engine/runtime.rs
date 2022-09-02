@@ -346,11 +346,13 @@ impl Runtime {
             // garbage collect every several rounds, maybe move to another thread.
             for (group_index, engine_index) in shutdown.drain(..).rev() {
                 let mut running = self.running.borrow_mut();
-                let (eid, engine) = running[group_index]
+                let (eid, mut engine) = running[group_index]
                     .borrow_mut()
                     .engines
                     .swap_remove(engine_index);
                 let desc = engine.engine().description().to_owned();
+                // TODO: also remember to set els before dropping an engine
+                engine.engine_mut().set_els();
                 drop(engine);
                 log::info!("Engine [{}] shutdown successfully", desc);
                 if running[group_index].borrow_mut().engines.is_empty() {
