@@ -1,5 +1,13 @@
+#!/usr/bin/env python3
+import matplotlib.pyplot as plt
 import pandas as pd
 import datetime
+import sys
+
+OD = "/tmp/mrpc-eval"
+if len(sys.argv) >= 2:
+    OD = sys.argv[1]
+
 
 TIME_FMT = "%Y-%m-%dT%H:%M:%S.%fZ"
 TIME_FMT_BACKEND = "%Y-%m-%d %H:%M:%S.%f"
@@ -10,7 +18,8 @@ RATES = [
 ]
 RATES = [x // 1000 for x in RATES]
 
-def read_rates(path): 
+
+def read_rates(path):
     timestamps = []
     rates = []
     with open(path, 'rt') as f:
@@ -22,12 +31,12 @@ def read_rates(path):
                 rate = float(columns[1][:-4])
                 timestamps.append(ts)
                 rates.append(rate)
-    
+
     # remove first and last 10 measurement
     timestamps = timestamps[10:-10]
     rates = rates[10:-10]
     data = pd.DataFrame(
-        data = {
+        data={
             "timestamp": timestamps,
             "rate": rates,
         }
@@ -38,7 +47,7 @@ def read_rates(path):
 def read_backend_log(path):
     operations = []
     timestamps = []
-    with open(path, 'rt') as f: 
+    with open(path, 'rt') as f:
         for line in f.readlines():
             lb = line.find('[')
             rb = line.find(']')
@@ -55,16 +64,17 @@ def read_backend_log(path):
             elif "Receive detach addon request from koalactl" in log:
                 operations.append("detach")
                 timestamps.append(ts)
-    logs = pd.DataFrame (
-        data = {
+    logs = pd.DataFrame(
+        data={
             "timestamp": timestamps,
             "operation": operations,
         }
     )
     return logs
 
-rates = read_rates("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
-logs = read_backend_log("/tmp/mrpc-eval/launch_koala/koala_danyang-05.stdout")
+
+rates = read_rates(OD+"/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
+logs = read_backend_log(OD+"/launch_koala/koala_danyang-05.stdout")
 all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 base_ts = min(all_ts)
@@ -78,7 +88,6 @@ all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 max_ts = max(all_ts)
 
-import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots(figsize=(8, 6))
 ax.fill_between(rates["timestamp"], rates["rate"], step="pre", color="#d35400", alpha=0.5, linewidth=0)
@@ -122,4 +131,4 @@ for _, row in logs.iterrows():
         fontsize=20,
     )
 
-plt.savefig("/tmp/mrpc-eval/policy/ratelimit/rpc_bench_tput_32b/rate.pdf", bbox_inches='tight')
+plt.savefig(OD+"/policy/ratelimit/rpc_bench_tput_32b/rate.pdf", bbox_inches='tight')

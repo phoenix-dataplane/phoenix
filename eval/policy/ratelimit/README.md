@@ -1,24 +1,19 @@
 This folder contains scripts for rate limit policy.
+**Edit config.toml and koala.toml first**
 
 1. Start receiver backend on `danyang-06`. Start sender backend on
    `danyang-05`.
 ```
-cjr@danyang-06 $ ./start_receiver_koala.sh
-cjr@danyang-05 $ ./start_sender_koala.sh
+cjr@danyang-05 $ ./start_koala.sh [/tmp/mrpc-eval]
 ```
 
-2. Start traffic.
+2. Run policy
 ```
-./start_traffic.sh
-```
-
-3. Set the rate limit on the sender machine.
-```
-cjr@danyang-05 $ ./adjust_rate_figure_1.sh
+python3 run_policy.py [/tmp/mrpc-eval]
 ```
 
-4. Collect and parse results. This will read into `/tmp/mrpc-eval` and
+3. Collect and parse results. This will read into `/tmp/mrpc-eval` and
    parse the text output to csv for plotting figures.
 ```
-./collect.sh
+python3 ./collect.py [/tmp/mrpc-eval]
 ```

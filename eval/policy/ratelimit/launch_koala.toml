@@ -6,10 +6,10 @@ timeout_secs = 600
 [[worker]]
 host = "danyang-05"
 bin = "koala"
-args = "--no-ansi"
+args = "-c eval/policy/ratelimit/koala.toml --no-ansi"
 
 [[worker]]
 host = "danyang-06"
 bin = "koala"
-args = "--no-ansi"
+args = "-c eval/policy/ratelimit/koala.toml --no-ansi"
 dependencies = [0] # launch in order, no very necessary
