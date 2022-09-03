@@ -209,17 +209,20 @@ impl QosEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         let now = Instant::now();
-                        dbg!(self.config.latency_budget_microsecs);
-                        let deadline =
-                            now + Duration::from_micros(self.config.latency_budget_microsecs);
-                        let tagged = SloTaggedTxMessage {
-                            deadline,
-                            source: self.client_pid,
-                            message: EngineTxMessage::RpcMessage(msg),
-                        };
-                        BUFFER.with_borrow_mut(|buf| {
-                            buf.push(Reverse(tagged));
-                        });
+                        if self.config.latency_budget_microsecs > 0 {
+                            let deadline =
+                                now + Duration::from_micros(self.config.latency_budget_microsecs);
+                            let tagged = SloTaggedTxMessage {
+                                deadline,
+                                source: self.client_pid,
+                                message: EngineTxMessage::RpcMessage(msg),
+                            };
+                            BUFFER.with_borrow_mut(|buf| {
+                                buf.push(Reverse(tagged));
+                            });
+                        } else {
+                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                        }
                     }
                     m @ _ => self.tx_outputs()[0].send(m)?,
                 }
@@ -244,6 +247,7 @@ impl QosEngine {
                         let msg = buf.pop().unwrap().0.message;
                         self.tx_outputs()[0].send(msg)?;
                         sent += 1;
+                        break;
                     } else {
                         break;
                     }

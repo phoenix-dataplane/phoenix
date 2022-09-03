@@ -200,7 +200,6 @@ async fn run_bench(
                             Duration::from_nanos(hist.value_at_percentile(95.0)),
                             Duration::from_nanos(hist.value_at_percentile(99.0)),
                         );
-                        hist.clear();
                     } else {
                         my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                     }
