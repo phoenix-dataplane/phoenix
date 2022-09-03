@@ -209,6 +209,7 @@ impl QosEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         let now = Instant::now();
+                        dbg!(self.config.latency_budget_microsecs);
                         let deadline =
                             now + Duration::from_micros(self.config.latency_budget_microsecs);
                         let tagged = SloTaggedTxMessage {
