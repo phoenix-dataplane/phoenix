@@ -29,3 +29,7 @@ path = "src/client.rs"
 [[bin]]
 name = "rpc_bench_server"
 path = "src/server.rs"
+
+[[bin]]
+name = "rpc_bench_brusty_client"
+path = "src/brusty_client.rs"

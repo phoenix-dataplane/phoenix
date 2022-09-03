@@ -39,8 +39,17 @@ pub struct Args {
     #[structopt(long)]
     pub log_dir: Option<PathBuf>,
 
+    /// Whether to log latency metrics.
     #[structopt(long)]
     pub log_latency: bool,
+
+    /// Interval to send brush requests (in microsedonds).
+    #[structopt(long, default_value = "0")]
+    pub send_interval: u64,
+
+    /// Startup delay (in seconds).
+    #[structopt(long, default_value = "0")]
+    pub startup_delay: u64,
 
     /// Request size.
     #[structopt(short, long, default_value = "1000000")]
@@ -161,14 +170,20 @@ async fn run_bench(
                     warmup_end = Instant::now();
                 }
 
-                if scnt < total_iters + args.warmup {
-                    starts[slot] = Instant::now();
-                    rpc_size[slot] = args.req_size;
-                    let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
-                    req.set_token(mrpc::Token(slot));
-                    let fut = client.say_hello(req);
-                    reply_futures.push(fut);
-                    scnt += 1;
+                if rcnt % args.concurrency == 0 {
+                    std::thread::sleep(Duration::from_micros(args.send_interval));
+                    let mut round_scnt = 0;
+                    while round_scnt < args.concurrency && scnt < total_iters + args.warmup {
+                        let slot = round_scnt;
+                        starts[slot] = Instant::now();
+                        rpc_size[slot] = args.req_size;
+                        let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
+                        req.set_token(mrpc::Token(slot));
+                        let fut = client.say_hello(req);
+                        reply_futures.push(fut);
+                        scnt += 1;
+                        round_scnt += 1;
+                    }
                 }
             }
             complete => break,
@@ -190,7 +205,6 @@ async fn run_bench(
                             Duration::from_nanos(hist.value_at_percentile(95.0)),
                             Duration::from_nanos(hist.value_at_percentile(99.0)),
                         );
-                        hist.clear();
                     } else {
                         my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                     }
@@ -236,6 +250,7 @@ fn run_client_thread(
             reqs.push(req);
         }
 
+        std::thread::sleep(Duration::from_secs(args.startup_delay));
         let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
 
         my_print!(

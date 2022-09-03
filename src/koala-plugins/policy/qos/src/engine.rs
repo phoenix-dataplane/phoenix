@@ -237,23 +237,17 @@ impl QosEngine {
 
     fn check_buffer(&mut self) -> Result<Status, DatapathError> {
         BUFFER.with_borrow_mut(|buf| {
-            let mut sent = 0;
-            let now = Instant::now();
-            while let Some(msg) = buf.peek() {
-                if msg.0.source != self.client_pid {
-                    break;
-                } else {
+            if let Some(msg) = buf.peek() {
+                if msg.0.source == self.client_pid {
+                    let now = Instant::now();
                     if now > msg.0.deadline {
                         let msg = buf.pop().unwrap().0.message;
                         self.tx_outputs()[0].send(msg)?;
-                        sent += 1;
-                        break;
-                    } else {
-                        break;
+                        return Ok(Progress(1));
                     }
                 }
             }
-            Ok(Progress(sent))
+            Ok(Progress(0))
         })
     }
 }
