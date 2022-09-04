@@ -1,0 +1,15 @@
+name = "policy/qos/bandwidth_app"
+description = "Run rpc_bench benchmark"
+group = "qos_bandwidth"
+timeout_secs = 55
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_server"
+args = "--port 5002 -l info"
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_brusty_client"
+args = "-c rdma0.danyang-06 --concurrency 64 --req-size 32768 --duration 20 --send-interval 500 -i 5 --port 5002 --startup-delay 20 -l info"
+dependencies = [0]

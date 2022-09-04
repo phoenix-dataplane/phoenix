@@ -1,0 +1,15 @@
+name = "policy/qos/latency_app"
+description = "Run rpc_bench benchmark"
+group = "qos_latency"
+timeout_secs = 55
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_server"
+args = "--port 5001 -l info"
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_brusty_client"
+args = "-c rdma0.danyang-06 --concurrency 1 --req-size 64 --duration 20 --send-interval 100 -i 5 --port 5001 --startup-delay 20 -l info"
+dependencies = [0]
