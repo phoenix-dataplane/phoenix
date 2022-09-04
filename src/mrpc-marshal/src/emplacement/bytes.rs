@@ -1,4 +1,4 @@
-use crate::shadow::vec::Vec;
+use crate::shadow::Vec;
 use crate::{AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
 use shm::ptr::ShmPtr;
 
@@ -8,7 +8,7 @@ pub fn emplace(val: &Vec<u8>, sgl: &mut SgList) -> Result<(), MarshalError> {
         return Ok(());
     }
     let buf_ptr = val.buf.ptr.as_ptr_backend().addr();
-    let buf_len = val.len * std::mem::size_of::<u8>();
+    let buf_len = val.len() * std::mem::size_of::<u8>();
     let buf_sge = SgE {
         ptr: buf_ptr,
         len: buf_len,

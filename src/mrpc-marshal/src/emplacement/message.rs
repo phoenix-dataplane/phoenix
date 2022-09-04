@@ -1,4 +1,4 @@
-use crate::shadow::vec::Vec;
+use crate::shadow::Vec;
 use crate::{
     AddressArbiter, ExcavateContext, MarshalError, RpcMessage, SgE, SgList, UnmarshalError,
 };

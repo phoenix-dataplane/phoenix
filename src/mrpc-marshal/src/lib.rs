@@ -10,6 +10,10 @@ use shm::ptr::ShmPtr;
 
 pub mod emplacement;
 pub mod shadow;
+// pub mod shadow {
+//     pub use shm::string::String;
+//     pub use shm::vec::Vec;
+// }
 
 #[derive(Error, Debug)]
 pub enum MarshalError {

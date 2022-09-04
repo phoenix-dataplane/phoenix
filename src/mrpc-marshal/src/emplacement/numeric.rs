@@ -1,7 +1,7 @@
 macro_rules! numeric {
     ($ty:ty, $proto_ty:ident) => {
         pub mod $proto_ty {
-            use crate::shadow::vec::Vec;
+            use crate::shadow::Vec;
             use crate::{
                 AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError,
             };

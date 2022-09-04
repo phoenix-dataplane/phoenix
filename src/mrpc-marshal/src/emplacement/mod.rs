@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 pub mod bytes;
+pub mod string;
 pub mod message;
 mod numeric;
 
