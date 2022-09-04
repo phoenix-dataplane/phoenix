@@ -25,7 +25,7 @@ use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 pub mod rheap;
 pub use rheap::ReadHeap;
 
-pub use salloc::backend::SA_CTX;
+use salloc::backend::SA_CTX;
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.

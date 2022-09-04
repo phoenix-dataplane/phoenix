@@ -7,6 +7,7 @@ use futures::stream::StreamExt;
 use hdrhistogram::Histogram;
 use minstant::Instant;
 use structopt::StructOpt;
+use prost::Message;
 
 use mrpc::WRef;
 
@@ -177,7 +178,6 @@ struct Workload {
 
 impl Workload {
     fn new() -> Self {
-        // use prost::Message;
         let req1 = Request {
             customer_name: "danyang".into(),
             hotel_id: vec!["42".into()].into(),
@@ -192,8 +192,7 @@ impl Workload {
             out_date: "2022-09-03".into(),
             room_number: 129,
         };
-        // let req_sizes = vec![req1.encode_len(), req2.encode_len()];
-        let req_sizes = vec![30, 30];
+        let req_sizes = vec![req1.encoded_len(), req2.encoded_len()];
         Self {
             reqs: vec![WRef::new(req1), WRef::new(req2)],
             req_sizes,
