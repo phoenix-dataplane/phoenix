@@ -1,7 +1,7 @@
+use super::vec::Vec;
 use std::fmt;
 use std::ops;
 use std::str;
-use super::vec::Vec;
 
 pub struct String {
     pub buf: Vec<u8>,

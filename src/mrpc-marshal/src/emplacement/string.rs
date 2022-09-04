@@ -134,7 +134,6 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
     Ok(())
 }
 
-
 #[inline]
 pub fn extent(val: &String) -> usize {
     if val.buf.len > 0 {

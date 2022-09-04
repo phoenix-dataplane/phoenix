@@ -6,8 +6,8 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use hdrhistogram::Histogram;
 use minstant::Instant;
-use structopt::StructOpt;
 use prost::Message;
+use structopt::StructOpt;
 
 use mrpc::WRef;
 
