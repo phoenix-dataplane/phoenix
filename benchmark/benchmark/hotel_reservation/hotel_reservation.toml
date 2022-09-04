@@ -1,0 +1,15 @@
+name = "benchmark/hotel_reservation"
+description = "Run hotel_reservation rate test"
+group = "hotel_reservation"
+timeout_secs = 15
+
+[[worker]]
+host = "danyang-06"
+bin = "hotel_reservation_server"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "hotel_reservation_client"
+args = "-c rdma0.danyang-06 --concurrency 32 -D 10 -i 1"
+dependencies = [0]
