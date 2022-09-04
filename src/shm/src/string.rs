@@ -1947,29 +1947,29 @@ impl_eq! { [A: ShmAllocator] String<A>, &'a str }
 #[cfg(not(no_global_oom_handling))]
 impl_eq! { [A: ShmAllocator] Cow<'a, str>, String<A> }
 
-impl Default for String {
+impl<A: ShmAllocator + Default> Default for String<A> {
     /// Creates an empty `String`.
     #[inline]
-    fn default() -> String {
-        String::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl fmt::Display for String {
+impl<A: ShmAllocator> fmt::Display for String<A> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl fmt::Debug for String {
+impl<A: ShmAllocator> fmt::Debug for String<A> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl hash::Hash for String {
+impl<A: ShmAllocator> hash::Hash for String<A> {
     #[inline]
     fn hash<H: hash::Hasher>(&self, hasher: &mut H) {
         (**self).hash(hasher)
@@ -2014,11 +2014,11 @@ impl hash::Hash for String {
 /// let c = a.to_string() + b;
 /// ```
 #[cfg(not(no_global_oom_handling))]
-impl Add<&str> for String {
-    type Output = String;
+impl<A: ShmAllocator> Add<&str> for String<A> {
+    type Output = String<A>;
 
     #[inline]
-    fn add(mut self, other: &str) -> String {
+    fn add(mut self, other: &str) -> String<A> {
         self.push_str(other);
         self
     }
@@ -2028,14 +2028,14 @@ impl Add<&str> for String {
 ///
 /// This has the same behavior as the [`push_str`][String::push_str] method.
 #[cfg(not(no_global_oom_handling))]
-impl AddAssign<&str> for String {
+impl<A: ShmAllocator> AddAssign<&str> for String<A> {
     #[inline]
     fn add_assign(&mut self, other: &str) {
         self.push_str(other);
     }
 }
 
-impl ops::Index<ops::Range<usize>> for String {
+impl<A: ShmAllocator> ops::Index<ops::Range<usize>> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2043,7 +2043,7 @@ impl ops::Index<ops::Range<usize>> for String {
         &self[..][index]
     }
 }
-impl ops::Index<ops::RangeTo<usize>> for String {
+impl<A: ShmAllocator> ops::Index<ops::RangeTo<usize>> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2051,7 +2051,7 @@ impl ops::Index<ops::RangeTo<usize>> for String {
         &self[..][index]
     }
 }
-impl ops::Index<ops::RangeFrom<usize>> for String {
+impl<A: ShmAllocator> ops::Index<ops::RangeFrom<usize>> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2059,7 +2059,7 @@ impl ops::Index<ops::RangeFrom<usize>> for String {
         &self[..][index]
     }
 }
-impl ops::Index<ops::RangeFull> for String {
+impl<A: ShmAllocator> ops::Index<ops::RangeFull> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2067,7 +2067,7 @@ impl ops::Index<ops::RangeFull> for String {
         unsafe { str::from_utf8_unchecked(&self.vec) }
     }
 }
-impl ops::Index<ops::RangeInclusive<usize>> for String {
+impl<A: ShmAllocator> ops::Index<ops::RangeInclusive<usize>> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2075,7 +2075,7 @@ impl ops::Index<ops::RangeInclusive<usize>> for String {
         Index::index(&**self, index)
     }
 }
-impl ops::Index<ops::RangeToInclusive<usize>> for String {
+impl<A: ShmAllocator> ops::Index<ops::RangeToInclusive<usize>> for String<A> {
     type Output = str;
 
     #[inline]
@@ -2084,37 +2084,37 @@ impl ops::Index<ops::RangeToInclusive<usize>> for String {
     }
 }
 
-impl ops::IndexMut<ops::Range<usize>> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::Range<usize>> for String<A> {
     #[inline]
     fn index_mut(&mut self, index: ops::Range<usize>) -> &mut str {
         &mut self[..][index]
     }
 }
-impl ops::IndexMut<ops::RangeTo<usize>> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::RangeTo<usize>> for String<A> {
     #[inline]
     fn index_mut(&mut self, index: ops::RangeTo<usize>) -> &mut str {
         &mut self[..][index]
     }
 }
-impl ops::IndexMut<ops::RangeFrom<usize>> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::RangeFrom<usize>> for String<A> {
     #[inline]
     fn index_mut(&mut self, index: ops::RangeFrom<usize>) -> &mut str {
         &mut self[..][index]
     }
 }
-impl ops::IndexMut<ops::RangeFull> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::RangeFull> for String<A> {
     #[inline]
     fn index_mut(&mut self, _index: ops::RangeFull) -> &mut str {
         unsafe { str::from_utf8_unchecked_mut(&mut *self.vec) }
     }
 }
-impl ops::IndexMut<ops::RangeInclusive<usize>> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::RangeInclusive<usize>> for String<A> {
     #[inline]
     fn index_mut(&mut self, index: ops::RangeInclusive<usize>) -> &mut str {
         IndexMut::index_mut(&mut **self, index)
     }
 }
-impl ops::IndexMut<ops::RangeToInclusive<usize>> for String {
+impl<A: ShmAllocator> ops::IndexMut<ops::RangeToInclusive<usize>> for String<A> {
     #[inline]
     fn index_mut(&mut self, index: ops::RangeToInclusive<usize>) -> &mut str {
         IndexMut::index_mut(&mut **self, index)

@@ -1104,6 +1104,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotel_reservation"
+version = "0.1.0"
+dependencies = [
+ "fastrand",
+ "futures",
+ "hdrhistogram",
+ "minstant",
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+]
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
