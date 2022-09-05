@@ -102,7 +102,7 @@ impl<T, A: ShmAllocator> RawVec<T, A> {
         );
 
         let me = ManuallyDrop::new(self);
-        let (ptr_app, ptr_backend) = me.shmptr().to_raw_parts();
+        let (ptr_app, ptr_backend) = me.shm_non_null().to_raw_parts();
         let slice_app = slice::from_raw_parts_mut(ptr_app.as_ptr() as *mut MaybeUninit<T>, len);
         let slice_backend =
             slice::from_raw_parts_mut(ptr_backend.as_ptr() as *mut MaybeUninit<T>, len);
@@ -170,8 +170,13 @@ impl<T, A: ShmAllocator> RawVec<T, A> {
     }
 
     #[inline]
-    pub fn shmptr(&self) -> ShmPtr<T> {
+    pub fn into_shmptr(self) -> ShmPtr<T> {
         self.ptr
+    }
+
+    #[inline]
+    pub fn shm_non_null(&self) -> ShmNonNull<T> {
+        self.ptr.into()
     }
 
     #[inline(always)]

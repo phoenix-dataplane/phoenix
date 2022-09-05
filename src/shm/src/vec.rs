@@ -13,7 +13,7 @@ use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
 use crate::alloc::{ShmAllocator, System};
-use crate::ptr::ShmPtr;
+use crate::ptr::{ShmPtr, ShmNonNull};
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
@@ -142,7 +142,7 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     /// ptr_app, ptr_backend, len, capacity
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
         let me = ManuallyDrop::new(self);
-        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        let (ptr_app, ptr_backend) = me.buf.shm_non_null().to_raw_parts();
         (
             ptr_app.as_ptr(),
             ptr_backend.as_ptr(),
@@ -154,7 +154,7 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     pub(crate) fn into_raw_parts_alloc(self) -> (*mut T, *mut T, usize, usize, A) {
         let me = ManuallyDrop::new(self);
         let alloc = unsafe { ptr::read(me.allocator()) };
-        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        let (ptr_app, ptr_backend) = me.buf.shm_non_null().to_raw_parts();
         (
             ptr_app.as_ptr(),
             ptr_backend.as_ptr(),
@@ -184,6 +184,11 @@ impl<T, A: ShmAllocator> Vec<T, A> {
             assume(!ptr.is_null());
         }
         ptr
+    }
+
+    #[inline]
+    pub fn shm_non_null(&self) -> ShmNonNull<T> {
+        self.buf.shm_non_null()
     }
 
     #[inline]
@@ -967,7 +972,7 @@ impl<T, A: ShmAllocator> IntoIterator for Vec<T, A> {
             };
             let cap = me.buf.capacity();
             IntoIter {
-                buf: me.buf.shmptr(),
+                buf: me.buf.shm_non_null().into(),
                 phantom: PhantomData,
                 cap,
                 alloc,

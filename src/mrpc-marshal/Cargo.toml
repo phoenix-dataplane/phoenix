@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 interface = { path = "../interface" }
-shm = { path = "../shm" }
+shm = { path = "../shm", features = ["mrpc"] }
 
 serde = "1.0.137"
 thiserror = "1.0.31"

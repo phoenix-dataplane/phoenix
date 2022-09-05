@@ -145,6 +145,11 @@ impl HotelAclEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
+                        // 1 clone
+                        // 2 check should block
+                        // yes: ACK with error, drop the data
+                        // no: pass the cloned msg to the next engine, who drops the data?
+                        // Should we Ack right after clone?
                         if self.should_block(&msg) {
                             let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                             let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;

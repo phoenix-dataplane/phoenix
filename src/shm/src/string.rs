@@ -70,6 +70,7 @@ use std::str::{self, Chars};
 use std::string::{FromUtf16Error, FromUtf8Error};
 
 use crate::alloc::{ShmAllocator, System};
+use crate::ptr::ShmNonNull;
 use crate::vec::Vec;
 
 /// A UTF-8–encoded, growable string.
@@ -650,6 +651,11 @@ impl<A: ShmAllocator> String<A> {
     #[cfg(test)]
     pub fn from_str(_: &str) -> Self {
         panic!("not available with cfg(test)");
+    }
+
+    #[inline]
+    pub fn shm_non_null(&self) -> ShmNonNull<u8> {
+        self.vec.shm_non_null()
     }
 
     /// Decomposes a `String` into its raw components.
