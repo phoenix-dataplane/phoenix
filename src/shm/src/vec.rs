@@ -37,7 +37,7 @@ impl<T, A: ShmAllocator + Default> Vec<T, A> {
         Self::with_capacity_in(capacity, A::default())
     }
 
-    pub(crate) unsafe fn from_raw_parts(
+    pub unsafe fn from_raw_parts(
         ptr_app: *mut T,
         ptr_backend: *mut T,
         length: usize,

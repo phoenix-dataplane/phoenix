@@ -438,6 +438,66 @@ impl<A: ShmAllocator + Default> String<A> {
         }
     }
 
+    /// Creates a new `String` from a length, capacity, and pointer.
+    ///
+    /// # Safety
+    ///
+    /// This is highly unsafe, due to the number of invariants that aren't
+    /// checked:
+    ///
+    /// * The memory at `buf` needs to have been previously allocated by the
+    ///   same allocator the standard library uses, with a required alignment of exactly 1.
+    /// * `length` needs to be less than or equal to `capacity`.
+    /// * `capacity` needs to be the correct value.
+    /// * The first `length` bytes at `buf` need to be valid UTF-8.
+    ///
+    /// Violating these may cause problems like corrupting the allocator's
+    /// internal data structures. For example, it is normally **not** safe to
+    /// build a `String` from a pointer to a C `char` array containing UTF-8
+    /// _unless_ you are certain that array was originally allocated by the
+    /// Rust standard library's allocator.
+    ///
+    /// The ownership of `buf` is effectively transferred to the
+    /// `String` which may then deallocate, reallocate or change the
+    /// contents of memory pointed to by the pointer at will. Ensure
+    /// that nothing else uses the pointer after calling this
+    /// function.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use std::mem;
+    ///
+    /// unsafe {
+    ///     let s = String::from("hello");
+    ///
+    // FIXME Update this when vec_into_raw_parts is stabilized
+    ///     // Prevent automatically dropping the String's data
+    ///     let mut s = mem::ManuallyDrop::new(s);
+    ///
+    ///     let ptr = s.as_mut_ptr();
+    ///     let len = s.len();
+    ///     let capacity = s.capacity();
+    ///
+    ///     let s = String::from_raw_parts(ptr, len, capacity);
+    ///
+    ///     assert_eq!(String::from("hello"), s);
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn from_raw_parts(
+        ptr_app: *mut u8,
+        ptr_backend: *mut u8,
+        length: usize,
+        capacity: usize,
+    ) -> Self {
+        String {
+            vec: Vec::from_raw_parts(ptr_app, ptr_backend, length, capacity),
+        }
+    }
+
     /// Converts a slice of bytes to a string, including invalid characters.
     ///
     /// Strings are made of bytes ([`u8`]), and a slice of bytes
@@ -687,66 +747,6 @@ impl<A: ShmAllocator> String<A> {
     #[must_use = "`self` will be dropped if the result is not used"]
     pub fn into_raw_parts(self) -> (*mut u8, *mut u8, usize, usize) {
         self.vec.into_raw_parts()
-    }
-
-    /// Creates a new `String` from a length, capacity, and pointer.
-    ///
-    /// # Safety
-    ///
-    /// This is highly unsafe, due to the number of invariants that aren't
-    /// checked:
-    ///
-    /// * The memory at `buf` needs to have been previously allocated by the
-    ///   same allocator the standard library uses, with a required alignment of exactly 1.
-    /// * `length` needs to be less than or equal to `capacity`.
-    /// * `capacity` needs to be the correct value.
-    /// * The first `length` bytes at `buf` need to be valid UTF-8.
-    ///
-    /// Violating these may cause problems like corrupting the allocator's
-    /// internal data structures. For example, it is normally **not** safe to
-    /// build a `String` from a pointer to a C `char` array containing UTF-8
-    /// _unless_ you are certain that array was originally allocated by the
-    /// Rust standard library's allocator.
-    ///
-    /// The ownership of `buf` is effectively transferred to the
-    /// `String` which may then deallocate, reallocate or change the
-    /// contents of memory pointed to by the pointer at will. Ensure
-    /// that nothing else uses the pointer after calling this
-    /// function.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// use std::mem;
-    ///
-    /// unsafe {
-    ///     let s = String::from("hello");
-    ///
-    // FIXME Update this when vec_into_raw_parts is stabilized
-    ///     // Prevent automatically dropping the String's data
-    ///     let mut s = mem::ManuallyDrop::new(s);
-    ///
-    ///     let ptr = s.as_mut_ptr();
-    ///     let len = s.len();
-    ///     let capacity = s.capacity();
-    ///
-    ///     let s = String::from_raw_parts(ptr, len, capacity);
-    ///
-    ///     assert_eq!(String::from("hello"), s);
-    /// }
-    /// ```
-    #[inline]
-    pub unsafe fn from_raw_parts(
-        ptr_app: *mut u8,
-        ptr_backend: *mut u8,
-        length: usize,
-        capacity: usize,
-    ) -> String {
-        String {
-            vec: Vec::from_raw_parts(ptr_app, ptr_backend, length, capacity),
-        }
     }
 
     /// Converts a vector of bytes to a `String` without checking that the

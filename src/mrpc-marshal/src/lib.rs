@@ -1,5 +1,7 @@
 #![feature(strict_provenance)]
 #![feature(core_intrinsics)]
+#![feature(allocator_api)]
+#![feature(alloc_layout_extra)]
 
 use std::collections::BTreeMap;
 
@@ -9,11 +11,45 @@ use thiserror::Error;
 use shm::ptr::ShmPtr;
 
 pub mod emplacement;
-pub mod shadow;
-// pub mod shadow {
-//     pub use shm::string::String;
-//     pub use shm::vec::Vec;
-// }
+pub mod shadow {
+    use crate::alloc::PrivateHeap;
+
+    pub type String = shm::string::String<PrivateHeap>;
+    pub type Vec<T> = shm::vec::Vec<T, PrivateHeap>;
+}
+
+pub mod alloc {
+    use std::alloc::{AllocError, System, Layout, GlobalAlloc};
+    use std::ptr::NonNull;
+
+    use shm::alloc::ShmAllocator;
+    use shm::ptr::ShmNonNull;
+
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct PrivateHeap;
+
+    unsafe impl ShmAllocator for PrivateHeap {
+        #[inline]
+        fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
+            match layout.size() {
+                0 => Ok(ShmNonNull::slice_from_raw_parts(layout.dangling(), layout.dangling(), 0)),
+                // SAFETY: `layout` is non-zero in size,
+                size => unsafe {
+                    // TODO(cjr): allocate a DMA-friendly memory.
+                    // let raw_ptr = GlobalAlloc::alloc(&System, layout);
+                    let raw_ptr = System.alloc(layout);
+                    let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                    Ok(ShmNonNull::slice_from_raw_parts(ptr, ptr, size))
+                },
+            }
+        }
+        #[inline]
+        fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
+            let ptr = ptr.as_ptr_backend();
+            unsafe { System.dealloc(ptr, layout) };
+        }
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum MarshalError {

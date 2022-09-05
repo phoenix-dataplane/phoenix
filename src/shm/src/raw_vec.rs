@@ -169,6 +169,7 @@ impl<T, A: ShmAllocator> RawVec<T, A> {
         self.ptr.as_ptr_app()
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn into_shmptr(self) -> ShmPtr<T> {
         self.ptr
