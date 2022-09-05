@@ -13,14 +13,14 @@ pub use ipc_core::create_channel;
 pub use ipc_core::ChannelFlavor;
 pub use ipc_core::{Error, IpcRecvError, IpcSendError, RecvFdError, TryRecvError};
 
+#[cfg(feature = "hotel-acl")]
+pub use hotel_acl;
 #[cfg(feature = "mrpc")]
 pub use mrpc;
 #[cfg(feature = "qos")]
 pub use qos;
 #[cfg(feature = "ratelimit")]
 pub use ratelimit;
-#[cfg(feature = "hotel-acl")]
-pub use hotel_acl;
 #[cfg(feature = "rpc_adapter")]
 pub use rpc_adapter;
 #[cfg(feature = "salloc")]
