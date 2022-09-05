@@ -24,9 +24,9 @@ service Greeter {
 
 // The request message containing the user's name.
 message HelloRequest {
-  bytes name = 1;
-  bytes address = 2;
-  bytes payload = 3;
+  bytes key = 1;
+  bytes payload = 2;
+  bytes len = 3;
 }
 
 // The response message containing the greetings
