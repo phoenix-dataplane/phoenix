@@ -515,8 +515,8 @@ impl DefaultValue {
             Ty::Uint64 | Ty::Fixed64 => DefaultValue::U64(0),
 
             Ty::Bool => DefaultValue::Bool(false),
-            Ty::String => DefaultValue::String(String::new()),
-            Ty::Bytes(..) => DefaultValue::Bytes(Vec::new()),
+            Ty::String => DefaultValue::String(Default::default()),
+            Ty::Bytes(..) => DefaultValue::Bytes(Default::default()),
             Ty::Enumeration(ref path) => DefaultValue::Enumeration(quote!(#path::default())),
         }
     }

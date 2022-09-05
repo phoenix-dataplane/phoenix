@@ -5,7 +5,7 @@ use super::ShmAllocator;
 use crate::ptr::ShmNonNull;
 
 /// The default memory allocator provided by the operating system.
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct System;
 
 #[cfg(feature = "mrpc")]

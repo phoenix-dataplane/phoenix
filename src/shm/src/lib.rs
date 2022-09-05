@@ -24,6 +24,10 @@
 #![feature(const_ptr_is_null)]
 #![feature(const_slice_from_raw_parts)]
 #![feature(const_slice_ptr_len)]
+// string.rs
+#![feature(str_internals)]
+#![feature(pattern)]
+#![feature(slice_range)]
 
 /// shm::ptr is similar to core::ptr
 pub mod ptr;
@@ -42,3 +46,6 @@ pub mod vec;
 
 /// shm::collections is similar to alloc::collections
 pub mod collections;
+
+/// shared-memory version for std::String
+pub mod string;

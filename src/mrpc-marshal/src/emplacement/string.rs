@@ -1,17 +1,18 @@
 use std::mem;
 
+use crate::shadow::String;
 use crate::shadow::Vec;
 use crate::{AddressArbiter, ExcavateContext, MarshalError, SgE, SgList, UnmarshalError};
 use shm::ptr::ShmPtr;
 
 #[inline]
-pub fn emplace(val: &Vec<u8>, sgl: &mut SgList) -> Result<(), MarshalError> {
+pub fn emplace(val: &String, sgl: &mut SgList) -> Result<(), MarshalError> {
     if val.is_empty() {
         return Ok(());
     }
 
     let buf_ptr = val.shm_non_null().as_ptr_backend().addr();
-    let buf_len = val.len() * mem::size_of::<u8>();
+    let buf_len = val.as_bytes().len() * mem::size_of::<u8>();
     sgl.0.push(SgE {
         ptr: buf_ptr,
         len: buf_len,
@@ -21,31 +22,29 @@ pub fn emplace(val: &Vec<u8>, sgl: &mut SgList) -> Result<(), MarshalError> {
 }
 
 #[inline]
-pub fn emplace_optional(val: &Option<Vec<u8>>, sgl: &mut SgList) -> Result<(), MarshalError> {
-    if let Some(bytes) = val {
-        emplace(bytes, sgl)?;
+pub fn emplace_optional(val: &Option<String>, sgl: &mut SgList) -> Result<(), MarshalError> {
+    if let Some(s) = val {
+        emplace(s, sgl)?;
     }
 
     Ok(())
 }
 
 #[inline]
-pub fn emplace_repeated(val: &Vec<Vec<u8>>, sgl: &mut SgList) -> Result<(), MarshalError> {
+pub fn emplace_repeated(val: &Vec<String>, sgl: &mut SgList) -> Result<(), MarshalError> {
     if val.is_empty() {
         return Ok(());
     }
 
-    // emplace meta block for repeated
     let buf_ptr = val.shm_non_null().as_ptr_backend().addr();
-    let buf_len = val.len() * mem::size_of::<Vec<u8>>();
+    let buf_len = val.len() * mem::size_of::<String>();
     sgl.0.push(SgE {
         ptr: buf_ptr,
         len: buf_len,
     });
 
-    // emplace the items
-    for bytes in val {
-        emplace(bytes, sgl)?;
+    for s in val {
+        emplace(s, sgl)?;
     }
 
     Ok(())
@@ -53,20 +52,16 @@ pub fn emplace_repeated(val: &Vec<Vec<u8>>, sgl: &mut SgList) -> Result<(), Mars
 
 #[inline]
 pub unsafe fn excavate<'a, A: AddressArbiter>(
-    val: &mut Vec<u8>,
+    val: &mut String,
     ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if val.is_empty() {
-        // *val = Vec::new(); // WARNING(cjr): This drops the *val which is undesired;
-        // unsafe { ptr::write(val, Vec::new()) };
-        // This will generate the exact same code as ptr::write when opt-level >= 1, but does not
-        // require unsafe.
-        mem::forget(mem::replace(val, Vec::new()));
+        mem::forget(mem::replace(val, String::new()));
         return Ok(());
     }
 
     let buf_sge = ctx.sgl.next().ok_or(UnmarshalError::SgListUnderflow)?;
-    let expected = val.len() * mem::size_of::<u8>();
+    let expected = val.as_bytes().len() * mem::size_of::<u8>();
     if buf_sge.len != expected {
         return Err(UnmarshalError::SgELengthMismatch {
             expected,
@@ -77,7 +72,7 @@ pub unsafe fn excavate<'a, A: AddressArbiter>(
     let backend_addr = buf_sge.ptr;
     let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     mem::forget(mem::replace(val, unsafe {
-        Vec::from_raw_parts(
+        String::from_raw_parts(
             app_addr as *mut u8,
             backend_addr as *mut u8,
             val.len(),
@@ -90,11 +85,11 @@ pub unsafe fn excavate<'a, A: AddressArbiter>(
 
 #[inline]
 pub unsafe fn excavate_optional<'a, A: AddressArbiter>(
-    val: &mut Option<Vec<u8>>,
+    val: &mut Option<String>,
     ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
-    if let Some(bytes) = val {
-        excavate(bytes, ctx);
+    if let Some(s) = val {
+        excavate(s, ctx)?;
     }
 
     Ok(())
@@ -102,7 +97,7 @@ pub unsafe fn excavate_optional<'a, A: AddressArbiter>(
 
 #[inline]
 pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
-    val: &mut Vec<Vec<u8>>,
+    val: &mut Vec<String>,
     ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if val.is_empty() {
@@ -110,9 +105,8 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
         return Ok(());
     }
 
-    // excavate meta
     let buf_sge = ctx.sgl.next().ok_or(UnmarshalError::SgListUnderflow)?;
-    let expected = val.len() * mem::size_of::<Vec<u8>>();
+    let expected = val.len() * std::mem::size_of::<String>();
     if buf_sge.len != expected {
         return Err(UnmarshalError::SgELengthMismatch {
             expected,
@@ -124,22 +118,22 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
     let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
     mem::forget(mem::replace(val, unsafe {
         Vec::from_raw_parts(
-            app_addr as *mut Vec<u8>,
-            backend_addr as *mut Vec<u8>,
+            app_addr as *mut String,
+            backend_addr as *mut String,
             val.len(),
             val.len(),
         )
     }));
 
-    for bytes in val.iter_mut() {
-        excavate(bytes, ctx)?;
+    for s in val.iter_mut() {
+        excavate(s, ctx)?;
     }
 
     Ok(())
 }
 
 #[inline]
-pub fn extent(val: &Vec<u8>) -> usize {
+pub fn extent(val: &String) -> usize {
     if !val.is_empty() {
         1
     } else {
@@ -148,12 +142,12 @@ pub fn extent(val: &Vec<u8>) -> usize {
 }
 
 #[inline]
-pub fn extent_optional(val: &Option<Vec<u8>>) -> usize {
+pub fn extent_optional(val: &Option<String>) -> usize {
     val.as_ref().map_or(0, extent)
 }
 
 #[inline]
-pub fn extent_repeated(val: &Vec<Vec<u8>>) -> usize {
+pub fn extent_repeated(val: &Vec<String>) -> usize {
     if val.len() > 0 {
         1 + val.iter().map(extent).sum::<usize>()
     } else {

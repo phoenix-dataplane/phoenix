@@ -370,7 +370,7 @@ where
             let sender_endpoint = engines
                 .get_mut(&edge.0)
                 .ok_or(Error::InvalidReplacement(edge))?;
-            let sender_rx_outputs = graph.tx_outputs.get_mut(&edge.0).unwrap();
+            let sender_rx_outputs = graph.rx_outputs.get_mut(&edge.0).unwrap();
             if edge.2 >= sender_rx_outputs.len() {
                 return Err(Error::InvalidReplacement(edge));
             }

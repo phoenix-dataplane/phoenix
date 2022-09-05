@@ -1,0 +1,15 @@
+name = "launch_koala"
+description = "Launch koala daemon"
+group = "launch_koala"
+timeout_secs = 600
+
+[[worker]]
+host = "danyang-05"
+bin = "koala"
+args = "-c eval/policy/hotel-acl/koala.toml --no-ansi"
+
+[[worker]]
+host = "danyang-06"
+bin = "koala"
+args = "-c eval/policy/hotel-acl/koala.toml --no-ansi"
+dependencies = [0] # launch in order, not very necessary

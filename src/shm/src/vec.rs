@@ -13,7 +13,7 @@ use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
 use crate::alloc::{ShmAllocator, System};
-use crate::ptr::ShmPtr;
+use crate::ptr::{ShmNonNull, ShmPtr};
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;
@@ -37,7 +37,7 @@ impl<T, A: ShmAllocator + Default> Vec<T, A> {
         Self::with_capacity_in(capacity, A::default())
     }
 
-    pub(crate) unsafe fn from_raw_parts(
+    pub unsafe fn from_raw_parts(
         ptr_app: *mut T,
         ptr_backend: *mut T,
         length: usize,
@@ -142,7 +142,7 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     /// ptr_app, ptr_backend, len, capacity
     pub(crate) fn into_raw_parts(self) -> (*mut T, *mut T, usize, usize) {
         let me = ManuallyDrop::new(self);
-        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        let (ptr_app, ptr_backend) = me.buf.shm_non_null().to_raw_parts();
         (
             ptr_app.as_ptr(),
             ptr_backend.as_ptr(),
@@ -154,7 +154,7 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     pub(crate) fn into_raw_parts_alloc(self) -> (*mut T, *mut T, usize, usize, A) {
         let me = ManuallyDrop::new(self);
         let alloc = unsafe { ptr::read(me.allocator()) };
-        let (ptr_app, ptr_backend) = me.buf.shmptr().to_raw_parts();
+        let (ptr_app, ptr_backend) = me.buf.shm_non_null().to_raw_parts();
         (
             ptr_app.as_ptr(),
             ptr_backend.as_ptr(),
@@ -184,6 +184,11 @@ impl<T, A: ShmAllocator> Vec<T, A> {
             assume(!ptr.is_null());
         }
         ptr
+    }
+
+    #[inline]
+    pub fn shm_non_null(&self) -> ShmNonNull<T> {
+        self.buf.shm_non_null()
     }
 
     #[inline]
@@ -943,9 +948,9 @@ impl<T, I: SliceIndex<[T]>, A: ShmAllocator> IndexMut<I> for Vec<T, A> {
     }
 }
 
-impl<T> FromIterator<T> for Vec<T> {
+impl<T, A: ShmAllocator + Default> FromIterator<T> for Vec<T, A> {
     #[inline]
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T, A> {
         <Self as SpecFromIter<T, I::IntoIter>>::from_iter(iter.into_iter())
     }
 }
@@ -967,7 +972,7 @@ impl<T, A: ShmAllocator> IntoIterator for Vec<T, A> {
             };
             let cap = me.buf.capacity();
             IntoIter {
-                buf: me.buf.shmptr(),
+                buf: me.buf.shm_non_null().into(),
                 phantom: PhantomData,
                 cap,
                 alloc,
@@ -1020,7 +1025,7 @@ pub(super) trait SpecFromIterNested<T, I> {
     fn from_iter(iter: I) -> Self;
 }
 
-impl<T, I> SpecFromIterNested<T, I> for Vec<T>
+impl<T, I, A: ShmAllocator + Default> SpecFromIterNested<T, I> for Vec<T, A>
 where
     I: Iterator<Item = T>,
 {
@@ -1047,7 +1052,7 @@ where
         };
         // must delegate to spec_extend() since extend() itself delegates
         // to spec_from for empty Vecs
-        <Vec<T> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
+        <Vec<T, A> as SpecExtend<T, I>>::spec_extend(&mut vector, iterator);
         vector
     }
 }
@@ -1075,7 +1080,7 @@ pub(super) trait SpecFromIter<T, I> {
     fn from_iter(iter: I) -> Self;
 }
 
-impl<T, I> SpecFromIter<T, I> for Vec<T>
+impl<T, I, A: ShmAllocator + Default> SpecFromIter<T, I> for Vec<T, A>
 where
     I: Iterator<Item = T>,
 {
@@ -1084,7 +1089,7 @@ where
     }
 }
 
-impl<T> SpecFromIter<T, IntoIter<T>> for Vec<T> {
+impl<T, A: ShmAllocator + Default> SpecFromIter<T, IntoIter<T>> for Vec<T, A> {
     fn from_iter(iterator: IntoIter<T>) -> Self {
         // A common case is passing a vector into a function which immediately
         // re-collects into a vector. We can short circuit this if the IntoIter
@@ -1373,6 +1378,22 @@ impl<T, A: ShmAllocator> AsMut<[T]> for Vec<T, A> {
         self
     }
 }
+
+// Evil functions
+impl<T: Clone, B: std::alloc::Allocator, A: ShmAllocator + Default> From<std::vec::Vec<T, B>>
+    for Vec<T, A>
+{
+    fn from(s: std::vec::Vec<T, B>) -> Vec<T, A> {
+        hack::to_vec_in(s.as_slice(), A::default())
+    }
+}
+
+impl<T: Clone, A: ShmAllocator> From<Vec<T, A>> for std::vec::Vec<T> {
+    fn from(s: Vec<T, A>) -> std::vec::Vec<T> {
+        s.into_iter().collect()
+    }
+}
+// Evil functions
 
 impl<T: Clone, A: ShmAllocator + Default> From<&[T]> for Vec<T, A> {
     fn from(s: &[T]) -> Vec<T, A> {
