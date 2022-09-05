@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::ptr::Unique;
 
 use anyhow::{anyhow, Result};
+use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
 use interface::rpc::{RpcId, TransportStatus};
@@ -26,12 +27,13 @@ pub mod reservation {
     // The string specified here must match the proto package name
     include!("reservation.rs");
 }
-use reservation::Request;
 
 pub(crate) struct HotelAclEngine {
     pub(crate) node: DataPathNode,
 
     pub(crate) indicator: Indicator,
+
+    pub(crate) outstanding_req_pool: HashMap<RpcId, Box<reservation::Request>>,
 
     // A set of func_ids to apply the rate limit.
     // TODO(cjr): maybe put this filter in a separate engine like FilterEngine/ClassiferEngine.
@@ -89,7 +91,11 @@ impl Decompose for HotelAclEngine {
     ) -> (ResourceCollection, DataPathNode) {
         let engine = *self;
 
-        let mut collections = ResourceCollection::with_capacity(4);
+        let mut collections = ResourceCollection::with_capacity(2);
+        collections.insert(
+            "outstanding_req_pool".to_string(),
+            Box::new(engine.outstanding_req_pool),
+        );
         collections.insert("config".to_string(), Box::new(engine.config));
         (collections, engine.node)
     }
@@ -101,6 +107,11 @@ impl HotelAclEngine {
         node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
+        let outstanding_req_pool = *local
+            .remove("outstanding_req_pool")
+            .unwrap()
+            .downcast::<HashMap<RpcId, Box<reservation::Request>>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let config = *local
             .remove("config")
             .unwrap()
@@ -110,6 +121,7 @@ impl HotelAclEngine {
         let engine = HotelAclEngine {
             node,
             indicator: Default::default(),
+            outstanding_req_pool,
             config,
         };
         Ok(engine)
@@ -137,6 +149,21 @@ impl HotelAclEngine {
     }
 }
 
+/// Copy the RPC request to a private heap and returns the request.
+#[inline]
+fn materialize(msg: &RpcMessageTx) -> Box<reservation::Request> {
+    let req_ptr = Unique::new(msg.addr_backend as *mut reservation::Request).unwrap();
+    let req = unsafe { req_ptr.as_ref() };
+    // returns a private_req
+    Box::new(req.clone())
+}
+
+#[inline]
+fn should_block(req: &reservation::Request) -> bool {
+    log::trace!("req.customer_name: {}", req.customer_name);
+    req.customer_name == "danyang"
+}
+
 impl HotelAclEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use koala::engine::datapath::TryRecvError;
@@ -146,14 +173,15 @@ impl HotelAclEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         // 1 clone
+                        let private_req = materialize(&msg);
                         // 2 check should block
                         // yes: ACK with error, drop the data
                         // no: pass the cloned msg to the next engine, who drops the data?
                         // Should we Ack right after clone?
-                        if self.should_block(&msg) {
-                            let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
-                            let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
-                            let rpc_id = RpcId::new(conn_id, call_id);
+                        let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        let rpc_id = RpcId::new(conn_id, call_id);
+                        if should_block(&private_req) {
                             let error = EngineRxMessage::Ack(
                                 rpc_id,
                                 TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
@@ -161,8 +189,17 @@ impl HotelAclEngine {
                             self.rx_outputs()[0].send(error).unwrap_or_else(|e| {
                                 log::warn!("error when bubbling up the error, send failed e: {}", e)
                             });
+                            drop(private_req);
                         } else {
-                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                            // We will release the request on private heap after the RPC adapter
+                            // passes us an Ack.
+                            let raw_ptr: *const reservation::Request = &*private_req;
+                            self.outstanding_req_pool.insert(rpc_id, private_req);
+                            let new_msg = RpcMessageTx {
+                                meta_buf_ptr: msg.meta_buf_ptr,
+                                addr_backend: raw_ptr.addr(),
+                            };
+                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(new_msg))?;
                         }
                     }
                     // XXX TODO(cjr): it is best not to reorder the message
@@ -177,6 +214,10 @@ impl HotelAclEngine {
         // forward all rx msgs
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
+                if let EngineRxMessage::Ack(rpc_id, _status) = m {
+                    // remove private_req
+                    self.outstanding_req_pool.remove(&rpc_id);
+                }
                 self.rx_outputs()[0].send(m)?;
                 return Ok(Progress(1));
             }
@@ -185,15 +226,5 @@ impl HotelAclEngine {
         }
 
         Ok(Progress(0))
-    }
-
-    fn should_block(&self, msg: &RpcMessageTx) -> bool {
-        let req_ptr = Unique::new(msg.addr_backend as *mut Request).unwrap();
-        let req = unsafe { req_ptr.as_ref() };
-        // TODO(cjr): clone on access
-        // let private_req = req.clone();
-        use std::ops::Deref;
-        log::trace!("req.customer_name: {}", req.customer_name.deref());
-        req.customer_name.deref() == "danyang"
     }
 }

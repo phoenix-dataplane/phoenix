@@ -1,4 +1,4 @@
-#[derive(Debug, ::mrpc_derive::Message)]
+#[derive(Debug, Clone, ::mrpc_derive::Message)]
 pub struct Request {
     #[prost(string, tag = "1")]
     pub customer_name: ::mrpc_marshal::shadow::String,

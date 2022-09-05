@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
+use fnv::FnvHashMap as HashMap;
 
 use koala::addon::{KoalaAddon, Version};
 use koala::engine::datapath::DataPathNode;
@@ -23,6 +24,7 @@ impl HotelAclEngineBuilder {
         Ok(HotelAclEngine {
             node: self.node,
             indicator: Default::default(),
+            outstanding_req_pool: HashMap::default(),
             config: self.config,
         })
     }

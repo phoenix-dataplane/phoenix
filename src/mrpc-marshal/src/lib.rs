@@ -31,6 +31,7 @@ pub mod alloc {
     unsafe impl ShmAllocator for PrivateHeap {
         #[inline]
         fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
+            // panic!("should not allocate");
             match layout.size() {
                 0 => Ok(ShmNonNull::slice_from_raw_parts(layout.dangling(), layout.dangling(), 0)),
                 // SAFETY: `layout` is non-zero in size,
@@ -45,6 +46,7 @@ pub mod alloc {
         }
         #[inline]
         fn deallocate(&self, ptr: ShmNonNull<u8>, layout: Layout) {
+            // panic!("should not deallocate");
             let ptr = ptr.as_ptr_backend();
             unsafe { System.dealloc(ptr, layout) };
         }

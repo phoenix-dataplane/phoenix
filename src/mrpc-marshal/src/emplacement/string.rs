@@ -56,7 +56,7 @@ pub unsafe fn excavate<'a, A: AddressArbiter>(
     ctx: &mut ExcavateContext<'a, A>,
 ) -> Result<(), UnmarshalError> {
     if val.is_empty() {
-        *val = String::new();
+        mem::forget(mem::replace(val, String::new()));
         return Ok(());
     }
 
@@ -71,14 +71,14 @@ pub unsafe fn excavate<'a, A: AddressArbiter>(
 
     let backend_addr = buf_sge.ptr;
     let app_addr = ctx.addr_arbiter.query_app_addr(backend_addr)?;
-    *val = unsafe {
+    mem::forget(mem::replace(val, unsafe {
         String::from_raw_parts(
             app_addr as *mut u8,
             backend_addr as *mut u8,
             val.len(),
             val.len(),
         )
-    };
+    }));
 
     Ok(())
 }
