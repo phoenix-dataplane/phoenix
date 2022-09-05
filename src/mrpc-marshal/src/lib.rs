@@ -19,7 +19,7 @@ pub mod shadow {
 }
 
 pub mod alloc {
-    use std::alloc::{AllocError, System, Layout, GlobalAlloc};
+    use std::alloc::{AllocError, GlobalAlloc, Layout, System};
     use std::ptr::NonNull;
 
     use shm::alloc::ShmAllocator;
@@ -33,7 +33,11 @@ pub mod alloc {
         fn allocate(&self, layout: Layout) -> Result<ShmNonNull<[u8]>, AllocError> {
             // panic!("should not allocate");
             match layout.size() {
-                0 => Ok(ShmNonNull::slice_from_raw_parts(layout.dangling(), layout.dangling(), 0)),
+                0 => Ok(ShmNonNull::slice_from_raw_parts(
+                    layout.dangling(),
+                    layout.dangling(),
+                    0,
+                )),
                 // SAFETY: `layout` is non-zero in size,
                 size => unsafe {
                     // TODO(cjr): allocate a DMA-friendly memory.

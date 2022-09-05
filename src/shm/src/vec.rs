@@ -13,7 +13,7 @@ use std::ptr::{self, NonNull};
 use std::slice::{self, SliceIndex};
 
 use crate::alloc::{ShmAllocator, System};
-use crate::ptr::{ShmPtr, ShmNonNull};
+use crate::ptr::{ShmNonNull, ShmPtr};
 
 use super::boxed::Box;
 use super::raw_vec::RawVec;

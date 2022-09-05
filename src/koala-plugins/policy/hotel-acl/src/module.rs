@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
-use nix::unistd::Pid;
 use fnv::FnvHashMap as HashMap;
+use nix::unistd::Pid;
 
 use koala::addon::{KoalaAddon, Version};
 use koala::engine::datapath::DataPathNode;
