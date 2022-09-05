@@ -15,3 +15,4 @@ install -Dm755 target/release/libkoala_transport_tcp_plugin.so $prefix/plugins/l
 install -Dm755 target/release/libkoala_salloc_plugin.so $prefix/plugins/libkoala_salloc_plugin.so
 install -Dm755 target/release/libkoala_ratelimit_plugin.so $prefix/plugins/libkoala_ratelimit_plugin.so
 install -Dm755 target/release/libkoala_qos_plugin.so $prefix/plugins/libkoala_qos_plugin.so
+install -Dm755 target/release/libkoala_hotel_acl_plugin.so $prefix/plugins/libkoala_hotel_acl_plugin.so

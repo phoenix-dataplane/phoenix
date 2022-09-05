@@ -1181,6 +1181,7 @@ name = "ipc"
 version = "0.1.0"
 dependencies = [
  "ipc-core",
+ "ipc-hotel-acl",
  "ipc-mrpc",
  "ipc-qos",
  "ipc-ratelimit",
@@ -1229,6 +1230,16 @@ dependencies = [
  "unique",
  "uuid",
  "zerocopy",
+]
+
+[[package]]
+name = "ipc-hotel-acl"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1392,6 +1403,34 @@ dependencies = [
  "unique",
  "uuid",
  "version",
+]
+
+[[package]]
+name = "koala-hotel-acl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "interface",
+ "ipc",
+ "koala",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "koala-hotel-acl-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-hotel-acl",
 ]
 
 [[package]]

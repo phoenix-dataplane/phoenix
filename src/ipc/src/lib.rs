@@ -19,6 +19,8 @@ pub use mrpc;
 pub use qos;
 #[cfg(feature = "ratelimit")]
 pub use ratelimit;
+#[cfg(feature = "hotel-acl")]
+pub use hotel_acl;
 #[cfg(feature = "rpc_adapter")]
 pub use rpc_adapter;
 #[cfg(feature = "salloc")]

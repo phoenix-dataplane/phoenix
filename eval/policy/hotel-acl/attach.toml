@@ -1,0 +1,13 @@
+addon_engine = "HotelAclEngine"
+tx_channels_replacements = [
+    ["MrpcEngine", "HotelAclEngine", 0, 0],
+    ["HotelAclEngine", "RpcAdapterEngine", 0, 0],
+]
+rx_channels_replacements = [
+    ["RpcAdapterEngine", "HotelAclEngine", 0, 0],
+    ["HotelAclEngine", "MrpcEngine", 0, 0],
+]
+group = ["MrpcEngine", "RpcAdapterEngine"]
+op = "attach"
+config_string = '''
+'''

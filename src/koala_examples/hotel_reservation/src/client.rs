@@ -1,4 +1,5 @@
 #![feature(scoped_threads)]
+use std::future::Future;
 use std::time::Duration;
 
 use futures::select;
@@ -46,18 +47,35 @@ pub struct Args {
     pub interval: Option<f64>,
 }
 
-#[allow(unused)]
+#[derive(Debug)]
+struct Call<'c> {
+    ts: Instant,
+    req_size: usize,
+    result: Result<mrpc::RRef<'c, reservation::Result>, mrpc::Status>,
+}
+
+fn make_reservation<'c>(
+    client: &'c ReservationClient,
+    workload: &Workload,
+) -> impl Future<Output = Call<'c>> {
+    let ts = Instant::now();
+    let (req, req_size) = workload.next_request();
+    let fut = client.make_reservation(req);
+    async move {
+        Call {
+            ts,
+            req_size,
+            result: fut.await,
+        }
+    }
+}
+
 async fn run_bench(
     args: &Args,
     client: &ReservationClient,
     workload: &Workload,
 ) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
-
-    let mut rpc_size = vec![0; args.concurrency];
-    let mut starts = Vec::with_capacity(args.concurrency);
-    let now = Instant::now();
-    starts.resize(starts.capacity(), now);
 
     let mut reply_futures = FuturesUnordered::new();
 
@@ -74,7 +92,6 @@ async fn run_bench(
     let mut last_ts = Instant::now();
     let start = Instant::now();
 
-    let mut warmup_end = Instant::now();
     let mut nbytes = 0;
     let mut last_nbytes = 0;
 
@@ -83,15 +100,12 @@ async fn run_bench(
     let mut last_rcnt = 0;
 
     while scnt < args.concurrency && scnt < total_iters {
-        let slot = scnt;
-        starts[slot] = Instant::now();
-        let (mut req, req_size) = workload.next_request();
-        req.set_token(mrpc::Token(slot));
-        rpc_size[slot] = req_size;
-        let fut = client.make_reservation(req);
+        let fut = make_reservation(client, workload);
         reply_futures.push(fut);
         scnt += 1;
     }
+
+    let mut blocked = 0;
 
     loop {
         select! {
@@ -100,21 +114,19 @@ async fn run_bench(
                     break;
                 }
 
-                let resp = resp.unwrap()?;
-                let slot = resp.token().0 % args.concurrency;
+                let Call { ts, req_size, result: resp }  = resp.unwrap();
+                if let Err(_status) = resp {
+                    blocked += 1;
+                }
 
-                let dura = starts[slot].elapsed();
+                let dura = ts.elapsed();
                 let _ = hist.record(dura.as_nanos() as u64);
-                nbytes += rpc_size[slot];
+                nbytes += req_size;
 
                 rcnt += 1;
 
                 if scnt < total_iters {
-                    starts[slot] = Instant::now();
-                    let (mut req, req_size) = workload.next_request();
-                    req.set_token(mrpc::Token(slot));
-                    rpc_size[slot] = req_size;
-                    let fut = client.make_reservation(req);
+                    let fut = make_reservation(client, workload);
                     reply_futures.push(fut);
                     scnt += 1;
                 }
@@ -138,7 +150,8 @@ async fn run_bench(
         }
     }
 
-    let dura = warmup_end.elapsed();
+    let dura = start.elapsed();
+    println!("blocked calls: {}", blocked);
     Ok((dura, nbytes, rcnt, hist))
 }
 

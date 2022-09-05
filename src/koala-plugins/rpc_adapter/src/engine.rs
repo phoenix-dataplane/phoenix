@@ -817,9 +817,9 @@ impl RpcAdapterEngine {
                         let rpc_id = RpcId::decode_u64(wc.wr_id);
                         EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code))
                     };
-                    self.rx_outputs()[0]
-                        .send(msg)
-                        .unwrap_or_else(|e| panic!("bubble up the error, send failed e: {}", e));
+                    self.rx_outputs()[0].send(msg).unwrap_or_else(|e| {
+                        log::warn!("error when bubbling up the error, send failed e: {}", e)
+                    });
                     // the error is caused by unexpected shutdown of mrpc engine
                 }
             }
