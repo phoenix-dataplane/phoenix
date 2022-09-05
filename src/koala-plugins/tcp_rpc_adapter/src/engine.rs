@@ -74,6 +74,8 @@ pub(crate) struct TcpRpcAdapterEngine {
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
+
+    pub(crate) start: std::time::Instant,
 }
 
 impl_vertex_for_engine!(TcpRpcAdapterEngine, node);
@@ -206,6 +208,7 @@ impl TcpRpcAdapterEngine {
             _mode: mode,
             indicator: Default::default(),
             salloc,
+            start: std::time::Instant::now(),
         };
         Ok(engine)
     }
@@ -394,7 +397,6 @@ impl TcpRpcAdapterEngine {
         // write the values to MetaBuffer
         meta_buf.value_len = value_len as u32;
 
-        // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
         get_ops().post_send(
             sock_handle,
             ctx,
@@ -572,7 +574,6 @@ impl TcpRpcAdapterEngine {
                     match wc.opcode {
                         WcOpcode::Send => {
                             if wc.imm != 0 {
-                                tracing::trace!("post_send completed, wr_id={}", wc.wr_id);
                                 let rpc_id = RpcId::decode_u64(wc.wr_id);
                                 self.rx_outputs()[0]
                                     .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
@@ -601,10 +602,6 @@ impl TcpRpcAdapterEngine {
 
                             if wc.imm != 0 {
                                 // received an entire RPC message
-                                tracing::trace!(
-                                    "post_recv received complete message, wr_id={}",
-                                    wc.wr_id
-                                );
                                 let sock_handle = conn_ctx.sock_handle;
                                 let mut recv_ctx = mem::take(&mut conn_ctx.receiving_ctx);
                                 drop(table);

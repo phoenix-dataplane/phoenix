@@ -78,6 +78,7 @@ impl RpcAdapterEngineBuilder {
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
             salloc: salloc_state,
+            start: std::time::Instant::now(),
         })
     }
 }
