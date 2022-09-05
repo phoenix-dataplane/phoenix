@@ -10,6 +10,7 @@ use fnv::FnvHashMap as HashMap;
 use futures::select;
 use futures::stream::{FuturesUnordered, StreamExt};
 use futures::task::LocalFutureObj;
+use futures::FutureExt;
 
 use interface::rpc::{RpcId, TransportStatus};
 use interface::{AsHandle, Handle};
@@ -521,6 +522,43 @@ impl Server {
                 }
             }
         }
+    }
+
+    pub async fn serve_with_graceful_shutdown<F>(&mut self, shutdown: F) -> Result<(), Error>
+    where
+        F: Future<Output = ()> + Unpin,
+    {
+        let mut shutdown = shutdown.fuse();
+
+        let mut running = FuturesUnordered::new();
+        running.push(LocalFutureObj::new(Box::new(std::future::pending())));
+        // running.push(LocalFutureObj::new(Box::new(pending())));
+        // batching reply small requests for better CPU efficiency
+        let mut reply_buffer = Vec::with_capacity(32);
+        loop {
+            select! {
+                reply_erased = running.next() => {
+                    if reply_erased.is_none() { continue; }
+                    reply_buffer.push(reply_erased.unwrap());
+                }
+                _ = shutdown => {
+                    break;
+                },
+                complete => {
+                    panic!("unexpected complete")
+                }
+                default => {
+                    if !reply_buffer.is_empty() {
+                        self.post_replies(&mut reply_buffer)?;
+                    }
+                    // no futures is ready
+                    self.check_cm_event()?;
+                    // check new requests, dispatch them to the executor
+                    self.dispatch_requests(&mut running)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn handle_new_connection(

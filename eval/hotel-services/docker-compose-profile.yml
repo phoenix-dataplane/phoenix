@@ -1,0 +1,28 @@
+version: "3"
+services:
+  mongodb-profile:
+    image: mongo:4.4.6
+    container_name: 'hotel_reserv_profile_mongo'
+    command: --port 27002
+    hostname: profile-db
+    network_mode: "host"
+    restart: always
+    volumes:
+      - profile:/data/db 
+
+  memcached-profile:
+    image: memcached
+    container_name: 'hotel_reserv_profile_mmc'
+    command: --port 17002
+    restart: always
+    environment:
+      - MEMCACHED_CACHE_SIZE=128
+      - MEMCACHED_THREADS=2
+    network_mode: "host"
+    logging:
+      options:
+        max-size: 50m
+
+volumes:
+  profile:
+

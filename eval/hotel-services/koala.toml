@@ -30,18 +30,6 @@ prefix = "/tmp/koala"
 # overwrite with KOALA_CONTROL
 path = "control.sock"
 
-# Modules
-[[modules]]
-name = "RdmaTransport"
-lib_path = "/tmp/koala/plugins/libkoala_transport_rdma_plugin.so"
-config_string = '''
-prefix = "/tmp/koala"
-engine_basename = "transport-engine-rdma"
-datapath_wq_depth = 32
-datapath_cq_depth = 32
-command_max_interval_ms = 1000
-'''
-
 [[modules]]
 name = "TcpTransport"
 lib_path = "/tmp/koala/plugins/libkoala_transport_tcp_plugin.so"
@@ -69,33 +57,5 @@ transport = "Tcp"
 '''
 
 [[modules]]
-name = "RpcAdapter"
-lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
-
-
-[[modules]]
 name = "TcpRpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_tcp_rpc_adapter_plugin.so"
-
-
-# Addons being here
-[[addons]]
-name = "RateLimit"
-lib_path = "/tmp/koala/plugins/libkoala_ratelimit_plugin.so"
-config_string = '''
-requests_per_sec = 1000
-bucket_size = 1000
-'''
-
-[[addons]]
-name = "Qos"
-lib_path = "/tmp/koala/plugins/libkoala_qos_plugin.so"
-config_string = '''
-latency_budget_microsecs = 10
-'''
-
-[[addons]]
-name = "HotelAcl"
-lib_path = "/tmp/koala/plugins/libkoala_hotel_acl_plugin.so"
-config_string = '''
-'''
