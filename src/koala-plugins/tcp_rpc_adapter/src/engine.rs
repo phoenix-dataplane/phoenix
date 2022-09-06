@@ -312,14 +312,15 @@ impl TcpRpcAdapterEngine {
             }
             // timer.tick();
 
-            if fastrand::usize(..1000) < 1 {
-                match self.check_input_cmd_queue()? {
-                    Progress(n) => {
-                        work += n;
-                        nums.push(n)
-                    }
-                    Status::Disconnected => return Ok(()),
+            match self.check_input_cmd_queue()? {
+                Progress(n) => {
+                    work += n;
+                    nums.push(n)
                 }
+                Status::Disconnected => return Ok(()),
+            }
+
+            if fastrand::usize(..10000) < 1 {
                 // timer.tick();
                 // panic!();
 
