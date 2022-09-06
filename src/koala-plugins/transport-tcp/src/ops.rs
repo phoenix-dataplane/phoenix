@@ -58,6 +58,7 @@ impl Ops {
     pub fn try_accept(&self) -> Vec<Handle> {
         let mut sock_handles = Vec::new();
         let mut table = self.state.listener_table.borrow_mut();
+        // let mut removed = Vec::new();
         for (_handle, listener) in table.iter_mut() {
             match listener.accept() {
                 Ok((sock, _addr)) => {
@@ -79,10 +80,14 @@ impl Ops {
                         .cq_table
                         .borrow_mut()
                         .insert(sock_handle, CompletionQueue::new());
+                    // removed.push(*_handle);
                 }
                 Err(_e) => continue,
             }
         }
+        // for handle in removed {
+        //     table.remove(&handle);
+        // }
         sock_handles
     }
 
@@ -259,6 +264,7 @@ pub struct CompletionQueue {
     cq: VecDeque<dp::Completion>,
     send_tasks: VecDeque<Task>,
     recv_tasks: VecDeque<Task>,
+    // start: std::time::Instant,
 }
 
 impl CompletionQueue {
@@ -267,6 +273,7 @@ impl CompletionQueue {
             cq: VecDeque::with_capacity(256),
             send_tasks: VecDeque::with_capacity(128),
             recv_tasks: VecDeque::with_capacity(128),
+            // start: std::time::Instant::now(),
         }
     }
 
@@ -294,6 +301,15 @@ impl CompletionQueue {
                     match send(sock, &meta[task.offset..HEADER_BYTES]) {
                         Ok(n) => {
                             task.offset += n;
+                            // koala::log::debug!(
+                            //     "post_send head: \t{}\t{}\t\t{}",
+                            //     task.wr_id,
+                            //     n,
+                            //     (std::time::Instant::now())
+                            //         .duration_since(self.start)
+                            //         .as_nanos() as f64
+                            //         / 1000.0
+                            // );
                             if task.offset < HEADER_BYTES {
                                 break;
                             }
@@ -314,6 +330,15 @@ impl CompletionQueue {
                     match send(sock, buf) {
                         Ok(n) => {
                             task.offset += n;
+                            // koala::log::debug!(
+                            //     "post_send first:\t{}\t{}\t{}",
+                            //     task.wr_id,
+                            //     n,
+                            //     (std::time::Instant::now())
+                            //         .duration_since(self.start)
+                            //         .as_nanos() as f64
+                            //         / 1000.0
+                            // );
                         }
                         Err(e) => {
                             task.error = Err(e);
@@ -323,6 +348,14 @@ impl CompletionQueue {
                 }
                 if task.offset == task.expected {
                     self.cq.push_back(get_comp_from_task(task));
+                    // koala::log::debug!(
+                    //     "post_send comp:\t{}\t{:?}",
+                    //     task.wr_id,
+                    //     (std::time::Instant::now())
+                    //         .duration_since(self.start)
+                    //         .as_nanos() as f64
+                    //         / 1000.0
+                    // );
                     self.send_tasks.pop_front();
                 }
             }
@@ -356,6 +389,18 @@ impl CompletionQueue {
                     match recv(sock, buf) {
                         Ok(n) => {
                             task.offset += n;
+                            // if n > 0 {
+                            //     koala::log::debug!(
+                            //         "post_recv head:\t{}\t{}\t{}",
+                            //         task.wr_id,
+                            //         n,
+                            //         (std::time::Instant::now())
+                            //             .duration_since(self.start)
+                            //             .as_nanos() as f64
+                            //             / 1000.0
+                            //     );
+                            // }
+
                             if task.offset >= HEADER_BYTES {
                                 // TODO(lsh): Can check magic number here
                                 let len = unsafe {
@@ -394,6 +439,17 @@ impl CompletionQueue {
                     match recv(sock, buf) {
                         Ok(n) => {
                             task.offset += n;
+                            // if n > 0 {
+                            //     koala::log::debug!(
+                            //         "post_recv first:\t{}\t{}\t{}",
+                            //         task.wr_id,
+                            //         n,
+                            //         (std::time::Instant::now())
+                            //             .duration_since(self.start)
+                            //             .as_nanos() as f64
+                            //             / 1000.0
+                            //     );
+                            // }
                         }
                         Err(e) => {
                             task.error = Err(e);
@@ -403,6 +459,14 @@ impl CompletionQueue {
                 }
                 if task.offset == task.expected {
                     self.cq.push_back(get_comp_from_task(task));
+                    // koala::log::debug!(
+                    //     "post_recv comp:\t{}\t\t{}",
+                    //     task.wr_id,
+                    //     (std::time::Instant::now())
+                    //         .duration_since(self.start)
+                    //         .as_nanos() as f64
+                    //         / 1000.0
+                    // );
                     self.recv_tasks.pop_front();
                 }
             }

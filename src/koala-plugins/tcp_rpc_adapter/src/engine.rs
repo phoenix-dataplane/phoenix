@@ -74,6 +74,7 @@ pub(crate) struct TcpRpcAdapterEngine {
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
+    // pub(crate) start: std::time::Instant,
 }
 
 impl_vertex_for_engine!(TcpRpcAdapterEngine, node);
@@ -206,6 +207,7 @@ impl TcpRpcAdapterEngine {
             _mode: mode,
             indicator: Default::default(),
             salloc,
+            // start: std::time::Instant::now(),
         };
         Ok(engine)
     }
@@ -291,10 +293,10 @@ impl Drop for TcpRpcAdapterEngine {
 impl TcpRpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-            let mut timer = koala::timer::Timer::new();
+            // let mut timer = koala::timer::Timer::new();
             let mut work = 0;
             let mut nums = Vec::new();
-            // check input queue, ~100ns
+
             match self.check_input_queue()? {
                 Progress(n) => {
                     work += n;
@@ -302,37 +304,37 @@ impl TcpRpcAdapterEngine {
                 }
                 Status::Disconnected => return Ok(()),
             }
-            timer.tick();
+            // timer.tick();
 
-            // check service, ~350-600ns
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
                 nums.push(n);
             }
-            timer.tick();
+            // timer.tick();
 
-            // check input command queue, ~50ns
-            match self.check_input_cmd_queue()? {
-                Progress(n) => {
-                    work += n;
-                    nums.push(n)
+            if fastrand::usize(..1000) < 1 {
+                match self.check_input_cmd_queue()? {
+                    Progress(n) => {
+                        work += n;
+                        nums.push(n)
+                    }
+                    Status::Disconnected => return Ok(()),
                 }
-                Status::Disconnected => return Ok(()),
+                // timer.tick();
+                // panic!();
+
+                if let Progress(n) = self.check_incoming_connection()? {
+                    work += n;
+                    nums.push(n);
+                }
             }
-            timer.tick();
-            // panic!();
-            // TODO(cjr): check incoming connect request, ~200ns
-            if let Progress(n) = self.check_incoming_connection()? {
-                work += n;
-                nums.push(n);
-            }
-            timer.tick();
+            // timer.tick();
 
             self.indicator.set_nwork(work);
 
-            if work > 0 {
-                // log::info!("RpcAdapter mainloop: {:?} {}", nums, timer);
-            }
+            // if work > 0 {
+            //     log::info!("RpcAdapter mainloop: {:?} {}", nums, timer);
+            // }
             future::yield_now().await;
         }
     }
@@ -394,7 +396,6 @@ impl TcpRpcAdapterEngine {
         // write the values to MetaBuffer
         meta_buf.value_len = value_len as u32;
 
-        // tracing::trace!("send_fused, meta_buf={:?}, post_len: {}", meta_buf, meta_buf.len());
         get_ops().post_send(
             sock_handle,
             ctx,
@@ -572,7 +573,6 @@ impl TcpRpcAdapterEngine {
                     match wc.opcode {
                         WcOpcode::Send => {
                             if wc.imm != 0 {
-                                tracing::trace!("post_send completed, wr_id={}", wc.wr_id);
                                 let rpc_id = RpcId::decode_u64(wc.wr_id);
                                 self.rx_outputs()[0]
                                     .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
@@ -601,10 +601,6 @@ impl TcpRpcAdapterEngine {
 
                             if wc.imm != 0 {
                                 // received an entire RPC message
-                                tracing::trace!(
-                                    "post_recv received complete message, wr_id={}",
-                                    wc.wr_id
-                                );
                                 let sock_handle = conn_ctx.sock_handle;
                                 let mut recv_ctx = mem::take(&mut conn_ctx.receiving_ctx);
                                 drop(table);

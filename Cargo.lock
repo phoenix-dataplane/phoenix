@@ -790,6 +790,7 @@ dependencies = [
  "sharded",
  "shmem-ipc",
  "slabmalloc",
+ "socket2",
  "spin",
  "structopt",
  "thiserror",
