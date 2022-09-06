@@ -74,7 +74,6 @@ pub(crate) struct TcpRpcAdapterEngine {
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
-
     // pub(crate) start: std::time::Instant,
 }
 
@@ -307,13 +306,11 @@ impl TcpRpcAdapterEngine {
             }
             // timer.tick();
 
-
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
                 nums.push(n);
             }
             // timer.tick();
-
 
             if fastrand::usize(..1000) < 1 {
                 match self.check_input_cmd_queue()? {
