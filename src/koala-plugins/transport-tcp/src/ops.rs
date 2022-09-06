@@ -40,7 +40,8 @@ impl Ops {
 
     pub fn connect(&self, addr: &SocketAddr) -> Result<Handle, ApiError> {
         let sock = Socket::new(Domain::IPV4, Type::STREAM, None).map_err(ApiError::Socket)?;
-        sock.connect(&(*addr).into()).map_err(ApiError::Socket)?;
+        sock.connect_timeout(&(*addr).into(), std::time::Duration::from_secs(10))
+            .map_err(ApiError::Socket)?;
         sock.set_nonblocking(true).map_err(ApiError::Socket)?;
         sock.set_nodelay(true).map_err(ApiError::Socket)?;
         let handle = sock.as_raw_fd().as_handle();
