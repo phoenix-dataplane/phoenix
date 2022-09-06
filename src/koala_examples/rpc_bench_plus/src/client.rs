@@ -1,5 +1,6 @@
 #![feature(scoped_threads)]
 
+use std::cmp;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use hdrhistogram::Histogram;
 use minstant::Instant;
+use structopt::clap::arg_enum;
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
@@ -22,7 +24,16 @@ pub mod rpc_plus {
 use rpc_plus::greeter_client::GreeterClient;
 use rpc_plus::HelloRequest;
 
-#[derive(StructOpt, Debug)]
+arg_enum! {
+    #[derive(Debug,Clone,Copy)]
+    pub enum ModelType{
+        MobileNet,
+        EfficientNet,
+        InceptionV3,
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
 #[structopt(about = "Koala RPC hello client")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
@@ -77,10 +88,55 @@ pub struct Args {
     /// Number of server threads.
     #[structopt(long, default_value = "1")]
     pub num_server_threads: usize,
+
+    /// overwrite with hardcoded test case
+    #[structopt(long)]
+    pub overwrite: Option<ModelType>,
 }
 
 // mod bench_app;
 // include!("./bench_app.rs");
+
+#[allow(unused)]
+struct TraceData {
+    data: Vec<usize>,
+    cursor: usize,
+}
+
+impl TraceData {
+    fn new(model_type: ModelType) -> TraceData {
+        let data_ori = match model_type {
+            ModelType::MobileNet => vec![3456, 512, 1152, 512, 8192, 1024, 2304, 1024, 32768, 2048, 4608, 2048, 65536, 2048, 4608, 2048, 131072, 4096, 9216, 4096, 262144, 4096, 9216, 4096, 524288, 8192, 18432, 8192, 1048576, 8192, 18432, 8192, 1048576, 8192, 18432, 8192, 1048576, 8192, 18432, 8192, 1048576, 8192, 18432, 8192, 1048576, 8192, 18432, 8192, 2097152, 16384, 36864, 16384, 4194304, 16384, 4100000],
+            ModelType::EfficientNet => vec![28, 3456, 512, 1152, 512, 1056, 1152, 2048, 256, 6144, 1536, 3456, 1536, 1552, 1920, 9216, 384, 13824, 2304, 5184, 2304, 3480, 4032, 13824, 384, 13824, 2304, 14400, 2304, 3480, 4032, 23040, 640, 38400, 3840, 24000, 3840, 9640, 10560, 38400, 640, 38400, 3840, 8640, 3840, 9640, 10560, 76800, 1280, 153600, 7680, 17280, 7680, 38480, 40320, 153600, 1280, 153600, 7680, 17280, 7680, 38480, 40320, 153600, 1280, 153600, 7680, 48000, 7680, 38480, 40320, 215040, 1792, 301056, 10752, 67200, 10752, 75376, 77952, 301056, 1792, 301056, 10752, 67200, 10752, 75376, 77952, 301056, 1792, 301056, 10752, 67200, 10752, 75376, 77952, 516096, 3072, 884736, 18432, 115200, 18432, 221376, 225792, 884736, 3072, 884736, 18432, 115200, 18432, 221376, 225792, 884736, 3072, 884736, 18432, 115200, 18432, 221376, 225792, 884736, 3072, 884736, 18432, 41472, 18432, 221376, 225792, 1474560, 5120, 1638400, 20480, 5124000],
+            ModelType::InceptionV3 => vec![3456, 384, 36864, 384, 73728, 768, 20480, 960, 552960, 2304, 49152, 768, 36864, 221184, 576, 1152, 49152, 307200, 331776, 24576, 768, 768, 1152, 384, 65536, 768, 49152, 221184, 576, 1152, 65536, 307200, 331776, 65536, 768, 768, 1152, 768, 73728, 768, 55296, 221184, 576, 1152, 73728, 307200, 331776, 73728, 768, 768, 1152, 768, 73728, 768, 221184, 1152, 3981312, 331776, 4608, 1152, 393216, 1536, 458752, 1536, 393216, 458752, 1536, 1536, 458752, 458752, 1536, 1536, 589824, 688128, 688128, 589824, 2304, 2304, 2304, 2304, 491520, 1920, 716800, 1920, 491520, 716800, 1920, 1920, 716800, 716800, 1920, 1920, 589824, 860160, 860160, 589824, 2304, 2304, 2304, 2304, 491520, 1920, 716800, 1920, 491520, 716800, 1920, 1920, 716800, 716800, 1920, 1920, 589824, 860160, 860160, 589824, 2304, 2304, 2304, 2304, 589824, 2304, 1032192, 2304, 589824, 1032192, 2304, 2304, 1032192, 1032192, 2304, 2304, 589824, 1032192, 1032192, 589824, 2304, 2304, 2304, 2304, 589824, 2304, 1032192, 2304, 589824, 1032192, 2304, 2304, 2211840, 1327104, 3840, 2304, 2293760, 5376, 1966080, 6193152, 4608, 4608, 1769472, 1769472, 1769472, 1769472, 1638400, 4608, 4608, 4608, 4608, 983040, 3840, 2304, 3670016, 5376, 3145728, 6193152, 4608, 4608, 1769472, 1769472, 1769472, 1769472, 2621440, 4608, 4608, 4608, 4608, 1572864, 3840, 2304, 8196000],
+        };
+
+        let mut data = Vec::with_capacity(data_ori.len());
+        for i in data_ori {
+            data.push(i);
+        }
+        TraceData {
+            data,
+            cursor: 0,
+        }
+    }
+
+    fn next(&mut self) -> Option<usize> {
+        if self.cursor < self.data.len() {
+            Some(self.data[self.cursor])
+        } else { None }
+    }
+
+    fn repeat_next(&mut self) -> usize {
+        let r = self.data[self.cursor];
+        self.cursor = if self.cursor == self.data.len() - 1 {
+            0
+        } else {
+            self.cursor + 1
+        };
+        r
+    }
+}
 
 #[allow(unused)]
 async fn run_bench(
@@ -106,6 +162,11 @@ async fn run_bench(
 
     // report the rps every several milliseconds
     let tput_interval = args.interval.map(Duration::from_secs_f64);
+
+    let mut trace_data = if args.overwrite.is_some() {
+        Some(TraceData::new(args.
+            overwrite.unwrap()))
+    } else { None };
 
     // start sending
     let mut last_ts = Instant::now();
@@ -153,7 +214,9 @@ async fn run_bench(
 
                 if scnt < total_iters + args.warmup {
                     starts[slot] = Instant::now();
-                    rpc_size[slot] = args.req_size+12; // todo: NOTICE HERE!
+                    rpc_size[slot] = if trace_data.is_some(){
+                        trace_data.as_mut().unwrap().repeat_next()
+                    }else{args.req_size}+12; // todo: NOTICE HERE!
                     let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
                     req.set_token(mrpc::Token(slot));
                     let fut = client.say_hello(req);
@@ -186,31 +249,60 @@ async fn run_bench(
 
 fn run_client_thread(
     tid: usize,
-    args: &Args,
+    args_o: &Args,
 ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let client = GreeterClient::connect((
-        args.ip.as_str(),
-        args.port + (tid % args.num_server_threads) as u16,
+        args_o.ip.as_str(),
+        args_o.port + (tid % args_o.num_server_threads) as u16,
     ))?;
     eprintln!("connection setup for thread {tid}");
+    let mut args = args_o.clone();
 
     smol::block_on(async {
-        // provision
-        let mut reqs = Vec::new();
-        for i in 0..args.provision_count {
-            let mut key = Vec::with_capacity(8);
-            key.resize(8, 42);
-            let mut len = Vec::with_capacity(4);
-            len.resize(4, 42);
-            let mut payload = Vec::with_capacity(args.req_size);
-            payload.resize(args.req_size, 42);
-            let req = WRef::with_token(mrpc::Token(i), HelloRequest {
-                key,
-                payload,
-                len,
-            });
-            reqs.push(req);
-        }
+        let reqs = if args.overwrite.is_some() {
+            // provision
+            let mut trace_data = TraceData::new(args.overwrite.unwrap());
+            args.total_iters = trace_data.data.len();
+            args.duration = None;
+            args.provision_count = args.total_iters;
+            args.concurrency = cmp::min(args.total_iters,100);
+            args.warmup = (args.warmup / trace_data.data.len() + 1) * trace_data.data.len();
+            let mut reqs = Vec::new();
+            for i in 0..args.provision_count {
+                let mut key = Vec::with_capacity(8);
+                key.resize(8, 42);
+                let mut len = Vec::with_capacity(4);
+                len.resize(4, 42);
+                let payload_size = trace_data.next().unwrap();
+                let mut payload = Vec::with_capacity(payload_size);
+                payload.resize(payload_size, 42);
+                let req = WRef::with_token(mrpc::Token(i), HelloRequest {
+                    key,
+                    payload,
+                    len,
+                });
+                reqs.push(req);
+            }
+            reqs
+        } else {
+            // provision
+            let mut reqs = Vec::new();
+            for i in 0..args.provision_count {
+                let mut key = Vec::with_capacity(8);
+                key.resize(8, 42);
+                let mut len = Vec::with_capacity(4);
+                len.resize(4, 42);
+                let mut payload = Vec::with_capacity(args.req_size);
+                payload.resize(args.req_size, 42);
+                let req = WRef::with_token(mrpc::Token(i), HelloRequest {
+                    key,
+                    payload,
+                    len,
+                });
+                reqs.push(req);
+            }
+            reqs
+        };
 
         let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
 

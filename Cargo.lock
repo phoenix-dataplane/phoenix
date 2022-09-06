@@ -2474,6 +2474,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpc_bench_plus"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "hdrhistogram",
+ "minstant",
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rpc_hello"
 version = "0.1.0"
 dependencies = [
