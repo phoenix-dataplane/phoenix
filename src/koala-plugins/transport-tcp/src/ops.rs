@@ -58,7 +58,7 @@ impl Ops {
     pub fn try_accept(&self) -> Vec<Handle> {
         let mut sock_handles = Vec::new();
         let mut table = self.state.listener_table.borrow_mut();
-        let mut removed = Vec::new();
+        // let mut removed = Vec::new();
         for (_handle, listener) in table.iter_mut() {
             match listener.accept() {
                 Ok((sock, _addr)) => {
@@ -80,14 +80,14 @@ impl Ops {
                         .cq_table
                         .borrow_mut()
                         .insert(sock_handle, CompletionQueue::new());
-                    removed.push(*_handle);
+                    // removed.push(*_handle);
                 }
                 Err(_e) => continue,
             }
         }
-        for handle in removed {
-            table.remove(&handle);
-        }
+        // for handle in removed {
+        //     table.remove(&handle);
+        // }
         sock_handles
     }
 
@@ -264,7 +264,7 @@ pub struct CompletionQueue {
     cq: VecDeque<dp::Completion>,
     send_tasks: VecDeque<Task>,
     recv_tasks: VecDeque<Task>,
-    start: std::time::Instant,
+    // start: std::time::Instant,
 }
 
 impl CompletionQueue {
@@ -273,7 +273,7 @@ impl CompletionQueue {
             cq: VecDeque::with_capacity(256),
             send_tasks: VecDeque::with_capacity(128),
             recv_tasks: VecDeque::with_capacity(128),
-            start: std::time::Instant::now(),
+            // start: std::time::Instant::now(),
         }
     }
 

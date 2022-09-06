@@ -43,6 +43,7 @@ sharded = { version = "0.2.1", features = ["parking_lot", "ahash"] }
 flurry = "0.4.0"
 contrie = "0.1.4"
 memfd = "0.4.1"
+socket2 = "0.4.7"
 
 [dev-dependencies]
 rand = "0.8.3"
