@@ -1,8 +1,6 @@
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
 
-use std::io;
-
 use thiserror::Error;
 
 pub use koala::module::KoalaModule;

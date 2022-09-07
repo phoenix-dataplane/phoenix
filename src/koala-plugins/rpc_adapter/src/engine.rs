@@ -944,7 +944,6 @@ impl RpcAdapterEngine {
 
                 for i in 0..sge_count {
                     let len = unsafe { *(meta_body_ptr.add(i as usize)) };
-                    // todo(xyc): the lock could probably be bottleneck?
                     conn_ctx.receiving_ctx.lock().sg_list.0.push(SgE {
                         ptr: unsafe { data_ptr.add(cumlative_offset) } as usize,
                         len: len as usize,

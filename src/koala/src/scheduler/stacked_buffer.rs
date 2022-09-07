@@ -34,6 +34,7 @@ impl<T, const COUNT: usize> StackedBuffer<T, COUNT> {
     }
 
     #[inline(always)]
+    #[allow(unused)]
     pub(crate) unsafe fn get_unchecked(&self, idx: usize) -> &T {
         mem::transmute::<_, &T>(&self.buf[idx])
     }
