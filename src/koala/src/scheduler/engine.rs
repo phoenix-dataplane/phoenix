@@ -234,6 +234,7 @@ impl BufferPool {
         }
     }
 
+    #[allow(unused)]
     fn get_range_handle(&self, handle: usize) -> ipc::buf::Range {
         ipc::buf::Range {
             offset: unsafe { self.buf.as_ptr().offset(handle as isize) } as u64,
@@ -283,7 +284,7 @@ impl Decompose for SchedulerEngine {
     }
 
     fn decompose(self: Box<Self>, _shared: &mut SharedStorage, _global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
-        let mut engine = *self;
+        let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(5);
         tracing::trace!("dumping Scheduler states...");
@@ -367,7 +368,6 @@ impl SchedulerEngine {
             let mut n_work2 = 0;
             // let mut timer = crate::timer::Timer::new();
             // post from local buffer to NIC
-            // todo(xyc): find better way to iterate to reduce latency
             for (_, v) in self.policy_state.iter_mut() {
                 // no need to loop
                 match SchedulerEngine::post_queue(v, &mut self.buffer_pool)? {
@@ -401,7 +401,6 @@ impl SchedulerEngine {
 
         let mut removed = SmallVec::<[usize;8]>::new();
 
-        // todo(xyc): optimize brute-force polling
         for (idx, tx_input) in input_vec.iter_mut().enumerate() {
             // In this inside code block, (ops, handle) won't change.
             let mut local_buffer: StackedBuffer<RawRdmaMsgTx, { POST_BUF_LEN }> = StackedBuffer::new();

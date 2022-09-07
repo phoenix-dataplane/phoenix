@@ -1188,6 +1188,7 @@ dependencies = [
  "ipc-ratelimit",
  "ipc-rpc_adapter",
  "ipc-salloc",
+ "ipc-scheduler",
  "ipc-tcp_rpc_adapter",
  "ipc-transport",
 ]
@@ -1294,6 +1295,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipc-scheduler"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "ipc-tcp_rpc_adapter"
 version = "0.1.0"
 dependencies = [
@@ -1382,10 +1393,12 @@ dependencies = [
  "memfd",
  "memmap2 0.5.7",
  "minstant",
+ "mio 0.7.14",
  "nix 0.23.1",
  "num_cpus",
  "petgraph",
  "prost-build",
+ "rdma",
  "scheduler",
  "semver 1.0.13",
  "serde",
@@ -1631,7 +1644,6 @@ dependencies = [
  "memoffset 0.6.5",
  "mio 0.7.14",
  "nix 0.23.1",
- "rdma",
  "serde",
  "spin",
  "thiserror",
@@ -2552,6 +2564,7 @@ dependencies = [
  "bindgen",
  "cc",
  "interface",
+ "ipc",
  "lazy_static",
  "libc",
  "log",
@@ -2640,6 +2653,23 @@ dependencies = [
 
 [[package]]
 name = "rpc_bench"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "hdrhistogram",
+ "minstant",
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rpc_bench_plus"
 version = "0.1.0"
 dependencies = [
  "futures",

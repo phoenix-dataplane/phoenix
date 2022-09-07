@@ -373,7 +373,7 @@ impl TcpRpcAdapterEngine {
     ) -> Result<Status, DatapathError> {
         let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
         let sock_handle = conn_ctx.sock_handle;
-        let ctx = RpcId::new(sock_handle, call_id).encode_u64();
+        let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
 
         let off = meta_buf_ptr.0.as_ptr().expose_addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
@@ -420,7 +420,7 @@ impl TcpRpcAdapterEngine {
         let sock_handle = conn_ctx.sock_handle;
 
         // Sender posts send requests from the SgList
-        let ctx = RpcId::new(sock_handle, call_id).encode_u64();
+        let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
         let meta_sge = SgE {
             ptr: (meta_ref as *const MessageMeta).expose_addr(),
             len: mem::size_of::<MessageMeta>(),
@@ -469,11 +469,12 @@ impl TcpRpcAdapterEngine {
                     for call_id in &call_ids[..1] {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&RpcId(conn_id, *call_id))
+                            .remove(&RpcId::new(conn_id, *call_id, 0))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(sock_handle, &recv_mrs[..])?;
                     }
                 }
+                _ => { unreachable!() }
             },
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
@@ -538,7 +539,7 @@ impl TcpRpcAdapterEngine {
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = sock_handle;
 
-        let recv_id = RpcId(meta.conn_id, meta.call_id);
+        let recv_id = RpcId::new(meta.conn_id, meta.call_id, 0);
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),

@@ -53,7 +53,7 @@ impl KoalaModule for SchedulerModule {
         // let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
     }
 
-    fn create_engine(&mut self, ty: EngineType, request: NewEngineRequest, shared: &mut SharedStorage, global: &mut ResourceCollection, node: DataPathNode, plugged: &ModuleCollection) -> anyhow::Result<Option<Box<dyn Engine>>> {
+    fn create_engine(&mut self, ty: EngineType, request: NewEngineRequest, _shared: &mut SharedStorage, _global: &mut ResourceCollection, node: DataPathNode, _plugged: &ModuleCollection) -> anyhow::Result<Option<Box<dyn Engine>>> {
         if ty != SchedulerModule::SCHEDULER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
