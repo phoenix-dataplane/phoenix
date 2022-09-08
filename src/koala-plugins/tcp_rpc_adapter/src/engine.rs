@@ -474,7 +474,9 @@ impl TcpRpcAdapterEngine {
                         self.reclaim_recv_buffers(sock_handle, &recv_mrs[..])?;
                     }
                 }
-                _ => { unreachable!() }
+                _ => {
+                    unreachable!()
+                }
             },
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),

@@ -1,26 +1,28 @@
+use crate::engine::datapath::{
+    DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError,
+};
+use crate::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
+use crate::storage::{ResourceCollection, SharedStorage};
+use crate::transport_rdma::ops::Ops;
+use crate::transport_rdma::DatapathError;
+use crate::{log, tracing};
+use anyhow::anyhow;
+use futures::future::BoxFuture;
 use interface::engine::SchedulingMode;
 use interface::rpc::{ImmFlags, RpcId, TransportStatus};
 use interface::Handle;
+use ipc::RawRdmaMsgTx;
 use minstant::Instant;
+use rdma::POST_BUF_LEN;
+use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
-use std::{mem, ptr};
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
-use anyhow::anyhow;
-use futures::future::BoxFuture;
-use smallvec::SmallVec;
-use ipc::RawRdmaMsgTx;
-use crate::engine::datapath::{DataPathNode, EngineRxMessage, EngineTxMessage, RxOQueue, TryRecvError};
-use crate::engine::{Decompose, Engine, EngineResult, future, Indicator, Vertex};
-use crate::{log, tracing};
-use crate::storage::{ResourceCollection, SharedStorage};
-use rdma::POST_BUF_LEN;
-use crate::transport_rdma::ops::Ops;
-use crate::transport_rdma::DatapathError;
+use std::{mem, ptr};
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);
@@ -47,7 +49,6 @@ impl Debug for FlattenKey {
 
 const MAX_INTERVAL_TIME: Duration = Duration::new(0, 5e3 as u32);
 
-
 struct PolicyState {
     ops: &'static Ops,
     handle: Handle,
@@ -64,7 +65,7 @@ impl PolicyState {
         return self.buffered_length > 4096
             || self.local_buffer.len() > 3
             || (self.local_buffer.len() > 0
-            && (self.imm_send_flag || self.last_timestamp.elapsed().ge(&MAX_INTERVAL_TIME)));
+                && (self.imm_send_flag || self.last_timestamp.elapsed().ge(&MAX_INTERVAL_TIME)));
     }
 
     #[inline(always)]
@@ -283,7 +284,11 @@ impl Decompose for SchedulerEngine {
         Ok(())
     }
 
-    fn decompose(self: Box<Self>, _shared: &mut SharedStorage, _global: &mut ResourceCollection) -> (ResourceCollection, DataPathNode) {
+    fn decompose(
+        self: Box<Self>,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+    ) -> (ResourceCollection, DataPathNode) {
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(5);
@@ -291,8 +296,14 @@ impl Decompose for SchedulerEngine {
 
         let node = unsafe {
             collections.insert("mode".to_string(), Box::new(ptr::read(&engine._mode)));
-            collections.insert("policy_state".to_string(), Box::new(ptr::read(&engine.policy_state)));
-            collections.insert("buffer_pool".to_string(), Box::new(ptr::read(&engine.buffer_pool)));
+            collections.insert(
+                "policy_state".to_string(),
+                Box::new(ptr::read(&engine.policy_state)),
+            );
+            collections.insert(
+                "buffer_pool".to_string(),
+                Box::new(ptr::read(&engine.buffer_pool)),
+            );
             ptr::read(&engine.node)
         };
         mem::forget(engine);
@@ -354,9 +365,9 @@ enum Status {
     Disconnected,
 }
 
-use Status::Progress;
 use crate::engine::datapath::fusion_layout::{BufferPage, PAGE_SIZE};
 use crate::scheduler::stacked_buffer::StackedBuffer;
+use Status::Progress;
 
 #[allow(unused)]
 static DEBUG_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -399,11 +410,12 @@ impl SchedulerEngine {
         let input_vec = &mut node.tx_inputs;
         let rx_output_vec = &mut node.rx_outputs;
 
-        let mut removed = SmallVec::<[usize;8]>::new();
+        let mut removed = SmallVec::<[usize; 8]>::new();
 
         for (idx, tx_input) in input_vec.iter_mut().enumerate() {
             // In this inside code block, (ops, handle) won't change.
-            let mut local_buffer: StackedBuffer<RawRdmaMsgTx, { POST_BUF_LEN }> = StackedBuffer::new();
+            let mut local_buffer: StackedBuffer<RawRdmaMsgTx, { POST_BUF_LEN }> =
+                StackedBuffer::new();
             let mut fetch_next: bool;
             // Safety: only when len>0 could we use these.
             let mut target_ops: &Ops = unsafe { MaybeUninit::uninit().assume_init() };
@@ -472,12 +484,11 @@ impl SchedulerEngine {
             }
         }
 
-
         // GC for rpc_adapter
-        if removed.len()>0 {
+        if removed.len() > 0 {
             removed.sort_unstable();
             removed.reverse();
-            for i in removed{
+            for i in removed {
                 input_vec.remove(i);
                 rx_output_vec.remove(i);
             }
@@ -528,9 +539,9 @@ enum FusingState<'a> {
     Exhausted,
 }
 
-use FusingState::{FreeStart, HoldingOne, Fusing, Exhausted};
 use crate::envelop::ResourceDowncast;
 use crate::module::{ModuleCollection, Version};
+use FusingState::{Exhausted, FreeStart, Fusing, HoldingOne};
 
 impl SchedulerEngine {
     fn _post_queue_fused<'a, I>(
@@ -539,8 +550,8 @@ impl SchedulerEngine {
         iter: I,
         buffer_pool: &mut BufferPool,
     ) -> Result<(), DatapathError>
-        where
-            I: ExactSizeIterator<Item=&'a RawRdmaMsgTx>,
+    where
+        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
     {
         let mut temp_arr: [MaybeUninit<RawRdmaMsgTx>; POST_BUF_LEN] =
             unsafe { MaybeUninit::uninit().assume_init() };
@@ -738,8 +749,8 @@ impl SchedulerEngine {
             _mode: mode,
             policy_state: Default::default(),
             buffer_pool: BufferPool::new(1024 * 1024 * 128 / PAGE_SIZE), // 128Mb
-            // counter:0,
-            // recording:StackedBuffer::new()
+                                                                         // counter:0,
+                                                                         // recording:StackedBuffer::new()
         }
     }
 }

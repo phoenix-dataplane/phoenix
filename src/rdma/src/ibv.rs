@@ -13,11 +13,11 @@ const PORT_NUM: u8 = 1;
 pub const POST_BUF_LEN: usize = 32;
 
 use crate::ffi;
-use ipc::RawRdmaMsgTx;
 pub use ffi::ibv_qp_type;
 pub use ffi::ibv_wc;
 pub use ffi::ibv_wc_opcode;
 pub use ffi::ibv_wc_status;
+use ipc::RawRdmaMsgTx;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -1459,7 +1459,8 @@ impl<'res> QueuePair<'res> {
                 length: (entry.range.len) as u32, // todo: 64 to 32, fix me
                 lkey: (&*(entry.mr as *mut ffi::ibv_mr)).lkey,
             };
-            let will_signal = entry.has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
+            let will_signal =
+                entry.has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
             wr_arr[i] = ffi::ibv_send_wr {
                 wr_id: entry.rpc_id.encode_u64(),
                 next: if i != data_length - 1 {

@@ -1,13 +1,12 @@
-use std::collections::HashMap;
-use anyhow::{bail};
-use crate::engine::{Engine, EnginePair, EngineType};
 use crate::engine::datapath::DataPathNode;
+use crate::engine::{Engine, EnginePair, EngineType};
 use crate::module::{KoalaModule, ModuleCollection, NewEngineRequest, Service, ServiceInfo};
+use anyhow::bail;
+use std::collections::HashMap;
 // use crate::state_mgr::SharedStateManager;
-use crate::storage::{ResourceCollection, SharedStorage};
 use crate::module::Version;
 use crate::scheduler::engine::SchedulerEngine;
-
+use crate::storage::{ResourceCollection, SharedStorage};
 
 pub struct SchedulerModule {}
 
@@ -18,8 +17,10 @@ impl SchedulerModule {
 
     pub const SCHEDULER_ENGINE: EngineType = EngineType("Scheduler");
     pub const ENGINES: &'static [EngineType] = &[SchedulerModule::SCHEDULER_ENGINE];
-    pub const DEPENDENCIES: &'static [EnginePair] =
-        &[(SchedulerModule::SCHEDULER_ENGINE, EngineType("RpcAdapterEngine"))];
+    pub const DEPENDENCIES: &'static [EnginePair] = &[(
+        SchedulerModule::SCHEDULER_ENGINE,
+        EngineType("RpcAdapterEngine"),
+    )];
 
     pub const SERVICE: Service = Service("Scheduler");
 }
@@ -53,24 +54,40 @@ impl KoalaModule for SchedulerModule {
         // let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
     }
 
-    fn create_engine(&mut self, ty: EngineType, request: NewEngineRequest, _shared: &mut SharedStorage, _global: &mut ResourceCollection, node: DataPathNode, _plugged: &ModuleCollection) -> anyhow::Result<Option<Box<dyn Engine>>> {
+    fn create_engine(
+        &mut self,
+        ty: EngineType,
+        request: NewEngineRequest,
+        _shared: &mut SharedStorage,
+        _global: &mut ResourceCollection,
+        node: DataPathNode,
+        _plugged: &ModuleCollection,
+    ) -> anyhow::Result<Option<Box<dyn Engine>>> {
         if ty != SchedulerModule::SCHEDULER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
-        if let NewEngineRequest::Auxiliary {
-            pid: _,
-            mode,
-        } = request {
+        if let NewEngineRequest::Auxiliary { pid: _, mode } = request {
             Ok(Some(Box::new(SchedulerEngine::new(node, mode))))
         } else {
             bail!("invalid request type")
         }
     }
 
-    fn restore_engine(&mut self, ty: EngineType, local: ResourceCollection, shared: &mut SharedStorage, global: &mut ResourceCollection, node: DataPathNode, plugged: &ModuleCollection, prev_version: Version) -> anyhow::Result<Box<dyn Engine>> {
+    fn restore_engine(
+        &mut self,
+        ty: EngineType,
+        local: ResourceCollection,
+        shared: &mut SharedStorage,
+        global: &mut ResourceCollection,
+        node: DataPathNode,
+        plugged: &ModuleCollection,
+        prev_version: Version,
+    ) -> anyhow::Result<Box<dyn Engine>> {
         if ty != SchedulerModule::SCHEDULER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
-        Ok(Box::new(SchedulerEngine::restore(local, shared, global, node, plugged, prev_version).unwrap()))
+        Ok(Box::new(
+            SchedulerEngine::restore(local, shared, global, node, plugged, prev_version).unwrap(),
+        ))
     }
 }

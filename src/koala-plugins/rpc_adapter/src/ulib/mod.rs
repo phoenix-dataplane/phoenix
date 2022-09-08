@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 use std::io;
 
-use thiserror::Error;
 use koala::transport_rdma::ApiError;
+use thiserror::Error;
 
 use koala::transport_rdma::ops::Ops;
 use koala::transport_rdma::DatapathError;

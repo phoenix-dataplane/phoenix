@@ -1,13 +1,13 @@
-use std::io;
-use std::collections::VecDeque;
-use interface::Handle;
 use super::state::EventChannel;
-use rdma::rdmacm;
-use std::time::Duration;
-use std::sync::atomic::Ordering;
-use std::os::unix::io::AsRawFd;
 use crate::resource::{Error as ResourceError, ResourceTable};
 use crate::transport_rdma::ApiError;
+use interface::Handle;
+use rdma::rdmacm;
+use std::collections::VecDeque;
+use std::io;
+use std::os::unix::io::AsRawFd;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 pub struct CmEventManager {
     pub poll: mio::Poll,

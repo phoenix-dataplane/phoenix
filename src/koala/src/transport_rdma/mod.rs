@@ -1,10 +1,10 @@
+use crate::resource::Error as ResourceError;
 use std::io;
 use thiserror::Error;
-use crate::resource::Error as ResourceError;
 
 pub mod cm_manager;
-pub mod state;
 pub mod ops;
+pub mod state;
 
 #[derive(Debug, Error)]
 pub enum ApiError {

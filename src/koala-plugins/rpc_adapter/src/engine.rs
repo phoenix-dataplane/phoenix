@@ -16,12 +16,12 @@ use interface::rpc::{ImmFlags, MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle, WorkCompletion};
 use ipc::mrpc::cmd;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
-use ipc::{Range, RawRdmaMsgTx};
 use ipc::rpc_adapter::control_plane;
+use ipc::{Range, RawRdmaMsgTx};
+use koala::transport_rdma::ops::Ops;
 use mrpc::unpack::UnpackFromSgE;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use salloc::state::State as SallocState;
-use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
@@ -763,7 +763,9 @@ impl RpcAdapterEngine {
                     // timer.tick();
                     // log::info!("ReclaimRecvBuf: {}", timer);
                 }
-                _ => { unreachable!() }
+                _ => {
+                    unreachable!()
+                }
             },
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
@@ -968,7 +970,7 @@ impl RpcAdapterEngine {
             let sge = SgE {
                 ptr: wr_ctx.buffer_addr,
                 len: wc.byte_len as _, // note this byte_len is only valid for
-                // recv request
+                                       // recv request
             };
             let mut recv_ctx = conn_ctx.receiving_ctx.lock();
             recv_ctx.sg_list.0.push(sge);

@@ -205,7 +205,15 @@ fn wait_command(
             thread::sleep(Duration::from_millis(1000));
 
             if let Some(kill_cmd) = kill_cmd.take() {
-                wait_command(kill_cmd, None, Duration::from_secs(2), "", None, None, false)?;
+                wait_command(
+                    kill_cmd,
+                    None,
+                    Duration::from_secs(2),
+                    "",
+                    None,
+                    None,
+                    false,
+                )?;
             }
         }
     }
@@ -337,14 +345,14 @@ fn start_ssh(
                 stderr_writer,
                 logical_and,
             )
-                .unwrap();
+            .unwrap();
         }
     }
 }
 
 // We assume a NFS setup, so we do not need to ssh to each worker machine to build the binaries.
 fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
-    binaries: impl IntoIterator<Item=A>,
+    binaries: impl IntoIterator<Item = A>,
     cargo_dir: P,
 ) -> anyhow::Result<()> {
     let manifest_path =

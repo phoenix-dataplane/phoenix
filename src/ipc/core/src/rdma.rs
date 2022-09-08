@@ -1,5 +1,5 @@
-use interface::rpc::{ImmFlags, RpcId};
 use crate::buf::Range;
+use interface::rpc::{ImmFlags, RpcId};
 /// Structure transmitted between rpc engine, schduler engine and rdma API
 #[derive(Debug, Clone)]
 pub struct RawRdmaMsgTx {

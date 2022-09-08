@@ -193,7 +193,7 @@ pub(crate) fn check_completion_queue() -> Result<usize, Error> {
                                 });
                                 // client receives responses
                                 RECV_REPLY_CACHE.with_borrow_mut(|cache| {
-                                    cache.insert(RpcId::new(conn_id, call_id,0), Ok(*msg))
+                                    cache.insert(RpcId::new(conn_id, call_id, 0), Ok(*msg))
                                 });
                             }
                         }
@@ -305,7 +305,7 @@ impl ClientStub {
         self.post_request(req, meta).unwrap();
 
         ReqFuture {
-            rpc_id: RpcId::new(conn_id, call_id,0),
+            rpc_id: RpcId::new(conn_id, call_id, 0),
             read_heap: &self.conn.read_heap,
             _marker: PhantomData,
         }
@@ -338,7 +338,7 @@ impl ClientStub {
         );
 
         // track the msg as pending
-        PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.call_id,0), WRef::clone(&msg));
+        PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.call_id, 0), WRef::clone(&msg));
 
         let (ptr_app, ptr_backend) = msg.into_shmptr().to_raw_parts();
         let erased = MessageErased {
@@ -350,7 +350,7 @@ impl ClientStub {
         #[cfg(feature = "timing")]
         TIMER.with_borrow_mut(|timer| {
             timer.sample(
-                RpcId::new(meta.conn_id, meta.call_id,0),
+                RpcId::new(meta.conn_id, meta.call_id, 0),
                 SampleKind::ClientRequest,
             );
         });
@@ -709,7 +709,10 @@ pub fn service_post_handler<T: RpcData>(
     };
 
     // track the msg as pending
-    PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.func_id,0), WRef::clone(&reply));
+    PENDING_WREF.insert(
+        RpcId::new(meta.conn_id, meta.func_id, 0),
+        WRef::clone(&reply),
+    );
 
     let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {

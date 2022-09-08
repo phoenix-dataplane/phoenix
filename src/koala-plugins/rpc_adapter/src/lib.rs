@@ -19,10 +19,10 @@ pub mod module;
 pub mod state;
 
 pub(crate) mod acceptor;
+pub mod config;
 pub(crate) mod engine;
 pub(crate) mod serialization;
 pub(crate) mod ulib;
-pub mod config;
 
 #[allow(unused)]
 pub(crate) mod pool;
@@ -58,8 +58,8 @@ impl From<ControlPathError> for interface::Error {
 }
 
 // use crate::engine::graph::SendError;
-use tokio::sync::mpsc::error::SendError;
 use koala::engine::datapath::EngineTxMessage;
+use tokio::sync::mpsc::error::SendError;
 
 impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {

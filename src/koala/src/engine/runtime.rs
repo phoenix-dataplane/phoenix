@@ -8,17 +8,17 @@ use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
+use crate::engine::datapath::DataPathNode;
+use crate::engine::{Engine, EngineType, Vertex};
+use crate::log;
+use crate::scheduler::engine::SchedulerEngine;
+use crate::scheduler::module::SchedulerModule;
 use dashmap::DashMap;
+use interface::engine::SchedulingMode::Dedicate;
 use minstant::Instant;
 use semver::Version;
 use spin::Mutex;
 use thiserror::Error;
-use interface::engine::SchedulingMode::Dedicate;
-use crate::engine::datapath::DataPathNode;
-use crate::engine::{Engine, EngineType, Vertex};
-use crate::scheduler::engine::SchedulerEngine;
-use crate::scheduler::module::SchedulerModule;
-use crate::log;
 
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
@@ -176,21 +176,35 @@ impl Runtime {
                 let mut eng = eng_ctn.engine_mut();
                 assert_eq!(eng.tx_outputs().len(), 0);
                 assert_eq!(eng.rx_inputs().len(), 0);
-                let (tx_sender, tx_receiver) = channel::create_channel(channel::ChannelFlavor::Sequential);
-                let (rx_sender, rx_receiver) = channel::create_channel(channel::ChannelFlavor::Sequential);
+                let (tx_sender, tx_receiver) =
+                    channel::create_channel(channel::ChannelFlavor::Sequential);
+                let (rx_sender, rx_receiver) =
+                    channel::create_channel(channel::ChannelFlavor::Sequential);
                 eng.tx_outputs().push(tx_sender);
                 eng.rx_inputs().push(rx_receiver);
                 let mut guard = self.scheduler.lock();
                 if guard.is_none() {
                     let scheduler = SchedulerEngine::new(DataPathNode::new(), Dedicate);
                     let container = EngineContainer::new(
-                        Box::new(scheduler), SchedulerModule::SCHEDULER_ENGINE,
-                        Version::new(1, 0, 0));
+                        Box::new(scheduler),
+                        SchedulerModule::SCHEDULER_ENGINE,
+                        Version::new(1, 0, 0),
+                    );
                     *guard = Some(container);
                 }
-                guard.as_mut().unwrap().engine_mut().tx_inputs().push(tx_receiver);
-                guard.as_mut().unwrap().engine_mut().rx_outputs().push(rx_sender);
-                log::debug!("Connect rpc_adapter-{} to scheduler",eng_id.0);
+                guard
+                    .as_mut()
+                    .unwrap()
+                    .engine_mut()
+                    .tx_inputs()
+                    .push(tx_receiver);
+                guard
+                    .as_mut()
+                    .unwrap()
+                    .engine_mut()
+                    .rx_outputs()
+                    .push(rx_sender);
+                log::debug!("Connect rpc_adapter-{} to scheduler", eng_id.0);
             }
         }
     }
@@ -405,7 +419,11 @@ impl Runtime {
                             *guard = None;
                         }
                         Poll::Ready(EngineResult::Err(e)) => {
-                            log::error!("Engine [{}] error: {}", guard.as_ref().unwrap().engine().description(), e);
+                            log::error!(
+                                "Engine [{}] error: {}",
+                                guard.as_ref().unwrap().engine().description(),
+                                e
+                            );
                             *guard = None;
                         }
                     }

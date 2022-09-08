@@ -6,7 +6,7 @@ use std::slice;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use interface::{AsHandle, Handle, returned};
+use interface::{returned, AsHandle, Handle};
 use ipc::RawRdmaMsgTx;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
@@ -120,8 +120,8 @@ impl Ops {
         cmid_handle: Handle,
         data: I,
     ) -> std::result::Result<(), DatapathError>
-        where
-            I: ExactSizeIterator<Item=&'a RawRdmaMsgTx>,
+    where
+        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
     {
         self.resource()
             .cmid_table
@@ -619,7 +619,7 @@ impl Ops {
         );
 
         use crate::transport_rdma::state::DEFAULT_CTXS;
-        let index = ctx.0.0 as usize;
+        let index = ctx.0 .0 as usize;
         if index >= DEFAULT_CTXS.len() {
             return Err(ApiError::NotFound);
         }
@@ -666,7 +666,7 @@ impl Ops {
         let cmid = self.resource().cmid_table.get(&cmid_handle)?;
         // use the context to distinguish if the connection is disconnected
         if let Ok(0) =
-        unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
         {
             cmid.disconnect().map_err(ApiError::RdmaCm)?;
         }

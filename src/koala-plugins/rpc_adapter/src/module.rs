@@ -8,11 +8,11 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
+use koala::transport_rdma::ops::Ops;
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_rdma::module::RdmaTransportModule;
-use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};

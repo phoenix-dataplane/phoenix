@@ -9,25 +9,25 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
-use interface::{AsHandle, Handle, returned};
+use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
+use koala::rdma;
 use koala::rdma::ibv;
 use koala::rdma::rdmacm;
-use koala::rdma;
 
 use super::module::CustomerType;
-use koala::transport_rdma::ops::Ops;
 use super::Error;
+use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::node::DataPathNode;
-use koala::engine::{Decompose, Engine, EngineResult, future, Indicator};
+use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
 use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
-use koala::{log, tracing};
 use koala::transport_rdma::{ApiError, DatapathError};
+use koala::{log, tracing};
 
 pub(crate) struct TransportEngine {
     pub(crate) customer: CustomerType,
