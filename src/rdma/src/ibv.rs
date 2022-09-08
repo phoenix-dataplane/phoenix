@@ -1454,16 +1454,12 @@ impl<'res> QueuePair<'res> {
         let mut sge_arr: [ffi::ibv_sge; POST_BUF_LEN] = MaybeUninit::uninit().assume_init();
         let mut wr_arr: [ffi::ibv_send_wr; POST_BUF_LEN] = MaybeUninit::uninit().assume_init();
         for (i, entry) in data.enumerate() {
-            entry.has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
             sge_arr[i] = ffi::ibv_sge {
                 addr: entry.range.offset,
                 length: (entry.range.len) as u32, // todo: 64 to 32, fix me
                 lkey: (&*(entry.mr as *mut ffi::ibv_mr)).lkey,
             };
-            let will_signal = entry
-                .rpc_id
-                .flag_bits
-                .has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
+            let will_signal = entry.has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
             wr_arr[i] = ffi::ibv_send_wr {
                 wr_id: entry.rpc_id.encode_u64(),
                 next: if i != data_length - 1 {
