@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 #[derive(Debug, Clone)]
 pub struct Timer {
     start: Instant,
-    durations: SmallVec<[Duration; 8]>,
+    durations: SmallVec<[(Duration, String); 8]>,
 }
 
 impl Timer {
@@ -20,8 +20,14 @@ impl Timer {
     }
 
     #[inline]
-    pub fn tick(&mut self) {
-        self.durations.push(self.start.elapsed());
+    pub fn tick(&mut self, tag: &str) {
+        self.durations
+            .push((self.start.elapsed(), String::from(tag)));
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.durations.len()
     }
 }
 

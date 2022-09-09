@@ -24,7 +24,7 @@ use rpc_hello::HelloRequest;
 #[structopt(about = "Koala RPC hello client")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
-    #[structopt(short = "c", long = "connect", default_value = "192.168.211.66")]
+    #[structopt(short = "c", long = "connect", default_value = "192.168.211.194")]
     pub ip: String,
 
     /// The port number to use.

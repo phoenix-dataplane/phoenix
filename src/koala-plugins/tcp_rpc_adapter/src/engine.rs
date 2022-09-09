@@ -4,6 +4,7 @@ use std::mem;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::ptr;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use fnv::FnvHashMap;
@@ -15,10 +16,11 @@ use interface::{AsHandle, Handle, MappedAddrStatus, WcOpcode, WcStatus};
 use ipc::buf::Range;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use ipc::tcp_rpc_adapter::control_plane;
+use ipc::transport::tcp::dp::Completion;
 use mrpc::unpack::UnpackFromSgE;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use salloc::state::State as SallocState;
-use transport_tcp::ops::{CompletionQueue, Ops};
+use transport_tcp::ops::Ops;
 use transport_tcp::ApiError;
 
 use koala::engine::datapath::message::{
@@ -261,8 +263,8 @@ impl Engine for TcpRpcAdapterEngine {
                 for (handle, (sock, _status)) in table.iter() {
                     let conn = control_plane::Connection {
                         sock: *handle,
-                        local: sock.local_addr()?.as_socket().unwrap(),
-                        peer: sock.peer_addr()?.as_socket().unwrap(),
+                        local: sock.local_addr()?,
+                        peer: sock.peer_addr()?,
                     };
                     connections.push(conn);
                 }
@@ -294,6 +296,7 @@ impl TcpRpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             // let mut timer = koala::timer::Timer::new();
+
             let mut work = 0;
             let mut nums = Vec::new();
 
@@ -319,17 +322,6 @@ impl TcpRpcAdapterEngine {
                 }
                 Status::Disconnected => return Ok(()),
             }
-
-            if fastrand::usize(..10000) < 1 {
-                // timer.tick();
-                // panic!();
-
-                if let Progress(n) = self.check_incoming_connection()? {
-                    work += n;
-                    nums.push(n);
-                }
-            }
-            // timer.tick();
 
             self.indicator.set_nwork(work);
 
@@ -564,99 +556,108 @@ impl TcpRpcAdapterEngine {
         recv_id
     }
 
-    fn cq_poll(&mut self, cq: &mut CompletionQueue) -> usize {
-        let mut comps = Vec::with_capacity(32);
-        cq.poll(&mut comps);
-        let mut progress = 0;
-        for wc in comps {
-            match wc.status {
-                WcStatus::Success => {
-                    match wc.opcode {
-                        WcOpcode::Send => {
-                            if wc.imm != 0 {
-                                let rpc_id = RpcId::decode_u64(wc.wr_id);
-                                self.rx_outputs()[0]
-                                    .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
-                                    .unwrap();
-                            }
-                            progress += 1;
+    fn process_new_connection(&mut self, handle: &Handle) -> usize {
+        if let Ok(_) = (|| -> Result<(), ControlPathError> {
+            let (read_regions, fds) = self.prepare_recv_buffers(*handle)?;
+            let conn_resp = ConnectResponse {
+                conn_handle: *handle,
+                read_regions,
+            };
+            let comp = ipc::mrpc::cmd::Completion(Ok(
+                ipc::mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
+            ));
+            self.cmd_tx.send(comp)?;
+            Ok(())
+        })() {
+            1
+        } else {
+            0
+        }
+    }
+    fn process_completion(&mut self, wc: &Completion) -> usize {
+        match wc.status {
+            WcStatus::Success => {
+                match wc.opcode {
+                    WcOpcode::Send => {
+                        if wc.imm != 0 {
+                            let rpc_id = RpcId::decode_u64(wc.wr_id);
+                            self.rx_outputs()[0]
+                                .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
+                                .unwrap();
                         }
-                        WcOpcode::Recv => {
-                            let mut table = self.state.conn_table.borrow_mut();
-                            let conn_ctx = table.get_mut(&Handle(wc.conn_id as u32));
-                            if conn_ctx.is_none() {
-                                continue;
-                            }
-                            let conn_ctx = conn_ctx.unwrap();
-
-                            // received a segment of RPC message
-                            let sge = SgE {
-                                ptr: wc.buf.offset as _,
-                                len: wc.byte_len as _,
-                            };
-                            conn_ctx.receiving_ctx.sg_list.0.push(sge);
-                            conn_ctx
-                                .receiving_ctx
-                                .recv_mrs
-                                .push(Handle(wc.wr_id as u32));
-
-                            if wc.imm != 0 {
-                                // received an entire RPC message
-                                let sock_handle = conn_ctx.sock_handle;
-                                let mut recv_ctx = mem::take(&mut conn_ctx.receiving_ctx);
-                                drop(table);
-
-                                // check if it is an eager message
-                                if recv_ctx.sg_list.0.len() == 1 {
-                                    // got an eager message
-                                    Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
-                                }
-
-                                let recv_id =
-                                    self.unmarshal_and_deliver_up(recv_ctx.sg_list, sock_handle);
-
-                                // keep them outstanding because they will be used by the user
-                                self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
-                            }
-
-                            progress += 1;
-                        }
-                        // The below two are probably errors in impl logic, so assert them
-                        _ => panic!("invalid wc: {:?}", wc),
                     }
-                }
-                WcStatus::Error(code) => {
-                    log::warn!("wc failed: {:?}", wc);
-                    // TODO(cjr): bubble up the error, close the connection, and return an error to the user.
-                    let msg = if wc.opcode == WcOpcode::Send {
-                        let rpc_id = RpcId::decode_u64(wc.wr_id);
-                        EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code))
-                    } else if wc.opcode == WcOpcode::Recv {
-                        EngineRxMessage::RecvError(
-                            Handle(wc.conn_id as u32),
-                            TransportStatus::Error(code),
-                        )
-                    } else {
-                        panic!("invalid wc: {:?}", wc);
-                    };
-                    self.rx_outputs()[0].send(msg).unwrap();
+                    WcOpcode::Recv => {
+                        let mut table = self.state.conn_table.borrow_mut();
+                        let conn_ctx = table.get_mut(&Handle(wc.conn_id as u32));
+                        if conn_ctx.is_none() {
+                            return 0;
+                        }
+                        let conn_ctx = conn_ctx.unwrap();
+
+                        // received a segment of RPC message
+                        let sge = SgE {
+                            ptr: wc.buf.offset as _,
+                            len: wc.byte_len as _,
+                        };
+                        conn_ctx.receiving_ctx.sg_list.0.push(sge);
+                        conn_ctx
+                            .receiving_ctx
+                            .recv_mrs
+                            .push(Handle(wc.wr_id as u32));
+
+                        if wc.imm != 0 {
+                            // received an entire RPC message
+                            let sock_handle = conn_ctx.sock_handle;
+                            let mut recv_ctx = mem::take(&mut conn_ctx.receiving_ctx);
+                            drop(table);
+
+                            // check if it is an eager message
+                            if recv_ctx.sg_list.0.len() == 1 {
+                                // got an eager message
+                                Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
+                            }
+
+                            let recv_id =
+                                self.unmarshal_and_deliver_up(recv_ctx.sg_list, sock_handle);
+
+                            // keep them outstanding because they will be used by the user
+                            self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
+                        }
+                    }
+                    // The below two are probably errors in impl logic, so assert them
+                    _ => panic!("invalid wc: {:?}", wc),
                 }
             }
+            WcStatus::Error(code) => {
+                // TODO(cjr): bubble up the error, close the connection, and return an error to the user.
+                let handle = Handle(wc.conn_id as u32);
+                get_ops().state.listener_table.borrow_mut().remove(&handle);
+                get_ops().state.sock_table.borrow_mut().remove(&handle);
+                get_ops().state.cq_table.borrow_mut().remove(&handle);
+                self.state.conn_table.borrow_mut().remove(&handle);
+                let msg = if wc.opcode == WcOpcode::Send {
+                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                    EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code))
+                } else if wc.opcode == WcOpcode::Recv {
+                    EngineRxMessage::RecvError(handle, TransportStatus::Error(code))
+                } else {
+                    panic!("invalid wc: {:?}", wc);
+                };
+                self.rx_outputs()[0].send(msg).unwrap();
+            }
         }
-        return progress;
+        return 1;
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
-        // check completion, and replenish some recv requests
+        let (conns, wcs) = get_ops().poll_io(Duration::from_micros(5))?;
+
         let mut progress = 0;
-        for (sock_handle, (sock, status)) in get_ops().state.sock_table.borrow_mut().iter() {
-            match get_ops().state.cq_table.borrow_mut().get_mut(sock_handle) {
-                Some(cq) => {
-                    cq.check_comp(sock, *status);
-                    progress += self.cq_poll(cq);
-                }
-                None => continue,
-            }
+        for conn in &conns {
+            progress += self.process_new_connection(conn);
+        }
+        for wc in &wcs {
+            progress += self.process_completion(wc);
         }
 
         // COMMENT(cjr): Progress(0) here is okay for now because we haven't use the progress as
@@ -683,30 +684,6 @@ impl TcpRpcAdapterEngine {
             )?;
         }
         Ok(())
-    }
-
-    fn check_incoming_connection(&mut self) -> Result<Status, ControlPathError> {
-        let sock_handles = get_ops().try_accept();
-        let mut n = 0;
-        for handle in sock_handles {
-            let res = (|| -> Result<(), ControlPathError> {
-                let (read_regions, fds) = self.prepare_recv_buffers(handle)?;
-                let conn_resp = ConnectResponse {
-                    conn_handle: handle,
-                    read_regions,
-                };
-                let comp = ipc::mrpc::cmd::Completion(Ok(
-                    ipc::mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
-                ));
-                self.cmd_tx.send(comp)?;
-                Ok(())
-            })();
-            if let Err(_e) = res {
-                continue;
-            }
-            n += 1;
-        }
-        Ok(Status::Progress(n))
     }
 
     fn prepare_recv_buffers(
@@ -812,12 +789,11 @@ impl TcpRpcAdapterEngine {
                     conn_handle: sock_handle,
                     read_regions,
                 };
-                log::debug!("Connect finished, sock_handle: {:?}", sock_handle);
                 Ok(CompletionKind::ConnectInternal(conn_resp, fds))
             }
             Command::Bind(addr) => {
                 log::debug!("Bind, addr: {:?}", addr);
-                let handle = get_ops().bind(addr, 128)?;
+                let handle = get_ops().bind(addr)?;
                 Ok(CompletionKind::Bind(handle))
             }
             Command::UpdateProtosInner(dylib) => {

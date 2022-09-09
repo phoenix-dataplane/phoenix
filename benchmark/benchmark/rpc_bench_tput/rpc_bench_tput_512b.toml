@@ -12,3 +12,4 @@ args = ""
 host = "danyang-05"
 bin = "rpc_bench_client"
 args = "-c rdma0.danyang-06 --concurrency 32 --req-size 512 -D 10 -i 1"
+dependencies = [0]
