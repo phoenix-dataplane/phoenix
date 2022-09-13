@@ -1,0 +1,28 @@
+version: "3"
+services:
+  mongodb-rate:
+    image: mongo:4.4.6
+    container_name: 'hotel_reserv_rate_mongo'
+    command: --port 27001
+    hostname: rate-db
+    network_mode: "host"
+    restart: always
+    volumes:
+      - rate:/data/db 
+
+  memcached-rate:
+    image: memcached
+    container_name: 'hotel_reserv_rate_mmc'
+    command: --port 17001
+    restart: always
+    environment:
+      - MEMCACHED_CACHE_SIZE=128
+      - MEMCACHED_THREADS=2
+    network_mode: "host"
+    logging:
+      options:
+        max-size: 50m
+
+volumes:
+  rate:
+

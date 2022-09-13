@@ -32,6 +32,14 @@ impl Config {
     }
 }
 
+const fn default_term_signal() -> usize {
+    15
+}
+
+const fn default_start_delay() -> u64 {
+    1
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct WorkerSpec {
     host: String,
@@ -39,6 +47,8 @@ struct WorkerSpec {
     args: String,
     #[serde(default)]
     dependencies: Vec<usize>,
+    #[serde(default = "default_term_signal", rename = "term")]
+    term_signal: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +57,8 @@ struct Benchmark {
     description: String,
     group: String,
     timeout_secs: Option<u64>,
+    #[serde(default = "default_start_delay")]
+    start_delay: u64,
     worker: Vec<WorkerSpec>,
 }
 
@@ -314,7 +326,7 @@ fn start_ssh(
             .arg("-p")
             .arg(port)
             .arg(ip);
-        kill_cmd.arg(format!("pkill -f {}", worker.bin));
+        kill_cmd.arg(format!("pkill -{} -f {}", worker.term_signal, worker.bin));
 
         if !dry_run {
             // poll command status until timeout or user Ctrl-C
@@ -495,7 +507,7 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
     // start workers based on their start_ts
     let mut handles = vec![];
     for (i, w) in spec.worker.iter().enumerate() {
-        let delay = Duration::from_millis(start_ts[i] * 1000);
+        let delay = Duration::from_millis(start_ts[i] * spec.start_delay * 1000);
         let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs, delay));
         handles.push(h);
     }
