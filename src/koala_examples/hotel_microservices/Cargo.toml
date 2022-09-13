@@ -32,6 +32,7 @@ async-ctrlc = "1.2.0"
 minstant = "0.1.2"
 thiserror = "1.0.34"
 csv = "1.1.6"
+hdrhistogram = "7.5.0"
 
 [[bin]]
 name = "hotel_reserv_geo"
@@ -52,3 +53,11 @@ path = "src/profile/main.rs"
 [[bin]]
 name = "hotel_reserv_frontend"
 path = "src/frontend/main.rs"
+
+[[bin]]
+name = "hotel_lat_bench_server"
+path = "src/latency_bench/server.rs"
+
+[[bin]]
+name = "hotel_lat_bench_client"
+path = "src/latency_bench/client.rs"
