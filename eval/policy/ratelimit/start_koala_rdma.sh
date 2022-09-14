@@ -6,4 +6,5 @@ fi
 
 WORKDIR=`dirname $(realpath $0)`
 cd $WORKDIR
+sed -i 's/transport =\(.*\)/transport = "Rdma"/g' koala.toml
 cargo rr --bin launcher -- -o ${OD} --benchmark ./launch_koala.toml --configfile ./config.toml --timeout 600
