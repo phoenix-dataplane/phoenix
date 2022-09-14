@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from typing import List
 import glob
-import numpy as np
+import os
 import sys
+import numpy as np
+import multiprocessing
 
 OD = "/tmp/mrpc-eval"
 if len(sys.argv) >= 2:
@@ -50,6 +52,20 @@ def get_rate(ncores: int, path: str) -> List[float]:
 # /tmp/mrpc-eval/benchmark/rpc_bench_rate_32/rpc_bench_rate_32b_1c/rpc_bench_client_danyang-05.stderr
 
 
+def get_cpus(ncores: int, path: str) -> List[float]:
+    path = os.path.dirname(path)+'/mpstat.out'
+    with open(path, 'r') as fin:
+        out = fin.read().strip()
+    cpu_count = multiprocessing.cpu_count()
+    cpus = []
+    for row in out.split('\n'):
+        line = row.split()
+        utime = float(line[3]) * cpu_count
+        stime = float(line[5]) * cpu_count
+        cpus.append(utime + stime)
+    return cpus
+
+
 xticks = [(1 << i) for i in range(0, 4)]
 
 
@@ -59,8 +75,10 @@ def load_result(solution, f: str):
     assert num_cores.endswith('c'), f'{num_cores}'
     num_cores = int(num_cores[:-1])
     rates = get_rate(num_cores, f)
-    for r in rates:
-        print(f'{num_cores},{r / 1e6},{solution}')
+    cpus = get_cpus(num_cores, f)
+    cpus = cpus[-1-len(rates):-1]
+    for r, c in zip(rates, cpus):
+        print(f'{num_cores},{r / 1e6},{solution},{round(c / 1e2,3)}')
 
 
 solution = 'mRPC'
