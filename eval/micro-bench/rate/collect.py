@@ -62,7 +62,8 @@ def get_cpus(ncores: int, path: str) -> List[float]:
         line = row.split()
         utime = float(line[3]) * cpu_count
         stime = float(line[5]) * cpu_count
-        cpus.append(utime + stime)
+        soft = float(line[8]) * cpu_count
+        cpus.append([utime, stime, soft])
     return cpus
 
 
@@ -77,6 +78,7 @@ def load_result(solution, f: str):
     rates = get_rate(num_cores, f)
     cpus = get_cpus(num_cores, f)
     cpus = cpus[-1-len(rates):-1]
+    cpus = [sum(stat) for stat in cpus]
     for r, c in zip(rates, cpus):
         print(f'{num_cores},{r / 1e6},{solution},{round(c / 1e2,3)}')
 
