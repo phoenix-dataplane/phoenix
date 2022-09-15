@@ -116,7 +116,9 @@ impl ProfileService {
                 hotels.push(hotel_proto);
             } else {
                 let collection = self.db_handle.collection::<db::Hotel>("hotels");
-                let hotel = collection.find_one(doc! { "id": hotel_id.as_str() }, None).await?;
+                let hotel = collection
+                    .find_one(doc! { "id": hotel_id.as_str() }, None)
+                    .await?;
                 if let Some(hotel) = hotel {
                     let hotel_json = serde_json::to_string(&hotel)?;
                     let hotel_proto = hotel.into();

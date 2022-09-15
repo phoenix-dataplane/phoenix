@@ -1,7 +1,7 @@
 use mongodb::bson::doc;
 use mongodb::error::Result;
-use mongodb::{Client, Database};
 use mongodb::IndexModel;
+use mongodb::{Client, Database};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,7 +18,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
     let db = client.database("geo-db");
     let collections = db.collection::<Point>("geo");
 
-    let count = collections.count_documents(doc! { "hotelId": "1" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "1" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "1".to_string(),
@@ -28,7 +30,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(hotel, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "2" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "2" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "2".to_string(),
@@ -38,7 +42,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(hotel, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "3" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "3" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "3".to_string(),
@@ -48,7 +54,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(hotel, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "4" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "4" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "4".to_string(),
@@ -58,7 +66,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(hotel, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "5" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "5" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "5".to_string(),
@@ -68,7 +78,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(hotel, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "6" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "6" }, None)
+        .await?;
     if count == 0 {
         let hotel = Point {
             id: "6".to_string(),
@@ -80,7 +92,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
 
     for i in 7..=80 {
         let hotel_id = i.to_string();
-        let count = collections.count_documents(doc! { "hotelId": &*hotel_id }, None).await?;
+        let count = collections
+            .count_documents(doc! { "hotelId": &*hotel_id }, None)
+            .await?;
         let lat = 37.7835 + i as f64 / 500.0 * 3.0;
         let lon = -122.41 + i as f64 / 500.0 * 4.0;
         let hotel = Point {

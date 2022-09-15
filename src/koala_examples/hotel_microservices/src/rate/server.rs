@@ -117,7 +117,9 @@ impl RateService {
                 log::trace!("memc miss, hotelId = {}", hotel_id);
                 let mut memc_str = String::new();
                 let collections = self.db_handle.collection::<db::RatePlan>("inventory");
-                let mut plans = collections.find(doc! { "hotelId" : hotel_id.as_str() }, None).await?;
+                let mut plans = collections
+                    .find(doc! { "hotelId" : hotel_id.as_str() }, None)
+                    .await?;
                 while let Some(plan) = plans.next().await {
                     let plan = plan?;
                     let plan_json = serde_json::to_string(&plan)?;

@@ -1,15 +1,15 @@
 #![feature(scoped_threads)]
 
-use std::time::Duration;
 use std::task::Poll;
+use std::time::Duration;
 
 use futures::poll;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use structopt::StructOpt;
-use minstant::Instant;
 use hdrhistogram::Histogram;
+use minstant::Instant;
+use structopt::StructOpt;
 
 use mrpc::WRef;
 
@@ -85,7 +85,10 @@ async fn run_bench_poll(
     eprintln!("busy polling replies");
 
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
-    assert_eq!(args.concurrency, 1, "concurrrency > 1 is not allowed for polling");
+    assert_eq!(
+        args.concurrency, 1,
+        "concurrrency > 1 is not allowed for polling"
+    );
 
     let (total_iters, timeout) = if let Some(dura) = args.duration {
         (usize::MAX / 2, Duration::from_secs_f64(dura))
@@ -95,7 +98,6 @@ async fn run_bench_poll(
 
     // start sending
     let start = Instant::now();
-
 
     let mut scnt = 0;
     let mut rcnt = 0;
@@ -139,7 +141,6 @@ async fn run_bench_poll(
     let dura = warmup_end.elapsed();
     Ok((dura, rcnt, hist))
 }
-
 
 async fn run_bench(
     args: &Args,
@@ -284,7 +285,6 @@ fn run_client_thread(
 
     Ok(())
 }
-
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     let args = Args::from_args();

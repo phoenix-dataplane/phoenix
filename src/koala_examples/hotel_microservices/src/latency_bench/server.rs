@@ -17,12 +17,11 @@ use hotel_microservices::geo::{Request as GeoRequest, Result as GeoResult};
 
 pub struct GeoService;
 
-
 #[mrpc::async_trait]
 impl Geo for GeoService {
     async fn nearby<'s>(
         &self,
-        _request: RRef<'s, GeoRequest>
+        _request: RRef<'s, GeoRequest>,
     ) -> Result<WRef<GeoResult>, mrpc::Status> {
         let mut points = Vec::with_capacity(5);
         for i in 0..5 {

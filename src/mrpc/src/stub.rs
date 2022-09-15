@@ -531,7 +531,6 @@ impl Server {
             }
             yield_now().await;
         }
-        
     }
 
     pub async fn serve_with_graceful_shutdown<F>(&mut self, shutdown: F) -> Result<(), Error>

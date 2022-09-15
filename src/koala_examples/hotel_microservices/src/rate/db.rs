@@ -1,7 +1,7 @@
 use mongodb::bson::doc;
 use mongodb::error::Result;
-use mongodb::{Client, Database};
 use mongodb::IndexModel;
+use mongodb::{Client, Database};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,7 +39,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
     let db = client.database("rate-db");
     let collections = db.collection::<RatePlan>("inventory");
 
-    let count = collections.count_documents(doc! { "hotelId": "1" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "1" }, None)
+        .await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "1".to_string(),
@@ -57,7 +59,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(plan, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "2" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "2" }, None)
+        .await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "2".to_string(),
@@ -75,7 +79,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
         collections.insert_one(plan, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "3" }, None).await?;
+    let count = collections
+        .count_documents(doc! { "hotelId": "3" }, None)
+        .await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "3".to_string(),
@@ -96,7 +102,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
     for i in 7..=80 {
         if i % 3 == 0 {
             let hotel_id = i.to_string();
-            let count = collections.count_documents(doc! { "hotelId": hotel_id.as_str() }, None).await?;
+            let count = collections
+                .count_documents(doc! { "hotelId": hotel_id.as_str() }, None)
+                .await?;
             let mut end_date = "2015-04-".to_string();
             let mut rate = 109.00;
             let mut rate_inc = 123.17;

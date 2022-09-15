@@ -159,7 +159,9 @@ pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
 
     for i in 7..=80 {
         let hotel_id = i.to_string();
-        let count = collections.count_documents(doc! { "id": hotel_id.as_str() }, None).await?;
+        let count = collections
+            .count_documents(doc! { "id": hotel_id.as_str() }, None)
+            .await?;
         let phone_number = "(415) 284-40".to_string() + &hotel_id;
         let lat = 37.7835 + i as f32 / 500.0 * 3.0;
         let lon = -122.41 + i as f32 / 500.0 * 4.0;
