@@ -13,7 +13,23 @@ workdir = os.path.expanduser(workdir)
 
 os.chdir(workdir)
 os.makedirs("/tmp/mrpc-eval/liveupgrade/", exist_ok=True)
-workload = subprocess.Popen([
+
+workload2 = subprocess.Popen([
+    "cargo", 
+    "run",
+    "--release",
+    "--bin",
+    "launcher",
+    "--",
+    "-o",
+    "/tmp/mrpc-eval",
+    "--benchmark", 
+    os.path.join(SCRIPTDIR, "rpc_bench_tput_2kb.toml"), 
+    "--configfile",
+    os.path.join(SCRIPTDIR, "config.toml"), 
+], stdout=subprocess.DEVNULL)
+time.sleep(1)
+workload1 = subprocess.Popen([
     "cargo", 
     "run",
     "--release",
@@ -27,7 +43,7 @@ workload = subprocess.Popen([
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"), 
 ], stdout=subprocess.DEVNULL)
-time.sleep(10)
+time.sleep(9)
 subprocess.run([
     "cargo", 
     "run", 
@@ -40,7 +56,7 @@ subprocess.run([
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"), 
 ])
-time.sleep(5)
+time.sleep(3)
 subprocess.run([
     "cargo", 
     "run", 
@@ -53,4 +69,5 @@ subprocess.run([
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"), 
 ])
-workload.wait()
+workload1.wait()
+workload2.wait()

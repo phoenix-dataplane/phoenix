@@ -414,7 +414,6 @@ impl RpcAdapterEngine {
 
         let cmid = &conn_ctx.cmid;
         let odp_mr = self.get_or_init_odp_mr();
-        let mut cnt = 0;
         for ptr in bufs {
             unsafe {
                 cmid.post_send_with_imm(
@@ -424,7 +423,6 @@ impl RpcAdapterEngine {
                     SendFlags::SIGNALED,
                     0,
                 )?;
-                cnt += 1;
             }
         }
         // do not wait for ack

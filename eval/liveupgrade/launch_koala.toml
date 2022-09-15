@@ -12,4 +12,8 @@ args = "--no-ansi"
 host = "danyang-06"
 bin = "koala"
 args = "--no-ansi"
-dependencies = [0] # launch in order, no very necessary
+
+[[worker]]
+host = "danyang-04"
+bin = "koala"
+args = "--no-ansi"

@@ -1,0 +1,16 @@
+name = "liveupgrade/rpc_bench_tput_2kb"
+description = "Run rpc_bench benchmark"
+group = "liveupgrade"
+timeout_secs = 20
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_server"
+args = "--port 5003 -l info"
+
+[[worker]]
+host = "danyang-04"
+bin = "rpc_bench_client"
+# this is indeed 32b instead of 2kb
+args = "-c rdma0.danyang-06 --concurrency 8 --req-size 32 --duration 15 -i 0.1 --port 5003 -l info"
+dependencies = [0]
