@@ -1678,6 +1678,7 @@ dependencies = [
  "ipc-core",
  "ipc-hotel-acl",
  "ipc-mrpc",
+ "ipc-null",
  "ipc-qos",
  "ipc-ratelimit",
  "ipc-rpc_adapter",
@@ -1740,6 +1741,16 @@ dependencies = [
 
 [[package]]
 name = "ipc-mrpc"
+version = "0.1.0"
+dependencies = [
+ "interface",
+ "ipc-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "ipc-null"
 version = "0.1.0"
 dependencies = [
  "interface",
@@ -2005,6 +2016,30 @@ name = "koala-mrpc-plugin"
 version = "0.1.0"
 dependencies = [
  "koala-mrpc",
+]
+
+[[package]]
+name = "koala-null"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "koala",
+ "minstant",
+ "nix 0.23.1",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "koala-null-plugin"
+version = "0.1.0"
+dependencies = [
+ "koala-null",
 ]
 
 [[package]]
