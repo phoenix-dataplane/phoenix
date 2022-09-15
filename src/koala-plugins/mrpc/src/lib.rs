@@ -1,5 +1,6 @@
 #![feature(ptr_internals)]
 #![feature(peer_credentials_unix_socket)]
+#![feature(strict_provenance)]
 
 use thiserror::Error;
 

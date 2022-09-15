@@ -104,6 +104,7 @@ pub(crate) struct ConnectionContext {
     pub(crate) remote_version: AtomicU64,
     // local version
     pub(crate) local_version: AtomicU64,
+    pub(crate) meta_buf_recv_count: AtomicUsize,
     // call_id, sg_len
     pub(crate) outstanding_req: spin::Mutex<VecDeque<ReqContext>>,
     pub(crate) receiving_ctx: spin::Mutex<RecvContext>,
@@ -116,6 +117,7 @@ impl ConnectionContext {
             credit: AtomicUsize::new(credit),
             remote_version: AtomicU64::new(0),
             local_version: AtomicU64::new(local_version),
+            meta_buf_recv_count: AtomicUsize::new(0),
             outstanding_req: spin::Mutex::new(VecDeque::new()),
             receiving_ctx: spin::Mutex::new(RecvContext::default()),
         }

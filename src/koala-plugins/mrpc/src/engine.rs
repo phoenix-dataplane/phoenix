@@ -318,10 +318,23 @@ impl MrpcEngine {
                 Ok(None)
             }
             Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
+                let meta_bufs = self
+                    .meta_buf_pool
+                    .free
+                    .iter()
+                    .map(|x| x.0.as_ptr().addr())
+                    .collect();
                 self.cmd_tx
-                    .send(Command::NewMappedAddrs(*conn_handle, app_vaddrs.clone()))
+                    .send(Command::NewMappedAddrsInternal(
+                        *conn_handle,
+                        app_vaddrs.clone(),
+                        meta_bufs,
+                    ))
                     .unwrap();
                 Ok(None)
+            }
+            Command::NewMappedAddrsInternal(..) => {
+                panic!("NewMappedAddrsInternal is only used in backend")
             }
             Command::UpdateProtos(protos) => {
                 let dylib_path =

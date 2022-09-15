@@ -397,6 +397,10 @@ enum RpcStrategy {
     Standard,
 }
 
+use koala::engine::datapath::meta_pool::META_BUFFER_SIZE;
+// same as mRPC engine's
+const META_BUFFER_POOL_CAP: usize = 128;
+
 impl RpcAdapterEngine {
     fn get_or_init_odp_mr(&mut self) -> &mut ulib::uverbs::MemoryRegion<u8> {
         // this function is not supposed to be called concurrently.
@@ -423,6 +427,35 @@ impl RpcAdapterEngine {
         } else {
             RpcStrategy::Standard
         }
+    }
+
+    fn warmup_meta_buffers(
+        &mut self,
+        conn_ctx: &ConnectionContext,
+        bufs: &[usize],
+    ) -> Result<(), DatapathError> {
+        use ulib::uverbs::SendFlags;
+
+        let cmid = &conn_ctx.cmid;
+        let odp_mr = self.get_or_init_odp_mr();
+        for ptr in bufs {
+            unsafe {
+                cmid.post_send_with_imm(
+                    odp_mr,
+                    *ptr..*ptr + META_BUFFER_SIZE,
+                    0,
+                    SendFlags::SIGNALED,
+                    0,
+                )?;
+            }
+        }
+        // do not wait for ack
+        // we let client send meta buffers for warm up
+        // server then first receives the buffers
+        // then server sends the buffer
+        // client receives the buffer
+        // only return to user stub after warmup is finished
+        Ok(())
     }
 
     fn send_engine_version(&mut self, conn_ctx: &ConnectionContext) -> Result<(), DatapathError> {
@@ -853,6 +886,8 @@ impl RpcAdapterEngine {
 
                                 if recv_ctx.sg_list.0[0].len == mem::size_of::<ControlMessage>() {
                                     self.process_control_message(recv_ctx.sg_list, &conn_ctx)?;
+                                } else if recv_ctx.sg_list.0[0].len == META_BUFFER_SIZE {
+                                    conn_ctx.meta_buf_recv_count.fetch_add(1, Ordering::Relaxed);
                                 } else {
                                     // check if it is an eager message
                                     if recv_ctx.sg_list.0.len() == 1 {
@@ -1085,7 +1120,10 @@ impl RpcAdapterEngine {
                     .insert(handle, (self.state.rpc_adapter_id, listener))?;
                 Ok(cmd::CompletionKind::Bind(handle))
             }
-            cmd::Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
+            cmd::Command::NewMappedAddrs(..) => {
+                unreachable!()
+            }
+            cmd::Command::NewMappedAddrsInternal(conn_handle, app_vaddrs, meta_bufs) => {
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
                     let region = self.state.resource().recv_buffer_pool.find(mr_handle)?;
                     let mr_local_addr = region.as_ptr().expose_addr();
@@ -1100,6 +1138,13 @@ impl RpcAdapterEngine {
                         .insert_addr_map(mr_local_addr, mr_remote_mapped)?;
                 }
                 // finish the last step to establish a connection
+                // for server side
+                // so that server will not receive any message from NIC
+                // before the server stub send NewMappedAddrs command
+                // for client side it will not be an issue
+                // because client will not receive any data before
+                // client stub receives connection established command from backend
+                // and starts to send requests
                 if let Ok(Some(pre_id)) = self
                     .state
                     .resource()
@@ -1117,6 +1162,25 @@ impl RpcAdapterEngine {
                     // NOTE(wyj): may not be necessary
                     // wait for remote side's version
                     while conn_ctx.remote_version.load(Ordering::Acquire) == 0 {
+                        self.check_transport_service().unwrap();
+                    }
+
+                    // server end, first receive meta bufs
+                    while conn_ctx.meta_buf_recv_count.load(Ordering::Acquire)
+                        < META_BUFFER_POOL_CAP
+                    {
+                        self.check_transport_service().unwrap();
+                    }
+                    // warmup server-side's buffers
+                    self.warmup_meta_buffers(&conn_ctx, &*meta_bufs).unwrap();
+                } else {
+                    let conn_ctx = self.state.resource().cmid_table.get(conn_handle)?;
+                    // client end, warmup buffers
+                    self.warmup_meta_buffers(&conn_ctx, &*meta_bufs).unwrap();
+                    // receive meta bufs
+                    while conn_ctx.meta_buf_recv_count.load(Ordering::Acquire)
+                        < META_BUFFER_POOL_CAP
+                    {
                         self.check_transport_service().unwrap();
                     }
                 }

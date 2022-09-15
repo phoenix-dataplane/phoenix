@@ -16,6 +16,12 @@ pub enum Command {
     // The app notifies the backend with its mapped addresses
     // conn_handle, [mr_handle, addr]
     NewMappedAddrs(interface::Handle, Vec<(interface::Handle, usize)>),
+    // Mapped address with mRPC engine's meta buffer ptrs to warmup the meta buffers.
+    NewMappedAddrsInternal(
+        interface::Handle,
+        Vec<(interface::Handle, usize)>,
+        Vec<usize>,
+    ),
     UpdateProtos(Vec<String>),
     UpdateProtosInner(PathBuf),
 }
