@@ -17,6 +17,8 @@ pub use ipc_core::{Error, IpcRecvError, IpcSendError, RecvFdError, TryRecvError}
 pub use hotel_acl;
 #[cfg(feature = "mrpc")]
 pub use mrpc;
+#[cfg(feature = "null")]
+pub use null;
 #[cfg(feature = "qos")]
 pub use qos;
 #[cfg(feature = "ratelimit")]
