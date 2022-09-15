@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use futures::StreamExt;
 use memcache::Client as MemcacheClient;
 use minstant::Instant;
 use mongodb::bson::doc;
-use mongodb::sync::Database;
+use mongodb::Database;
 
 use mrpc::alloc::Vec;
 use mrpc::{RRef, WRef};
@@ -85,6 +86,7 @@ impl Rate for RateService {
         let start = Instant::now();
         let result = self
             .get_rates_internal(request)
+            .await
             .map_err(|err| mrpc::Status::internal(err.to_string()))?;
         self.tracer
             .borrow_mut()
@@ -97,7 +99,7 @@ impl Rate for RateService {
 }
 
 impl RateService {
-    fn get_rates_internal<'s>(&self, request: RRef<'s, RateRequest>) -> Result<RateResult> {
+    async fn get_rates_internal<'s>(&self, request: RRef<'s, RateRequest>) -> Result<RateResult> {
         let mut rate_plans = Vec::new();
         for hotel_id in request.hotel_ids.iter() {
             let item: Option<String> = self.memc_client.get(hotel_id.as_str())?;
@@ -115,17 +117,18 @@ impl RateService {
                 log::trace!("memc miss, hotelId = {}", hotel_id);
                 let mut memc_str = String::new();
                 let collections = self.db_handle.collection::<db::RatePlan>("inventory");
-                let plans = collections.find(doc! { "hotelId" : hotel_id.as_str() }, None)?;
-                for plan in plans {
+                let mut plans = collections.find(doc! { "hotelId" : hotel_id.as_str() }, None).await?;
+                while let Some(plan) = plans.next().await {
                     let plan = plan?;
                     let plan_json = serde_json::to_string(&plan)?;
                     memc_str += plan_json.as_str();
                     memc_str += "\n";
+                    let proto_plan = plan.into();
+                    rate_plans.push(proto_plan);
                 }
                 self.memc_client.set(hotel_id.as_str(), memc_str, 0)?;
             }
         }
-
         let result = RateResult { rate_plans };
         Ok(result)
     }

@@ -2,11 +2,12 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
+use futures::StreamExt;
 use geo::algorithm::haversine_distance::HaversineDistance;
 use geo::point;
 use kdtree::KdTree;
 use minstant::Instant;
-use mongodb::sync::Database;
+use mongodb::Database;
 
 use mrpc::alloc::{String as MrpcString, Vec};
 use mrpc::{RRef, WRef};
@@ -105,14 +106,14 @@ impl GeoService {
         Ok(points)
     }
 
-    fn set_geo_index(&mut self) -> Result<()> {
+    async fn set_geo_index(&mut self) -> Result<()> {
         const DIMENSIONS: usize = 2;
         log::trace!("new geo newGeoIndex");
 
         let mut kdtree = KdTree::new(DIMENSIONS);
         let collection = self.db_handle.collection::<Point>("geo");
-        let points = collection.find(None, None)?;
-        for point in points {
+        let mut points = collection.find(None, None).await?;
+        while let Some(point) = points.next().await {
             let point = point?;
             kdtree.add([point.lat, point.lon], point.id)?;
         }
@@ -122,7 +123,7 @@ impl GeoService {
 }
 
 impl GeoService {
-    pub fn new(db: Database, log_path: Option<PathBuf>) -> Result<GeoService> {
+    pub async fn new(db: Database, log_path: Option<PathBuf>) -> Result<GeoService> {
         let mut tracer = Tracer::new();
         tracer.new_proc_entry("geo");
         let mut service = GeoService {
@@ -131,7 +132,7 @@ impl GeoService {
             log_path,
             tracer: RefCell::new(tracer),
         };
-        service.set_geo_index()?;
+        service.set_geo_index().await?;
         Ok(service)
     }
 }

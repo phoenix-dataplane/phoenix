@@ -1,6 +1,6 @@
 use mongodb::bson::doc;
 use mongodb::error::Result;
-use mongodb::sync::{Client, Database};
+use mongodb::{Client, Database};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,15 +28,15 @@ pub struct Address {
     pub lon: f32,
 }
 
-pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
-    let client = Client::with_uri_str(uri)?;
+pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
+    let client = Client::with_uri_str(uri).await?;
     log::info!("New session successful...");
 
     log::info!("Generating test data...");
     let db = client.database("profile-db");
     let collections = db.collection::<Hotel>("hotels");
 
-    let count = collections.count_documents(doc! { "id": 1 }, None)?;
+    let count = collections.count_documents(doc! { "id": 1 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "1".to_string(),
@@ -54,9 +54,9 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.4112,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
-    let count = collections.count_documents(doc! { "id": 2 }, None)?;
+    let count = collections.count_documents(doc! { "id": 2 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "2".to_string(),
@@ -74,9 +74,9 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.4005,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
-    let count = collections.count_documents(doc! { "id": 3 }, None)?;
+    let count = collections.count_documents(doc! { "id": 3 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "3".to_string(),
@@ -94,9 +94,9 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.4071,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
-    let count = collections.count_documents(doc! { "id": 4 }, None)?;
+    let count = collections.count_documents(doc! { "id": 4 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "4".to_string(),
@@ -114,9 +114,9 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.3930,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
-    let count = collections.count_documents(doc! { "id": 5 }, None)?;
+    let count = collections.count_documents(doc! { "id": 5 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "5".to_string(),
@@ -134,9 +134,9 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.4181,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
-    let count = collections.count_documents(doc! { "id": 6 }, None)?;
+    let count = collections.count_documents(doc! { "id": 6 }, None).await?;
     if count == 0 {
         let hotel = Hotel {
             id: "6".to_string(),
@@ -154,12 +154,12 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 lon: -122.4015,
             },
         };
-        collections.insert_one(hotel, None)?;
+        collections.insert_one(hotel, None).await?;
     }
 
     for i in 7..=80 {
         let hotel_id = i.to_string();
-        let count = collections.count_documents(doc! { "id": hotel_id.as_str() }, None)?;
+        let count = collections.count_documents(doc! { "id": hotel_id.as_str() }, None).await?;
         let phone_number = "(415) 284-40".to_string() + &hotel_id;
         let lat = 37.7835 + i as f32 / 500.0 * 3.0;
         let lon = -122.41 + i as f32 / 500.0 * 4.0;
@@ -180,7 +180,7 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                     lon,
                 },
             };
-            collections.insert_one(hotel, None)?;
+            collections.insert_one(hotel, None).await?;
         }
     }
 

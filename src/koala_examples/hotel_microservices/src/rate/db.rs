@@ -1,6 +1,6 @@
 use mongodb::bson::doc;
 use mongodb::error::Result;
-use mongodb::sync::{Client, Database};
+use mongodb::{Client, Database};
 use mongodb::IndexModel;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +30,8 @@ pub struct RatePlan {
     pub room_type: RoomType,
 }
 
-pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
-    let client = Client::with_uri_str(uri)?;
+pub async fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
+    let client = Client::with_uri_str(uri).await?;
 
     log::info!("New session successful...");
 
@@ -39,7 +39,7 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
     let db = client.database("rate-db");
     let collections = db.collection::<RatePlan>("inventory");
 
-    let count = collections.count_documents(doc! { "hotelId": "1" }, None)?;
+    let count = collections.count_documents(doc! { "hotelId": "1" }, None).await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "1".to_string(),
@@ -54,10 +54,10 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 total_rate_inclusive: 123.17,
             },
         };
-        collections.insert_one(plan, None)?;
+        collections.insert_one(plan, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "2" }, None)?;
+    let count = collections.count_documents(doc! { "hotelId": "2" }, None).await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "2".to_string(),
@@ -72,10 +72,10 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 total_rate_inclusive: 153.09,
             },
         };
-        collections.insert_one(plan, None)?;
+        collections.insert_one(plan, None).await?;
     }
 
-    let count = collections.count_documents(doc! { "hotelId": "3" }, None)?;
+    let count = collections.count_documents(doc! { "hotelId": "3" }, None).await?;
     if count == 0 {
         let plan = RatePlan {
             hotel_id: "3".to_string(),
@@ -90,13 +90,13 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                 total_rate_inclusive: 123.17,
             },
         };
-        collections.insert_one(plan, None)?;
+        collections.insert_one(plan, None).await?;
     }
 
     for i in 7..=80 {
         if i % 3 == 0 {
             let hotel_id = i.to_string();
-            let count = collections.count_documents(doc! { "hotelId": hotel_id.as_str() }, None)?;
+            let count = collections.count_documents(doc! { "hotelId": hotel_id.as_str() }, None).await?;
             let mut end_date = "2015-04-".to_string();
             let mut rate = 109.00;
             let mut rate_inc = 123.17;
@@ -133,13 +133,13 @@ pub fn initialize_database(uri: impl AsRef<str>) -> Result<Database> {
                         total_rate_inclusive: rate_inc,
                     },
                 };
-                collections.insert_one(plan, None)?;
+                collections.insert_one(plan, None).await?;
             }
         }
     }
 
     let index = IndexModel::builder().keys(doc! { "hotelId": 1 }).build();
-    collections.create_index(index, None)?;
+    collections.create_index(index, None).await?;
 
     Ok(db)
 }
