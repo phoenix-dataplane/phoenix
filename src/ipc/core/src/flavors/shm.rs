@@ -81,6 +81,8 @@ pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     dp_cq: ShmSender<WorkCompletion>,
     timer: Instant,
     fd_notifier: ShmObject<AtomicUsize>,
+    poll: mio::Poll,
+    events: mio::Events,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -174,6 +176,14 @@ where
             ],
         )?;
 
+        let poll = mio::Poll::new()?;
+        poll.registry().register(
+            &mut mio::unix::SourceFd(&dp_wq.empty_signal().as_raw_fd()),
+            mio::Token(0),
+            mio::Interest::READABLE,
+        )?;
+        let events = mio::Events::with_capacity(1);
+
         // 9. finally, we are done here
         Ok(Self {
             client_path: client_path.as_ref().to_path_buf(),
@@ -185,6 +195,8 @@ where
             dp_cq,
             timer: Instant::now(),
             fd_notifier,
+            poll,
+            events,
         })
     }
 
@@ -263,6 +275,29 @@ where
         self.dp_cq.sender_mut().send(f)?;
         Ok(())
     }
+
+    /// For CPU efficient scenarios.
+    pub fn wait_wr(&mut self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let s = self.dp_wq.receiver_mut().read_count()?;
+        if s > 0 {
+            return Ok(true);
+        };
+
+        self.poll.poll(&mut self.events, timeout)?;
+
+        if self.events.is_empty() {
+            return Ok(false);
+        }
+
+        use std::io::Read;
+        let mut b = [0u8; 8];
+        self.dp_wq.empty_signal().read(&mut b)?;
+
+        // reregister READ if something does not work
+
+        let s = self.dp_wq.receiver_mut().read_count()?;
+        Ok(s > 0)
+    }
 }
 
 /// A `Service` sends Command (contorl path) and WorkRequest (datapath)
@@ -278,6 +313,8 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     timer: AtomicCell<Instant>,
     cmd_rx_entries: ShmObject<AtomicUsize>,
     fd_notifier: ShmObject<AtomicUsize>,
+    poll: RefCell<mio::Poll>,
+    events: RefCell<mio::Events>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -401,6 +438,14 @@ where
                 let cmd_tx_entries = ShmObject::open(cmd_tx_notify_memfd)?;
                 let fd_notifier = ShmObject::open(fd_notifier_memfd)?;
 
+                let poll = mio::Poll::new()?;
+                poll.registry().register(
+                    &mut mio::unix::SourceFd(&dp_cq.empty_signal().as_raw_fd()),
+                    mio::Token(0),
+                    mio::Interest::READABLE,
+                )?;
+                let events = RefCell::new(mio::Events::with_capacity(1));
+
                 Ok(Self {
                     sock,
                     cmd_tx: IpcSenderNotify::new(cmd_tx1, cmd_tx_entries),
@@ -410,6 +455,8 @@ where
                     timer: AtomicCell::new(Instant::now()),
                     cmd_rx_entries,
                     fd_notifier,
+                    poll: RefCell::new(poll),
+                    events,
                 })
             }
             _ => panic!("unexpected response: {:?}", res),
@@ -484,5 +531,29 @@ where
     ) -> Result<(), Error> {
         self.dp_cq.borrow_mut().receiver_mut().recv(f)?;
         Ok(())
+    }
+
+    /// For CPU efficient scenarios.
+    pub fn wait_wc(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
+        if s > 0 {
+            return Ok(true);
+        };
+
+        let mut events = self.events.borrow_mut();
+        self.poll.borrow_mut().poll(&mut events, timeout)?;
+
+        if events.is_empty() {
+            return Ok(false);
+        }
+
+        use std::io::Read;
+        let mut b = [0u8; 8];
+        self.dp_cq.borrow_mut().empty_signal().read(&mut b)?;
+
+        // reregister READ if something does not work
+
+        let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
+        Ok(s > 0)
     }
 }

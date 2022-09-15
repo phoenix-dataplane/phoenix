@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -142,6 +143,10 @@ where
             self.shared.borrow_mut().dp_d.write_advance(write_cnt);
         }
         Ok(())
+    }
+
+    pub(crate) fn wait_wr(&mut self, _timeout: Option<Duration>) -> Result<bool, Error> {
+        unimplemented!("You should probably use shm queue");
     }
 }
 
