@@ -443,7 +443,7 @@ impl RpcAdapterEngine {
                 cmid.post_send_with_imm(
                     odp_mr,
                     *ptr..*ptr + META_BUFFER_SIZE,
-                    0,
+                    u64::MAX - 1,
                     SendFlags::SIGNALED,
                     0,
                 )?;
@@ -837,6 +837,8 @@ impl RpcAdapterEngine {
                                 tracing::trace!("post_send_imm completed, wr_id={}", wc.wr_id);
                                 if wc.wr_id == u64::MAX {
                                     self.ctrl_buf.in_use = false;
+                                } else if wc.wr_id == u64::MAX - 1 {
+                                    continue;
                                 } else {
                                     let rpc_id = RpcId::decode_u64(wc.wr_id);
                                     self.rx_outputs()[0]
@@ -886,8 +888,16 @@ impl RpcAdapterEngine {
 
                                 if recv_ctx.sg_list.0[0].len == mem::size_of::<ControlMessage>() {
                                     self.process_control_message(recv_ctx.sg_list, &conn_ctx)?;
+                                    self.reclaim_recv_buffers(
+                                        &conn_ctx.cmid,
+                                        &*recv_ctx.recv_buffer_handles,
+                                    )?;
                                 } else if recv_ctx.sg_list.0[0].len == META_BUFFER_SIZE {
                                     conn_ctx.meta_buf_recv_count.fetch_add(1, Ordering::Relaxed);
+                                    self.reclaim_recv_buffers(
+                                        &conn_ctx.cmid,
+                                        &*recv_ctx.recv_buffer_handles,
+                                    )?;
                                 } else {
                                     // check if it is an eager message
                                     if recv_ctx.sg_list.0.len() == 1 {
