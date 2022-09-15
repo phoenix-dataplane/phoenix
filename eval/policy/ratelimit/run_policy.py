@@ -35,7 +35,7 @@ workload = subprocess.Popen([
     "--configfile",
     os.path.join(SCRIPTDIR, "config.toml"),
 ], stdout=subprocess.DEVNULL)
-time.sleep(5)
+time.sleep(6)
 
 subprocess.run([
     "cargo",
@@ -74,7 +74,6 @@ subprocess.run([
     "--sid",
     str(mrpc_sid),
 ])
-time.sleep(1)
 subprocess.run([
     "cargo",
     "run",
@@ -99,7 +98,6 @@ for subscription in data:
             addon_eid = eid
 
 rates = [
-    500000,
     900000,
 ]
 for rate in rates:

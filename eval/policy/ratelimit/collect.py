@@ -12,12 +12,10 @@ if len(sys.argv) >= 2:
 TIME_FMT = "%Y-%m-%dT%H:%M:%S.%fZ"
 TIME_FMT_BACKEND = "%Y-%m-%d %H:%M:%S.%f"
 RATES = [
-    100000,
     500000,
     900000,
 ]
 RATES = [x // 1000 for x in RATES]
-
 
 def read_rates(path):
     timestamps = []
@@ -75,6 +73,16 @@ def read_backend_log(path):
 
 rates = read_rates(OD+"/policy/ratelimit/rpc_bench_tput_32b/rpc_bench_client_danyang-05.stdout")
 logs = read_backend_log(OD+"/launch_koala/koala_danyang-05.stdout")
+rates.to_csv(
+    "/tmp/mrpc-eval/policy/ratelimit/rates_32b.csv",
+    sep=",",
+    header=True,
+)
+logs.to_csv(
+    "/tmp/mrpc-eval/policy/ratelimit/server_log.csv",
+    sep=",",
+    header=True,
+)
 all_ts = [x for x in rates["timestamp"]]
 all_ts.extend([x for x in logs['timestamp']])
 base_ts = min(all_ts)

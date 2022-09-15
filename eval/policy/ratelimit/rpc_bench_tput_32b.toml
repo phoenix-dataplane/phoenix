@@ -1,7 +1,7 @@
 name = "policy/ratelimit/rpc_bench_tput_32b"
 description = "Run rpc_bench benchmark"
 group = "ratelimit"
-timeout_secs = 15
+timeout_secs = 12
 
 [[worker]]
 host = "danyang-06"
@@ -11,5 +11,5 @@ args = "--port 5002 -l info"
 [[worker]]
 host = "danyang-05"
 bin = "rpc_bench_client"
-args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32 --duration 10 -i 0.1 --port 5002 -l info"
+args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32 --duration 8 -i 0.05 --port 5002 -l info"
 dependencies = [0]
