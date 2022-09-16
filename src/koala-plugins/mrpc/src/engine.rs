@@ -1,6 +1,7 @@
 use std::mem;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
@@ -339,6 +340,12 @@ impl MrpcEngine {
 
     fn check_customer(&mut self) -> Result<Status, DatapathError> {
         use dp::WorkRequest;
+
+        let notified = self.customer.wait_wr(Some(Duration::from_micros(50)))?; // try 0
+        if !notified {
+            return Ok(Progress(0));
+        }
+
         let buffer_cap = self.wr_read_buffer.capacity();
         // let mut timer = crate::timer::Timer::new();
 
@@ -480,7 +487,8 @@ impl MrpcEngine {
                         // the following operation takes around 100ns
                         let mut sent = false;
                         while !sent {
-                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            // self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::Incoming(erased));
@@ -496,7 +504,8 @@ impl MrpcEngine {
                         self.meta_buf_pool.release(rpc_id)?;
                         let mut sent = false;
                         while !sent {
-                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            // self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::Outgoing(rpc_id, status));
@@ -507,7 +516,8 @@ impl MrpcEngine {
                     EngineRxMessage::RecvError(conn_id, status) => {
                         let mut sent = false;
                         while !sent {
-                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            // self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                            self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::RecvError(conn_id, status));

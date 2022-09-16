@@ -170,6 +170,28 @@ async fn run_bench(
                     reply_futures.push(fut);
                     scnt += 1;
                 }
+
+                let last_dura = last_ts.elapsed();
+                if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
+                    let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
+                    let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
+                    if args.log_latency {
+                        my_print!(
+                            "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                            tid,
+                            rps,
+                            bw,
+                            Duration::from_nanos(hist.value_at_percentile(95.0)),
+                            Duration::from_nanos(hist.value_at_percentile(99.0)),
+                        );
+                        hist.clear();
+                    } else {
+                        my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    }
+                    last_ts = Instant::now();
+                    last_rcnt = rcnt;
+                    last_nbytes = nbytes;
+                }
             }
             complete => break,
             default => {

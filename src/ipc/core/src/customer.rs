@@ -1,5 +1,6 @@
 //! xatu OS customer
 use std::os::unix::io::RawFd;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -123,5 +124,10 @@ where
         f: F,
     ) -> Result<(), Error> {
         choose_flavor!(&mut self.flavor, enqueue_wc_with, f)
+    }
+
+    /// For CPU efficient scenarios.
+    pub fn wait_wr(&mut self, timeout: Option<Duration>) -> Result<bool, Error> {
+        choose_flavor!(&mut self.flavor, wait_wr, timeout)
     }
 }

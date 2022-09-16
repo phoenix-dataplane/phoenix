@@ -4,6 +4,7 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use dashmap::DashMap;
 use fnv::FnvHashMap as HashMap;
@@ -148,6 +149,11 @@ thread_local! {
 
 pub(crate) fn check_completion_queue() -> Result<usize, Error> {
     MRPC_CTX.with(|ctx| {
+        let notified = ctx.service.wait_wc(Some(Duration::from_micros(1000)))?; // try 0
+        if !notified {
+            return Ok(0);
+        }
+
         COMP_READ_BUFFER.with_borrow_mut(|buffer| {
             // SAFETY: dp::Completion is Copy and zerocopy
             unsafe {
