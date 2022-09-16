@@ -52,18 +52,21 @@ def get_rate(ncores: int, path: str) -> List[float]:
 # /tmp/mrpc-eval/benchmark/rpc_bench_rate_32/rpc_bench_rate_32b_1c/rpc_bench_client_danyang-05.stderr
 
 
-def get_cpus(ncores: int, path: str) -> List[float]:
-    path = os.path.dirname(path)+'/mpstat.out'
-    with open(path, 'r') as fin:
-        out = fin.read().strip()
-    cpu_count = multiprocessing.cpu_count()
+def get_cpus(path: str):
     cpus = []
-    for row in out.split('\n'):
-        line = row.split()
-        utime = float(line[3]) * cpu_count
-        stime = float(line[5]) * cpu_count
-        soft = float(line[8]) * cpu_count
-        cpus.append([utime, stime, soft])
+    for host in ["server", "client"]:
+        with open(os.path.dirname(path)+f'/mpstat_{host}.out', 'r') as fin:
+            out = fin.read().strip()
+        cpu_count = multiprocessing.cpu_count()
+        mpstat = []
+        for row in out.split('\n'):
+            line = row.split()
+            utime = float(line[3]) * cpu_count
+            stime = float(line[5]) * cpu_count
+            soft = float(line[8]) * cpu_count
+            non_idle = (100 - float(line[-1])) * cpu_count
+            mpstat.append(non_idle)
+        cpus.append(mpstat)
     return cpus
 
 
@@ -76,11 +79,11 @@ def load_result(solution, f: str):
     assert num_cores.endswith('c'), f'{num_cores}'
     num_cores = int(num_cores[:-1])
     rates = get_rate(num_cores, f)
-    cpus = get_cpus(num_cores, f)
-    cpus = cpus[-1-len(rates):-1]
-    cpus = [sum(stat) for stat in cpus]
-    for r, c in zip(rates, cpus):
-        print(f'{num_cores},{r / 1e6},{solution},{round(c / 1e2,3)}')
+    cpus_srv, cpus_cli = get_cpus(f)
+    cpus_srv = cpus_srv[-5 - len(rates):-5]
+    cpus_cli = cpus_cli[-4 - len(rates):-4]
+    for r, c1, c2 in zip(rates, cpus_srv, cpus_cli):
+        print(f'{num_cores},{r / 1e6},{solution},{round(c1 / 1e2,3)},{round(c2 / 1e2,3)}')
 
 
 solution = 'mRPC'
