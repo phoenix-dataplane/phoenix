@@ -3,11 +3,58 @@ from typing import List
 import glob
 import os
 import sys
+import time
+import datetime
 import multiprocessing
 
 OD = "/tmp/mrpc-eval"
 if len(sys.argv) >= 2:
     OD = sys.argv[1]
+
+
+timeformat = "%Y-%m-%dT%H:%M:%S"
+now_timestamp = time.time()
+localOffset = (datetime.datetime.fromtimestamp(
+    now_timestamp) - datetime.datetime.utcfromtimestamp(now_timestamp)).total_seconds()
+# Beijing: localOffset=28800
+
+
+def toTimestamp(strtime, offset=localOffset):
+    return int(time.mktime(time.strptime(strtime, timeformat))) + localOffset - offset
+# Beijing: offset=28800
+# toTimestamp(strtime): localtime->timestamp
+# toTimestamp(strtime, 0): utc time->timestamp
+
+
+def parse_timestamp(t1, t2):
+    today = str(datetime.date.today())
+    h, m, s = t1.split(':')
+    if t2 == 'PM':
+        h += 12
+    strtime = f"{today}T{h}:{m}:{s}"
+    return toTimestamp(strtime)
+
+
+def align_by_timestamp(base, seqs):  # seq must cover the base
+    if len(base) == 0:
+        return [], []
+    basev = [v for ts, v in base]
+    seqvs = []
+    for seq in seqs:
+        i = 0
+        while i < len(seq):
+            if seq[i][0] == base[0][0]:
+                break
+            i += 1
+        j = len(seq)-1
+        while j > i:
+            if seq[j][0] == base[-1][0]:
+                break
+            j -= 1
+        seqv = [v for ts, v in seq[i:j+1]]
+        seqvs.append(seqv)
+    return basev, seqvs
+
 
 # x-axis: message size in KB
 # y-axis: goodput in Gb/s
@@ -27,14 +74,15 @@ def convert_msg_size(s: str) -> int:
     raise ValueError(f"unknown input: {s}")
 
 
-def get_goodput(path: str) -> List[float]:
+def get_goodput(path: str):
     goodputs = []
     with open(path, 'r') as fin:
         for line in fin:
             words = line.strip().split(' ')
             if words[-1] == 'Gb/s':
                 tput = float(words[-2])
-                goodputs.append(tput)
+                ts = toTimestamp(words[0].split('.')[0], 0)
+                goodputs.append((ts, tput))
     return goodputs[1:-1]
 
 
@@ -57,7 +105,8 @@ def get_cpus(path: str):
             stime = float(line[5]) * cpu_count
             soft = float(line[8]) * cpu_count
             non_idle = (100 - float(line[-1])) * cpu_count
-            mpstat.append(non_idle)
+            ts = parse_timestamp(line[0], line[1])
+            mpstat.append((ts, [non_idle]))
         cpus.append(mpstat)
     return cpus
 
@@ -72,8 +121,9 @@ def load_result(solution, f: str):
         return
     goodputs = get_goodput(f)
     cpus_srv, cpus_cli = get_cpus(f)
-    cpus_srv = cpus_srv[-5 - len(goodputs):-5]
-    cpus_cli = cpus_cli[-4 - len(goodputs):-4]
+    goodputs, [cpus_srv, cpus_cli] = align_by_timestamp(goodputs, [cpus_srv, cpus_cli])
+    cpus_srv = [sum(stat) for stat in cpus_srv]
+    cpus_cli = [sum(stat) for stat in cpus_cli]
     for g, c1, c2 in zip(goodputs, cpus_srv, cpus_cli):
         print(f'{msg_size_kb},{g},{solution},{round(c1 / 1e2,3)},{round(c2 / 1e2,3)}')
 
@@ -90,10 +140,10 @@ solution = 'mRPC-TCP (128)'
 for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_128/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)
 
-solution = 'mRPC-TCP (32)'
-for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
-    load_result(solution, f)
+# solution = 'mRPC-TCP (32)'
+# for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+#     load_result(solution, f)
 
-solution = 'mRPC-TCP (1)'
-for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
-    load_result(solution, f)
+# solution = 'mRPC-TCP (1)'
+# for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+#     load_result(solution, f)

@@ -11,10 +11,10 @@ fi
 WORKDIR=$(dirname $(realpath $0))
 cd $WORKDIR
 
-for concurrency in 128 32 1; do
+for concurrency in 128; do
     sed -i 's/--concurrency [0-9]*/--concurrency '"$concurrency"'/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
-    sed -i 's/-D [0-9]*/-D 15/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
-    sed -i 's/timeout_secs = [0-9]*/timeout_secs = 20/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
+    sed -i 's/-D [0-9]*/-D 10/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
+    sed -i 's/timeout_secs = [0-9]*/timeout_secs = 15/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
     sed -i 's/transport =\(.*\)/transport = "Tcp"/g' koala.toml
     timestamp=$(date +%s%N)
 
