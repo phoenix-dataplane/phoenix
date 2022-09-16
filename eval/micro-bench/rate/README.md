@@ -13,7 +13,7 @@ scalability.
 ./start_traffic_rdma.sh [/tmp/mrpc-eval]
 ./start_koala_rdma.sh [/tmp/mrpc-eval]
 ./start_koala_tcp.sh [/tmp/mrpc-eval]
-./start_traffic_tcp.sh [/tmp/mrpc-eval]
+./start_traffic_tcp.sh [/tmp/mrpc-eval] [danyang-06]
 ```
 
 3. Collect and parse results. This will read into `/tmp/mrpc-eval` and
