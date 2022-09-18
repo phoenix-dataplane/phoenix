@@ -153,9 +153,9 @@ async fn run_bench(
                 if rcnt >= args.warmup {
                     let dura = starts[slot].elapsed();
                     let _ = hist.record(dura.as_nanos() as u64);
-                    nbytes += rpc_size[slot];
                 }
 
+                nbytes += rpc_size[slot];
                 rcnt += 1;
                 if rcnt == args.warmup {
                     warmup_end = Instant::now();
@@ -175,18 +175,20 @@ async fn run_bench(
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
                     let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    if args.log_latency {
-                        my_print!(
-                            "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
-                            tid,
-                            rps,
-                            bw,
-                            Duration::from_nanos(hist.value_at_percentile(95.0)),
-                            Duration::from_nanos(hist.value_at_percentile(99.0)),
-                        );
-                        hist.clear();
-                    } else {
-                        my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    if rcnt>args.warmup{
+                        if args.log_latency {
+                            my_print!(
+                                    "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                    tid,
+                                    rps,
+                                    bw,
+                                    Duration::from_nanos(hist.value_at_percentile(95.0)),
+                                    Duration::from_nanos(hist.value_at_percentile(99.0)),
+                                );
+                                hist.clear();
+                        } else {
+                            my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                        }
                     }
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
@@ -203,18 +205,20 @@ async fn run_bench(
                 if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
                     let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
                     let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    if args.log_latency {
-                        my_print!(
-                            "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
-                            tid,
-                            rps,
-                            bw,
-                            Duration::from_nanos(hist.value_at_percentile(95.0)),
-                            Duration::from_nanos(hist.value_at_percentile(99.0)),
-                        );
-                        hist.clear();
-                    } else {
-                        my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                    if rcnt>args.warmup{
+                        if args.log_latency {
+                            my_print!(
+                                    "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                    tid,
+                                    rps,
+                                    bw,
+                                    Duration::from_nanos(hist.value_at_percentile(95.0)),
+                                    Duration::from_nanos(hist.value_at_percentile(99.0)),
+                                );
+                                hist.clear();
+                        } else {
+                            my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
+                        }
                     }
                     last_ts = Instant::now();
                     last_rcnt = rcnt;
@@ -263,7 +267,7 @@ fn run_client_thread(
         my_print!(
             "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
             dura,
-            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+            8e-9 * (total_bytes - args.warmup * args.req_size) as f64 / dura.as_secs_f64(),
             1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
         );
         // print latencies
