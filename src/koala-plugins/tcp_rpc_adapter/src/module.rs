@@ -23,6 +23,7 @@ use koala::state_mgr::SharedStateManager;
 use koala::storage::{ResourceCollection, SharedStorage};
 
 use crate::engine::{TcpRpcAdapterEngine, TlStorage};
+use crate::serialized_pool::MessageBufferPool;
 use crate::state::{Shared, State};
 
 pub(crate) struct RpcAdapterEngineBuilder {
@@ -77,6 +78,7 @@ impl RpcAdapterEngineBuilder {
             indicator: Default::default(),
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
+            encoded_pool: MessageBufferPool::new(128),
             salloc: salloc_state,
             // start: std::time::Instant::now(),
         })

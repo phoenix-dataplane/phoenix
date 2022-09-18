@@ -22,6 +22,10 @@ pub(crate) mod engine;
 pub(crate) mod pool;
 pub(crate) mod serialization;
 
+pub(crate) mod private_pool;
+pub(crate) mod rpc_hello;
+pub(crate) mod serialized_pool;
+
 #[inline]
 fn get_ops() -> &'static ops::Ops {
     use crate::engine::ELS;

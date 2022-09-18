@@ -16,6 +16,8 @@ transport_tcp = { path = "../transport-tcp", package = "koala-transport-tcp" }
 mrpc-marshal = { path = "../../mrpc-marshal" } 
 salloc = { path = "../salloc", package = "koala-salloc" }
 mrpc = { path = "../mrpc", package = "koala-mrpc" }
+shm = { path = "../../shm" }
+prost = { path = "../../3rdparty/prost" }
 
 fnv = "1.0.7"
 anyhow = "1.0.58"
@@ -32,3 +34,4 @@ fastrand = "1.8.0"
 bitvec = "1.0.1"
 bincode = "1.3.3"
 socket2 = "0.4.7"
+static_assertions = "1.1.0"

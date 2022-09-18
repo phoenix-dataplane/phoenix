@@ -11,14 +11,15 @@ use fnv::FnvHashMap;
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
-use interface::rpc::{MessageMeta, RpcId, TransportStatus};
+use interface::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use interface::{AsHandle, Handle, MappedAddrStatus, WcOpcode, WcStatus};
 use ipc::buf::Range;
 use ipc::mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use ipc::tcp_rpc_adapter::control_plane;
 use ipc::transport::tcp::dp::Completion;
 use mrpc::unpack::UnpackFromSgE;
-use mrpc_marshal::{ExcavateContext, SgE, SgList};
+use mrpc_marshal::{AddressArbiter, SgE, SgList};
+use prost::Message;
 use salloc::state::State as SallocState;
 use transport_tcp::ops::Ops;
 use transport_tcp::ApiError;
@@ -26,7 +27,6 @@ use transport_tcp::ApiError;
 use koala::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
-use koala::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use koala::envelop::ResourceDowncast;
@@ -35,6 +35,10 @@ use koala::module::{ModuleCollection, Version};
 use koala::resource::Error as ResourceError;
 use koala::storage::{ResourceCollection, SharedStorage};
 use koala::{log, tracing};
+
+use crate::private_pool::EncodedRecvBuffer;
+use crate::rpc_hello::{HelloReply, HelloRequest};
+use crate::serialized_pool::{MessageBuffer, MessageBufferPool, MessageBufferPtr};
 
 use super::get_ops;
 use super::pool::BufferSlab;
@@ -69,6 +73,7 @@ pub(crate) struct TcpRpcAdapterEngine {
     pub(crate) recv_mr_usage: FnvHashMap<RpcId, Vec<Handle>>,
 
     pub(crate) serialization_engine: Option<SerializationEngine>,
+    pub(crate) encoded_pool: MessageBufferPool,
 
     pub(crate) node: DataPathNode,
     pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
@@ -130,6 +135,10 @@ impl Decompose for TcpRpcAdapterEngine {
             collections.insert(
                 "salloc".to_string(),
                 Box::new(ptr::read(&mut engine.salloc)),
+            );
+            collections.insert(
+                "encoded_pool".to_string(),
+                Box::new(ptr::read(&mut engine.encoded_pool)),
             );
             // don't call the drop function
             ptr::read(&mut engine.node)
@@ -196,6 +205,11 @@ impl TcpRpcAdapterEngine {
             .unwrap()
             .downcast::<SallocState>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let encoded_pool = *local
+            .remove("encoded_pool")
+            .unwrap()
+            .downcast::<MessageBufferPool>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = TcpRpcAdapterEngine {
             state,
@@ -203,6 +217,7 @@ impl TcpRpcAdapterEngine {
             local_buffer,
             recv_mr_usage,
             serialization_engine,
+            encoded_pool,
             cmd_tx,
             cmd_rx,
             node,
@@ -333,114 +348,19 @@ impl TcpRpcAdapterEngine {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RpcStrategy {
-    /// The entire message is encapuslated into one message, transmitted with one send/recv
-    Fused,
-    /// The message is marshaled into an SgList, and transmitted with multiple send/recv operations.
-    Standard,
-}
-
 impl TcpRpcAdapterEngine {
-    #[inline]
-    fn choose_strategy(sglist: &SgList) -> RpcStrategy {
-        // See if the total length can fit into a meta buffer
-        let serialized_size: usize = sglist
-            .0
-            .iter()
-            .map(|sge| mem::size_of::<u32>() + sge.len)
-            .sum();
-        if serialized_size < MetaBuffer::capacity() {
-            RpcStrategy::Fused
-        } else {
-            RpcStrategy::Standard
-        }
-    }
-
-    fn send_fused(
+    fn send_encoded(
         &self,
         conn_ctx: &ConnectionContext,
-        mut meta_buf_ptr: MetaBufferPtr,
-        sglist: &SgList,
+        msg: MessageBufferPtr,
     ) -> Result<Status, DatapathError> {
-        let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
+        let call_id = unsafe { &*msg.meta_ptr() }.call_id;
         let sock_handle = conn_ctx.sock_handle;
         let ctx = RpcId::new(sock_handle, call_id).encode_u64();
 
-        let off = meta_buf_ptr.0.as_ptr().expose_addr();
-        let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
-
-        // TODO(cjr): impl Serialize for SgList
-        // Serialize the sglist
-        // write the lens to MetaBuffer
-        meta_buf.num_sge = sglist.0.len() as u32;
-
-        let mut value_len = 0;
-        let lens_buf = meta_buf.length_delimited.as_mut_ptr().cast::<u32>();
-        let value_buf = unsafe { lens_buf.add(sglist.0.len()).cast::<u8>() };
-        for (i, sge) in sglist.0.iter().enumerate() {
-            // SAFETY: we have done sanity check before in choose_strategy
-            unsafe { lens_buf.add(i).write(sge.len as u32) };
-            unsafe {
-                ptr::copy_nonoverlapping(sge.ptr as *mut u8, value_buf.add(value_len), sge.len);
-            }
-            value_len += sge.len;
-        }
-        // write the values to MetaBuffer
-        meta_buf.value_len = value_len as u32;
-
-        get_ops().post_send(
-            sock_handle,
-            ctx,
-            Range {
-                offset: off as _,
-                len: meta_buf.len() as _,
-            },
-            1,
-        )?;
-
-        Ok(Progress(1))
-    }
-
-    fn send_standard(
-        &self,
-        conn_ctx: &ConnectionContext,
-        meta_ref: &MessageMeta,
-        sglist: &SgList,
-    ) -> Result<Status, DatapathError> {
-        let call_id = meta_ref.call_id;
-        let sock_handle = conn_ctx.sock_handle;
-
-        // Sender posts send requests from the SgList
-        let ctx = RpcId::new(sock_handle, call_id).encode_u64();
-        let meta_sge = SgE {
-            ptr: (meta_ref as *const MessageMeta).expose_addr(),
-            len: mem::size_of::<MessageMeta>(),
-        };
-
-        get_ops().post_send(
-            sock_handle,
-            ctx,
-            Range {
-                offset: meta_sge.ptr as _,
-                len: meta_sge.len as _,
-            },
-            0,
-        )?;
-
-        // post the remaining data
-        for (i, &sge) in sglist.0.iter().enumerate() {
-            let off = sge.ptr;
-            get_ops().post_send(
-                sock_handle,
-                ctx,
-                Range {
-                    offset: off as _,
-                    len: sge.len as _,
-                },
-                (i + 1 == sglist.0.len()) as _,
-            )?;
-        }
+        let offset = msg.0.as_ptr().addr() as u64;
+        let len = unsafe { msg.0.as_ref().len() } as u64;
+        get_ops().post_send(sock_handle, ctx, Range { offset, len }, 1)?;
 
         Ok(Progress(1))
     }
@@ -479,16 +399,33 @@ impl TcpRpcAdapterEngine {
                 .get(&meta_ref.conn_id)
                 .ok_or(ResourceError::NotFound)?;
 
-            let sglist = if let Some(ref module) = self.serialization_engine {
-                module.marshal(meta_ref, msg.addr_backend).unwrap()
-            } else {
-                panic!("dispatch module not loaded");
-            };
+            let mut msg_buf_ptr = self
+                .encoded_pool
+                .obtain(RpcId(meta_ref.conn_id, meta_ref.call_id))
+                .expect("MessageBufferPool exhausted");
+            let msg_buf = unsafe { msg_buf_ptr.0.as_mut() };
+            msg_buf.meta = *meta_ref;
 
-            let status = match Self::choose_strategy(&sglist) {
-                RpcStrategy::Fused => self.send_fused(conn_ctx, msg.meta_buf_ptr, &sglist)?,
-                RpcStrategy::Standard => self.send_standard(conn_ctx, meta_ref, &sglist)?,
-            };
+            match meta_ref.msg_type {
+                RpcMsgType::Request => match meta_ref.func_id {
+                    3687134534u32 => {
+                        let msg_ref = unsafe { &*(msg.addr_backend as *mut HelloRequest) };
+                        msg_buf.encoded_len = msg_ref.encoded_len();
+                        msg_ref.encode(&mut msg_buf.encoded.as_mut_slice()).unwrap();
+                    }
+                    _ => panic!("unknown func_id: {}, meta {:?}", meta_ref.func_id, meta_ref),
+                },
+                RpcMsgType::Response => match meta_ref.func_id {
+                    3687134534u32 => {
+                        let msg_ref = unsafe { &*(msg.addr_backend as *mut HelloReply) };
+                        msg_buf.encoded_len = msg_ref.encoded_len();
+                        msg_ref.encode(&mut msg_buf.encoded.as_mut_slice()).unwrap();
+                    }
+                    _ => panic!("unknown func_id: {}, meta {:?}", meta_ref.func_id, meta_ref),
+                },
+            }
+
+            let status = self.send_encoded(conn_ctx, msg_buf_ptr)?;
 
             return Ok(status);
         }
@@ -500,49 +437,67 @@ impl TcpRpcAdapterEngine {
         use std::ptr::Unique;
         assert_eq!(sg_list.0.len(), 1);
 
-        let meta_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MetaBuffer).unwrap();
-        let meta_buf = unsafe { meta_buf_ptr.as_ref() };
+        let msg_buf_ptr = Unique::new(sg_list.0[0].ptr as *mut MessageBuffer).unwrap();
+        let msg_buf = unsafe { msg_buf_ptr.as_ref() };
 
         // modify the first sge in place
         sg_list.0[0].len = mem::size_of::<MessageMeta>();
 
-        let num_sge = meta_buf.num_sge as usize;
-        let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
-        debug_assert!(_prefix.is_empty() && _suffix.is_empty());
-
-        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
-        let mut value_offset = 0;
-
-        for i in 0..num_sge {
-            sg_list.0.push(SgE {
-                ptr: value_buf_base + value_offset,
-                len: lens[i] as usize,
-            });
-
-            value_offset += lens[i] as usize;
-        }
-
-        // tracing::trace!("reshape_fused_sg_list: sg_list: {:?}", sg_list);
+        let encoded_sge = SgE {
+            ptr: msg_buf.encoded().as_ptr().expose_addr(),
+            len: msg_buf.encoded().len(),
+        };
+        sg_list.0.push(encoded_sge);
     }
 
-    fn unmarshal_and_deliver_up(&mut self, sgl: SgList, sock_handle: Handle) -> RpcId {
+    fn unmarshal_and_deliver_up(
+        &mut self,
+        sgl: SgList,
+        sock_handle: Handle,
+        recv_mr: Handle,
+    ) -> RpcId {
+        assert_eq!(sgl.0.len(), 2);
         let mut meta_ptr = unsafe { MessageMeta::unpack(&sgl.0[0]) }.unwrap();
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = sock_handle;
 
         let recv_id = RpcId(meta.conn_id, meta.call_id);
 
-        let mut excavate_ctx = ExcavateContext {
-            sgl: sgl.0[1..].iter(),
-            addr_arbiter: &self.state.resource().addr_map,
-        };
+        let offset = sgl.0[1].ptr;
+        let len = sgl.0[1].len;
+        let encoded = unsafe { std::slice::from_raw_parts(offset as *const u8, len) };
+        let decoded = self
+            .state
+            .recv_buffer_table
+            .borrow()
+            .get(&recv_mr)
+            .unwrap()
+            .addr();
 
-        let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
-            module.unmarshal(meta, &mut excavate_ctx).unwrap()
-        } else {
-            panic!("dispatch module not loaded");
-        };
+        match meta.msg_type {
+            RpcMsgType::Request => match meta.func_id {
+                3687134534u32 => {
+                    let decoded = unsafe { &mut *(decoded as *mut HelloRequest) };
+                    decoded.merge(encoded).unwrap();
+                }
+                _ => panic!("unknown func_id: {}, meta {:?}", meta.func_id, meta),
+            },
+            RpcMsgType::Response => match meta.func_id {
+                3687134534u32 => {
+                    let decoded = unsafe { &mut *(decoded as *mut HelloReply) };
+                    decoded.merge(encoded).unwrap();
+                }
+                _ => panic!("unknown func_id: {}, meta {:?}", meta.func_id, meta),
+            },
+        }
 
+        let addr_backend = decoded;
+        let addr_app = self
+            .state
+            .resource()
+            .addr_map
+            .query_app_addr(addr_backend)
+            .unwrap();
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
@@ -581,6 +536,7 @@ impl TcpRpcAdapterEngine {
                     WcOpcode::Send => {
                         if wc.imm != 0 {
                             let rpc_id = RpcId::decode_u64(wc.wr_id);
+                            self.encoded_pool.release(rpc_id).unwrap();
                             self.rx_outputs()[0]
                                 .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                 .unwrap();
@@ -612,13 +568,19 @@ impl TcpRpcAdapterEngine {
                             drop(table);
 
                             // check if it is an eager message
-                            if recv_ctx.sg_list.0.len() == 1 {
-                                // got an eager message
-                                Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
-                            }
+                            assert_eq!(
+                                recv_ctx.sg_list.0.len(),
+                                1,
+                                "there should be only a single SgE"
+                            );
 
-                            let recv_id =
-                                self.unmarshal_and_deliver_up(recv_ctx.sg_list, sock_handle);
+                            Self::reshape_fused_sg_list(&mut recv_ctx.sg_list);
+
+                            let recv_id = self.unmarshal_and_deliver_up(
+                                recv_ctx.sg_list,
+                                sock_handle,
+                                recv_ctx.recv_mrs[0],
+                            );
 
                             // keep them outstanding because they will be used by the user
                             self.recv_mr_usage.insert(recv_id, recv_ctx.recv_mrs);
@@ -671,7 +633,7 @@ impl TcpRpcAdapterEngine {
         mr_handles: &[Handle],
     ) -> Result<(), DatapathError> {
         for handle in mr_handles {
-            let table = self.state.recv_buffer_table.borrow();
+            let table = self.state.encoded_buffer_table.borrow();
             let recv_buffer = table.get(handle).ok_or(ResourceError::NotFound)?;
 
             get_ops().post_recv(
@@ -699,10 +661,39 @@ impl TcpRpcAdapterEngine {
         // create 128 receive mrs, post recv requestse and
         for _ in 0..128 {
             let recv_buffer = slab.obtain().unwrap();
+
+            // HelloRequest and HelloReply have the same layout
+            let ptr = recv_buffer.addr() as *mut HelloRequest;
+            let buf_addr = recv_buffer.addr() + mem::size_of::<HelloRequest>();
+            let buf_len = recv_buffer.len() - (buf_addr - recv_buffer.addr());
+            let msg = unsafe { &mut *ptr };
+            let buf_app_addr = self
+                .state
+                .resource()
+                .addr_map
+                .query_app_addr(buf_addr)
+                .unwrap();
+            msg.name = unsafe {
+                mrpc_marshal::shadow::Vec::from_raw_parts(
+                    buf_addr as *mut _,
+                    buf_app_addr as *mut _,
+                    buf_len,
+                    buf_len,
+                )
+            };
+
             let wr_id = recv_buffer.as_handle().0 as u64;
-            let offset = recv_buffer.addr() as u64;
-            let len = recv_buffer.len() as u64;
+            // let offset = recv_buffer.addr() as u64;
+            // let len = recv_buffer.len() as u64;
+
+            let encoded_buffer = EncodedRecvBuffer::new(8 * 1024 * 1024);
+            let offset: u64 = encoded_buffer.addr() as u64;
+            let len: u64 = encoded_buffer.len() as u64;
             get_ops().post_recv(sock_handle, wr_id, Range { offset, len })?;
+            self.state
+                .encoded_buffer_table
+                .borrow_mut()
+                .insert(recv_buffer.as_handle(), encoded_buffer);
             self.state
                 .recv_buffer_table
                 .borrow_mut()

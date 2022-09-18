@@ -11,6 +11,8 @@ use salloc::region::AddressMediator;
 
 use koala::state_mgr::ProcessShared;
 
+use crate::private_pool::EncodedRecvBuffer;
+
 use super::pool::{BufferPool, RecvBuffer};
 use super::serialization::AddressMap;
 
@@ -21,6 +23,7 @@ pub(crate) struct State {
     pub(crate) shared: Arc<Shared>,
     pub(crate) conn_table: RefCell<HashMap<Handle, ConnectionContext>>,
     pub(crate) recv_buffer_table: RefCell<HashMap<Handle, RecvBuffer>>,
+    pub(crate) encoded_buffer_table: RefCell<HashMap<Handle, EncodedRecvBuffer>>,
 }
 // SAFETY: State in tcp will not be shared by multiple threads
 // It is owned and used by a single thread/runtime
@@ -34,6 +37,7 @@ impl State {
             shared,
             conn_table: RefCell::new(HashMap::default()),
             recv_buffer_table: RefCell::new(HashMap::default()),
+            encoded_buffer_table: RefCell::new(HashMap::default()),
         }
     }
 }
@@ -46,6 +50,7 @@ impl Clone for State {
             shared: Arc::clone(&self.shared),
             conn_table: RefCell::new(HashMap::default()),
             recv_buffer_table: RefCell::new(HashMap::default()),
+            encoded_buffer_table: RefCell::new(HashMap::default()),
         }
     }
 }

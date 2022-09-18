@@ -10,6 +10,7 @@ pub(crate) type MarshalFn = fn(&MessageMeta, usize) -> Result<SgList, MarshalErr
 pub(crate) type UnmarshalFn =
     fn(&MessageMeta, &mut ExcavateContext<AddressMap>) -> Result<(usize, usize), UnmarshalError>;
 
+#[allow(unused)]
 pub(crate) struct SerializationEngine {
     _library: libloading::Library,
     // NOTE: Symbol here shall not outlive library.
@@ -23,6 +24,7 @@ pub(crate) struct SerializationEngine {
     unmarshal_fn: libloading::os::windows::Symbol<UnmarshalFn>,
 }
 
+#[allow(unused)]
 impl SerializationEngine {
     pub(crate) fn new<P: AsRef<OsStr>>(lib: P) -> Result<Self, libloading::Error> {
         let library = unsafe { libloading::Library::new(lib) }?;
