@@ -28,7 +28,7 @@ def toTimestamp(strtime, offset=localOffset):
 
 def parse_timestamp(t1, t2):
     today = str(datetime.date.today())
-    h, m, s = t1.split(':')
+    h, m, s = [int(x) for x in t1.split(':')]
     if t2 == 'PM':
         h += 12
     strtime = f"{today}T{h}:{m}:{s}"
@@ -132,9 +132,9 @@ solution = 'mRPC (32)'
 for f in glob.glob(OD+"/benchmark/rpc_bench_tput_rdma_32/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
     load_result(solution, f)
 
-solution = 'mRPC (1)'
-for f in glob.glob(OD+"/benchmark/rpc_bench_tput_rdma_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
-    load_result(solution, f)
+# solution = 'mRPC (1)'
+# for f in glob.glob(OD+"/benchmark/rpc_bench_tput_rdma_1/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
+#     load_result(solution, f)
 
 solution = 'mRPC-TCP (128)'
 for f in glob.glob(OD+"/benchmark/rpc_bench_tput_tcp_128/rpc_bench_tput_*/rpc_bench_client_danyang-05.stdout"):
