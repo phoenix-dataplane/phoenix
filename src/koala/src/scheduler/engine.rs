@@ -62,7 +62,7 @@ struct PolicyState {
 impl PolicyState {
     #[inline(always)]
     fn should_send(&self) -> bool {
-        return self.buffered_length > 4096
+        return self.buffered_length > 16384
             || self.local_buffer.len() > 3
             || (self.local_buffer.len() > 0
                 && (self.imm_send_flag || self.last_timestamp.elapsed().ge(&MAX_INTERVAL_TIME)));
