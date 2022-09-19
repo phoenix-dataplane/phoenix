@@ -180,7 +180,7 @@ async fn run_bench(
     client: &GreeterClient,
     reqs: &[WRef<HelloRequest>],
     tid: usize,
-) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
+) -> Result<(), mrpc::Status> {
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
 
     let mut rpc_size = vec![0; args.concurrency];
@@ -206,82 +206,85 @@ async fn run_bench(
     };
 
     // start sending
-    let mut last_ts = Instant::now();
-    let start = Instant::now();
+    for _ in 0..1000 {
+        let mut nbytes = 0;
+        let mut scnt = 0;
+        let mut rcnt = 0;
+        let start = Instant::now();
 
-    let mut warmup_end = Instant::now();
-    let mut nbytes = 0;
-    let mut last_nbytes = 0;
+        // start
+        while scnt < args.concurrency && scnt < total_iters + args.warmup {
+            let slot = scnt;
+            starts[slot] = Instant::now();
+            let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
+            req.set_token(mrpc::Token(slot));
+            let fut = client.say_hello(req);
+            reply_futures.push(fut);
+            scnt += 1;
+        }
 
-    let mut scnt = 0;
-    let mut rcnt = 0;
-    let mut last_rcnt = 0;
+        // finish one round
+        loop {
+            select! {
+                resp = reply_futures.next() => {
+                    if rcnt >= total_iters {
+                        break;
+                    }
 
-    while scnt < args.concurrency && scnt < total_iters + args.warmup {
-        let slot = scnt;
-        starts[slot] = Instant::now();
-        let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
-        req.set_token(mrpc::Token(slot));
-        let fut = client.say_hello(req);
-        reply_futures.push(fut);
-        scnt += 1;
-    }
+                    let resp = resp.unwrap()?;
+                    let slot = resp.token().0 % args.concurrency;
 
-    loop {
-        select! {
-            resp = reply_futures.next() => {
-                if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
-                    break;
-                }
-
-                let resp = resp.unwrap()?;
-                let slot = resp.token().0 % args.concurrency;
-
-                if rcnt >= args.warmup {
                     let dura = starts[slot].elapsed();
                     let _ = hist.record(dura.as_nanos() as u64);
+                    rcnt += 1;
                     nbytes += rpc_size[slot];
-                }
+                    if rcnt >= total_iters {
+                        break;
+                    }
 
-                rcnt += 1;
-
-                if rcnt == args.warmup {
-                    warmup_end = Instant::now();
+                    if scnt < total_iters {
+                        starts[slot] = Instant::now();
+                        rpc_size[slot] = trace_data.as_mut().unwrap().next().unwrap();
+                        let mut req = WRef::clone(&reqs[scnt]);
+                        req.set_token(mrpc::Token(slot));
+                        let fut = client.say_hello(req);
+                        reply_futures.push(fut);
+                        scnt += 1;
+                    }
                 }
-
-                if scnt < total_iters + args.warmup {
-                    starts[slot] = Instant::now();
-                    rpc_size[slot] = if trace_data.is_some(){
-                        trace_data.as_mut().unwrap().repeat_next()
-                    }else{args.req_size}+12; // todo: NOTICE HERE!
-                    let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
-                    req.set_token(mrpc::Token(slot));
-                    let fut = client.say_hello(req);
-                    reply_futures.push(fut);
-                    scnt += 1;
-                }
-            }
-            complete => break,
-            default => {
-                // no futures is ready
-                if rcnt >= total_iters + args.warmup || start.elapsed() > timeout {
-                    break;
-                }
-                let last_dura = last_ts.elapsed();
-                if tput_interval.is_some() && last_dura > tput_interval.unwrap() {
-                    let rps = (rcnt - last_rcnt) as f64 / last_dura.as_secs_f64();
-                    let bw = 8e-9 * (nbytes - last_nbytes) as f64 / last_dura.as_secs_f64();
-                    println!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
-                    last_ts = Instant::now();
-                    last_rcnt = rcnt;
-                    last_nbytes = nbytes;
+                complete => break,
+                default => {
+                    // no future is ready
+                    if rcnt >= total_iters {
+                        break;
+                    }
                 }
             }
         }
+
+        let dura = start.elapsed();
+        let total_bytes = nbytes;
+        // statistics
+        println!(
+            "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
+            dura,
+            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
+            1e-6 * rcnt as f64 / dura.as_secs_f64(),
+        );
+        // print latencies
+        println!(
+            "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
+            dura,
+            Duration::from_nanos(hist.mean() as u64),
+            Duration::from_nanos(hist.min()),
+            Duration::from_nanos(hist.value_at_percentile(50.0)),
+            Duration::from_nanos(hist.value_at_percentile(95.0)),
+            Duration::from_nanos(hist.value_at_percentile(99.0)),
+            Duration::from_nanos(hist.max()),
+        );
     }
 
-    let dura = warmup_end.elapsed();
-    Ok((dura, nbytes, rcnt, hist))
+    Ok(())
 }
 
 fn run_client_thread(
@@ -333,25 +336,7 @@ fn run_client_thread(
             reqs
         };
 
-        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
-
-        println!(
-            "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
-            dura,
-            8e-9 * total_bytes as f64 / dura.as_secs_f64(),
-            1e-6 * (rcnt - args.warmup) as f64 / dura.as_secs_f64(),
-        );
-        // print latencies
-        println!(
-            "Thread {tid}, duration: {:?}, avg: {:?}, min: {:?}, median: {:?}, p95: {:?}, p99: {:?}, max: {:?}",
-            dura,
-            Duration::from_nanos(hist.mean() as u64),
-            Duration::from_nanos(hist.min()),
-            Duration::from_nanos(hist.value_at_percentile(50.0)),
-            Duration::from_nanos(hist.value_at_percentile(95.0)),
-            Duration::from_nanos(hist.value_at_percentile(99.0)),
-            Duration::from_nanos(hist.max()),
-        );
+        run_bench(&args, &client, &reqs, tid).await?;
 
         Result::<(), mrpc::Status>::Ok(())
     })?;

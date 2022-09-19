@@ -435,11 +435,12 @@ impl RpcAdapterEngine {
                 .iter()
                 .map(|sge| mem::size_of::<u32>() + sge.len)
                 .sum();
-            if serialized_size < MetaBuffer::capacity() {
-                RpcStrategy::Fused
-            } else {
-                RpcStrategy::Standard
-            }
+            RpcStrategy::Standard
+            // if serialized_size < MetaBuffer::capacity() {
+            //     RpcStrategy::Fused
+            // } else {
+            //     RpcStrategy::Standard
+            // }
         }
     }
 

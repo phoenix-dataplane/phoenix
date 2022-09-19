@@ -1,0 +1,14 @@
+name = "benchmark/parameter_server/efficient_net"
+description = "Run rpc_bench_plus benchmark"
+group = "parameter_server"
+timeout = 15
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_plus_server"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_plus_client"
+args = "-c rdma0.danyang-06 --overwrite EfficientNet"
