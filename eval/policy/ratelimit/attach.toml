@@ -1,12 +1,12 @@
 addon_engine = "RateLimitEngine"
 tx_channels_replacements = [
     ["MrpcEngine", "RateLimitEngine", 0, 0],
-    ["RateLimitEngine", "RpcAdapterEngine", 0, 0],
+    ["RateLimitEngine", "TcpRpcAdapterEngine", 0, 0],
 ]
 rx_channels_replacements = []
-group = ["MrpcEngine", "RpcAdapterEngine"]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "attach"
 config_string = '''
-requests_per_sec = 100000
-bucket_size = 1000
+requests_per_sec = 10000000
+bucket_size = 10000000
 '''

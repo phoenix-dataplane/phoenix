@@ -27,25 +27,21 @@ def get_rate(path: str) -> List[float]:
         for line in fin:
             words = line.strip().split(' ')
             if words[1] == 'rps,':
-                rate = words[0]
+                rate = float(words[-4])
                 rates.append(rate)
-    assert len(rates) >= 1 + 10 + 15
     return rates[1:]
-
-
-xticks = [(2 << i) for i in range(0, 14, 2)]
 
 
 def load_result(sol_before, sol_after, f: str):
     # print(f)
     rates = get_rate(f)
-    before = rates[:10]
-    after = rates[-15:]
+    before = rates[5:25]
+    after = rates[-25:-5]
     for r in before:
-        print(f'{r},{sol_before}')
+        print(f'{round(r/1000,2)},{sol_before},w/o ACL')
     for r in after:
-        print(f'{r},{sol_after}')
+        print(f'{round(r/1000,2)},{sol_after},w/ ACL')
 
 
 for f in glob.glob(OD+"/benchmark/hotel_reservation/hotel_reservation_client_danyang-05.stdout"):
-    load_result('mRPC (w/o ACL)', 'mRPC (w/ ACL)', f)
+    load_result('mRPC', 'mRPC', f)

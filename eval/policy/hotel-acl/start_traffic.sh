@@ -7,21 +7,23 @@ if [[ $# -ge 1 ]]; then
     OD=$1
 fi
 
-WORKDIR=`dirname $(realpath $0)`
+WORKDIR=$(dirname $(realpath $0))
 cd $WORKDIR
 
-# concurrency = 32
-cargo rr --bin launcher -- --output-dir ${OD} --benchmark ./hotel_reservation.toml --configfile ./config.toml &
+# concurrency = 128
+cargo rr --bin launcher -- --output-dir ${OD} --timeout=120 --benchmark ./hotel_reservation.toml --configfile ./config.toml &
 
-sleep 15
+sleep 30
 
 LIST_OUTPUT="${OD}"/policy/list.json
-cargo rr --bin list -- --dump "${LIST_OUTPUT}"
-ARG_PID=`cat "${LIST_OUTPUT}" | jq '.[] | select(.service == "Mrpc") | .pid'`
-ARG_SID=`cat "${LIST_OUTPUT}" | jq '.[] | select(.service == "Mrpc") | .sid'`
+cargo rr --bin list -- --dump "${LIST_OUTPUT}" # Need to specifiy KOALA_PREFIX
+cat "${LIST_OUTPUT}"
+ARG_PID=$(cat "${LIST_OUTPUT}" | jq '.[] | select(.service == "Mrpc") | .pid')
+ARG_SID=$(cat "${LIST_OUTPUT}" | jq '.[] | select(.service == "Mrpc") | .sid')
+echo $ARG_SID
 
 sleep 1
 
-cargo run --bin addonctl -- --config ./attach_tcp.toml --pid ${ARG_PID} --sid ${ARG_SID}
+cargo run --bin addonctl -- --config ./attach_tcp.toml --pid ${ARG_PID} --sid ${ARG_SID} # Need to specifiy KOALA_PREFIX
 
 wait
