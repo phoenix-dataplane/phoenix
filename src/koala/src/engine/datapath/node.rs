@@ -214,6 +214,7 @@ where
 
 // Replace senders/receivers on the data path to install an addon
 // * group: which scheduling group should the addon belongs to
+#[allow(unused)]
 pub(crate) fn refactor_channels_attach_addon<I>(
     engines: &mut HashMap<EngineType, Box<dyn Engine>>,
     graph: &mut DataPathGraph,
@@ -405,7 +406,7 @@ where
     Ok(node)
 }
 
-///
+#[allow(unused)]
 pub(crate) fn refactor_channels_detach_addon<I>(
     engines: &mut HashMap<EngineType, (Box<dyn Engine>, GroupId)>,
     graph: &mut DataPathGraph,

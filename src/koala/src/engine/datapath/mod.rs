@@ -12,7 +12,7 @@ pub use message::{EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx};
 pub use node::DataPathNode;
 
 pub(crate) use node::{
-    create_datapath_channels, refactor_channels_attach_addon, refactor_channels_detach_addon,
+    create_datapath_channels
 };
 
 pub mod meta_pool;

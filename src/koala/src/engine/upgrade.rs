@@ -11,11 +11,12 @@ use semver::Version;
 
 use interface::engine::SchedulingMode;
 
-use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
+// use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
 use super::datapath::{ChannelDescriptor, DataPathNode};
 use super::manager::{EngineId, EngineInfo, RuntimeId, RuntimeManager, SubscriptionId};
 use super::runtime::SuspendResult;
 use super::{EngineContainer, EngineType};
+use crate::engine::datapath::channel::{create_channel, ChannelFlavor};
 use crate::engine::group::GroupId;
 use crate::plugin::{Plugin, PluginCollection};
 use crate::storage::{ResourceCollection, SharedStorage};
@@ -45,14 +46,18 @@ async fn attach_addon<I>(
     sid: SubscriptionId,
     addon: EngineType,
     mode: SchedulingMode,
-    tx_edges_replacement: I,
-    rx_edges_replacement: I,
+    _tx_edges_replacement: I,
+    _rx_edges_replacement: I,
     group: HashSet<EngineType>,
     config_string: Option<String>,
     indicator: Arc<DashSet<Pid>>,
 ) where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
+    if addon.0 != "RateLimitEngine" {
+        panic!("should only attach RateLimitEngine");
+    }
+
     let mut subscription_engines = rm
         .engine_subscriptions
         .iter()
@@ -116,53 +121,71 @@ async fn attach_addon<I>(
         detached_meta.insert(engine_type, (info, version));
     }
 
-    let dataflow_order = subscription.graph.topological_order();
-    for (engine_type, _) in dataflow_order.into_iter() {
-        let engine = detached_engines.get_mut(&engine_type).unwrap();
-        Pin::new(engine.as_mut()).set_els();
-        // DataPathNode may change for any engine
-        // hence we need to flush the queues for all engines in the service subscription
-        if let Err(err) = engine.flush() {
-            log::warn!(
-                "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
-                pid,
-                sid,
-                engine_type,
-                err,
-            );
-        };
-        log::info!(
-            "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
-            pid,
-            sid,
-            engine_type,
-        );
-    }
-
-    let node = match refactor_channels_attach_addon(
-        &mut detached_engines,
-        &mut subscription.graph,
-        addon,
-        tx_edges_replacement,
-        rx_edges_replacement,
-        &group,
-    ) {
-        Ok(node) => node,
-        Err(err) => {
-            log::error!(
-                "Fail to refactor data path channels in installing addon {:?} on subscription (pid={:?}, sid={:?}): {:?}",
-                addon,
-                pid,
-                sid,
-                err,
-            );
-            // discard the service subscription
-            // do not resubmit the engines
-            rm.global_resource_mgr.register_subscription_shutdown(pid);
-            indicator.remove(&pid);
-            return;
-        }
+    // let dataflow_order = subscription.graph.topological_order();
+    // for (engine_type, _) in dataflow_order.into_iter() {
+    //     let engine = detached_engines.get_mut(&engine_type).unwrap();
+    //     Pin::new(engine.as_mut()).set_els();
+    //     // DataPathNode may change for any engine
+    //     // hence we need to flush the queues for all engines in the service subscription
+    //     if let Err(err) = engine.flush() {
+    //         log::warn!(
+    //             "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
+    //             pid,
+    //             sid,
+    //             engine_type,
+    //             err,
+    //         );
+    //     };
+    //     log::info!(
+    //         "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
+    //         pid,
+    //         sid,
+    //         engine_type,
+    //     );
+    // }
+    
+    let rpcadapter = detached_engines.get_mut(&EngineType("RpcAdapterEngine")).unwrap();
+    let tx_receiver = rpcadapter.tx_inputs().pop().unwrap();
+    let (hop_sender, hop_receiver) = create_channel(ChannelFlavor::Sequential);
+    rpcadapter.tx_inputs().push(hop_receiver);
+    let node = DataPathNode {
+        tx_inputs: vec![tx_receiver],
+        tx_outputs: vec![hop_sender],
+        rx_inputs: Vec::new(),
+        rx_outputs: Vec::new(),
     };
+
+    subscription.graph.tx_outputs.get_mut(&EngineType("MrpcEngine")).unwrap()[0].0 = EngineType("RateLimitEngine");
+    subscription.graph.tx_inputs.get_mut(&EngineType("RpcAdapterEngine")).unwrap()[0].0 = EngineType("RateLimitEngine");
+    subscription.graph.tx_inputs.insert(EngineType("RateLimitEngine"), vec![(EngineType("MrpcEngine"), 0)]);
+    subscription.graph.tx_outputs.insert(EngineType("RateLimitEngine"), vec![(EngineType("RpcAdapterEngine"), 0)]);
+    subscription.graph.rx_inputs.insert(EngineType("RateLimitEngine"), Vec::new());
+    subscription.graph.rx_outputs.insert(EngineType("RateLimitEngine"), Vec::new());
+
+    // let node = match refactor_channels_attach_addon(
+    //     &mut detached_engines,
+    //     &mut subscription.graph,
+    //     addon,
+    //     tx_edges_replacement,
+    //     rx_edges_replacement,
+    //     &group,
+    // ) {
+    //     Ok(node) => node,
+    //     Err(err) => {
+    //         log::error!(
+    //             "Fail to refactor data path channels in installing addon {:?} on subscription (pid={:?}, sid={:?}): {:?}",
+    //             addon,
+    //             pid,
+    //             sid,
+    //             err,
+    //         );
+    //         // discard the service subscription
+    //         // do not resubmit the engines
+    //         rm.global_resource_mgr.register_subscription_shutdown(pid);
+    //         indicator.remove(&pid);
+    //         return;
+    //     }
+    // };
 
     // get the addon from the engine_registry
     let mut plugin = match plugins.engine_registry.get_mut(&addon) {
@@ -290,12 +313,16 @@ async fn detach_addon<I>(
     pid: Pid,
     sid: SubscriptionId,
     addon: EngineType,
-    tx_edges_replacement: I,
-    rx_edges_replacement: I,
+    _tx_edges_replacement: I,
+    _rx_edges_replacement: I,
     indicator: Arc<DashSet<Pid>>,
 ) where
     I: IntoIterator<Item = ChannelDescriptor>,
 {
+    if addon.0 != "RateLimitEngine" {
+        panic!("should only attach RateLimitEngine");
+    }
+
     let mut subscription_engines = rm
         .engine_subscriptions
         .iter()
@@ -362,46 +389,68 @@ async fn detach_addon<I>(
         detached_meta.insert(engine_type, (info, version));
     }
 
-    let dataflow_order = subscription.graph.topological_order();
-    for (engine_type, _) in dataflow_order.into_iter() {
-        let (engine, _) = detached_engines.get_mut(&engine_type).unwrap();
-        Pin::new(engine.as_mut()).set_els();
-        if let Err(err) = engine.flush() {
-            log::warn!(
-                "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
-                pid,
-                sid,
-                engine_type,
-                err,
-            );
-        };
-        log::info!(
-            "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
-            pid,
-            sid,
-            engine_type,
-        );
-    }
+    // let dataflow_order = subscription.graph.topological_order();
+    // for (engine_type, _) in dataflow_order.into_iter() {
+    //     let (engine, _) = detached_engines.get_mut(&engine_type).unwrap();
+    //     Pin::new(engine.as_mut()).set_els();
+    //     if let Err(err) = engine.flush() {
+    //         log::warn!(
+    //             "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
+    //             pid,
+    //             sid,
+    //             engine_type,
+    //             err,
+    //         );
+    //     };
+    //     log::info!(
+    //         "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
+    //         pid,
+    //         sid,
+    //         engine_type,
+    //     );
+    // }
 
-    let result = refactor_channels_detach_addon(
-        &mut detached_engines,
-        &mut subscription.graph,
-        addon,
-        tx_edges_replacement,
-        rx_edges_replacement,
-    );
-    if let Err(err) = result {
-        log::error!(
-            "Failed to refactor data path channels in uninstall addon {:?} for subscription (pid={:?}, sid={:?}), error: {:?}", 
-            addon,
-            pid,
-            sid,
-            err,
-        );
-        rm.global_resource_mgr.register_subscription_shutdown(pid);
-        indicator.remove(&pid);
-        return;
+    let mut ratelimiter = detached_engines.remove(&EngineType("RateLimitEngine")).unwrap().0;
+    ratelimiter.flush().unwrap();
+    let (mrpc, _) = detached_engines.get_mut(&EngineType("MrpcEngine")).unwrap();
+    let mut tx_sender = mrpc.tx_outputs().pop().unwrap();
+
+    let (rpcadatper, _) = detached_engines.get_mut(&EngineType("RpcAdapterEngine")).unwrap();
+    let mut hop_receiver = rpcadatper.tx_inputs().pop().unwrap();
+    while let Ok(msg) = hop_receiver.try_recv() {
+        tx_sender.send(msg).unwrap();
     }
+    let tx_receiver = ratelimiter.tx_inputs().pop().unwrap();
+    rpcadatper.tx_inputs().push(tx_receiver);
+    let (mrpc, _) = detached_engines.get_mut(&EngineType("MrpcEngine")).unwrap();
+    mrpc.tx_outputs().push(tx_sender);
+    
+    subscription.graph.tx_outputs.get_mut(&EngineType("MrpcEngine")).unwrap()[0].0 = EngineType("RpcAdapterEngine");
+    subscription.graph.tx_inputs.get_mut(&EngineType("RpcAdapterEngine")).unwrap()[0].0 = EngineType("RpcAdapterEngine");
+    subscription.graph.tx_inputs.remove(&EngineType("RateLimitEngine"));
+    subscription.graph.tx_outputs.remove(&EngineType("RateLimitEngine"));
+    subscription.graph.rx_inputs.remove(&EngineType("RateLimitEngine"));
+    subscription.graph.rx_outputs.remove(&EngineType("RateLimitEngine"));
+
+    // let result = refactor_channels_detach_addon(
+    //     &mut detached_engines,
+    //     &mut subscription.graph,
+    //     addon,
+    //     tx_edges_replacement,
+    //     rx_edges_replacement,
+    // );
+    // if let Err(err) = result {
+    //     log::error!(
+    //         "Failed to refactor data path channels in uninstall addon {:?} for subscription (pid={:?}, sid={:?}), error: {:?}", 
+    //         addon,
+    //         pid,
+    //         sid,
+    //         err,
+    //     );
+    //     rm.global_resource_mgr.register_subscription_shutdown(pid);
+    //     indicator.remove(&pid);
+    //     return;
+    // }
 
     let mut containers_resubmit = HashMap::new();
     for (ty, (engine, _)) in detached_engines.into_iter() {

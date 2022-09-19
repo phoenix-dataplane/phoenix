@@ -116,6 +116,7 @@ impl DataPathGraph {
         self.rx_outputs.insert(engine, rx_outputs);
     }
 
+    #[allow(unused)]
     pub(crate) fn remove_node(&mut self, engine: &EngineType) {
         self.tx_inputs.remove(engine);
         self.tx_outputs.remove(engine);
