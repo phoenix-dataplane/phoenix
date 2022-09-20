@@ -29,7 +29,7 @@ def toTimestamp(strtime, offset=localOffset):
 def parse_timestamp(t1, t2):
     today = str(datetime.date.today())
     h, m, s = [int(x) for x in t1.split(':')]
-    if t2 == 'PM':
+    if t2 == 'PM' and h < 12:
         h += 12
     strtime = f"{today}T{h}:{m}:{s}"
     return toTimestamp(strtime)
