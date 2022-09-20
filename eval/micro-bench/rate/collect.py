@@ -31,10 +31,10 @@ def get_rate(ncores: int, path: str) -> List[float]:
     with open(path, 'r') as fin:
         for line in fin:
             words = line.strip().split(' ')
-            if words[0] == 'Thread':
-                tid = int(words[1][:-1])
-            if words[3] == 'rps,':
-                rate = words[2]
+            if words[4] == 'Thread':
+                tid = int(words[5][:-1])
+            if words[-3] == 'rps,':
+                rate = words[-4]
                 rates[tid].append(rate)
     min_len = 99999
     for i, rate in enumerate(rates):
@@ -74,7 +74,6 @@ xticks = [(1 << i) for i in range(0, 4)]
 
 
 def load_result(solution, f: str):
-    # print(f)
     num_cores = f.split('/')[-2].split('_')[-1]
     assert num_cores.endswith('c'), f'{num_cores}'
     num_cores = int(num_cores[:-1])
