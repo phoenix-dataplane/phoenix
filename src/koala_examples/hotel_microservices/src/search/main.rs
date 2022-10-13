@@ -38,7 +38,8 @@ pub struct Args {
     pub log_path: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::from_args();
     if let Some(path) = &args.config {
         let file = File::open(path).unwrap();
@@ -61,11 +62,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service = SearchService::new(geo_client, rate_client, args.log_path);
     let signal = async_ctrlc::CtrlC::new()?;
-    smol::block_on(async {
-        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(SearchServer::new(service))
-            .serve_with_graceful_shutdown(signal)
-            .await?;
-        Ok(())
-    })
+    mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+        .add_service(SearchServer::new(service))
+        .serve_with_graceful_shutdown(signal)
+        .await?;
+    Ok(())
 }

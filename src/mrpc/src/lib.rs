@@ -25,6 +25,8 @@ use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 pub mod rheap;
 pub use rheap::ReadHeap;
 
+mod future;
+
 use salloc::backend::SA_CTX;
 
 thread_local! {

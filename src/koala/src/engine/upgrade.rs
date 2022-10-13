@@ -914,6 +914,10 @@ impl EngineUpgrader {
             }
         }
 
+        for (pid, _) in engines_to_upgrade.iter() {
+            self.upgrade_indicator.insert(*pid);
+        }
+
         for (pid, to_upgrade) in engines_to_upgrade {
             let to_detach = if let Some(engines) = engines_to_detach.remove(&pid) {
                 engines

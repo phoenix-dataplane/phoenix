@@ -35,7 +35,8 @@ pub struct Args {
     pub log_path: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::from_args();
     if let Some(path) = &args.config {
         let file = File::open(path).unwrap();
@@ -50,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init_env_log("RUST_LOG", "info");
 
     log::info!("Initializing DB connection...");
-    let database = initialize_database(args.db)?;
+    let database = initialize_database(args.db).await?;
     log::info!("Successful");
 
     log::info!("Initializing memcached client...");
@@ -61,11 +62,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service = RateService::new(database, memc_client, args.log_path);
     let signal = async_ctrlc::CtrlC::new()?;
-    smol::block_on(async {
-        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
-            .add_service(RateServer::new(service))
-            .serve_with_graceful_shutdown(signal)
-            .await?;
-        Ok(())
-    })
+    mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+        .add_service(RateServer::new(service))
+        .serve_with_graceful_shutdown(signal)
+        .await?;
+    Ok(())
 }

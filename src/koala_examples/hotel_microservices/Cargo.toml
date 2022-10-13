@@ -16,7 +16,7 @@ structopt = "0.3.23"
 futures = "0.3"
 smol = "1.2.5"
 anyhow = "1.0.64"
-mongodb = { version = "2.3.0", features = ["tokio-sync"] }
+mongodb = { version = "2.3.0" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 kdtree = "0.6.0" 
@@ -25,13 +25,14 @@ chrono = "0.4.22"
 env_logger = "0.9.0"
 log = "0.4.17"
 memcache = "0.16.0"
-tokio = { version = "1.21.0", features = ["rt"] }
+tokio = { version = "1.21.0", default_features=false, features = ["rt"] }
 hyper = { version = "0.14", features = ["server", "http1", "http2", "tcp"] }
 url = "2.3.1"
 async-ctrlc = "1.2.0"
 minstant = "0.1.2"
 thiserror = "1.0.34"
 csv = "1.1.6"
+hdrhistogram = "7.5.0"
 
 [[bin]]
 name = "hotel_reserv_geo"
@@ -52,3 +53,11 @@ path = "src/profile/main.rs"
 [[bin]]
 name = "hotel_reserv_frontend"
 path = "src/frontend/main.rs"
+
+[[bin]]
+name = "hotel_lat_bench_server"
+path = "src/latency_bench/server.rs"
+
+[[bin]]
+name = "hotel_lat_bench_client"
+path = "src/latency_bench/client.rs"

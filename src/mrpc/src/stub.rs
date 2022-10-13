@@ -89,6 +89,8 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use super::future::yield_now;
+
 pub struct ReqFuture<'a, T> {
     rpc_id: RpcId,
     read_heap: &'a ReadHeap,
@@ -527,6 +529,7 @@ impl Server {
                     self.dispatch_requests(&mut running)?;
                 }
             }
+            yield_now().await;
         }
     }
 
@@ -563,6 +566,7 @@ impl Server {
                     self.dispatch_requests(&mut running)?;
                 }
             }
+            yield_now().await;
         }
         Ok(())
     }

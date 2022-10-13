@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use memcache::Client as MemcacheClient;
 use minstant::Instant;
 use mongodb::bson::doc;
-use mongodb::sync::Database;
+use mongodb::Database;
 
 use mrpc::alloc::Vec;
 use mrpc::{RRef, WRef};
@@ -88,6 +88,7 @@ impl Profile for ProfileService {
         let start = Instant::now();
         let result = self
             .get_profiles_internal(request)
+            .await
             .map_err(|err| mrpc::Status::internal(err.to_string()))?;
         self.tracer
             .borrow_mut()
@@ -101,7 +102,7 @@ impl Profile for ProfileService {
 
 impl ProfileService {
     #[inline]
-    fn get_profiles_internal<'s>(
+    async fn get_profiles_internal<'s>(
         &self,
         request: RRef<'s, ProfileRequest>,
     ) -> Result<ProfileResult> {
@@ -115,7 +116,9 @@ impl ProfileService {
                 hotels.push(hotel_proto);
             } else {
                 let collection = self.db_handle.collection::<db::Hotel>("hotels");
-                let hotel = collection.find_one(doc! { "id": hotel_id.as_str() }, None)?;
+                let hotel = collection
+                    .find_one(doc! { "id": hotel_id.as_str() }, None)
+                    .await?;
                 if let Some(hotel) = hotel {
                     let hotel_json = serde_json::to_string(&hotel)?;
                     let hotel_proto = hotel.into();
