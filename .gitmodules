@@ -1,6 +1,6 @@
 [submodule "src/3rdparty/prost"]
 	path = src/3rdparty/prost
-	url = git@github.com:koalanet-project/prost.git
+	url = git@github.com:phoenix-dataplane/prost.git
 	branch = mrpc
 [submodule "src/koala_examples/masstree_analytics/libmt_index/masstree-beta"]
 	path = src/koala_examples/masstree_analytics/libmt_index/masstree-beta
