@@ -1,0 +1,14 @@
+version: "3"
+services:
+  mongodb-geo:
+    image: mongo:4.4.6
+    container_name: 'hotel_reserv_geo_mongo'
+    command: --port 27000
+    hostname: geo-db
+    network_mode: "host"
+    restart: always
+    volumes:
+      - geo:/data/db 
+
+volumes:
+  geo:

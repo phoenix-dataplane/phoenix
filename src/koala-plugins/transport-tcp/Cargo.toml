@@ -21,7 +21,7 @@ uuid = "0.8.2"
 thiserror = "1.0.31"
 spin = "0.9.3"
 fnv = "1.0.7"
-mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
+mio = { version="0.8.4", features = ["os-poll", "net"] }
 futures = "0.3.21"
 memoffset = "0.6.5"
 socket2 = "0.4.7"

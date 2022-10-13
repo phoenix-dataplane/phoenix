@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use interface::engine::SchedulingMode;
-use interface::{MappedAddrStatus, WcOpcode, WcStatus};
+use interface::{WcOpcode, WcStatus};
 use ipc::transport::tcp::{cmd, dp};
 
 use super::module::CustomerType;
@@ -343,8 +343,8 @@ impl TransportEngine {
     async fn process_cmd(&mut self, req: &cmd::Command) -> Result<cmd::CompletionKind, Error> {
         use cmd::{Command, CompletionKind};
         match req {
-            Command::Bind(addr, backlog) => {
-                let handle = self.ops.bind(addr, *backlog as _)?;
+            Command::Bind(addr, _backlog) => {
+                let handle = self.ops.bind(addr)?;
                 Ok(CompletionKind::Bind(handle))
             }
             Command::Accept(listener) => {
@@ -365,12 +365,7 @@ impl TransportEngine {
         }
     }
 
-    fn check_comp(&mut self) {
-        for (sock_handle, (sock, _status)) in self.ops.state.sock_table.borrow_mut().iter() {
-            match self.ops.state.cq_table.borrow_mut().get_mut(sock_handle) {
-                Some(cq) => cq.check_comp(sock, MappedAddrStatus::Irrelevant),
-                None => continue,
-            }
-        }
+    fn check_comp(&self) {
+        unimplemented!("check_comp");
     }
 }

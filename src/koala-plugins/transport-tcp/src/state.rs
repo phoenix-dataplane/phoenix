@@ -6,8 +6,9 @@ use std::sync::Arc;
 use fnv::FnvHashMap as HashMap;
 use interface::Handle;
 use interface::MappedAddrStatus;
+use mio::net::{TcpListener, TcpStream};
+use mio::{Events, Poll};
 use nix::unistd::Pid;
-use socket2::Socket;
 
 use koala::state_mgr::ProcessShared;
 
@@ -16,8 +17,10 @@ use super::ops::CompletionQueue;
 // TODO(cjr): Make this global lock more fine-grained.
 pub struct State {
     pub(crate) shared: Arc<Shared>,
-    pub listener_table: RefCell<HashMap<Handle, Socket>>,
-    pub sock_table: RefCell<HashMap<Handle, (Socket, MappedAddrStatus)>>,
+    pub poll: RefCell<Poll>,
+    pub events: RefCell<Events>,
+    pub listener_table: RefCell<HashMap<Handle, TcpListener>>,
+    pub sock_table: RefCell<HashMap<Handle, (TcpStream, MappedAddrStatus)>>,
     // conn_handle -> completion queue
     pub cq_table: RefCell<HashMap<Handle, CompletionQueue>>,
 }
@@ -30,6 +33,8 @@ impl State {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
         State {
             shared,
+            poll: RefCell::new(Poll::new().unwrap()),
+            events: RefCell::new(Events::with_capacity(1024)),
             listener_table: RefCell::new(HashMap::default()),
             sock_table: RefCell::new(HashMap::default()),
             cq_table: RefCell::new(HashMap::default()),
@@ -41,6 +46,8 @@ impl Clone for State {
     fn clone(&self) -> Self {
         State {
             shared: Arc::clone(&self.shared),
+            poll: RefCell::new(Poll::new().unwrap()),
+            events: RefCell::new(Events::with_capacity(1024)),
             listener_table: RefCell::new(HashMap::default()),
             sock_table: RefCell::new(HashMap::default()),
             cq_table: RefCell::new(HashMap::default()),

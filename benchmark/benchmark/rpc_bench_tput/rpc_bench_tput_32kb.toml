@@ -11,5 +11,5 @@ args = ""
 [[worker]]
 host = "danyang-05"
 bin = "rpc_bench_client"
-args = "-c rdma0.danyang-06 --concurrency 32 --req-size 32768 -D 10 -i 1"
+args = "-c rdma0.danyang-06 --concurrency 128 --req-size 32768 -D 10 -i 1 -l info"
 dependencies = [0]

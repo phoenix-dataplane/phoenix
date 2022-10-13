@@ -4,12 +4,14 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use dashmap::DashMap;
 use fnv::FnvHashMap as HashMap;
 use futures::select;
 use futures::stream::{FuturesUnordered, StreamExt};
 use futures::task::LocalFutureObj;
+use futures::FutureExt;
 
 use interface::rpc::{RpcId, TransportStatus};
 use interface::{AsHandle, Handle};
@@ -87,6 +89,8 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use super::future::yield_now;
+
 pub struct ReqFuture<'a, T> {
     rpc_id: RpcId,
     read_heap: &'a ReadHeap,
@@ -147,6 +151,11 @@ thread_local! {
 
 pub(crate) fn check_completion_queue() -> Result<usize, Error> {
     MRPC_CTX.with(|ctx| {
+        let notified = ctx.service.wait_wc(Some(Duration::from_micros(1000)))?; // try 0
+        if !notified {
+            return Ok(0);
+        }
+
         COMP_READ_BUFFER.with_borrow_mut(|buffer| {
             // SAFETY: dp::Completion is Copy and zerocopy
             unsafe {
@@ -520,7 +529,46 @@ impl Server {
                     self.dispatch_requests(&mut running)?;
                 }
             }
+            yield_now().await;
         }
+    }
+
+    pub async fn serve_with_graceful_shutdown<F>(&mut self, shutdown: F) -> Result<(), Error>
+    where
+        F: Future<Output = ()> + Unpin,
+    {
+        let mut shutdown = shutdown.fuse();
+
+        let mut running = FuturesUnordered::new();
+        running.push(LocalFutureObj::new(Box::new(std::future::pending())));
+        // running.push(LocalFutureObj::new(Box::new(pending())));
+        // batching reply small requests for better CPU efficiency
+        let mut reply_buffer = Vec::with_capacity(32);
+        loop {
+            select! {
+                reply_erased = running.next() => {
+                    if reply_erased.is_none() { continue; }
+                    reply_buffer.push(reply_erased.unwrap());
+                }
+                _ = shutdown => {
+                    break;
+                },
+                complete => {
+                    panic!("unexpected complete")
+                }
+                default => {
+                    if !reply_buffer.is_empty() {
+                        self.post_replies(&mut reply_buffer)?;
+                    }
+                    // no futures is ready
+                    self.check_cm_event()?;
+                    // check new requests, dispatch them to the executor
+                    self.dispatch_requests(&mut running)?;
+                }
+            }
+            yield_now().await;
+        }
+        Ok(())
     }
 
     fn handle_new_connection(

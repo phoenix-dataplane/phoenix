@@ -1,12 +1,16 @@
+use std::cell::{Ref, RefMut};
 use std::collections::VecDeque;
+use std::io::{IoSlice, Read, Write};
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
+use std::time::Duration;
 
 use interface::{AsHandle, Handle, MappedAddrStatus, WcOpcode, WcStatus};
 use ipc::buf::Range;
 use ipc::transport::tcp::dp;
-use socket2::{Domain, Protocol, Socket, Type};
+use mio::net::{TcpListener, TcpStream};
+use mio::{Events, Interest, Poll, Token};
 
 use super::state::State;
 use super::{ApiError, TransportError};
@@ -19,18 +23,36 @@ impl Ops {
     pub(crate) fn new(state: State) -> Self {
         Self { state }
     }
+
+    fn poll(&self) -> Ref<Poll> {
+        self.state.poll.borrow()
+    }
+
+    fn poll_mut(&self) -> RefMut<Poll> {
+        self.state.poll.borrow_mut()
+    }
+
+    #[allow(dead_code)]
+    fn events(&self) -> Ref<Events> {
+        self.state.events.borrow()
+    }
+
+    fn events_mut(&self) -> RefMut<Events> {
+        self.state.events.borrow_mut()
+    }
 }
 
 // Control path APIs
 impl Ops {
-    pub fn bind(&self, addr: &SocketAddr, backlog: i32) -> Result<Handle, ApiError> {
-        let listener = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
-            .map_err(ApiError::Socket)?;
-        listener.set_reuse_address(true).map_err(ApiError::Socket)?;
-        listener.bind(&(*addr).into()).map_err(ApiError::Socket)?;
-        listener.listen(backlog).map_err(ApiError::Socket)?;
-        listener.set_nonblocking(true).map_err(ApiError::Socket)?;
+    pub fn bind(&self, addr: &SocketAddr) -> Result<Handle, ApiError> {
+        let mut listener = TcpListener::bind(*addr)?;
         let handle = listener.as_raw_fd().as_handle();
+
+        self.poll().registry().register(
+            &mut listener,
+            Token((handle.0 as usize) << 32),
+            Interest::READABLE,
+        )?;
         self.state
             .listener_table
             .borrow_mut()
@@ -39,12 +61,15 @@ impl Ops {
     }
 
     pub fn connect(&self, addr: &SocketAddr) -> Result<Handle, ApiError> {
-        let sock = Socket::new(Domain::IPV4, Type::STREAM, None).map_err(ApiError::Socket)?;
-        sock.connect_timeout(&(*addr).into(), std::time::Duration::from_secs(10))
-            .map_err(ApiError::Socket)?;
-        sock.set_nonblocking(true).map_err(ApiError::Socket)?;
-        sock.set_nodelay(true).map_err(ApiError::Socket)?;
+        let mut sock = TcpStream::connect(*addr)?;
+        sock.set_nodelay(true)?;
         let handle = sock.as_raw_fd().as_handle();
+
+        self.poll().registry().register(
+            &mut sock,
+            Token(handle.0 as _),
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
         self.state
             .sock_table
             .borrow_mut()
@@ -56,99 +81,52 @@ impl Ops {
         Ok(handle)
     }
 
-    pub fn try_accept(&self) -> Vec<Handle> {
-        let mut sock_handles = Vec::new();
-        let mut table = self.state.listener_table.borrow_mut();
-        // let mut removed = Vec::new();
-        for (_handle, listener) in table.iter_mut() {
-            match listener.accept() {
-                Ok((sock, _addr)) => {
-                    if let Err(_e) = (|| -> Result<(), std::io::Error> {
-                        sock.set_nonblocking(true)?;
-                        sock.set_nodelay(true)?;
-                        Ok(())
-                    })() {
-                        continue;
-                    };
-
-                    let sock_handle = sock.as_raw_fd().as_handle();
-                    sock_handles.push(sock_handle);
-                    self.state
-                        .sock_table
-                        .borrow_mut()
-                        .insert(sock_handle, (sock, MappedAddrStatus::Unmapped));
-                    self.state
-                        .cq_table
-                        .borrow_mut()
-                        .insert(sock_handle, CompletionQueue::new());
-                    // removed.push(*_handle);
-                }
-                Err(_e) => continue,
-            }
-        }
-        // for handle in removed {
-        //     table.remove(&handle);
-        // }
-        sock_handles
-    }
-
-    pub fn accept(&self, handle: Handle) -> Result<Handle, ApiError> {
-        let table = self.state.listener_table.borrow_mut();
+    fn try_accept(&self, handle: Handle) -> Result<Handle, ApiError> {
+        let table = self.state.listener_table.borrow();
         let listener = table.get(&handle).ok_or(ApiError::NotFound)?;
-        let (sock, _addr) = listener.accept().map_err(ApiError::Socket)?;
-        sock.set_nonblocking(true).map_err(ApiError::Socket)?;
-        let handle = sock.as_raw_fd().as_handle();
+        let (mut sock, _addr) = listener.accept()?;
+        sock.set_nodelay(true)?;
+        let sock_handle = sock.as_raw_fd().as_handle();
+
+        self.poll().registry().register(
+            &mut sock,
+            Token(sock_handle.0 as usize),
+            Interest::READABLE | Interest::WRITABLE,
+        )?;
         self.state
             .sock_table
             .borrow_mut()
-            .insert(handle, (sock, MappedAddrStatus::Irrelevant));
+            .insert(sock_handle, (sock, MappedAddrStatus::Unmapped));
         self.state
             .cq_table
             .borrow_mut()
-            .insert(handle, CompletionQueue::new());
-        Ok(handle)
+            .insert(sock_handle, CompletionQueue::new());
+        Ok(sock_handle)
+    }
+
+    pub fn accept(&self, _handle: Handle) -> Result<Handle, ApiError> {
+        unimplemented!("accept");
     }
 }
 
 const MAGIC_BYTES: usize = std::mem::size_of::<u32>();
 const HEADER_BYTES: usize = MAGIC_BYTES + std::mem::size_of::<u32>() + std::mem::size_of::<u64>();
 
-fn send(sock: &Socket, buf: &[u8]) -> Result<usize, TransportError> {
-    match sock.send(buf) {
+fn send_vectored(sock: &mut TcpStream, bufs: &[IoSlice]) -> Result<usize, TransportError> {
+    match sock.write_vectored(bufs) {
         Ok(n) => Ok(n),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
         Err(e) => Err(TransportError::Socket(e)),
     }
 }
 
-fn recv(sock: &Socket, buf: &mut [u8]) -> Result<usize, TransportError> {
-    let buf = unsafe { &mut *(buf as *mut [u8] as *mut [std::mem::MaybeUninit<u8>]) };
-    match sock.recv(buf) {
+fn recv(sock: &mut TcpStream, buf: &mut [u8]) -> Result<usize, TransportError> {
+    match sock.read(buf) {
         Ok(0) => Err(TransportError::Disconnected),
         Ok(n) => Ok(n),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
         Err(e) => Err(TransportError::Socket(e)),
     }
-}
-
-fn get_meta_buf(imm: u32, len: u64) -> [u8; 16] {
-    let mut meta: [u8; 16] = [0; 16];
-    unsafe {
-        let magic: [u8; 4] = [0, 8, 2, 1];
-        std::ptr::copy_nonoverlapping(magic.as_ptr(), meta.as_mut_ptr(), magic.len());
-        std::ptr::copy_nonoverlapping(
-            &imm as *const u32 as *const u8,
-            meta.as_mut_ptr().offset(magic.len() as isize),
-            std::mem::size_of::<u32>(),
-        );
-        std::ptr::copy_nonoverlapping(
-            &len as *const u64 as *const u8,
-            meta.as_mut_ptr()
-                .offset((magic.len() + std::mem::size_of::<u32>()) as isize),
-            std::mem::size_of::<u64>(),
-        );
-    }
-    meta
 }
 
 // Data path APIs
@@ -169,6 +147,17 @@ impl Ops {
             .ok_or(TransportError::NotFound)?;
         cq.send_tasks
             .push_back(Task::new(wr_id, sock_handle, WcOpcode::Send, range, imm, 0));
+        if cq.send_tasks.len() == 1 {
+            let mut sock_table = self.state.sock_table.borrow_mut();
+            let (sock, _status) = sock_table
+                .get_mut(&sock_handle)
+                .ok_or(TransportError::NotFound)?;
+            self.poll().registry().reregister(
+                sock,
+                Token(sock_handle.0 as usize),
+                Interest::READABLE | Interest::WRITABLE,
+            )?;
+        }
         Ok(())
     }
 
@@ -188,17 +177,78 @@ impl Ops {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn poll_cq(
+    pub fn poll_cq(
         &self,
-        sock_handle: Handle,
-        wcs: &mut Vec<dp::Completion>,
+        _sock_handle: Handle,
+        _wcs: &mut Vec<dp::Completion>,
     ) -> Result<(), TransportError> {
-        let mut table = self.state.cq_table.borrow_mut();
-        let cq = table
-            .get_mut(&sock_handle)
-            .ok_or(TransportError::NotFound)?;
-        cq.poll(wcs);
-        Ok(())
+        unimplemented!("poll cq");
+    }
+
+    pub fn poll_io(
+        &self,
+        duration: Duration,
+    ) -> Result<(Vec<Handle>, Vec<dp::Completion>), TransportError> {
+        let mut conns = Vec::new();
+        let mut wcs = Vec::new();
+        // let mut io_res = Vec::new();
+        self.poll_mut()
+            .poll(&mut self.events_mut(), Some(duration))?;
+
+        for event in self.events_mut().iter() {
+            let Token(handle) = event.token();
+            let (listener_handle, socket_handle) = ((handle >> 32) as u32, handle as u32);
+            if listener_handle > 0 {
+                if let Ok(handle) = self.try_accept(Handle(listener_handle)) {
+                    conns.push(handle);
+                }
+            }
+            if socket_handle > 0 {
+                let _res = (|| -> Result<(), TransportError> {
+                    let sock_handle = Handle(socket_handle);
+                    let mut sock_table = self.state.sock_table.borrow_mut();
+                    let (sock, status) = sock_table
+                        .get_mut(&sock_handle)
+                        .ok_or(TransportError::NotFound)?;
+                    let mut cq_table = self.state.cq_table.borrow_mut();
+                    let cq = cq_table
+                        .get_mut(&sock_handle)
+                        .ok_or(TransportError::NotFound)?;
+                    let mut write_would_block = true;
+                    let mut read_would_block = true;
+                    if event.is_writable() {
+                        write_would_block = cq.check_write(sock, &mut wcs);
+                    }
+                    if event.is_readable() {
+                        read_would_block = if *status != MappedAddrStatus::Unmapped {
+                            cq.check_read(sock, &mut wcs)
+                        } else {
+                            false
+                        };
+                    }
+                    if !read_would_block {
+                        self.poll().registry().reregister(
+                            sock,
+                            Token(sock_handle.0 as usize),
+                            if cq.send_tasks.is_empty() {
+                                Interest::READABLE
+                            } else {
+                                Interest::READABLE | Interest::WRITABLE
+                            },
+                        )?;
+                    } else if !write_would_block {
+                        // send_tasks must be empty
+                        self.poll().registry().reregister(
+                            sock,
+                            Token(sock_handle.0 as usize),
+                            Interest::READABLE,
+                        )?;
+                    }
+                    Ok(())
+                })();
+            }
+        }
+        Ok((conns, wcs))
     }
 }
 
@@ -207,6 +257,7 @@ pub(crate) struct Task {
     wr_id: u64,
     sock_handle: Handle,
     opcode: WcOpcode,
+    meta: [u8; HEADER_BYTES],
     buf: Range,
     imm: u32,
     expected: usize, // expected include the header
@@ -237,6 +288,7 @@ impl Task {
             wr_id,
             sock_handle,
             opcode,
+            meta: Task::get_meta(imm, buf.len),
             buf,
             imm,
             expected,
@@ -244,175 +296,131 @@ impl Task {
             error: Ok(()),
         }
     }
-}
 
-fn get_comp_from_task(task: &Task) -> dp::Completion {
-    dp::Completion {
-        wr_id: task.wr_id,
-        conn_id: task.sock_handle.0 as u64,
-        opcode: task.opcode,
-        status: match &task.error {
-            Ok(_) => WcStatus::Success,
-            Err(e) => WcStatus::Error(NonZeroU32::new(e.into_vendor_err()).unwrap()),
-        },
-        buf: task.buf,
-        byte_len: task.offset - HEADER_BYTES,
-        imm: task.imm,
+    pub(crate) fn get_meta(imm: u32, len: u64) -> [u8; HEADER_BYTES] {
+        let mut meta: [u8; HEADER_BYTES] = [0; HEADER_BYTES];
+        unsafe {
+            let magic: u32 = 2563;
+            std::ptr::write(meta.as_mut_ptr() as *mut u32, magic);
+            std::ptr::write(meta.as_mut_ptr().offset(4) as *mut u32, imm);
+            std::ptr::write(meta.as_mut_ptr().offset((8) as isize) as *mut u64, len);
+        }
+        meta
+    }
+
+    pub(crate) fn get_io_vec(&self) -> Vec<IoSlice> {
+        let mut io_vec = Vec::new();
+        let mut buf_offest = self.offset as i64 - HEADER_BYTES as i64;
+        if buf_offest < 0 {
+            io_vec.push(IoSlice::new(&self.meta[self.offset..]));
+            buf_offest = 0;
+        }
+        let buf = unsafe {
+            std::slice::from_raw_parts(
+                (self.buf.offset as i64 + buf_offest) as *const u8,
+                (self.buf.len as i64 - buf_offest) as usize,
+            )
+        };
+        io_vec.push(IoSlice::new(buf));
+        io_vec
+    }
+
+    pub(crate) fn get_comp(&self) -> dp::Completion {
+        dp::Completion {
+            wr_id: self.wr_id,
+            conn_id: self.sock_handle.0 as u64,
+            opcode: self.opcode,
+            status: match &self.error {
+                Ok(_) => WcStatus::Success,
+                Err(e) => WcStatus::Error(NonZeroU32::new(e.into_vendor_err()).unwrap()),
+            },
+            buf: self.buf,
+            byte_len: self.offset - HEADER_BYTES,
+            imm: self.imm,
+        }
     }
 }
 
 pub struct CompletionQueue {
-    cq: VecDeque<dp::Completion>,
     send_tasks: VecDeque<Task>,
     recv_tasks: VecDeque<Task>,
-    // start: std::time::Instant,
 }
 
 impl CompletionQueue {
     pub fn new() -> Self {
         CompletionQueue {
-            cq: VecDeque::with_capacity(256),
             send_tasks: VecDeque::with_capacity(128),
             recv_tasks: VecDeque::with_capacity(128),
-            // start: std::time::Instant::now(),
         }
     }
 
-    pub fn poll(&mut self, wcs: &mut Vec<dp::Completion>) {
-        while !self.cq.is_empty() {
-            wcs.push(*self.cq.front().unwrap());
-            self.cq.pop_front();
-        }
-    }
+    pub fn check_write(&mut self, sock: &mut TcpStream, wcs: &mut Vec<dp::Completion>) -> bool {
+        while !self.send_tasks.is_empty() {
+            let task = self.send_tasks.front_mut().unwrap();
 
-    pub fn check_comp(&mut self, sock: &Socket, status: MappedAddrStatus) {
-        loop {
-            if let Some(task) = self.send_tasks.front_mut() {
-                if task.opcode != WcOpcode::Send {
-                    task.error = Err(TransportError::General("Invalid socket opcode".to_string()));
-                }
-                if task.error.is_err() {
-                    self.cq.push_back(get_comp_from_task(task));
-                    self.send_tasks.pop_front();
-                    break;
-                }
+            if task.opcode != WcOpcode::Send {
+                task.error = Err(TransportError::General("Invalid socket opcode".to_string()));
+                wcs.push(task.get_comp());
+                self.send_tasks.pop_front();
+                continue;
+            }
 
-                if task.offset < HEADER_BYTES {
-                    let meta = get_meta_buf(task.imm, task.buf.len);
-                    match send(sock, &meta[task.offset..HEADER_BYTES]) {
-                        Ok(n) => {
-                            task.offset += n;
-                            // koala::log::debug!(
-                            //     "post_send head: \t{}\t{}\t\t{}",
-                            //     task.wr_id,
-                            //     n,
-                            //     (std::time::Instant::now())
-                            //         .duration_since(self.start)
-                            //         .as_nanos() as f64
-                            //         / 1000.0
-                            // );
-                            if task.offset < HEADER_BYTES {
-                                break;
-                            }
+            loop {
+                let io_vec = task.get_io_vec();
+                match send_vectored(sock, &io_vec) {
+                    Ok(n) => {
+                        if n == 0 {
+                            return true;
                         }
-                        Err(e) => {
-                            task.error = Err(e);
-                            continue;
+                        task.offset += n;
+                        if task.offset == task.expected {
+                            break;
                         }
                     }
-                }
-                if task.offset < task.expected {
-                    let buf = unsafe {
-                        std::slice::from_raw_parts(
-                            (task.buf.offset as usize + task.offset - HEADER_BYTES) as _,
-                            task.buf.len as usize - task.offset + HEADER_BYTES,
-                        )
-                    };
-                    match send(sock, buf) {
-                        Ok(n) => {
-                            task.offset += n;
-                            // koala::log::debug!(
-                            //     "post_send first:\t{}\t{}\t{}",
-                            //     task.wr_id,
-                            //     n,
-                            //     (std::time::Instant::now())
-                            //         .duration_since(self.start)
-                            //         .as_nanos() as f64
-                            //         / 1000.0
-                            // );
-                        }
-                        Err(e) => {
-                            task.error = Err(e);
-                            continue;
-                        }
+                    Err(e) => {
+                        task.error = Err(e);
+                        break;
                     }
-                }
-                if task.offset == task.expected {
-                    self.cq.push_back(get_comp_from_task(task));
-                    // koala::log::debug!(
-                    //     "post_send comp:\t{}\t{:?}",
-                    //     task.wr_id,
-                    //     (std::time::Instant::now())
-                    //         .duration_since(self.start)
-                    //         .as_nanos() as f64
-                    //         / 1000.0
-                    // );
-                    self.send_tasks.pop_front();
                 }
             }
-            break;
+
+            // Error or finished, either case should be popped
+            wcs.push(task.get_comp());
+            self.send_tasks.pop_front();
         }
+        false
+    }
 
-        if status == MappedAddrStatus::Unmapped {
-            return;
-        }
+    pub fn check_read(&mut self, sock: &mut TcpStream, wcs: &mut Vec<dp::Completion>) -> bool {
+        while !self.recv_tasks.is_empty() {
+            let task = self.recv_tasks.front_mut().unwrap();
 
-        loop {
-            if let Some(task) = self.recv_tasks.front_mut() {
-                if task.opcode != WcOpcode::Recv {
-                    task.error = Err(TransportError::General(
-                        "Invalid socket opcode!".to_string(),
-                    ));
-                }
-                if task.error.is_err() {
-                    self.cq.push_back(get_comp_from_task(task));
-                    self.recv_tasks.pop_front();
-                    break;
-                }
+            if task.opcode != WcOpcode::Recv {
+                task.error = Err(TransportError::General("Invalid socket opcode".to_string()));
+                wcs.push(task.get_comp());
+                self.recv_tasks.pop_front();
+                continue;
+            }
 
-                if task.offset < HEADER_BYTES {
-                    let buf = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            (task.buf.offset as usize + task.offset) as _,
-                            HEADER_BYTES - task.offset, //task.buf.len as usize - task.offset,
-                        )
-                    };
-                    match recv(sock, buf) {
+            if task.offset < HEADER_BYTES {
+                loop {
+                    match recv(sock, &mut task.meta[task.offset..HEADER_BYTES]) {
                         Ok(n) => {
+                            if n == 0 {
+                                return true;
+                            }
                             task.offset += n;
-                            // if n > 0 {
-                            //     koala::log::debug!(
-                            //         "post_recv head:\t{}\t{}\t{}",
-                            //         task.wr_id,
-                            //         n,
-                            //         (std::time::Instant::now())
-                            //             .duration_since(self.start)
-                            //             .as_nanos() as f64
-                            //             / 1000.0
-                            //     );
-                            // }
-
-                            if task.offset >= HEADER_BYTES {
+                            if task.offset == HEADER_BYTES {
                                 // TODO(lsh): Can check magic number here
                                 let len = unsafe {
                                     std::ptr::read_unaligned(
-                                        (task.buf.offset as *const u64).offset(1),
-                                    ) as usize
-                                };
+                                        (task.meta.as_ptr().offset(8)) as *const u64,
+                                    )
+                                } as usize;
                                 task.expected = HEADER_BYTES + len;
                                 task.imm = unsafe {
                                     std::ptr::read_unaligned(
-                                        (task.buf.offset as *const u32).offset(1),
+                                        (task.meta.as_ptr().offset(4)) as *const u32,
                                     )
                                 };
                                 if len > task.buf.len as _ {
@@ -420,58 +428,49 @@ impl CompletionQueue {
                                         "Insufficient recving buffer!".to_string(),
                                     ));
                                 }
-                            } else {
                                 break;
                             }
                         }
                         Err(e) => {
                             task.error = Err(e);
-                            continue;
+                            break;
                         }
                     }
                 }
-                if task.offset < task.expected {
-                    let buf = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            (task.buf.offset as usize + task.offset - HEADER_BYTES) as _,
-                            task.expected as usize - task.offset,
-                        )
-                    };
-                    match recv(sock, buf) {
-                        Ok(n) => {
-                            task.offset += n;
-                            // if n > 0 {
-                            //     koala::log::debug!(
-                            //         "post_recv first:\t{}\t{}\t{}",
-                            //         task.wr_id,
-                            //         n,
-                            //         (std::time::Instant::now())
-                            //             .duration_since(self.start)
-                            //             .as_nanos() as f64
-                            //             / 1000.0
-                            //     );
-                            // }
-                        }
-                        Err(e) => {
-                            task.error = Err(e);
-                            continue;
-                        }
-                    }
-                }
-                if task.offset == task.expected {
-                    self.cq.push_back(get_comp_from_task(task));
-                    // koala::log::debug!(
-                    //     "post_recv comp:\t{}\t\t{}",
-                    //     task.wr_id,
-                    //     (std::time::Instant::now())
-                    //         .duration_since(self.start)
-                    //         .as_nanos() as f64
-                    //         / 1000.0
-                    // );
+
+                if task.error.is_err() {
+                    wcs.push(task.get_comp());
                     self.recv_tasks.pop_front();
+                    continue;
                 }
             }
-            break;
+
+            loop {
+                let buf = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        (task.buf.offset as usize + task.offset - HEADER_BYTES) as _,
+                        task.expected as usize - task.offset,
+                    )
+                };
+                match recv(sock, buf) {
+                    Ok(n) => {
+                        if n == 0 {
+                            return true;
+                        }
+                        task.offset += n;
+                        if task.offset == task.expected {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        task.error = Err(e);
+                        break;
+                    }
+                }
+            }
+            wcs.push(task.get_comp());
+            self.recv_tasks.pop_front();
         }
+        false
     }
 }

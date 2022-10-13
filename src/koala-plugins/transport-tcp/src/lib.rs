@@ -18,7 +18,7 @@ pub(crate) mod state;
 #[derive(Debug, Error)]
 pub enum ApiError {
     #[error("Socket internal error: {0}")]
-    Socket(io::Error),
+    Socket(#[from] io::Error),
     #[error("Resource not found in table")]
     NotFound,
     // #[error("Fail to create MemoryRegion: {0}")]
@@ -62,7 +62,7 @@ pub enum TransportError {
     #[error("Shared memory queue ringbuf error: {0}.")]
     ShmRingbuf(#[from] ipc::shmem_ipc::ShmRingbufError),
     #[error("Socket internal error: {0}.")]
-    Socket(io::Error),
+    Socket(#[from] io::Error),
     #[error("Disconnected")]
     Disconnected,
     #[error("General transport error: {0}")]

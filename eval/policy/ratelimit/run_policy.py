@@ -17,38 +17,24 @@ CONFIG_PATH = os.path.join(SCRIPTDIR, "config.toml")
 config = toml.load(CONFIG_PATH)
 workdir = config["workdir"]
 workdir = os.path.expanduser(workdir)
-os.environ['KOALA_PREFIX'] = config['env']['KOALA_PREFIX']
+env = {**os.environ, **config['env']}
 
 os.chdir(workdir)
-os.makedirs(OD+"/policy/ratelimit", exist_ok=True)
-workload = subprocess.Popen([
-    "cargo",
-    "run",
-    "--release",
-    "--bin",
-    "launcher",
-    "--",
-    "-o",
-    OD,
-    "--benchmark",
-    os.path.join(SCRIPTDIR, "rpc_bench_tput_32b.toml"),
-    "--configfile",
-    os.path.join(SCRIPTDIR, "config.toml"),
-], stdout=subprocess.DEVNULL)
-time.sleep(5)
+os.makedirs(f"{OD}/policy/null", exist_ok=True)
 
-subprocess.run([
-    "cargo",
-    "run",
-    "--release",
-    "--bin",
-    "list",
-    "--",
-    "--dump",
-    OD+"/policy/list.json"
-])
-with open(OD+"/policy/list.json") as f:
-    data = json.load(f)
+cmd = f'''cargo run --release --bin launcher -- -o {OD} --timeout=120
+--benchmark {os.path.join(SCRIPTDIR, 'rpc_bench_tput_32b.toml')} 
+--configfile { os.path.join(SCRIPTDIR, 'config.toml')}'''
+workload = subprocess.Popen(cmd.split())
+time.sleep(30)
+
+list_cmd = f"cargo run --release --bin list -- --dump {OD}/policy/list.json"
+subprocess.run(list_cmd.split(), env=env)
+
+with open(f"{OD}/policy/list.json", "r") as fin:
+    content = fin.read()
+    print(content)
+    data = json.loads(content)
 mrpc_pid = None
 mrpc_sid = None
 for subscription in data:
@@ -59,80 +45,13 @@ for subscription in data:
         mrpc_pid = pid
         mrpc_sid = sid
 
+print("Start to attach policy")
 attach_config = os.path.join(SCRIPTDIR, "attach.toml")
-subprocess.run([
-    "cargo",
-    "run",
-    "--release",
-    "--bin",
-    "addonctl",
-    "--",
-    "--config",
-    attach_config,
-    "--pid",
-    str(mrpc_pid),
-    "--sid",
-    str(mrpc_sid),
-])
-time.sleep(1)
-subprocess.run([
-    "cargo",
-    "run",
-    "--release",
-    "--bin",
-    "list",
-    "--",
-    "--dump",
-    OD+"/policy/list.json"
-])
-time.sleep(1)
+attach_cmd = f"cargo run --release --bin addonctl -- --config {attach_config} --pid {mrpc_pid} --sid {mrpc_sid}"
+subprocess.run(attach_cmd.split(), env=env)
 
-with open(OD+"/policy/list.json") as f:
-    data = json.load(f)
-addon_eid = None
-for subscription in data:
-    pid = subscription["pid"]
-    sid = subscription["sid"]
-    engines = [x[1] for x in subscription["engines"]]
-    for (eid, engine) in subscription["engines"]:
-        if engine == "RateLimitEngine":
-            addon_eid = eid
-
-rates = [
-    500000,
-    900000,
-]
-for rate in rates:
-    subprocess.run([
-        "cargo",
-        "run",
-        "--release",
-        "--bin",
-        "ratelimitctl",
-        "--",
-        "--eid",
-        str(addon_eid),
-        "-r",
-        str(rate),
-        "-b",
-        str(rate)
-    ])
-    time.sleep(1)
-
-detach_config = os.path.join(SCRIPTDIR, "detach.toml")
-subprocess.run([
-    "cargo",
-    "run",
-    "--release",
-    "--bin",
-    "addonctl",
-    "--",
-    "--config",
-    detach_config,
-    "--pid",
-    str(mrpc_pid),
-    "--sid",
-    str(mrpc_sid),
-])
+subprocess.run(list_cmd.split(), env=env)
+with open(f"{OD}/policy/list.json", "r") as fin:
+    print(fin.read())
 
 workload.wait()
