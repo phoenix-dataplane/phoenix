@@ -52,7 +52,7 @@ impl PendingWRef {
     /// Erase all the pending messages from a given connection.
     #[inline]
     fn erase_by_connection(&self, conn: Handle) {
-        self.pool.retain(|rpc_id, _| rpc_id.0 != conn);
+        self.pool.retain(|rpc_id, _| rpc_id.conn_id != conn);
     }
 
     fn erase_by(&self, f: impl FnMut(&RpcId, &mut WRefOpaque) -> bool) {
@@ -105,7 +105,7 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
             Err(e) => return Poll::Ready(Err(e.into())),
         }
 
-        let conn_id = this.rpc_id.0;
+        let conn_id = this.rpc_id.conn_id;
 
         // TODO(cjr): For client, you only need to check your own position. No need to read a
         // hashmap each time. This a newly introduced overhead.
@@ -193,7 +193,7 @@ pub(crate) fn check_completion_queue() -> Result<usize, Error> {
                                 });
                                 // client receives responses
                                 RECV_REPLY_CACHE.with_borrow_mut(|cache| {
-                                    cache.insert(RpcId(conn_id, call_id), Ok(*msg))
+                                    cache.insert(RpcId::new(conn_id, call_id, 0), Ok(*msg))
                                 });
                             }
                         }
@@ -305,7 +305,7 @@ impl ClientStub {
         self.post_request(req, meta).unwrap();
 
         ReqFuture {
-            rpc_id: RpcId(conn_id, call_id),
+            rpc_id: RpcId::new(conn_id, call_id, 0),
             read_heap: &self.conn.read_heap,
             _marker: PhantomData,
         }
@@ -338,7 +338,7 @@ impl ClientStub {
         );
 
         // track the msg as pending
-        PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg));
+        PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.call_id, 0), WRef::clone(&msg));
 
         let (ptr_app, ptr_backend) = msg.into_shmptr().to_raw_parts();
         let erased = MessageErased {
@@ -350,7 +350,7 @@ impl ClientStub {
         #[cfg(feature = "timing")]
         TIMER.with_borrow_mut(|timer| {
             timer.sample(
-                RpcId::new(meta.conn_id, meta.call_id),
+                RpcId::new(meta.conn_id, meta.call_id, 0),
                 SampleKind::ClientRequest,
             );
         });
@@ -573,7 +573,7 @@ impl Server {
         });
 
         // remove all outstanding RPC releated to this client/server stub
-        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.0));
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.conn_id));
         Ok(())
     }
 
@@ -676,7 +676,7 @@ impl Drop for Server {
         RECV_REQUEST_CACHE.remove(&self.stub_id);
 
         // remove all outstanding RPC releated to this client/server stub
-        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.0));
+        PENDING_WREF.erase_by(|rpc_id, _| self.connections.borrow().contains_key(&rpc_id.conn_id));
     }
 }
 
@@ -709,7 +709,10 @@ pub fn service_post_handler<T: RpcData>(
     };
 
     // track the msg as pending
-    PENDING_WREF.insert(RpcId::new(meta.conn_id, meta.func_id), WRef::clone(&reply));
+    PENDING_WREF.insert(
+        RpcId::new(meta.conn_id, meta.func_id, 0),
+        WRef::clone(&reply),
+    );
 
     let (ptr_app, ptr_backend) = reply.into_shmptr().to_raw_parts();
     let erased = MessageErased {

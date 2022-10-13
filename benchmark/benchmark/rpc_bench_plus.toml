@@ -1,0 +1,13 @@
+name = "benchmark/rpc_bench_plus"
+description = "Run rpc_bench_plus benchmark"
+group = "rpc_bench_plus"
+
+[[worker]]
+host = "danyang-06"
+bin = "rpc_bench_plus_server"
+args = ""
+
+[[worker]]
+host = "danyang-05"
+bin = "rpc_bench_plus_client"
+args = "-c rdma0.danyang-06 --concurrency 1"

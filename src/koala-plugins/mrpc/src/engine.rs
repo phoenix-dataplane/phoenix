@@ -416,7 +416,7 @@ impl MrpcEngine {
                 // timer.tick();
 
                 // construct message meta on heap
-                let rpc_id = RpcId(erased.meta.conn_id, erased.meta.call_id);
+                let rpc_id = RpcId::new(erased.meta.conn_id, erased.meta.call_id, 0);
                 let meta_buf_ptr = self
                     .meta_buf_pool
                     .obtain(rpc_id)

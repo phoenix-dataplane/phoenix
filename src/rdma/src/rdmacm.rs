@@ -475,7 +475,7 @@ impl Drop for EventChannel {
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct MemoryRegion<'a>(
-    pub(crate) *mut ffi::ibv_mr,
+    pub *mut ffi::ibv_mr,
     // reference to someone who owns and will drop this ibv_mr
     pub(crate) PhantomData<&'a ()>,
 );

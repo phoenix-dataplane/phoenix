@@ -32,9 +32,9 @@ impl<'a, T> Drop for RRefInner<'a, T> {
     fn drop(&mut self) {
         let msgs: [MaybeUninit<u32>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();
         let mut msgs = unsafe { MaybeUninit::array_assume_init(msgs) };
-        msgs[0] = self.rpc_id.1;
+        msgs[0] = self.rpc_id.call_id;
 
-        let conn_id = self.rpc_id.0;
+        let conn_id = self.rpc_id.conn_id;
         let reclaim_wr = WorkRequest::ReclaimRecvBuf(conn_id, msgs);
         MRPC_CTX.with(move |ctx| {
             let mut sent = false;
@@ -63,7 +63,7 @@ impl<'a, T> RRef<'a, T> {
         let ptr_backend = ptr_app.with_addr(msg.shm_addr_backend);
         let backend_owned = ShmPtr::new(ptr_app, ptr_backend).unwrap();
 
-        let rpc_id = RpcId(msg.meta.conn_id, msg.meta.call_id);
+        let rpc_id = RpcId::new(msg.meta.conn_id, msg.meta.call_id, 0);
 
         // increase refcnt on the heap
         read_heap.increment_refcnt();

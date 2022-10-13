@@ -24,8 +24,13 @@ pub mod plugin;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;
+pub mod transport_rdma;
+
+pub mod scheduler;
 
 pub(crate) mod dependency;
 
 #[allow(unused)]
 pub mod timer;
+
+pub use rdma;

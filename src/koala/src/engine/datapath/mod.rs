@@ -15,4 +15,5 @@ pub(crate) use node::{
     create_datapath_channels, refactor_channels_attach_addon, refactor_channels_detach_addon,
 };
 
+pub mod fusion_layout;
 pub mod meta_pool;

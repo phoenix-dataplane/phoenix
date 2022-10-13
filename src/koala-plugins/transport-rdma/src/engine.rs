@@ -12,12 +12,13 @@ use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
-use rdma::ibv;
-use rdma::rdmacm;
+use koala::rdma;
+use koala::rdma::ibv;
+use koala::rdma::rdmacm;
 
 use super::module::CustomerType;
-use super::ops::Ops;
-use super::{ApiError, DatapathError, Error};
+use super::Error;
+use koala::transport_rdma::ops::Ops;
 
 use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
@@ -25,6 +26,7 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
+use koala::transport_rdma::{ApiError, DatapathError};
 use koala::{log, tracing};
 
 pub(crate) struct TransportEngine {
@@ -348,7 +350,7 @@ impl TransportEngine {
 
     fn get_completion_from_error(&self, wr: &dp::WorkRequest, e: DatapathError) -> dp::Completion {
         use interface::{WcStatus, WorkCompletion};
-        use rdma::ffi::ibv_wc_status;
+        use koala::rdma::ffi::ibv_wc_status;
         use std::num::NonZeroU32;
 
         let (cq_handle, wr_id) = self.get_dp_error_info(wr);

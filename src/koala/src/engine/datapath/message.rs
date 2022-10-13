@@ -3,6 +3,7 @@ use std::ptr::Unique;
 use interface::rpc::{MessageMeta, RpcId, TransportStatus};
 use interface::Handle;
 use ipc::mrpc::dp::RECV_RECLAIM_BS;
+use ipc::RawRdmaMsgTx;
 
 // use crate::mrpc::meta_pool::MetaBufferPtr;
 use super::meta_pool::MetaBufferPtr;
@@ -18,6 +19,9 @@ pub struct RpcMessageTx {
 pub enum EngineTxMessage {
     RpcMessage(RpcMessageTx),
     ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
+    // 0: &'static Ops
+    SchedMessage(usize, Handle, RawRdmaMsgTx),
+    ReclaimSchedFusedBuffer(RpcId),
 }
 
 #[derive(Debug)]

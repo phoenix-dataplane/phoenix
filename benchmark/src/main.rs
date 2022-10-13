@@ -84,6 +84,10 @@ struct Opt {
     /// Dry-run. Use this option to check the configs
     #[structopt(long)]
     dry_run: bool,
+
+    /// kill all threads if any thread ends
+    #[structopt(long)]
+    logical_and: bool,
 }
 
 fn open_with_create_append<P: AsRef<path::Path>>(path: P) -> fs::File {
@@ -121,6 +125,7 @@ fn wait_command(
     host: &str,
     stdout_writer: Option<fs::File>,
     stderr_writer: Option<fs::File>,
+    logical_and: bool,
 ) -> io::Result<()> {
     let start = Instant::now();
     let cmd_str = get_command_str(&cmd);
@@ -200,9 +205,21 @@ fn wait_command(
             thread::sleep(Duration::from_millis(1000));
 
             if let Some(kill_cmd) = kill_cmd.take() {
-                wait_command(kill_cmd, None, Duration::from_secs(2), "", None, None)?;
+                wait_command(
+                    kill_cmd,
+                    None,
+                    Duration::from_secs(2),
+                    "",
+                    None,
+                    None,
+                    false,
+                )?;
             }
         }
+    }
+
+    if logical_and {
+        *TERMINATE.lock().unwrap() = Some(Instant::now());
     }
 
     Ok(())
@@ -233,6 +250,7 @@ fn start_ssh(
     let cargo_dir = config.workdir.clone();
     let dry_run = opt.dry_run;
     let silent = opt.silent;
+    let logical_and = opt.logical_and;
 
     move || {
         // using stupid timers to enforce launch order.
@@ -325,6 +343,7 @@ fn start_ssh(
                 &host,
                 stdout_writer,
                 stderr_writer,
+                logical_and,
             )
             .unwrap();
         }
@@ -360,7 +379,7 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     log::debug!("building command: {}", cmd_str);
 
     let timeout_60s = Duration::from_secs(60);
-    wait_command(cargo_build_cmd, None, timeout_60s, "", None, None)?;
+    wait_command(cargo_build_cmd, None, timeout_60s, "", None, None, false)?;
     Ok(())
 }
 
@@ -524,6 +543,7 @@ extern "C" fn handle_sigint(sig: i32) {
 
 mod cleanup {
     use super::*;
+
     pub(crate) struct SttySane;
 
     impl SttySane {

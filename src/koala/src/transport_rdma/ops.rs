@@ -3,43 +3,52 @@
 use std::io;
 use std::net::SocketAddr;
 use std::slice;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use interface::{returned, AsHandle, Handle};
+use ipc::RawRdmaMsgTx;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use koala::engine::future;
-use koala::log;
+use crate::engine::future;
+use crate::transport_rdma::ApiError;
 
-use super::state::{EventChannel, Resource, State};
-use super::{ApiError, DatapathError};
+use crate::transport_rdma::state::{EventChannel, Resource, State};
+use crate::transport_rdma::DatapathError;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
+const ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
+
 pub struct Ops {
-    pub(crate) state: State,
+    pub id: u32,
+    pub state: State,
 }
 
 impl Clone for Ops {
     fn clone(&self) -> Self {
         let shared = Arc::clone(&self.state.shared);
         let state = State::new(shared);
-        Ops { state }
+        Ops { id: self.id, state }
     }
 }
 
 impl Ops {
-    pub(crate) fn new(state: State) -> Self {
-        Self { state }
+    pub fn new(state: State) -> Self {
+        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
+        Self { id, state }
     }
 
     #[inline]
     pub fn resource(&self) -> &Resource {
         &self.state.shared.resource
+    }
+
+    pub unsafe fn from_addr(addr: usize) -> &'static Self {
+        &*(addr as *const Self)
     }
 }
 
@@ -99,6 +108,28 @@ impl Ops {
         let flags: ibv::SendFlags = send_flags.into();
         cmid.post_send(wr_id, buf, &mr, flags.0)
             .map_err(DatapathError::RdmaCm)?;
+        Ok(())
+    }
+
+    /*
+     * NOT a general-purpose function. is_tail is part of the logic of RPC communication.
+     */
+    #[inline]
+    pub unsafe fn post_send_batch<'a, I>(
+        &self,
+        cmid_handle: Handle,
+        data: I,
+    ) -> std::result::Result<(), DatapathError>
+    where
+        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
+    {
+        self.resource()
+            .cmid_table
+            .get_dp(&cmid_handle)?
+            .qp()
+            .unwrap()
+            .post_send_batch(data)
+            .map_err(DatapathError::Ibv)?;
         Ok(())
     }
 
@@ -587,7 +618,7 @@ impl Ops {
             cq_context
         );
 
-        use super::state::DEFAULT_CTXS;
+        use crate::transport_rdma::state::DEFAULT_CTXS;
         let index = ctx.0 .0 as usize;
         if index >= DEFAULT_CTXS.len() {
             return Err(ApiError::NotFound);
@@ -720,7 +751,7 @@ impl Ops {
 
     pub fn get_default_contexts(&self) -> Result<Vec<returned::VerbsContext>> {
         log::debug!("GetDefaultContexts");
-        use super::state::DEFAULT_CTXS;
+        use crate::transport_rdma::state::DEFAULT_CTXS;
         let ctx_list = DEFAULT_CTXS
             .iter()
             .enumerate()
