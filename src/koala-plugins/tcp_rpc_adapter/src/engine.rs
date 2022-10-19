@@ -78,7 +78,6 @@ pub(crate) struct TcpRpcAdapterEngine {
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
     // pub(crate) start: std::time::Instant,
-
     pub(crate) rpc_ctx: Slab<RpcId>,
 }
 
@@ -626,10 +625,7 @@ impl TcpRpcAdapterEngine {
                             len: wc.byte_len as _,
                         };
                         conn_ctx.receiving_ctx.sg_list.0.push(sge);
-                        conn_ctx
-                            .receiving_ctx
-                            .recv_mrs
-                            .push(Handle(wc.wr_id));
+                        conn_ctx.receiving_ctx.recv_mrs.push(Handle(wc.wr_id));
 
                         if wc.imm != 0 {
                             // received an entire RPC message

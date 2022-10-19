@@ -102,10 +102,7 @@ impl Profile for ProfileService {
 
 impl ProfileService {
     #[inline]
-    async fn get_profiles_internal(
-        &self,
-        request: RRef<ProfileRequest>,
-    ) -> Result<ProfileResult> {
+    async fn get_profiles_internal(&self, request: RRef<ProfileRequest>) -> Result<ProfileResult> {
         let mut hotels = Vec::with_capacity(request.hotel_ids.len());
         for hotel_id in request.hotel_ids.iter() {
             let item: Option<String> = self.memc_client.get(hotel_id.as_str())?;

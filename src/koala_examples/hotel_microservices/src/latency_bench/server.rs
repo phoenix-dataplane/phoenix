@@ -19,10 +19,7 @@ pub struct GeoService;
 
 #[mrpc::async_trait]
 impl Geo for GeoService {
-    async fn nearby(
-        &self,
-        _request: RRef<GeoRequest>,
-    ) -> Result<WRef<GeoResult>, mrpc::Status> {
+    async fn nearby(&self, _request: RRef<GeoRequest>) -> Result<WRef<GeoResult>, mrpc::Status> {
         let mut points = Vec::with_capacity(5);
         for i in 0..5 {
             points.push(i.to_string().into())

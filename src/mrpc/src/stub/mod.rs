@@ -7,18 +7,18 @@ pub use interface::rpc::{MessageErased, MessageMeta, RpcMsgType};
 pub use ipc::mrpc::control_plane::TransportType;
 
 pub mod service;
-pub use service::{Service, NamedService, service_pre_handler, service_post_handler};
+pub use service::{service_post_handler, service_pre_handler, NamedService, Service};
 
 pub mod client;
 pub use client::ClientStub;
 
-pub mod server;
 pub mod local_server;
+pub mod server;
 pub use local_server::LocalServer;
 
-pub mod reactor;
 pub mod conn;
 pub mod pending;
+pub mod reactor;
 pub mod reply_cache;
 
 // We can make RpcData a private trait, and only mark it for compiler generated types.

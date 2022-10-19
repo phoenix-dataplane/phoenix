@@ -137,11 +137,7 @@ impl ClientStub {
 
 impl ClientStub {
     /// Dispatch one completion from the Receiver, and update PendingWRef and ReplyCache.
-    fn dispatch_one(
-        &self,
-        comp: &dp::Completion,
-        inner: &mut Inner,
-    ) -> Result<(), Error> {
+    fn dispatch_one(&self, comp: &dp::Completion, inner: &mut Inner) -> Result<(), Error> {
         match comp {
             &dp::Completion::Incoming(msg) => {
                 let call_id = msg.meta.call_id;

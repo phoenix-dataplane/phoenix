@@ -7,8 +7,8 @@ use dashmap::DashMap;
 use fnv::FnvBuildHasher;
 use nix::unistd::Pid;
 
-use interface::AsHandle;
 use interface::rpc::CallId;
+use interface::AsHandle;
 use mrpc_marshal::SgList;
 
 use salloc::region::AddressMediator;

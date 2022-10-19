@@ -198,7 +198,12 @@ impl Ops {
 
         for event in self.events_mut().iter() {
             let Token(handle) = event.token();
-            if self.state.listener_table.borrow().contains_key(&Handle(handle as _)) {
+            if self
+                .state
+                .listener_table
+                .borrow()
+                .contains_key(&Handle(handle as _))
+            {
                 if let Ok(handle) = self.try_accept(Handle(handle as _)) {
                     conns.push(handle);
                 }

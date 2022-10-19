@@ -1,6 +1,6 @@
 //! Local I/O reactor fetch completions from the backend mRPC service and
 //! dispatch the completions to corresponding completion queue.
-use std::task::{Poll, Context};
+use std::task::{Context, Poll};
 
 use fnv::FnvHashMap as HashMap;
 use slab::Slab;
@@ -9,8 +9,8 @@ use interface::Handle;
 use ipc::channel::{create_channel, ChannelFlavor, Receiver, Sender};
 use ipc::mrpc::dp;
 
-use crate::{Error, MRPC_CTX};
 use super::conn::Connection;
+use crate::{Error, MRPC_CTX};
 
 #[derive(Debug)]
 pub struct Reactor {
@@ -47,7 +47,6 @@ impl Reactor {
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize, Error>> {
         MRPC_CTX.with(|ctx| {
-
             // let has_work = futures::ready!(ctx.service.poll_wc_readable(cx))?;
             // if !has_work {
             //     return Poll::Pending;

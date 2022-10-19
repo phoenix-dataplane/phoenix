@@ -481,7 +481,7 @@ impl MrpcEngine {
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                            // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                // self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::Incoming(erased));
@@ -499,7 +499,7 @@ impl MrpcEngine {
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                            // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                // self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::Outgoing(rpc_id, status));
@@ -511,7 +511,7 @@ impl MrpcEngine {
                         let mut sent = false;
                         while !sent {
                             self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                            // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                // self.customer.notify_wc_with(|ptr, _count| unsafe {
                                 sent = true;
                                 ptr.cast::<dp::Completion>()
                                     .write(dp::Completion::RecvError(conn_id, status));

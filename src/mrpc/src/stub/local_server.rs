@@ -1,8 +1,8 @@
 use std::cell::RefCell;
+use std::future::Future;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::task::Poll;
-use std::future::Future;
 
 use fnv::FnvHashMap as HashMap;
 use futures::future::poll_fn;
@@ -41,7 +41,10 @@ pub struct LocalServer {
 
 impl Drop for LocalServer {
     fn drop(&mut self) {
-        eprintln!("do something with listener_handle {:?}", self.listener_handle);
+        eprintln!(
+            "do something with listener_handle {:?}",
+            self.listener_handle
+        );
     }
 }
 
