@@ -23,8 +23,8 @@ use koala::storage::{ResourceCollection, SharedStorage};
 use crate::cm::engine::CmEngine;
 use crate::config::RdmaTransportConfig;
 use crate::engine::TransportEngine;
-use koala::transport_rdma::ops::Ops;
-use koala::transport_rdma::state::{Shared, State};
+use crate::ops::Ops;
+use crate::state::{Shared, State};
 
 pub type CustomerType =
     Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -171,9 +171,10 @@ impl KoalaModule for RdmaTransportModule {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode: _,
+                    config_string,
                 } = request
                 {
-                    let engine = self.create_cm_engine(client_pid, node)?;
+                    let engine = self.create_cm_engine(client_pid, node, config_string)?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -186,10 +187,17 @@ impl KoalaModule for RdmaTransportModule {
                     client_path,
                     mode,
                     cred,
+                    config_string,
                 } = request
                 {
-                    let engine =
-                        self.create_transport_engine(sock, client_path, mode, node, cred)?;
+                    let engine = self.create_transport_engine(
+                        sock,
+                        client_path,
+                        mode,
+                        node,
+                        cred,
+                        config_string,
+                    )?;
                     Ok(Some(Box::new(engine)))
                 } else {
                     bail!("invalid request type")
@@ -232,6 +240,7 @@ impl RdmaTransportModule {
         mode: SchedulingMode,
         node: DataPathNode,
         cred: &UCred,
+        _config_string: Option<String>,
     ) -> Result<TransportEngine> {
         let uuid = Uuid::new_v4();
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
@@ -257,6 +266,7 @@ impl RdmaTransportModule {
         &mut self,
         client_pid: Pid,
         node: DataPathNode,
+        _config_string: Option<String>,
     ) -> Result<Option<CmEngine>> {
         let shared = self.state_mgr.get_or_create(client_pid)?;
 

@@ -180,7 +180,7 @@ impl HotelAclEngine {
                         // Should we Ack right after clone?
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                         let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
-                        let rpc_id = RpcId::new(conn_id, call_id, 0);
+                        let rpc_id = RpcId::new(conn_id, call_id);
                         if should_block(&private_req) {
                             let error = EngineRxMessage::Ack(
                                 rpc_id,

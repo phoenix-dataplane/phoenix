@@ -38,3 +38,12 @@ impl From<CustomSchedulingSpec> for SchedulingMode {
         }
     }
 }
+
+/// The user submits this hint to the backend. The content of this hint is subject to change.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SchedulingHint {
+    /// User desired scheduling mode.
+    pub mode: SchedulingMode,
+    /// The numa node the user thread affinites to.
+    pub numa_node_affinity: Option<u8>,
+}

@@ -413,9 +413,11 @@ impl From<crate::Error> for Status {
         // TODO(cjr): This mapping doesn't make sense at all.
         let code = match err {
             Service(..) | Interface(..) | Io(..) => Code::Internal,
+            Serde(..) => Code::InvalidArgument,
             NoAddrResolved => Code::NotFound,
             Connect(..) => Code::Unavailable,
             Disconnect(..) => Code::Internal,
+            ConnectionClosed => Code::Cancelled,
         };
         Status::new(code, err.to_string())
     }

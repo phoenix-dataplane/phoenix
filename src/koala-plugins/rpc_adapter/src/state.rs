@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::io;
-use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -9,23 +8,29 @@ use fnv::FnvBuildHasher;
 use nix::unistd::Pid;
 
 use interface::AsHandle;
+use interface::rpc::CallId;
 use mrpc_marshal::SgList;
 
 use salloc::region::AddressMediator;
 
-use koala::resource::{Error as ResourceError, ResourceTable, ResourceTableGeneric};
+use koala::local_resource::{LocalResourceTable, LocalResourceTableGeneric};
+use koala::resource::{Error as ResourceError, ResourceTable};
 use koala::state_mgr::ProcessShared;
 
 use super::pool::{BufferPool, RecvBuffer};
 use super::serialization::AddressMap;
 use super::ulib;
 
+// TODO(cjr): Currently we do not have concurrent access to State while upgrading. But we need to
+// be careful when this assumption does not hold in the future.
+unsafe impl Sync for State {}
+
 pub(crate) struct State {
     // per engine state
     pub(crate) rpc_adapter_id: usize,
     pub(crate) shared: Arc<Shared>,
     // per engine state
-    cq: Option<ulib::uverbs::CompletionQueue>,
+    local_resource: LocalResource,
 }
 
 impl State {
@@ -38,7 +43,7 @@ impl State {
         State {
             rpc_adapter_id,
             shared,
-            cq: None,
+            local_resource: LocalResource::new(),
         }
     }
 }
@@ -80,7 +85,7 @@ pub(crate) struct WrContext {
 #[derive(Debug)]
 
 pub(crate) struct ReqContext {
-    pub(crate) call_id: u32,
+    pub(crate) call_id: CallId,
     pub(crate) sg_len: usize,
 }
 
@@ -112,43 +117,26 @@ impl ConnectionContext {
     }
 }
 
-// NOTE: Pay attention to the drop order.
-pub struct Resource {
-    // rpc_adapter_id -> Queue of pre_cmid
-    pub(crate) pre_cmid_table: DashMap<usize, VecDeque<ulib::ucm::PreparedCmId>, FnvBuildHasher>,
-    pub(crate) staging_pre_cmid_table: ResourceTable<ulib::ucm::PreparedCmId>,
-    pub(crate) cmid_table: ResourceTable<ConnectionContext>,
-    // (rpc_adapter_id, CmIdListener)
-    pub(crate) listener_table: ResourceTable<(usize, ulib::ucm::CmIdListener)>,
+pub struct LocalResource {
+    pub(crate) cmid_table: LocalResourceTable<ConnectionContext>,
     // wr_id -> WrContext
-    pub(crate) wr_contexts: ResourceTableGeneric<u64, WrContext>,
-
+    pub(crate) wr_contexts: LocalResourceTableGeneric<u64, WrContext>,
+    // TODO(wyj): redesign these states
+    pub(crate) recv_buffer_table: LocalResourceTable<RecvBuffer>,
     // map from recv buffer's local addr (backend) to app addr (frontend)
     pub(crate) addr_map: AddressMap,
-    // TODO(wyj): redesign these states
-    pub(crate) recv_buffer_table: ResourceTable<RecvBuffer>,
-    // receive buffer pool
-    pub(crate) recv_buffer_pool: BufferPool,
-
-    // CQ poll, for referencing cqs of other engines. The real CQ is owned by the
-    // clone of the State of each engine.
-    // rpc_adapter_id -> CQ
-    pub(crate) cq_ref_table:
-        ResourceTableGeneric<usize, ManuallyDrop<ulib::uverbs::CompletionQueue>>,
+    // Per-thread CQ
+    pub(crate) cq: Option<ulib::uverbs::CompletionQueue>,
 }
 
-impl Resource {
-    fn new(addr_mediator: Arc<AddressMediator>) -> Self {
+impl LocalResource {
+    fn new() -> Self {
         Self {
-            pre_cmid_table: DashMap::default(),
-            staging_pre_cmid_table: ResourceTable::default(),
-            cmid_table: ResourceTable::default(),
-            listener_table: ResourceTable::default(),
-            wr_contexts: ResourceTableGeneric::default(),
+            cmid_table: LocalResourceTable::default(),
+            wr_contexts: LocalResourceTableGeneric::default(),
+            recv_buffer_table: LocalResourceTable::default(),
             addr_map: AddressMap::new(),
-            recv_buffer_table: ResourceTable::default(),
-            recv_buffer_pool: BufferPool::new(addr_mediator),
-            cq_ref_table: ResourceTableGeneric::default(),
+            cq: None,
         }
     }
 
@@ -163,10 +151,42 @@ impl Resource {
     }
 }
 
+// NOTE: Pay attention to the drop order.
+pub struct Resource {
+    // rpc_adapter_id -> Queue of pre_cmid
+    pub(crate) builder_table: DashMap<
+        usize,
+        VecDeque<ulib::ucm::CmIdBuilder<'static, 'static, 'static, 'static, 'static>>,
+        FnvBuildHasher,
+    >,
+    pub(crate) staging_pre_cmid_table: ResourceTable<ulib::ucm::PreparedCmId>,
+    // (rpc_adapter_id, CmIdListener)
+    pub(crate) listener_table: ResourceTable<(usize, ulib::ucm::CmIdListener)>,
+
+    // receive buffer pool
+    pub(crate) recv_buffer_pool: BufferPool,
+}
+
+impl Resource {
+    fn new(addr_mediator: Arc<AddressMediator>) -> Self {
+        Self {
+            builder_table: DashMap::default(),
+            staging_pre_cmid_table: ResourceTable::default(),
+            listener_table: ResourceTable::default(),
+            recv_buffer_pool: BufferPool::new(addr_mediator),
+        }
+    }
+}
+
 impl State {
     #[inline]
     pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
+    }
+
+    #[inline]
+    pub(crate) fn local_resource(&self) -> &LocalResource {
+        &self.local_resource
     }
 
     #[inline]
@@ -179,21 +199,27 @@ impl State {
         self.shared.stop_acceptor.store(stop, Ordering::Relaxed);
     }
 
-    pub(crate) fn get_or_init_cq(&mut self) -> &ulib::uverbs::CompletionQueue {
-        // this function is not supposed to be called concurrently.
-        if self.cq.is_none() {
-            // TODO(cjr): we currently by default use the first ibv_context.
-            let ctx_list = ulib::uverbs::get_default_verbs_contexts().unwrap();
-            let ctx = &ctx_list[0];
-            self.cq = Some(ctx.create_cq(1024, 0).unwrap());
-            let cq_handle = self.cq.as_ref().unwrap().as_handle();
-            let cq_ref =
-                ManuallyDrop::new(unsafe { ulib::uverbs::CompletionQueue::from_handle(cq_handle) });
-            self.resource()
-                .cq_ref_table
-                .insert(self.rpc_adapter_id, cq_ref)
-                .expect("cq in {self.rpc_adapter_id} already exists");
+    pub(crate) fn get_or_init_cq(
+        &mut self,
+        cq_size: i32,
+        cq_context: u64,
+        builder: &ulib::ucm::CmIdBuilder,
+    ) -> Result<&ulib::uverbs::CompletionQueue, super::ControlPathError> {
+        if self.local_resource().cq.is_none() {
+            // create a CQ on the same NIC
+            let cmid_verbs_ctx = builder.get_default_verbs_context()?;
+            let cq = cmid_verbs_ctx.create_cq(cq_size, cq_context).unwrap();
+            self.local_resource.cq = Some(cq);
         }
-        self.cq.as_ref().unwrap()
+
+        // Check whether the existing CQ is on the same NIC as the new cmid
+        let cq = self.local_resource().cq.as_ref().unwrap();
+        let cmid_verbs_ctx = builder.get_default_verbs_context()?;
+        assert_eq!(
+            cmid_verbs_ctx.as_handle(),
+            cq.get_verbs_context().unwrap().as_handle()
+        );
+
+        Ok(cq)
     }
 }

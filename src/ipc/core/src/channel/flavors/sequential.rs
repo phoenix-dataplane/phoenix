@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use super::super::channel::{SendError, TryRecvError};
+use super::super::{SendError, TryRecvError};
 
 #[derive(Debug)]
 pub(crate) struct Sender<T> {
@@ -58,6 +58,11 @@ impl<T> Receiver<T> {
             Some(t) => Ok(t),
             None => Err(TryRecvError::Empty),
         }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        let inner = self.shared.inner.borrow_mut();
+        inner.queue.is_empty()
     }
 }
 

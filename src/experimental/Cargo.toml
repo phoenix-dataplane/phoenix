@@ -45,6 +45,7 @@ contrie = "0.1.4"
 memfd = "0.4.1"
 socket2 = "0.4.7"
 mio = {version="0.8.4", features = ["os-poll", "net"]}
+sharded-slab = "0.1.4"
 
 [dev-dependencies]
 rand = "0.8.3"

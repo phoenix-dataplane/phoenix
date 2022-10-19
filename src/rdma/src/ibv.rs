@@ -3,21 +3,16 @@ use std::ffi::CStr;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
-use std::mem::MaybeUninit;
 use std::os::raw::c_void;
 use std::ptr;
 
 const PORT_NUM: u8 = 1;
-
-/// Maximum size of post by scheduler
-pub const POST_BUF_LEN: usize = 32;
 
 use crate::ffi;
 pub use ffi::ibv_qp_type;
 pub use ffi::ibv_wc;
 pub use ffi::ibv_wc_opcode;
 pub use ffi::ibv_wc_status;
-use ipc::RawRdmaMsgTx;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -58,7 +53,6 @@ pub fn devices() -> io::Result<DeviceList> {
 pub struct DeviceList(&'static mut [*mut ffi::ibv_device]);
 
 unsafe impl Sync for DeviceList {}
-
 unsafe impl Send for DeviceList {}
 
 impl Drop for DeviceList {
@@ -116,9 +110,7 @@ impl<'iter> Iterator for DeviceListIter<'iter> {
 
 /// An RDMA device.
 pub struct Device<'devlist>(&'devlist *mut ffi::ibv_device);
-
 unsafe impl<'devlist> Sync for Device<'devlist> {}
-
 unsafe impl<'devlist> Send for Device<'devlist> {}
 
 impl<'d> From<&'d *mut ffi::ibv_device> for Device<'d> {
@@ -222,7 +214,6 @@ pub struct Context {
 }
 
 unsafe impl Sync for Context {}
-
 unsafe impl Send for Context {}
 
 /// __safety__: The safety of this conversion depends on the validity of ibv_context.
@@ -230,6 +221,16 @@ impl AsRef<Context> for *mut ffi::ibv_context {
     fn as_ref(&self) -> &Context {
         assert!(!self.is_null());
         unsafe { mem::transmute::<&Self, &Context>(self) }
+    }
+}
+
+#[cfg(feature = "koala")]
+impl<'ctx> AsHandle for Context {
+    /// Returns the inner handle of this Context (ibv_context). We use ibv_context.cmd_fd as its
+    /// handle.
+    fn as_handle(&self) -> Handle {
+        assert!(!self.ctx.is_null());
+        Handle(unsafe { &*self.ctx }.cmd_fd as u64)
     }
 }
 
@@ -381,7 +382,6 @@ pub struct CompletionQueue<'ctx> {
 }
 
 unsafe impl<'a> Send for CompletionQueue<'a> {}
-
 unsafe impl<'a> Sync for CompletionQueue<'a> {}
 
 /// __safety__: The safety of this conversion depends on the validity of ibv_cq. That is,
@@ -398,7 +398,10 @@ impl<'ctx> AsHandle for CompletionQueue<'ctx> {
     /// Returns the inner handle of this CompletionQueue.
     fn as_handle(&self) -> Handle {
         assert!(!self.cq.is_null());
-        Handle(unsafe { &*self.cq }.handle)
+        let cq = unsafe { &*self.cq };
+        let ctx_handle = (&cq.context).as_ref().as_handle();
+        let cq_handle = cq.handle;
+        Handle(ctx_handle.0 << 32 | cq_handle as u64)
     }
 }
 
@@ -1044,12 +1047,9 @@ pub struct MemoryRegion<T> {
 }
 
 unsafe impl<T> Send for MemoryRegion<T> {}
-
 unsafe impl<T> Sync for MemoryRegion<T> {}
 
-use interface::rpc::ImmFlags;
 use std::ops::{Deref, DerefMut};
-
 impl<T> Deref for MemoryRegion<T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
@@ -1095,7 +1095,6 @@ pub struct ProtectionDomain<'ctx> {
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}
-
 unsafe impl<'a> Send for ProtectionDomain<'a> {}
 
 impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
@@ -1125,7 +1124,10 @@ impl<'ctx> AsHandle for ProtectionDomain<'ctx> {
     #[inline]
     fn as_handle(&self) -> Handle {
         assert!(!self.pd.is_null());
-        Handle(unsafe { &*self.pd }.handle)
+        let pd = unsafe { &*self.pd };
+        let ctx_handle = (&pd.context).as_ref().as_handle();
+        let pd_handle = pd.handle;
+        Handle(ctx_handle.0 << 32 | pd_handle as u64)
     }
 }
 
@@ -1259,7 +1261,6 @@ pub struct QueuePair<'res> {
 }
 
 unsafe impl<'a> Send for QueuePair<'a> {}
-
 unsafe impl<'a> Sync for QueuePair<'a> {}
 
 /// __safety__: The safety of this conversion depends on the validity of ibv_qp. That is,
@@ -1277,7 +1278,10 @@ impl<'res> AsHandle for QueuePair<'res> {
     #[inline]
     fn as_handle(&self) -> Handle {
         assert!(!self.qp.is_null());
-        Handle(unsafe { &*self.qp }.handle)
+        let qp = unsafe { &*self.qp };
+        let ctx_handle = (&qp.context).as_ref().as_handle();
+        let qp_handle = qp.handle;
+        Handle(ctx_handle.0 << 32 | qp_handle as u64)
     }
 }
 
@@ -1428,77 +1432,6 @@ impl<'res> QueuePair<'res> {
         }
     }
 
-    /// Posts a linked list of Work Requests (WRs) to the Send Queue of this Queue Pair.
-    /// BATCH Version. See `post_send` for more details.
-    ///
-    /// # Safety
-    ///
-    /// The memory region can only be safely reused or dropped after the request is fully executed
-    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
-    /// until `CompletionQueue::poll` returns a completion for this send).
-    ///
-    /// # Errors
-    ///
-    ///  - `EINVAL`: Invalid value provided in the Work Request.
-    ///  - `ENOMEM`: Send Queue is full or not enough resources to complete this operation.
-    ///  - `EFAULT`: Invalid value provided in `QueuePair`.
-    ///
-    /// [1]: http://www.rdmamojo.com/2013/01/26/ibv_post_send/
-    #[inline]
-    pub unsafe fn post_send_batch<'a, I>(&self, data: I) -> io::Result<()>
-    where
-        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
-    {
-        let data_length = data.len();
-        assert!(data_length <= POST_BUF_LEN);
-        let mut sge_arr: [ffi::ibv_sge; POST_BUF_LEN] = MaybeUninit::uninit().assume_init();
-        let mut wr_arr: [ffi::ibv_send_wr; POST_BUF_LEN] = MaybeUninit::uninit().assume_init();
-        for (i, entry) in data.enumerate() {
-            sge_arr[i] = ffi::ibv_sge {
-                addr: entry.range.offset,
-                length: (entry.range.len) as u32, // todo: 64 to 32, fix me
-                lkey: (&*(entry.mr as *mut ffi::ibv_mr)).lkey,
-            };
-            let will_signal =
-                entry.has_any(ImmFlags(ImmFlags::RPC_ENDING.0 | ImmFlags::FUSE_PKT.0));
-            wr_arr[i] = ffi::ibv_send_wr {
-                wr_id: entry.rpc_id.encode_u64(),
-                next: if i != data_length - 1 {
-                    &mut wr_arr[i + 1] as *mut _
-                } else {
-                    ptr::null::<ffi::ibv_send_wr>() as *mut _
-                },
-                sg_list: &mut sge_arr[i] as *mut _,
-                num_sge: 1,
-                opcode: ffi::ibv_wr_opcode::IBV_WR_SEND_WITH_IMM,
-                // till now, we have only RPC_ENDING and FUSING flags
-                send_flags: if will_signal {
-                    ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
-                } else {
-                    0
-                },
-                wr: Default::default(),
-                qp_type: Default::default(),
-                __bindgen_anon_1: ffi::ibv_send_wr__bindgen_ty_1 {
-                    imm_data: entry.rpc_id.flag_bits.0 as u32,
-                },
-                __bindgen_anon_2: Default::default(),
-            };
-        }
-
-        let mut bad_wr: *mut ffi::ibv_send_wr = ptr::null::<ffi::ibv_send_wr>() as *mut _;
-
-        let ctx = (&*self.qp).context;
-        let ops = &mut (&mut *ctx).ops;
-        let errno =
-            ops.post_send.as_mut().unwrap()(self.qp, wr_arr.as_mut_ptr(), &mut bad_wr as *mut _);
-        if errno != 0 {
-            Err(io::Error::from_raw_os_error(errno))
-        } else {
-            Ok(())
-        }
-    }
-
     /// Posts a linked list of Work Requests (WRs) to the Receive Queue of this Queue Pair.
     ///
     /// Generates a HW-specific Receive Request out of it and add it to the tail of the Queue
@@ -1590,7 +1523,6 @@ impl<'a> Drop for QueuePair<'a> {
 #[cfg(all(test, feature = "serde"))]
 mod test_serde {
     use super::*;
-
     #[test]
     fn encode_decode() {
         let qpe_default = QueuePairEndpoint {

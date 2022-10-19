@@ -167,6 +167,36 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
         Ok(builder)
     }
 
+    /// Can only be called after resolve_route.
+    pub(crate) fn get_default_verbs_context(&self) -> Result<uverbs::VerbsContext, Error> {
+        let ops = get_ops();
+        assert!(
+            self.handle.0 != Handle::INVALID,
+            "Something is being used wrongly, get_verbs_context must be called after resolve_route/get_request."
+        );
+        let cmid_handle = self.handle;
+        let sgid = ops.get_sgid(cmid_handle.0)?;
+        match ops.find_verbs_by_sgid(&sgid)? {
+            Some(ctx) => uverbs::VerbsContext::new(ctx),
+            None => panic!("default verbs context not found for sgid: {:?}", sgid),
+        }
+    }
+
+    /// Can only be called after resolve_route.
+    pub(crate) fn get_default_pd(&self) -> Result<uverbs::ProtectionDomain, Error> {
+        let ops = get_ops();
+        assert!(
+            self.handle.0 != Handle::INVALID,
+            "Something is being used wrongly, get_default_pd must be called after resolve_route/get_request."
+        );
+        let cmid_handle = self.handle;
+        let sgid = ops.get_sgid(cmid_handle.0)?;
+        match ops.find_pd_by_sgid(&sgid)? {
+            Some(pd) => uverbs::ProtectionDomain::open(pd),
+            None => panic!("default ProtectionDomain not found for sgid: {:?}", sgid),
+        }
+    }
+
     pub(crate) fn build(&self) -> Result<PreparedCmId, Error> {
         // create_qp
         let pd = self.pd.map(|pd| pd.inner);
@@ -390,6 +420,10 @@ macro_rules! impl_for_cmid {
             ) -> Result<uverbs::MemoryRegion<T>, Error> {
                 self.$member.alloc_read(len)
             }
+
+            pub(crate) fn get_pd(&self) -> Result<uverbs::ProtectionDomain, Error> {
+                self.$member.get_pd()
+            }
         }
     };
 }
@@ -441,5 +475,15 @@ impl Inner {
         self.qp
             .pd
             .allocate(len, AccessFlags::LOCAL_WRITE | AccessFlags::REMOTE_READ)
+    }
+
+    pub(crate) fn get_pd(&self) -> Result<uverbs::ProtectionDomain, Error> {
+        let ops = get_ops();
+        let cmid_handle = self.handle;
+        let sgid = ops.get_sgid(cmid_handle.0)?;
+        match ops.find_pd_by_sgid(&sgid)? {
+            Some(pd) => uverbs::ProtectionDomain::open(pd),
+            None => panic!("default ProtectionDomain not found for sgid: {:?}", sgid),
+        }
     }
 }

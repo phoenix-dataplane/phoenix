@@ -16,6 +16,8 @@ pub enum Error {
     NotFound,
     #[error("Resource exists in the table")]
     Exists,
+    #[error("Slab is full or the maximum number of shards has been reached, please adjust the slab's configuration")]
+    SlabFull,
 }
 
 #[derive(Debug)]
@@ -132,5 +134,134 @@ impl<K: Eq + std::hash::Hash, R> ResourceTableGeneric<K, R> {
             return Ok(Some(r.1.data()));
         }
         Ok(None)
+    }
+}
+
+use crate::page_padded::PagePadded;
+use sharded_slab::Slab;
+
+#[derive(Debug)]
+pub struct ResourceSlab<R> {
+    // fast path slab
+    slab: Arc<Slab<PagePadded<R>>>,
+    // slow path table, Handle -> key in the slab
+    table: ResourceTable<usize>,
+    // key -> Handle, this is like a weak reference
+    inverse_table: DashMap<usize, Handle>,
+}
+
+impl<R> Default for ResourceSlab<R> {
+    fn default() -> Self {
+        ResourceSlab {
+            slab: Arc::new(Slab::new()),
+            table: ResourceTable::default(),
+            inverse_table: DashMap::default(),
+        }
+    }
+}
+
+impl<R> Drop for ResourceSlab<R> {
+    fn drop(&mut self) {
+        for entry in self.inverse_table.iter() {
+            let k = entry.key();
+            // println!("dropping k: {}", k);
+            let _ = self.slab.remove(*k);
+        }
+    }
+}
+
+impl<R> ResourceSlab<R> {
+    pub fn insert(&self, r: R) -> Result<usize, Error> {
+        unsafe { libnuma_sys::numa_set_localalloc() };
+        match self.slab.insert(PagePadded::new(r)) {
+            Some(key) => {
+                let handle = Handle(key as u64);
+                self.associate(handle, key)?;
+                Ok(key)
+            }
+            None => Err(Error::SlabFull),
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, key: usize) -> Result<sharded_slab::OwnedEntry<PagePadded<R>>, Error> {
+        match Slab::get_owned(Arc::clone(&self.slab), key) {
+            Some(r) => Ok(r),
+            None => Err(Error::NotFound),
+        }
+    }
+
+    #[inline]
+    pub fn get_dp(&self, key: usize) -> Result<sharded_slab::Entry<'_, PagePadded<R>>, Error> {
+        match self.slab.get(key) {
+            Some(r) => Ok(r),
+            None => Err(Error::NotFound),
+        }
+    }
+
+    #[inline]
+    pub fn get_handle_from_key(&self, key: usize) -> Result<Handle, Error> {
+        let h = self.inverse_table.get(&key).ok_or(Error::NotFound)?;
+        Ok(*h)
+    }
+
+    pub fn open_resource_by_key(&self, key: usize) -> Result<(), Error> {
+        let h = self.inverse_table.get(&key).ok_or(Error::NotFound)?;
+        self.open_resource_by_handle(&h)
+    }
+
+    pub fn open_resource_by_handle(&self, h: &Handle) -> Result<(), Error> {
+        self.table.open_resource(h)
+    }
+
+    pub fn close_resource_by_key(&self, key: usize) -> Result<Option<PagePadded<R>>, Error> {
+        let href = self.inverse_table.get(&key).ok_or(Error::NotFound)?;
+        let handle = *href;
+        drop(href);
+        self.close_resource_by_handle(&handle)
+    }
+
+    pub fn close_resource_by_handle(&self, h: &Handle) -> Result<Option<PagePadded<R>>, Error> {
+        let close = self.table.close_resource(h)?;
+        if let Some(key) = close {
+            match self.slab.take(*key) {
+                Some(r) => {
+                    self.inverse_table.remove(&*key);
+                    Ok(Some(r))
+                }
+                None => Err(Error::NotFound),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[inline]
+    fn associate(&self, handle: Handle, key: usize) -> Result<(), Error> {
+        // log::warn!("handle: {:?}, key: {}", handle, key);
+        // log::warn!("self.inverse_table: {:?}", self.inverse_table);
+        if let Some(_) = self.inverse_table.insert(key, handle) {
+            return Err(Error::Exists);
+        }
+        // log::warn!("self.table: {:?}", self.table);
+        self.table.insert(handle, key)
+    }
+
+    /// Insert the value if the handle does not exist in the table. Otherwise, do nothing.
+    /// Returns the key in the slab.
+    pub fn occupy_or_create_resource(&self, h: Handle, r: R) -> Result<usize, Error> {
+        if let Ok(key) = self.table.get(&h) {
+            mem::forget(r);
+            Ok(*key)
+        } else {
+            unsafe { libnuma_sys::numa_set_localalloc() };
+            match self.slab.insert(PagePadded::new(r)) {
+                Some(key) => {
+                    self.associate(h, key)?;
+                    Ok(key)
+                }
+                None => Err(Error::SlabFull),
+            }
+        }
     }
 }

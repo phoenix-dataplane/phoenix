@@ -10,10 +10,12 @@ use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
 use ipc::customer::{Customer, ShmCustomer};
+use ipc::mrpc::control_plane::Setting;
 use ipc::mrpc::control_plane::TransportType;
 use ipc::mrpc::{cmd, dp};
 
 use koala::engine::{EnginePair, EngineType};
+use koala::log;
 use koala::module::{
     KoalaModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo, Version,
 };
@@ -206,6 +208,7 @@ impl KoalaModule for MrpcModule {
             client_path,
             mode,
             cred,
+            config_string,
         } = request
         {
             // generate a path and bind a unix domain socket to it
@@ -220,15 +223,26 @@ impl KoalaModule for MrpcModule {
             let client_pid = Pid::from_raw(cred.pid.unwrap());
             let shared_state = self.state_mgr.get_or_create(client_pid)?;
 
+            let setting = if let Some(config_string) = config_string {
+                serde_json::from_str(&config_string)?
+            } else {
+                Setting {
+                    transport: self.config.transport,
+                    nic_index: self.config.nic_index,
+                    core_id: None,
+                }
+            };
+            log::debug!("mRPC service setting: {:?}", setting);
+
+            let engine_type = match setting.transport {
+                TransportType::Tcp => EngineType("TcpRpcAdapterEngine"),
+                TransportType::Rdma => EngineType("RpcAdapterEngine"),
+            };
+
             // obtain senders/receivers of command queues with RpcAdapterEngine
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let engine_type = if self.config.transport == TransportType::Tcp {
-                EngineType("TcpRpcAdapterEngine")
-            } else {
-                EngineType("RpcAdapterEngine")
-            };
             let cmd_tx = shared.command_path.get_sender(&engine_type)?;
             let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
 
@@ -241,6 +255,7 @@ impl KoalaModule for MrpcModule {
                 node,
                 self.config.build_cache.clone(),
                 shared_state,
+                // TODO(cjr): store the setting, not necessary now.
             );
             let engine = builder.build()?;
 

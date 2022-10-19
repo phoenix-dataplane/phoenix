@@ -56,10 +56,11 @@ struct Opt {
     /// Percentage of range scans
     #[structopt(long)]
     range_req_percent: usize,
-    /// Server address, could be an IP address or domain name. If not specified, server will use
-    /// 0.0.0.0 and client will use 127.0.0.1
-    #[structopt(long)]
-    server_addr: Option<String>,
+    /// Server address, could be an IP address or domain name. If not specified, the client will
+    /// use 127.0.0.1; If multiple server addresses are specified, each client thread will connect
+    /// to one of the addresses.
+    #[structopt(long, default_value = "127.0.0.1")]
+    server_addr: Vec<String>,
     /// Server port
     #[structopt(long)]
     server_port: u16,
@@ -75,10 +76,16 @@ pub mod masstree_analytics {
 use crate::masstree_analytics::masstree_analytics_client::MasstreeAnalyticsClient;
 use crate::masstree_analytics::{PointRequest, RangeRequest};
 
+// Helper function for clients
 #[derive(Debug)]
 enum Query {
     Point(WRef<PointRequest>),
     Range(WRef<RangeRequest>),
+}
+
+#[derive(Debug)]
+struct Workload {
+    reqs: Vec<Query>,
 }
 
 // The keys in the index are 64-bit hashes of keys {0, ..., num_keys}.
@@ -94,25 +101,26 @@ fn get_random_key(num_keys: usize) -> u64 {
     })
 }
 
-// Helper function for clients
-fn generate_workload(opt: &Opt) -> Vec<Query> {
-    let mut workload = Vec::with_capacity(opt.req_window);
-    for i in 0..opt.req_window {
-        let key = get_random_key(opt.num_keys);
-        if fastrand::usize(..100) < opt.range_req_percent {
-            // Generate a range query
-            let req = RangeRequest {
-                key,
-                range: opt.range_size as _,
-            };
-            workload.push(Query::Range(WRef::with_token(Token(i), req)));
-        } else {
-            // Generate a point query
-            let req = PointRequest { key };
-            workload.push(Query::Point(WRef::with_token(Token(i), req)));
+impl Workload {
+    fn new(opt: &Opt) -> Self {
+        let mut reqs = Vec::with_capacity(opt.req_window);
+        for i in 0..opt.req_window {
+            let key = get_random_key(opt.num_keys);
+            if fastrand::usize(..100) < opt.range_req_percent {
+                // Generate a range query
+                let req = RangeRequest {
+                    key,
+                    range: opt.range_size as _,
+                };
+                reqs.push(Query::Range(WRef::with_token(Token(i), req)));
+            } else {
+                // Generate a point query
+                let req = PointRequest { key };
+                reqs.push(Query::Point(WRef::with_token(Token(i), req)));
+            }
         }
+        Self { reqs }
     }
-    workload
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +213,107 @@ impl Stats {
     }
 }
 
+fn run_client_thread(
+    tid: usize,
+    opt: &Opt,
+    stats: &[ArcSwap<CachePadded<Stats>>],
+) -> Result<(), mrpc::Status> {
+    // bind to NUMA node (tid % num_nodes)
+    mrpc::bind_to_node((tid % mrpc::num_numa_nodes()) as u8);
+
+    let mut client = Client::new(tid);
+
+    if tid == 0 {
+        println!("{}", Stats::header_str());
+    }
+
+    // TODO(cjr): eRPC sets up a dedicate connection to a server thread from each
+    // client to balance the load. This is not a common operation in other RPC
+    // frameworks (establishing connections to a particular server thread).
+    let stub = MasstreeAnalyticsClient::connect((
+        opt.server_addr[tid % opt.server_addr.len()].as_str(),
+        opt.server_port
+            + ((opt.process_id * opt.num_client_threads + tid) % opt.num_server_fg_threads) as u16,
+    ))?;
+    log::info!("main: Thread {}: Connected. Sending requests.", tid);
+
+    let mut req_ts = Vec::with_capacity(opt.req_window);
+    req_ts.resize_with(opt.req_window, || Instant::now());
+
+    let workload = Workload::new(&opt);
+
+    smol::block_on(async {
+        let start = Instant::now();
+        let dura = Duration::from_millis(opt.test_ms);
+        let mut timer = Instant::now();
+        let print_period = Duration::from_millis(PRINT_STATS_PERIOD_MS);
+
+        let mut point_resp = FuturesUnordered::new();
+        let mut range_resp = FuturesUnordered::new();
+        for query in &workload.reqs {
+            match query {
+                Query::Point(req) => {
+                    req_ts[req.token().0] = Instant::now();
+                    point_resp.push(stub.query_point(req));
+                }
+                Query::Range(req) => {
+                    req_ts[req.token().0] = Instant::now();
+                    range_resp.push(stub.query_range(req));
+                }
+            }
+        }
+
+        loop {
+            select! {
+                resp = point_resp.next() => {
+                    if resp.is_some() {
+                        let rref = resp.unwrap()?;
+                        let req_id = rref.token().0;
+                        // scale up to fit in the bucket
+                        let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
+                        client.num_resps_tot += 1;
+                        client.point_latency.update(usec);
+                        if let Query::Point(req) = &workload.reqs[req_id] {
+                            req_ts[req_id] = Instant::now();
+                            point_resp.push(stub.query_point(req));
+                        }
+                    }
+                }
+                resp = range_resp.next() => {
+                    if resp.is_some() {
+                        let rref = resp.unwrap()?;
+                        let req_id = rref.token().0;
+                        // scale up to fit in the bucket
+                        let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
+                        client.num_resps_tot += 1;
+                        client.range_latency.update(usec);
+                        if let Query::Range(req) = &workload.reqs[req_id] {
+                            req_ts[req_id] = Instant::now();
+                            range_resp.push(stub.query_range(req));
+                        }
+                    }
+                }
+                default => {
+                    if TERMINATE.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    if start.elapsed() > dura {
+                        break;
+                    }
+                    if timer.elapsed() > print_period {
+                        timer = Instant::now();
+                        client.print_stats(stats);
+                    }
+                }
+            };
+        }
+
+        client.point_latency.reset();
+        client.range_latency.reset();
+        Result::<(), mrpc::Status>::Ok(())
+    })
+}
+
 fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     // TODO(cjr): Note that eRPC also bind threads to core to reduce latency and jitters
     let mut stats = Vec::new();
@@ -218,101 +327,7 @@ fn run_client(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
             let tid = i;
             let opt = &opt;
             let stats = &stats;
-            handles.push(s.spawn(move || {
-                let mut client = Client::new(tid);
-
-                if tid == 0 {
-                    println!("{}", Stats::header_str());
-                }
-
-                // TODO(cjr): eRPC sets up a dedicate connection to a server thread from each
-                // client to balance the load. This is not a common operation in other RPC
-                // frameworks (establishing connections to a particular server thread).
-                let stub = MasstreeAnalyticsClient::connect((
-                    opt.server_addr.as_deref().unwrap_or("127.0.0.1"),
-                    opt.server_port
-                        + ((opt.process_id * opt.num_client_threads + tid)
-                            % opt.num_server_fg_threads) as u16,
-                ))?;
-                log::info!("main: Thread {}: Connected. Sending requests.", tid);
-
-                let mut req_ts = Vec::with_capacity(opt.req_window);
-                req_ts.resize_with(opt.req_window, || Instant::now());
-
-                let workload = generate_workload(&opt);
-                let local_ex = smol::LocalExecutor::new();
-
-                smol::block_on(local_ex.run(async {
-                    let start = Instant::now();
-                    let dura = Duration::from_millis(opt.test_ms);
-                    let mut timer = Instant::now();
-                    let print_period = Duration::from_millis(PRINT_STATS_PERIOD_MS);
-
-                    let mut point_resp = FuturesUnordered::new();
-                    let mut range_resp = FuturesUnordered::new();
-                    for query in &workload {
-                        match query {
-                            Query::Point(req) => {
-                                req_ts[req.token().0] = Instant::now();
-                                point_resp.push(local_ex.run(stub.query_point(req)))
-                            }
-                            Query::Range(req) => {
-                                req_ts[req.token().0] = Instant::now();
-                                range_resp.push(local_ex.run(stub.query_range(req)));
-                            }
-                        }
-                    }
-
-                    loop {
-                        select! {
-                            resp = point_resp.next() => {
-                                if resp.is_some() {
-                                    let rref = resp.unwrap()?;
-                                    let req_id = rref.token().0;
-                                    // scale up to fit in the bucket
-                                    let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
-                                    client.num_resps_tot += 1;
-                                    client.point_latency.update(usec);
-                                    if let Query::Point(req) = &workload[req_id] {
-                                        req_ts[req_id] = Instant::now();
-                                        point_resp.push(local_ex.run(stub.query_point(req)));
-                                    }
-                                }
-                            }
-                            resp = range_resp.next() => {
-                                if resp.is_some() {
-                                    let rref = resp.unwrap()?;
-                                    let req_id = rref.token().0;
-                                    // scale up to fit in the bucket
-                                    let usec = (req_ts[req_id].elapsed() * 10).as_micros() as usize;
-                                    client.num_resps_tot += 1;
-                                    client.range_latency.update(usec);
-                                    if let Query::Range(req) = &workload[req_id] {
-                                        req_ts[req_id] = Instant::now();
-                                        range_resp.push(local_ex.run(stub.query_range(req)));
-                                    }
-                                }
-                            }
-                            default => {
-                                if TERMINATE.load(Ordering::Relaxed) {
-                                    break;
-                                }
-                                if start.elapsed() > dura {
-                                    break;
-                                }
-                                if timer.elapsed() > print_period {
-                                    timer = Instant::now();
-                                    client.print_stats(stats);
-                                }
-                            }
-                        };
-                    }
-
-                    client.point_latency.reset();
-                    client.range_latency.reset();
-                    Result::<(), mrpc::Status>::Ok(())
-                }))
-            }));
+            handles.push(s.spawn(move || run_client_thread(tid, opt, stats)));
         }
     });
 

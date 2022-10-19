@@ -12,13 +12,12 @@ use interface::engine::SchedulingMode;
 use interface::{returned, AsHandle, Handle};
 use ipc::transport::rdma::{cmd, dp};
 
-use koala::rdma;
-use koala::rdma::ibv;
-use koala::rdma::rdmacm;
+// use rdma::ibv;
+use rdma::rdmacm;
 
 use super::module::CustomerType;
-use super::Error;
-use koala::transport_rdma::ops::Ops;
+use super::ops::Ops;
+use super::{ApiError, DatapathError, Error};
 
 use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};
@@ -26,7 +25,6 @@ use koala::envelop::ResourceDowncast;
 use koala::impl_vertex_for_engine;
 use koala::module::{ModuleCollection, Version};
 use koala::storage::{ResourceCollection, SharedStorage};
-use koala::transport_rdma::{ApiError, DatapathError};
 use koala::{log, tracing};
 
 pub(crate) struct TransportEngine {
@@ -301,7 +299,12 @@ impl TransportEngine {
             | WorkRequest::PostSendWithImm(cmid_handle, wr_id, ..) => {
                 // if the cq_handle does not exists at all, set it to
                 // Handle::INVALID.
-                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self
+                    .ops
+                    .resource()
+                    .cmid_table
+                    .get_dp(cmid_handle.0 as usize)
+                {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -312,7 +315,12 @@ impl TransportEngine {
                 }
             }
             WorkRequest::PostRecv(cmid_handle, wr_id, ..) => {
-                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self
+                    .ops
+                    .resource()
+                    .cmid_table
+                    .get_dp(cmid_handle.0 as usize)
+                {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.recv_cq().as_handle()), *wr_id)
                     } else {
@@ -324,7 +332,12 @@ impl TransportEngine {
             }
             WorkRequest::PollCq(cq_handle) => (*cq_handle, 0),
             WorkRequest::PostWrite(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self
+                    .ops
+                    .resource()
+                    .cmid_table
+                    .get_dp(cmid_handle.0 as usize)
+                {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -335,7 +348,12 @@ impl TransportEngine {
                 }
             }
             WorkRequest::PostRead(cmid_handle, _, wr_id, ..) => {
-                if let Ok(cmid) = self.ops.resource().cmid_table.get_dp(cmid_handle) {
+                if let Ok(cmid) = self
+                    .ops
+                    .resource()
+                    .cmid_table
+                    .get_dp(cmid_handle.0 as usize)
+                {
                     if let Some(qp) = cmid.qp() {
                         (interface::CompletionQueue(qp.send_cq().as_handle()), *wr_id)
                     } else {
@@ -350,7 +368,7 @@ impl TransportEngine {
 
     fn get_completion_from_error(&self, wr: &dp::WorkRequest, e: DatapathError) -> dp::Completion {
         use interface::{WcStatus, WorkCompletion};
-        use koala::rdma::ffi::ibv_wc_status;
+        use rdma::ffi::ibv_wc_status;
         use std::num::NonZeroU32;
 
         let (cq_handle, wr_id) = self.get_dp_error_info(wr);
@@ -399,8 +417,12 @@ impl TransportEngine {
     fn poll_cq_to_backup_buffer(
         &mut self,
         cq_handle: &interface::CompletionQueue,
-        cq: &ibv::CompletionQueue,
     ) -> Result<(), DatapathError> {
+        let cq = self
+            .ops
+            .resource()
+            .cq_table
+            .get_dp(cq_handle.0 .0 as usize)?;
         let mut wc: [rdma::ffi::ibv_wc; 1] = Default::default();
         loop {
             match cq.poll(&mut wc) {
@@ -456,16 +478,16 @@ impl TransportEngine {
         use dp::WorkRequest;
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
-                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
                 unsafe {
                     self.ops.post_recv(*cmid_handle, &rdma_mr, *range, *wr_id)?;
                 }
                 Ok(())
             }
             WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
-                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
                 unsafe {
                     self.ops
                         .post_send(*cmid_handle, &rdma_mr, *range, *wr_id, *send_flags)?;
@@ -473,8 +495,8 @@ impl TransportEngine {
                 Ok(())
             }
             WorkRequest::PostSendWithImm(cmid_handle, wr_id, range, mr_handle, send_flags, imm) => {
-                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
                 unsafe {
                     self.ops.post_send_with_imm(
                         *cmid_handle,
@@ -496,8 +518,8 @@ impl TransportEngine {
                 rkey,
                 send_flags,
             ) => {
-                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
                 unsafe {
                     self.ops.post_write(
                         *cmid_handle,
@@ -520,8 +542,8 @@ impl TransportEngine {
                 rkey,
                 send_flags,
             ) => {
-                let mr = self.ops.resource().mr_table.get_dp(mr_handle)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(&mr);
+                let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
                 unsafe {
                     self.ops.post_read(
                         *cmid_handle,
@@ -538,7 +560,6 @@ impl TransportEngine {
             WorkRequest::PollCq(cq_handle) => {
                 // trace!("cq_handle: {:?}", cq_handle);
                 self.try_flush_cq_err_buffer()?;
-                let cq = self.ops.resource().cq_table.get_dp(&cq_handle.0)?;
 
                 // Poll the completions and put them directly into the shared memory queue.
                 //
@@ -560,9 +581,14 @@ impl TransportEngine {
                         let write_count = self.customer.get_avail_wc_slots()?;
                         if write_count == 0 {
                             // unlikely
-                            self.poll_cq_to_backup_buffer(cq_handle, &cq)?;
+                            self.poll_cq_to_backup_buffer(cq_handle)?;
                         }
                     }
+                    let cq = self
+                        .ops
+                        .resource()
+                        .cq_table
+                        .get_dp(cq_handle.0 .0 as usize)?;
                     self.customer.enqueue_wc_with(|ptr, count| unsafe {
                         sent = true;
                         let mut cnt = 0;
@@ -678,14 +704,16 @@ impl TransportEngine {
 
                 let vaddr = mr.as_ptr().addr() as _;
                 let rkey = mr.rkey();
-                let new_mr_handle = mr.as_handle();
+                let raw_mr_handle = mr.as_handle();
                 let file_off = mr.file_off() as u64;
                 let pd_handle = mr.pd().as_handle();
-                self.ops
+                let key = self
+                    .ops
                     .resource()
                     .mr_table
-                    .insert(new_mr_handle, mr)
+                    .occupy_or_create_resource(raw_mr_handle, mr)
                     .map_err(ApiError::from)?;
+                let new_mr_handle = Handle(key as u64);
 
                 let ret_mr = returned::MemoryRegion {
                     handle: interface::MemoryRegion(new_mr_handle),
@@ -703,7 +731,7 @@ impl TransportEngine {
                 self.ops
                     .resource()
                     .mr_table
-                    .close_resource(&mr.0)
+                    .close_resource_by_key(mr.0 .0 as usize)
                     .map_err(ApiError::from)?;
                 Ok(CompletionKind::DeregMr)
             }

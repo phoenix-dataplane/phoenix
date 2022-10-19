@@ -2,6 +2,7 @@ use std::io;
 
 use thiserror::Error;
 
+use interface::engine::SchedulingHint;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
@@ -20,8 +21,13 @@ pub struct SAContext {
 
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
-        let service =
-            ShmService::register(&*KOALA_PREFIX, &*KOALA_CONTROL_SOCK, "Salloc".to_string())?;
+        let service = ShmService::register(
+            &*KOALA_PREFIX,
+            &*KOALA_CONTROL_SOCK,
+            "Salloc".to_string(),
+            SchedulingHint::default(),
+            None,
+        )?;
         Ok(Self { service })
     }
 }

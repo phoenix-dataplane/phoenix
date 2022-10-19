@@ -14,14 +14,14 @@ pub const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 ///
 /// Format:
 /// | meta | num_sge | value_len | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
-/// |  32  |    4    |     4     |                 EAGER_BUFFER_SIZE - 40              |
+/// |  40  |    4    |     4     |                 EAGER_BUFFER_SIZE - 48              |
 #[repr(C)]
 #[derive(Clone)]
 pub struct MetaBuffer {
     pub meta: MessageMeta,
     pub num_sge: u32,
     pub value_len: u32,
-    pub length_delimited: [u8; META_BUFFER_SIZE - 40],
+    pub length_delimited: [u8; META_BUFFER_SIZE - 48],
 }
 
 mod sa {

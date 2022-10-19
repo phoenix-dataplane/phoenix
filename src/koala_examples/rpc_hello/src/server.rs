@@ -14,9 +14,9 @@ struct MyGreeter;
 
 #[mrpc::async_trait]
 impl Greeter for MyGreeter {
-    async fn say_hello<'s>(
+    async fn say_hello(
         &self,
-        request: RRef<'s, HelloRequest>,
+        request: RRef<HelloRequest>,
     ) -> Result<WRef<HelloReply>, mrpc::Status> {
         eprintln!("request: {:?}", request);
 
@@ -31,7 +31,7 @@ impl Greeter for MyGreeter {
 
 fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
     smol::block_on(async {
-        let mut server = mrpc::stub::Server::bind("0.0.0.0:5000")?;
+        let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
         server
             .add_service(GreeterServer::new(MyGreeter::default()))
             .serve()

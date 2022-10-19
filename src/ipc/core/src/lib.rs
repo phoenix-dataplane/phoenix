@@ -20,9 +20,6 @@ pub mod control;
 /// Provides Range
 pub mod buf;
 
-pub mod rdma;
-pub use rdma::RawRdmaMsgTx;
-
 pub mod queue;
 
 /// Provides DomainSocket
@@ -36,6 +33,8 @@ pub(crate) use shmobj::ShmObject;
 pub mod customer;
 pub(crate) mod flavors;
 pub mod service;
+
+pub mod channel;
 
 #[derive(Debug, Error)]
 pub enum TryRecvError {

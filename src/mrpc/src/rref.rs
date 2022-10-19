@@ -5,36 +5,36 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use interface::rpc::{MessageErased, RpcId, Token};
+use interface::rpc::{CallId, MessageErased, RpcId, Token};
 use ipc::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 use shm::ptr::ShmPtr;
 
 use crate::ReadHeap;
 use crate::MRPC_CTX;
 
-pub type ShmView<'a, T> = RRef<'a, T>;
+pub type ShmView<T> = RRef<T>;
 
 #[derive(Debug)]
-struct RRefInner<'a, T> {
+struct RRefInner<T> {
     rpc_id: RpcId,
     /// User associated context.
     token: Token,
-    read_heap: &'a ReadHeap,
+    read_heap: Arc<ReadHeap>,
     data: ShmPtr<T>,
 }
 
 /// A thread-safe reference-counting pointer to the read-only shared memory heap.
-pub struct RRef<'a, T>(Arc<RRefInner<'a, T>>);
+pub struct RRef<T>(Arc<RRefInner<T>>);
 
 // TODO(cjr): double-check this: on dropping, the inner type should not call its deallocator
 // but the shared memory should be properly recycled by the backend
-impl<'a, T> Drop for RRefInner<'a, T> {
+impl<T> Drop for RRefInner<T> {
     fn drop(&mut self) {
-        let msgs: [MaybeUninit<u32>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();
+        let msgs: [MaybeUninit<CallId>; RECV_RECLAIM_BS] = MaybeUninit::uninit_array();
         let mut msgs = unsafe { MaybeUninit::array_assume_init(msgs) };
-        msgs[0] = self.rpc_id.call_id;
+        msgs[0] = self.rpc_id.1;
 
-        let conn_id = self.rpc_id.conn_id;
+        let conn_id = self.rpc_id.0;
         let reclaim_wr = WorkRequest::ReclaimRecvBuf(conn_id, msgs);
         MRPC_CTX.with(move |ctx| {
             let mut sent = false;
@@ -53,17 +53,17 @@ impl<'a, T> Drop for RRefInner<'a, T> {
     }
 }
 
-impl<'a, T> RRef<'a, T> {
+impl<T> RRef<T> {
     /// Constructs an `RRef<T>` from the given type-erased message on the read-only
     /// shared memory heap.
     #[must_use]
     #[inline]
-    pub fn new(msg: &MessageErased, read_heap: &'a ReadHeap) -> Self {
+    pub fn new(msg: &MessageErased, read_heap: Arc<ReadHeap>) -> Self {
         let ptr_app = msg.shm_addr_app as *mut T;
         let ptr_backend = ptr_app.with_addr(msg.shm_addr_backend);
         let backend_owned = ShmPtr::new(ptr_app, ptr_backend).unwrap();
 
-        let rpc_id = RpcId::new(msg.meta.conn_id, msg.meta.call_id, 0);
+        let rpc_id = RpcId::new(msg.meta.conn_id, msg.meta.call_id);
 
         // increase refcnt on the heap
         read_heap.increment_refcnt();
@@ -84,13 +84,13 @@ impl<'a, T> RRef<'a, T> {
     }
 }
 
-impl<'a, T> Clone for RRef<'a, T> {
+impl<T> Clone for RRef<T> {
     fn clone(&self) -> Self {
         RRef(Arc::clone(&self.0))
     }
 }
 
-impl<'a, T> Deref for RRef<'a, T> {
+impl<T> Deref for RRef<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -99,7 +99,7 @@ impl<'a, T> Deref for RRef<'a, T> {
 }
 
 // TODO(cjr): This lifetime looks problematic
-impl<'a, T> AsRef<T> for RRef<'a, T> {
+impl<T> AsRef<T> for RRef<T> {
     fn as_ref(&self) -> &T {
         // SAFETY: data is constructed from MessageErased on read heap. This expression is safe
         // only when the MessageErased is valid.
@@ -107,7 +107,7 @@ impl<'a, T> AsRef<T> for RRef<'a, T> {
     }
 }
 
-impl<'a, T: Clone> RRef<'a, T> {
+impl<T: Clone> RRef<T> {
     pub fn into_owned(self) -> T {
         // Clone to get an owned data structure
         // ManuallyDrop::clone(&self.inner).clone()
@@ -116,42 +116,42 @@ impl<'a, T: Clone> RRef<'a, T> {
     }
 }
 
-impl<'a, T: Eq> Eq for RRef<'a, T> {}
+impl<T: Eq> Eq for RRef<T> {}
 
-impl<'a, T: Ord> Ord for RRef<'a, T> {
+impl<T: Ord> Ord for RRef<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         Ord::cmp(&**self, &**other)
     }
 }
 
-impl<'a, 'b, A: PartialEq<B>, B> PartialEq<RRef<'b, B>> for RRef<'a, A> {
+impl<A: PartialEq<B>, B> PartialEq<RRef<B>> for RRef<A> {
     #[inline]
-    fn eq(&self, other: &RRef<'b, B>) -> bool {
+    fn eq(&self, other: &RRef<B>) -> bool {
         PartialEq::eq(&**self, &**other)
     }
 }
 
-impl<'a, T: PartialOrd> PartialOrd for RRef<'a, T> {
+impl<T: PartialOrd> PartialOrd for RRef<T> {
     #[inline]
     fn partial_cmp(&self, other: &RRef<T>) -> Option<Ordering> {
         PartialOrd::partial_cmp(&**self, &**other)
     }
 }
 
-impl<'a, T: fmt::Debug> fmt::Debug for RRef<'a, T> {
+impl<T: fmt::Debug> fmt::Debug for RRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<'a, T: fmt::Display> fmt::Display for RRef<'a, T> {
+impl<T: fmt::Display> fmt::Display for RRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl<'a, T: Hash> Hash for RRef<'a, T> {
+impl<T: Hash> Hash for RRef<T> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         Hash::hash(&**self, state)

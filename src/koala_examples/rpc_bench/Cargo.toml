@@ -20,6 +20,8 @@ futures = "0.3"
 smol = "1.2.5"
 minstant = "0.1.1"
 hdrhistogram = "7.5.0"
+scheduler = "0.1.3"
+libnuma = "0.0.4"
 
 
 [[bin]]

@@ -132,6 +132,7 @@ impl KoalaModule for TcpTransportModule {
                     client_path,
                     mode,
                     cred,
+                    config_string: _config_string,
                 } = request
                 {
                     let engine =

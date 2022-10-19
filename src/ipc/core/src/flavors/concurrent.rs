@@ -4,7 +4,6 @@
 use std::cell::RefCell;
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
@@ -180,10 +179,6 @@ where
     ) -> Result<(), Error> {
         self.dp_cq.send(f)?;
         Ok(())
-    }
-
-    pub(crate) fn wait_wr(&mut self, _timeout: Option<Duration>) -> Result<bool, Error> {
-        unimplemented!("You should probably use shm queue");
     }
 }
 

@@ -79,9 +79,9 @@ impl Drop for RateService {
 
 #[mrpc::async_trait]
 impl Rate for RateService {
-    async fn get_rates<'s>(
+    async fn get_rates(
         &self,
-        request: RRef<'s, RateRequest>,
+        request: RRef<RateRequest>,
     ) -> Result<WRef<RateResult>, mrpc::Status> {
         let start = Instant::now();
         let result = self
@@ -99,7 +99,7 @@ impl Rate for RateService {
 }
 
 impl RateService {
-    async fn get_rates_internal<'s>(&self, request: RRef<'s, RateRequest>) -> Result<RateResult> {
+    async fn get_rates_internal(&self, request: RRef<RateRequest>) -> Result<RateResult> {
         let mut rate_plans = Vec::new();
         for hotel_id in request.hotel_ids.iter() {
             let item: Option<String> = self.memc_client.get(hotel_id.as_str())?;

@@ -488,7 +488,10 @@ impl<'a> AsHandle for MemoryRegion<'a> {
     #[inline]
     fn as_handle(&self) -> Handle {
         assert!(!self.0.is_null());
-        Handle(unsafe { &*self.0 }.handle)
+        let mr = unsafe { &*self.0 };
+        let ctx_handle = (&mr.context).as_ref().as_handle();
+        let mr_handle = mr.handle;
+        Handle(ctx_handle.0 << 32 | mr_handle as u64)
     }
 }
 

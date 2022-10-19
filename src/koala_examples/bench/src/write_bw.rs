@@ -108,13 +108,41 @@ fn client_connect<A: ToSocketAddrs>(
 }
 
 fn run_client_thread(tid: usize, server_tid: usize, ctx: Context) -> Result<(), Error> {
-    let mut channels = Vec::with_capacity(ctx.opt.num_qp);
+    if !libnuma::initialize() {
+        panic!("NUMA is not available on the current system");
+    }
+
+    // bind to NUMA node (tid % num_nodes)
+    use libnuma::masks::indices::NodeIndex;
+    let num_numa_nodes = NodeIndex::number_of_nodes_permitted();
+    let numa_node_to_use = NodeIndex::new((tid % num_numa_nodes) as u8);
+    numa_node_to_use.run_current_thread_on_this();
+
+    // choose the NIC to use.
+    let num_nics = VerbsContext::default_verbs_contexts().len();
+    let nic_index = tid % num_nics;
+
+    // Notify the backend our choice of NIC
+    let mut setting = libkoala::transport::current_setting();
+    setting.nic_index = nic_index;
+    libkoala::transport::set(&setting);
+
+    libkoala::transport::set_schedulint_hint(&libkoala::transport::SchedulingHint {
+        mode: Default::default(),
+        numa_node_affinity: Some((tid % num_numa_nodes) as u8),
+    });
+
+    // TODO(cjr): update this
+    let connects = ["rdma0.danyang-06", "rdma1.danyang-06"];
+    let ip = connects[tid % connects.len()];
 
     // Create a global CQ
-    let cq = VerbsContext::default_verbs_contexts()[0].create_cq(65536, 0)?;
+    let cq = VerbsContext::default_verbs_contexts()[nic_index].create_cq(65536, 0)?;
+
+    let mut channels = Vec::with_capacity(ctx.opt.num_qp);
 
     // Establish connections
-    let server_addr = (ctx.opt.ip.as_str(), ctx.opt.port + server_tid as u16);
+    let server_addr = (ip, ctx.opt.port + server_tid as u16);
     for qp_id in 0..ctx.opt.num_qp {
         eprintln!(
             "tid: {}, qp_id: {} is connecting to {:?}",
@@ -212,8 +240,32 @@ fn server_accept(
 }
 
 fn run_server_thread(tid: usize, ctx: Context) -> Result<(), Error> {
+    if !libnuma::initialize() {
+        panic!("NUMA is not available on the current system");
+    }
+
+    // bind to NUMA node (tid % num_nodes)
+    use libnuma::masks::indices::NodeIndex;
+    let num_numa_nodes = NodeIndex::number_of_nodes_permitted();
+    let numa_node_to_use = NodeIndex::new((tid % num_numa_nodes) as u8);
+    numa_node_to_use.run_current_thread_on_this();
+
+    // choose the NIC to use.
+    let num_nics = VerbsContext::default_verbs_contexts().len();
+    let nic_index = tid % num_nics;
+
+    // Notify the backend our choice of NIC
+    let mut setting = libkoala::transport::current_setting();
+    setting.nic_index = nic_index;
+    libkoala::transport::set(&setting);
+
+    libkoala::transport::set_schedulint_hint(&libkoala::transport::SchedulingHint {
+        mode: Default::default(),
+        numa_node_affinity: Some((tid % num_numa_nodes) as u8),
+    });
+
     // Create a global CQ
-    let cq = VerbsContext::default_verbs_contexts()[0].create_cq(65536, 0)?;
+    let cq = VerbsContext::default_verbs_contexts()[nic_index].create_cq(65536, 0)?;
 
     // Each thread has one listener
     let listen_addr = (ctx.opt.ip.as_str(), ctx.opt.port + tid as u16);

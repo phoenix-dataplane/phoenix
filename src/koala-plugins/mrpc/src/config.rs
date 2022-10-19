@@ -11,6 +11,9 @@ pub struct MrpcConfig {
     #[serde(alias = "build_cache")]
     pub build_cache: PathBuf,
     pub transport: TransportType,
+    // use NIC 0 by default
+    #[serde(default)]
+    pub nic_index: usize,
 }
 
 impl MrpcConfig {

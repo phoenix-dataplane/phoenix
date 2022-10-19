@@ -64,9 +64,9 @@ impl Drop for SearchService {
 
 #[mrpc::async_trait]
 impl Search for SearchService {
-    async fn nearby<'s>(
+    async fn nearby(
         &self,
-        request: RRef<'s, SearchRequest>,
+        request: RRef<SearchRequest>,
     ) -> Result<WRef<SearchResult>, mrpc::Status> {
         let result = self
             .nearby_internal(request)
@@ -78,7 +78,7 @@ impl Search for SearchService {
 }
 
 impl SearchService {
-    async fn nearby_internal<'s>(&self, request: RRef<'s, SearchRequest>) -> Result<SearchResult> {
+    async fn nearby_internal(&self, request: RRef<SearchRequest>) -> Result<SearchResult> {
         log::trace!("in Search Nearby");
 
         log::trace!("nearby lat = {:.4}", request.lat);

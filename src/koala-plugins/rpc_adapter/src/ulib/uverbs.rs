@@ -38,6 +38,12 @@ pub struct VerbsContext {
     pub(crate) inner: interface::VerbsContext,
 }
 
+impl AsHandle for VerbsContext {
+    fn as_handle(&self) -> Handle {
+        self.inner.0
+    }
+}
+
 // Default verbs contexts are 'static, no need to drop and open them
 
 impl VerbsContext {
@@ -118,11 +124,9 @@ impl CompletionQueue {
         Ok(CompletionQueue { inner })
     }
 
-    /// Construct a CompletionQueue from raw handle.
-    pub(crate) unsafe fn from_handle(handle: Handle) -> Self {
-        CompletionQueue {
-            inner: interface::CompletionQueue(handle),
-        }
+    pub(crate) fn get_verbs_context(&self) -> Result<VerbsContext, Error> {
+        let returned_ctx = get_ops().get_verbs_for_cq(&self.inner)?;
+        VerbsContext::new(returned_ctx)
     }
 }
 

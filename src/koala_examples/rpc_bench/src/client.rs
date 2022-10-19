@@ -1,4 +1,5 @@
 #![feature(scoped_threads)]
+use std::future::Future;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use hdrhistogram::Histogram;
 use minstant::Instant;
 use structopt::StructOpt;
 
-use mrpc::alloc::Vec;
+use mrpc::stub::TransportType;
 use mrpc::WRef;
 
 pub mod rpc_hello {
@@ -18,14 +19,15 @@ pub mod rpc_hello {
     // include!("../../../mrpc/src/codegen.rs");
 }
 use rpc_hello::greeter_client::GreeterClient;
-use rpc_hello::HelloRequest;
+use rpc_hello::{HelloReply, HelloRequest};
 
 #[derive(StructOpt, Debug)]
 #[structopt(about = "Koala RPC hello client")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
-    #[structopt(short = "c", long = "connect", default_value = "192.168.211.194")]
-    pub ip: String,
+    /// When multiple addresses are specified, each client thread connects to one of them.
+    #[structopt(short = "c", long = "connect", default_value = "192.168.211.66")]
+    pub connects: Vec<String>,
 
     /// The port number to use.
     #[structopt(short, long, default_value = "5000")]
@@ -83,11 +85,35 @@ pub struct Args {
 // mod bench_app;
 // include!("./bench_app.rs");
 
+#[derive(Debug)]
+struct Call {
+    ts: Instant,
+    req_size: usize,
+    result: Result<mrpc::RRef<HelloReply>, mrpc::Status>,
+}
+
+fn make_rpc_call<'c>(
+    client: &'c GreeterClient,
+    workload: &'c Workload,
+    scnt: usize,
+) -> impl Future<Output = Call> + 'c {
+    let ts = Instant::now();
+    let (req, req_size) = workload.next_request(scnt);
+    let fut = client.say_hello(req);
+    async move {
+        Call {
+            ts,
+            req_size,
+            result: fut.await,
+        }
+    }
+}
+
 #[allow(unused)]
 async fn run_bench(
     args: &Args,
     client: &GreeterClient,
-    reqs: &[WRef<HelloRequest>],
+    workload: &Workload,
     tid: usize,
 ) -> Result<(Duration, usize, usize, Histogram<u64>), mrpc::Status> {
     macro_rules! my_print {
@@ -101,11 +127,6 @@ async fn run_bench(
     }
 
     let mut hist = hdrhistogram::Histogram::<u64>::new_with_max(60_000_000_000, 5).unwrap();
-
-    let mut rpc_size = vec![0; args.concurrency];
-    let mut starts = Vec::with_capacity(args.concurrency);
-    let now = Instant::now();
-    starts.resize(starts.capacity(), now);
 
     let mut reply_futures = FuturesUnordered::new();
 
@@ -131,11 +152,7 @@ async fn run_bench(
     let mut last_rcnt = 0;
 
     while scnt < args.concurrency && scnt < total_iters + args.warmup {
-        let slot = scnt;
-        starts[slot] = Instant::now();
-        let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
-        req.set_token(mrpc::Token(slot));
-        let fut = client.say_hello(req);
+        let fut = make_rpc_call(client, workload, scnt);
         reply_futures.push(fut);
         scnt += 1;
     }
@@ -147,26 +164,24 @@ async fn run_bench(
                     break;
                 }
 
-                let resp = resp.unwrap()?;
-                let slot = resp.token().0 % args.concurrency;
+                let Call { ts, req_size, result: resp } = resp.unwrap();
+                if let Err(status) = resp {
+                    tracing::warn!("failed request with: {}", status);
+                }
 
                 if rcnt >= args.warmup {
-                    let dura = starts[slot].elapsed();
+                    let dura = ts.elapsed();
                     let _ = hist.record(dura.as_nanos() as u64);
                 }
 
-                nbytes += rpc_size[slot];
+                nbytes += req_size;
                 rcnt += 1;
                 if rcnt == args.warmup {
                     warmup_end = Instant::now();
                 }
 
                 if scnt < total_iters + args.warmup {
-                    starts[slot] = Instant::now();
-                    rpc_size[slot] = args.req_size;
-                    let mut req = WRef::clone(&reqs[scnt % args.provision_count]);
-                    req.set_token(mrpc::Token(slot));
-                    let fut = client.say_hello(req);
+                    let fut = make_rpc_call(client, workload, scnt);
                     reply_futures.push(fut);
                     scnt += 1;
                 }
@@ -232,10 +247,34 @@ async fn run_bench(
     Ok((dura, nbytes, rcnt, hist))
 }
 
-fn run_client_thread(
-    tid: usize,
-    args: &Args,
-) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+struct Workload {
+    reqs: Vec<WRef<HelloRequest>>,
+    req_sizes: Vec<usize>,
+}
+
+impl Workload {
+    fn new(args: &Args) -> Self {
+        let mut reqs = Vec::new();
+        for _ in 0..args.provision_count {
+            let mut name = mrpc::alloc::Vec::with_capacity(args.req_size);
+            name.resize(args.req_size, 42);
+            let req = WRef::new(HelloRequest { name });
+            reqs.push(req);
+        }
+
+        Self {
+            reqs,
+            req_sizes: vec![args.req_size; args.provision_count],
+        }
+    }
+
+    fn next_request(&self, scnt: usize) -> (WRef<HelloRequest>, usize) {
+        let index = scnt % self.reqs.len();
+        (WRef::clone(&self.reqs[index]), self.req_sizes[index])
+    }
+}
+
+fn run_client_thread(tid: usize, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     macro_rules! my_print {
         ($($arg:tt)*) => {
             if args.log_level == "info" {
@@ -246,23 +285,21 @@ fn run_client_thread(
         }
     }
 
-    let client = GreeterClient::connect((
-        args.ip.as_str(),
-        args.port + (tid % args.num_server_threads) as u16,
-    ))?;
+    // bind to NUMA node (tid % num_nodes)
+    mrpc::bind_to_node((tid % mrpc::num_numa_nodes()) as u8);
+
+    // choose a server
+    let host = args.connects[tid % args.connects.len()].as_str();
+    let port = args.port + (tid % args.num_server_threads) as u16;
+
+    let client = GreeterClient::connect((host, port))?;
     eprintln!("connection setup for thread {tid}");
 
     smol::block_on(async {
-        // provision
-        let mut reqs = Vec::new();
-        for i in 0..args.provision_count {
-            let mut name = Vec::with_capacity(args.req_size);
-            name.resize(args.req_size, 42);
-            let req = WRef::with_token(mrpc::Token(i), HelloRequest { name });
-            reqs.push(req);
-        }
+        // initialize workload
+        let workload = Workload::new(args);
 
-        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
+        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &workload, tid).await?;
 
         my_print!(
             "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",
@@ -288,7 +325,7 @@ fn run_client_thread(
     Ok(())
 }
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::from_args();
     eprintln!("args: {:?}", args);
 

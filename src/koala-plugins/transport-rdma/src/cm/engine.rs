@@ -4,8 +4,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use koala::transport_rdma::state::State;
-use koala::transport_rdma::ApiError;
+use super::super::state::State;
+use super::super::ApiError;
 
 use koala::engine::datapath::node::DataPathNode;
 use koala::engine::{future, Decompose, Engine, EngineResult, Indicator};

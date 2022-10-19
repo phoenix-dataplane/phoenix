@@ -17,13 +17,16 @@ pub mod decompose;
 pub use decompose::Decompose;
 
 pub(crate) mod group;
-pub(crate) mod lb;
+pub(crate) use group::SchedulingGroup;
 
 pub(crate) mod runtime;
 pub use runtime::Indicator;
 
 pub(crate) mod upgrade;
-pub(crate) use group::SchedulingGroup;
+
+pub(crate) mod affinity;
+
+pub(crate) mod lb;
 
 pub type EngineResult = Result<(), Box<dyn std::error::Error>>;
 
