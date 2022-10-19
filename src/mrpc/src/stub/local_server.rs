@@ -133,7 +133,10 @@ impl LocalServer {
                         // check new requests, dispatch them to the executor
                         match LOCAL_REACTOR.with_borrow_mut(|r| r.poll(cx)) {
                             Poll::Ready(Ok(n)) if n > 0 => self.dispatch_requests(&mut running)?,
-                            _ => break Poll::Pending,
+                            _ => {
+                                cx.waker().wake_by_ref();
+                                break Poll::Pending
+                            }
                         }
                     }
                 } // end select
@@ -181,11 +184,13 @@ impl LocalServer {
                         // check new requests, dispatch them to the executor
                         match LOCAL_REACTOR.with_borrow_mut(|r| r.poll(cx)) {
                             Poll::Ready(Ok(n)) if n > 0 => self.dispatch_requests(&mut running)?,
-                            _ => break Poll::Pending,
+                            _ => {
+                                cx.waker().wake_by_ref();
+                                break Poll::Pending
+                            },
                         }
                     }
                 } // end select
-                todo!("yield");
             } // end loop
         })
         .await
