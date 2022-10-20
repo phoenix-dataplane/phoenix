@@ -15,12 +15,12 @@ pub trait Engine {
 
 pub struct MailBox;
 
-pub struct KoalaTransport {
+pub struct PhoenixTransport {
     input_queue: RingBuffer,
     mailbox: MailBox,
 }
 
-impl Engine for KoalaTransport {
+impl Engine for PhoenixTransport {
     fn version() {
         0
     }

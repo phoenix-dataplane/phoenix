@@ -2,7 +2,7 @@
 # refer to the root source directory of the project as ${HELLO_SOURCE_DIR} and
 # to the root binary directory of the project as ${HELLO_BINARY_DIR}.
 cmake_minimum_required(VERSION 3.0)
-project(koala)
+project(phoenix)
 
 # for clang's compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -21,4 +21,4 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 add_subdirectory(src/experimental)
 
 # masstree_analytics
-add_subdirectory(src/koala_examples/masstree_analytics/libmt_index)
+add_subdirectory(src/phoenix_examples/masstree_analytics/libmt_index)

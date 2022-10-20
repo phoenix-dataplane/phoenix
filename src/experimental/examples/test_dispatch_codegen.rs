@@ -2,10 +2,10 @@
 
 // use structopt::StructOpt;
 
-// use koala::mrpc::builder::build_serializer_lib;
+// use phoenix::mrpc::builder::build_serializer_lib;
 
 // const HELLO_PROTO: &'static str = include_str!("../proto/rpc_hello.proto");
-// const DEFAULT_CACHE_DIR: &'static str = "/tmp/koala_dispatch";
+// const DEFAULT_CACHE_DIR: &'static str = "/tmp/phoenix_dispatch";
 
 // #[derive(StructOpt)]
 // struct Opt {

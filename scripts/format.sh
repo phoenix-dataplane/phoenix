@@ -62,7 +62,7 @@ if [ "${1-}" == '--all' ]; then
 else
     # Add the origin remote if it doesn't exist
     if ! git remote -v | grep -q origin; then
-        git remote add 'origin' 'git@github.com:koalanet-project/koala.git'
+        git remote add 'origin' 'git@github.com:phoenix-dataplane/phoenix.git'
     fi
 
     # Only fetch master since that's the branch we're diffing against.

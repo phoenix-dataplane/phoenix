@@ -17,7 +17,7 @@ pub use ffi::ibv_wc_status;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 use interface::{AsHandle, Handle};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
@@ -224,7 +224,7 @@ impl AsRef<Context> for *mut ffi::ibv_context {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'ctx> AsHandle for Context {
     /// Returns the inner handle of this Context (ibv_context). We use ibv_context.cmd_fd as its
     /// handle.
@@ -393,7 +393,7 @@ impl<'a> AsRef<CompletionQueue<'a>> for *mut ffi::ibv_cq {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'ctx> AsHandle for CompletionQueue<'ctx> {
     /// Returns the inner handle of this CompletionQueue.
     fn as_handle(&self) -> Handle {
@@ -1109,7 +1109,7 @@ impl<'a> AsRef<ProtectionDomain<'a>> for *mut ffi::ibv_pd {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'ctx> ProtectionDomain<'ctx> {
     /// Exposes the inner pd structure.
     #[inline]
@@ -1118,7 +1118,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'ctx> AsHandle for ProtectionDomain<'ctx> {
     /// Returns the inner handle of this protection domain.
     #[inline]
@@ -1272,7 +1272,7 @@ impl<'a> AsRef<QueuePair<'a>> for *mut ffi::ibv_qp {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'res> AsHandle for QueuePair<'res> {
     /// Returns the inner handle of this QP.
     #[inline]

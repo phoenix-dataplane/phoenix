@@ -42,7 +42,7 @@ pub fn recv_fd(sock: &UnixDatagram) -> Result<Vec<RawFd>, Error> {
     let mut ancillary_buffer = [0; 128];
     let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
     let (_size, truncated) = sock.recv_vectored_with_ancillary(bufs, &mut ancillary)?;
-    // TODO(cjr): sanity check the sender, and see if it is the correct koala transport engine
+    // TODO(cjr): sanity check the sender, and see if it is the correct phoenix transport engine
 
     assert!(!truncated, "TODO: implement the logic to handle more fds");
     for ancillary_result in ancillary.messages() {

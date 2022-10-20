@@ -1,0 +1,25 @@
+name = "launch_phoenix"
+description = "Launch phoenix daemon"
+group = "launch_phoenix"
+timeout_secs = 600
+
+[[worker]]
+host = "danyang-06"
+bin = "phoenix"
+args = "-c eval/hotel-services/phoenix.toml"
+
+[[worker]]
+host = "danyang-05"
+bin = "phoenix"
+args = "-c eval/hotel-services/phoenix.toml"
+
+[[worker]]
+host = "danyang-04"
+bin = "phoenix"
+args = "-c eval/hotel-services/phoenix.toml"
+
+[[worker]]
+host = "danyang-03"
+bin = "phoenix"
+args = "-c eval/hotel-services/phoenix.toml"
+

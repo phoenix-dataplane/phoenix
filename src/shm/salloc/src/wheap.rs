@@ -358,7 +358,7 @@ mod region {
     use mmap::MmapFixed;
 
     use ipc::salloc::cmd::{Command, CompletionKind};
-    use libkoala::_rx_recv_impl as rx_recv_impl;
+    use libphoenix::_rx_recv_impl as rx_recv_impl;
 
     use super::{Error, SA_CTX};
 

@@ -1,18 +1,18 @@
 This folder contains scripts for benchmarking small RPC rate and
 scalability.
-**Edit config.toml and koala.toml first**
+**Edit config.toml and phoenix.toml first**
 
 1. Start backend
 ```
-./start_koala.sh [/tmp/mrpc-eval]
+./start_phoenix.sh [/tmp/mrpc-eval]
 ```
 
 2. Start traffic. This will traverse all the configs and generate
    results under `/tmp/mrpc-eval`.
 ```
 ./start_traffic_rdma.sh [/tmp/mrpc-eval]
-./start_koala_rdma.sh [/tmp/mrpc-eval]
-./start_koala_tcp.sh [/tmp/mrpc-eval]
+./start_phoenix_rdma.sh [/tmp/mrpc-eval]
+./start_phoenix_tcp.sh [/tmp/mrpc-eval]
 ./start_traffic_tcp.sh [/tmp/mrpc-eval] [danyang-06]
 ```
 

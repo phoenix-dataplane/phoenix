@@ -1,10 +1,10 @@
 This folder contains scripts for QoS policy.
-**Edit config.toml, koala_client.toml koala_server.toml first**
+**Edit config.toml, phoenix_client.toml phoenix_server.toml first**
 
 1. Start receiver backend on `danyang-06`. Start sender backend on
    `danyang-05`.
 ```
-cjr@danyang-05 $ ./start_koala.sh [/tmp/mrpc-eval]
+cjr@danyang-05 $ ./start_phoenix.sh [/tmp/mrpc-eval]
 ```
 
 2. Run QoS

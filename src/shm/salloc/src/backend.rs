@@ -6,12 +6,12 @@ use interface::engine::SchedulingHint;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
-use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
 thread_local! {
     /// Initialization is dynamically performed on the first call to with within a thread.
     #[doc(hidden)]
-    pub static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
+    pub static SA_CTX: SAContext = SAContext::register().expect("phoenix salloc register failed");
 }
 
 pub struct SAContext {

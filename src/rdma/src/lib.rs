@@ -64,8 +64,8 @@
 #![warn(rust_2018_idioms)]
 // avoid warnings about RDMAmojo, iWARP, InfiniBand, etc. not being in backticks
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::doc_markdown))]
-// allow int_roundings for koala
-#![cfg_attr(feature = "koala", feature(int_roundings))]
+// allow int_roundings for phoenix
+#![cfg_attr(feature = "phoenix", feature(int_roundings))]
 
 /// Direct access to low-level libverbs FFI.
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::missing_safety_doc))]
@@ -85,7 +85,7 @@ pub mod ibv;
 #[allow(missing_docs)]
 pub mod rdmacm;
 
-/// convert types from and to koala interface.
+/// convert types from and to phoenix interface.
 #[allow(missing_docs)]
 pub mod convert;
 #[allow(missing_docs)]

@@ -1,15 +1,15 @@
-# koala
+# phoenix
 
-[![Build Status](https://github.com/koalanet-project/koala/workflows/build/badge.svg)](https://github.com/koalanet-project/koala/actions)
+[![Build Status](https://github.com/phoenix-dataplane/phoenix/workflows/build/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions)
 
 Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, globally available.
 ```
 # apt install libclang-dev librdmacm-dev libibverbs-dev protobuf-compiler
 ```
 
-Start the koala backend service on all servers.
+Start the phoenix backend service on all servers.
 ```bash
-KOALA_LOG=info cargo rr --bin koala
+PHOENIX_LOG=info cargo rr --bin phoenix
 ```
 
 (Recommended) Run examples using benchmark launcher.

@@ -2,6 +2,6 @@
 	path = src/3rdparty/prost
 	url = git@github.com:phoenix-dataplane/prost.git
 	branch = mrpc
-[submodule "src/koala_examples/masstree_analytics/libmt_index/masstree-beta"]
-	path = src/koala_examples/masstree_analytics/libmt_index/masstree-beta
+[submodule "src/phoenix_examples/masstree_analytics/libmt_index/masstree-beta"]
+	path = src/phoenix_examples/masstree_analytics/libmt_index/masstree-beta
 	url = https://github.com/anujkaliaiitd/masstree-beta.git

@@ -21,10 +21,10 @@ use interface::Handle;
 use ipc::mrpc::control_plane::Setting;
 use ipc::mrpc::{cmd, dp};
 use ipc::service::ShmService;
-use libkoala::_rx_recv_impl as rx_recv_impl;
-use libkoala::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libphoenix::_rx_recv_impl as rx_recv_impl;
+use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
-pub use libkoala;
+pub use libphoenix;
 
 pub mod rheap;
 pub use rheap::ReadHeap;
@@ -55,7 +55,7 @@ thread_local! {
         SA_CTX.with(|_ctx| {
             // do nothing, just to ensure SA_CTX is initialized before MRPC_CTX
         });
-        Context::register(&current_setting()).expect("koala mRPC register failed")
+        Context::register(&current_setting()).expect("phoenix mRPC register failed")
     }
 }
 

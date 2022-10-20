@@ -1,8 +1,8 @@
-workdir = "~/nfs/koala"
+workdir = "~/nfs/phoenix"
 
 [env]
 RUST_BACKTRACE = "1"
 RUST_LOG_STYLE = "never"
 CARGO_TERM_COLOR = "never"
-KOALA_LOG = "info"
-KOALA_PREFIX = "/tmp/koala"
+PHOENIX_LOG = "info"
+PHOENIX_PREFIX = "/tmp/phoenix"

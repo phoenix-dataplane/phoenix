@@ -10,7 +10,7 @@ default = []
 timing = ["minstant"]
 
 [dependencies]
-libkoala = { path = "../libkoala" }
+libphoenix = { path = "../libphoenix" }
 interface = { path = "../interface" }
 ipc = { path = "../ipc", features = ["mrpc", "salloc", "customer"] }
 mmap = { path = "../mmap" }

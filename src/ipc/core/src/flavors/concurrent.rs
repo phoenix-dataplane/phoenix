@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::shmem_ipc::{RingReceiver, RingSender};
 use crate::{Error, IpcRecvError, IpcSendError, RecvFdError, TryRecvError};
 
-// TODO(cjr): make these configurable, see koala.toml
+// TODO(cjr): make these configurable, see phoenix.toml
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
 

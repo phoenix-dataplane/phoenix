@@ -164,7 +164,7 @@ impl DomainSocket {
         let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
         let (size, truncated, addr) =
             self.recv_vectored_with_ancillary_from(bufs, &mut ancillary)?;
-        // TODO(cjr): sanity check the sender, and see if it is the correct koala transport engine
+        // TODO(cjr): sanity check the sender, and see if it is the correct phoenix transport engine
 
         assert!(!truncated, "TODO: implement the logic to handle more fds");
 
@@ -216,7 +216,7 @@ impl DomainSocket {
         let mut ancillary_buffer = [0; ANCILLARY_BUFFER_SIZE];
         let mut ancillary = SocketAncillary::new(&mut ancillary_buffer[..]);
         let (_size, truncated) = self.recv_vectored_with_ancillary(bufs, &mut ancillary)?;
-        // TODO(cjr): sanity check the sender, and see if it is the correct koala transport engine
+        // TODO(cjr): sanity check the sender, and see if it is the correct phoenix transport engine
 
         assert!(!truncated, "TODO: implement the logic to handle more fds");
 

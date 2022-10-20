@@ -8,7 +8,7 @@
 //! ```toml
 //! [dependencies]
 //! # TODO(cjr): move mrpc to a separate crate, low priority
-//! libkoala = { path = <path-to-libkoala>, version = <libkoala-version> }
+//! libphoenix = { path = <path-to-libphoenix>, version = <libphoenix-version> }
 //! prost = { patht = <path-to-custom-prost>, features = ["mrpc"] }
 //!
 //! [build-dependencies]

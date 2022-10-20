@@ -1,5 +1,5 @@
 //! Shared memory region.
-#![cfg(feature = "koala")]
+#![cfg(feature = "phoenix")]
 use std::io;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};

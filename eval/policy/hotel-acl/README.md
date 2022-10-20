@@ -1,10 +1,10 @@
 This folder contains scripts for content-based-ACL policy.
-**Edit config.toml and koala.toml first**
+**Edit config.toml and phoenix.toml first**
 
 1. Start receiver backend on `danyang-06`. Start sender backend on
    `danyang-05`.
 ```
-cjr@danyang-05 $ ./start_koala.sh [/tmp/mrpc-eval]
+cjr@danyang-05 $ ./start_phoenix.sh [/tmp/mrpc-eval]
 ```
 
 2. Start traffic
