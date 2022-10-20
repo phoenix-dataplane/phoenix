@@ -3,52 +3,43 @@
 use std::io;
 use std::net::SocketAddr;
 use std::slice;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use interface::{returned, AsHandle, Handle};
-use ipc::RawRdmaMsgTx;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::engine::future;
-use crate::transport_rdma::ApiError;
+use koala::engine::future;
+use koala::log;
 
-use crate::transport_rdma::state::{EventChannel, Resource, State};
-use crate::transport_rdma::DatapathError;
+use super::state::{EventChannel, Resource, State};
+use super::{ApiError, DatapathError};
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
-const ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
-
 pub struct Ops {
-    pub id: u32,
-    pub state: State,
+    pub(crate) state: State,
 }
 
 impl Clone for Ops {
     fn clone(&self) -> Self {
         let shared = Arc::clone(&self.state.shared);
         let state = State::new(shared);
-        Ops { id: self.id, state }
+        Ops { state }
     }
 }
 
 impl Ops {
-    pub fn new(state: State) -> Self {
-        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
-        Self { id, state }
+    pub(crate) fn new(state: State) -> Self {
+        Self { state }
     }
 
     #[inline]
     pub fn resource(&self) -> &Resource {
         &self.state.shared.resource
-    }
-
-    pub unsafe fn from_addr(addr: usize) -> &'static Self {
-        &*(addr as *const Self)
     }
 }
 
@@ -69,7 +60,7 @@ impl Ops {
         //     user_buf,
         //     mr_handle
         // );
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
 
         // since post_recv itself is already unsafe, it is the user's responsibility to
         // make sure the received data is valid. The user must avoid post_recv a same
@@ -100,7 +91,7 @@ impl Ops {
         //     mr_handle,
         //     send_flags,
         // );
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
 
         // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
@@ -108,28 +99,6 @@ impl Ops {
         let flags: ibv::SendFlags = send_flags.into();
         cmid.post_send(wr_id, buf, &mr, flags.0)
             .map_err(DatapathError::RdmaCm)?;
-        Ok(())
-    }
-
-    /*
-     * NOT a general-purpose function. is_tail is part of the logic of RPC communication.
-     */
-    #[inline]
-    pub unsafe fn post_send_batch<'a, I>(
-        &self,
-        cmid_handle: Handle,
-        data: I,
-    ) -> std::result::Result<(), DatapathError>
-    where
-        I: ExactSizeIterator<Item = &'a RawRdmaMsgTx>,
-    {
-        self.resource()
-            .cmid_table
-            .get_dp(&cmid_handle)?
-            .qp()
-            .unwrap()
-            .post_send_batch(data)
-            .map_err(DatapathError::Ibv)?;
         Ok(())
     }
 
@@ -143,7 +112,7 @@ impl Ops {
         send_flags: interface::SendFlags,
         imm: u32,
     ) -> std::result::Result<(), DatapathError> {
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
 
         // let rdma_mr = rdmacm::MemoryRegion::from(&mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
@@ -165,7 +134,7 @@ impl Ops {
         remote_offset: u64,
         send_flags: interface::SendFlags,
     ) -> std::result::Result<(), DatapathError> {
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
 
         // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
@@ -189,7 +158,7 @@ impl Ops {
         remote_offset: u64,
         send_flags: interface::SendFlags,
     ) -> std::result::Result<(), DatapathError> {
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
 
         let remote_addr = rkey.addr + remote_offset;
         let flags: ibv::SendFlags = send_flags.into();
@@ -208,7 +177,7 @@ impl Ops {
         cq_handle: &interface::CompletionQueue,
         wc: &mut Vec<interface::WorkCompletion>,
     ) -> std::result::Result<(), DatapathError> {
-        let cq = self.resource().cq_table.get_dp(&cq_handle.0)?;
+        let cq = self.resource().cq_table.get_dp(cq_handle.0 .0 as usize)?;
         if wc.capacity() == 0 {
             log::warn!("wc capacity is zero");
             return Ok(());
@@ -231,6 +200,45 @@ impl Ops {
 
 // Control path APIs
 impl Ops {
+    pub fn get_sgid(&self, cmid_handle: Handle) -> Result<ibv::Gid> {
+        log::debug!("GetSgid, cmid_handle: {:?}", cmid_handle,);
+
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
+        Ok(cmid.sgid())
+    }
+
+    pub fn find_verbs_by_sgid(&self, sgid: &ibv::Gid) -> Result<Option<returned::VerbsContext>> {
+        log::debug!("FindVerbsBySgid, sgid: {:?}", sgid,);
+
+        Ok(self
+            .resource()
+            .default_verbs_context(sgid)
+            .map(|ctx| returned::VerbsContext { handle: ctx }))
+    }
+
+    pub fn find_pd_by_sgid(&self, sgid: &ibv::Gid) -> Result<Option<returned::ProtectionDomain>> {
+        log::debug!("FindPdBySgid, sgid: {:?}", sgid,);
+
+        Ok(self
+            .resource()
+            .default_pd(sgid)
+            .map(|pd| returned::ProtectionDomain { handle: pd }))
+    }
+
+    pub fn get_verbs_for_cq(
+        &self,
+        cq: &interface::CompletionQueue,
+    ) -> Result<returned::VerbsContext> {
+        let cq_handle = self
+            .resource()
+            .cq_table
+            .get_handle_from_key(cq.0 .0 as usize)?;
+        let verbs_ctx_handle = Handle(cq_handle.0 >> 32);
+        Ok(returned::VerbsContext {
+            handle: interface::VerbsContext(verbs_ctx_handle),
+        })
+    }
+
     pub fn get_addr_info(
         &mut self,
         node: Option<&str>,
@@ -289,7 +297,10 @@ impl Ops {
         port_space: interface::addrinfo::PortSpace,
     ) -> Result<(returned::CmId, returned::EventChannel)> {
         let returned_cmid = self.create_id(port_space)?;
-        let cmid = self.resource().cmid_table.get(&returned_cmid.handle.0)?;
+        let cmid = self
+            .resource()
+            .cmid_table
+            .get(returned_cmid.handle.0 .0 as usize)?;
         let ec_handle = cmid.event_channel().as_handle();
         Ok((
             returned_cmid,
@@ -353,13 +364,14 @@ impl Ops {
             backlog
         );
 
-        let listener = self.resource().cmid_table.get(&cmid_handle)?;
+        let listener = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         listener.listen(backlog).map_err(ApiError::RdmaCm)?;
         Ok(())
     }
 
     // Helper function.
     fn handle_connect_request(&self, event: rdmacm::CmEvent) -> Result<returned::CmId> {
+        log::debug!("handle_connect_request");
         let (new_cmid, new_qp) = event.get_request();
 
         // Create event channel for the new_cmid and migrate
@@ -398,7 +410,7 @@ impl Ops {
         log::debug!("GetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
-        let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
+        let listener_cmid = self.resource().cmid_table.get(listener_handle.0 as usize)?;
         let ec_handle = listener_cmid.event_channel().as_handle();
         let event = self.wait_cm_event(&ec_handle, event_type).await?;
 
@@ -410,7 +422,7 @@ impl Ops {
         // log::trace!("TryGetRequest, listener_handle: {:?}", listener_handle);
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_CONNECT_REQUEST;
-        let listener_cmid = self.resource().cmid_table.get(&listener_handle)?;
+        let listener_cmid = self.resource().cmid_table.get(listener_handle.0 as usize)?;
         let ec_handle = listener_cmid.event_channel().as_handle();
         let res = self.try_get_cm_event(&ec_handle, event_type);
         if res.is_none() {
@@ -451,7 +463,7 @@ impl Ops {
             conn_param
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         cmid.accept(self.get_conn_param(conn_param).as_ref())
             .map_err(ApiError::RdmaCm)?;
 
@@ -474,7 +486,7 @@ impl Ops {
             conn_param
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         cmid.connect(self.get_conn_param(conn_param).as_ref())
             .map_err(ApiError::RdmaCm)?;
 
@@ -493,7 +505,7 @@ impl Ops {
             sockaddr
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         cmid.bind_addr(sockaddr).map_err(ApiError::RdmaCm)?;
         Ok(())
     }
@@ -505,7 +517,7 @@ impl Ops {
             sockaddr
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         cmid.resolve_addr(sockaddr).map_err(ApiError::RdmaCm)?;
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ADDR_RESOLVED;
@@ -522,7 +534,7 @@ impl Ops {
             timeout_ms
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         cmid.resolve_route(timeout_ms).map_err(ApiError::RdmaCm)?;
 
         let event_type = rdma::ffi::rdma_cm_event_type::RDMA_CM_EVENT_ROUTE_RESOLVED;
@@ -545,7 +557,7 @@ impl Ops {
             qp_init_attr
         );
 
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
 
         let pd = pd.cloned().or_else(|| {
             // use the default pd of the corresponding device
@@ -567,7 +579,7 @@ impl Ops {
 
     /// Must be set before resolve_addr
     pub fn set_tos(&self, cmid_handle: Handle, tos: u8) -> Result<()> {
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         // assert!(cmid.qp().is_some(), "this must be called after QP is created");
         cmid.set_tos(tos).map_err(ApiError::RdmaCm)?;
         Ok(())
@@ -575,7 +587,7 @@ impl Ops {
 
     /// Must be after connect/accept
     pub fn set_rnr_timeout(&self, cmid_handle: Handle, min_rnr_timer: u8) -> Result<()> {
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         // assert!(cmid.qp().is_some(), "this must be called after QP is created");
         cmid.set_rnr_timeout(min_rnr_timer)
             .map_err(ApiError::RdmaCm)?;
@@ -618,23 +630,29 @@ impl Ops {
             cq_context
         );
 
-        use crate::transport_rdma::state::DEFAULT_CTXS;
-        let index = ctx.0 .0 as usize;
-        if index >= DEFAULT_CTXS.len() {
-            return Err(ApiError::NotFound);
-        }
+        use super::state::DEFAULT_CTXS;
+        let verbs = match DEFAULT_CTXS
+            .iter()
+            .find(|c| c.pinned_ctx.verbs.as_handle() == ctx.0)
+        {
+            Some(c) => &c.pinned_ctx.verbs,
+            None => return Err(ApiError::NotFound),
+        };
 
-        let verbs = &DEFAULT_CTXS[index].pinned_ctx.verbs;
         let cq = verbs
             .create_cq(min_cq_entries, cq_context as _)
             .map_err(ApiError::Ibv)?;
-        let handle = cq.as_handle();
-        self.resource()
+        let raw_handle = cq.as_handle();
+        let key = self
+            .resource()
             .cq_table
-            .occupy_or_create_resource(handle, cq);
+            .occupy_or_create_resource(raw_handle, cq)?;
+
+        // let cq_handle = Handle(self.resource().cq_table.shortkey(key)?);
+        let cq_handle = Handle(key as u64);
 
         Ok(returned::CompletionQueue {
-            handle: interface::CompletionQueue(handle),
+            handle: interface::CompletionQueue(cq_handle),
         })
     }
 
@@ -646,7 +664,9 @@ impl Ops {
 
     pub fn destroy_cq(&self, cq: &interface::CompletionQueue) -> Result<()> {
         log::debug!("DestroyCq, cq: {:?}", cq);
-        self.resource().cq_table.close_resource(&cq.0)?;
+        self.resource()
+            .cq_table
+            .close_resource_by_key(cq.0 .0 as usize)?;
         Ok(())
     }
 
@@ -663,11 +683,12 @@ impl Ops {
         log::debug!("Disconnect, cmid: {:?}", cmid);
 
         let cmid_handle = cmid.0;
-        let cmid = self.resource().cmid_table.get(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get(cmid_handle.0 as usize)?;
         // use the context to distinguish if the connection is disconnected
         if let Ok(0) =
             unsafe { &*cmid.context() }.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
         {
+            log::debug!("calling disconnect");
             cmid.disconnect().map_err(ApiError::RdmaCm)?;
         }
 
@@ -685,7 +706,10 @@ impl Ops {
         // NOTE(cjr): Must drop the buffer in event_channel first to rdma_ack_cm_event. Otherwise,
         // the dropping of CmId will be blocked. This will block multiple engines including
         // rpc_adapter::AcceptorEngine and CmEngine.
-        let maybe_id = self.resource().cmid_table.close_resource(&cmid.0)?;
+        let maybe_id = self
+            .resource()
+            .cmid_table
+            .close_resource_by_key(cmid.0 .0 as usize)?;
 
         // NOTE(cjr): This code following is very ugly. Ultimately the goal is to drop CmEvents
         // before destroying CmId before dropping EventChannel
@@ -726,8 +750,10 @@ impl Ops {
 
     pub fn open_cq(&self, cq: &interface::CompletionQueue) -> Result<u32> {
         log::trace!("OpenCq, cq: {:?}", cq);
-        self.resource().cq_table.open_resource(&cq.0)?;
-        let cq = self.resource().cq_table.get(&cq.0)?;
+        self.resource()
+            .cq_table
+            .open_resource_by_key(cq.0 .0 as usize)?;
+        let cq = self.resource().cq_table.get(cq.0 .0 as usize)?;
         Ok(cq.capacity())
     }
 
@@ -742,7 +768,6 @@ impl Ops {
         let pds = self
             .resource()
             .default_pds
-            .lock()
             .iter()
             .map(|(pd, _gids)| returned::ProtectionDomain { handle: *pd })
             .collect();
@@ -751,12 +776,11 @@ impl Ops {
 
     pub fn get_default_contexts(&self) -> Result<Vec<returned::VerbsContext>> {
         log::debug!("GetDefaultContexts");
-        use crate::transport_rdma::state::DEFAULT_CTXS;
+        use super::state::DEFAULT_CTXS;
         let ctx_list = DEFAULT_CTXS
             .iter()
-            .enumerate()
-            .map(|(i, _)| returned::VerbsContext {
-                handle: interface::VerbsContext(Handle(i as _)),
+            .map(|c| returned::VerbsContext {
+                handle: interface::VerbsContext(c.pinned_ctx.verbs.as_handle()),
             })
             .collect();
         Ok(ctx_list)
@@ -786,19 +810,20 @@ impl Ops {
         };
         let qp_init_attr = if let Some(a) = qp_init_attr {
             let send_cq = if let Some(ref h) = a.send_cq {
-                Some(self.resource().cq_table.get(&h.0)?)
+                Some(self.resource().cq_table.get(h.0 .0 as usize)?)
             } else {
                 None
             };
             let recv_cq = if let Some(ref h) = a.recv_cq {
-                Some(self.resource().cq_table.get(&h.0)?)
+                Some(self.resource().cq_table.get(h.0 .0 as usize)?)
             } else {
                 None
             };
+            use std::ops::Deref;
             let attr = ibv::QpInitAttr {
                 qp_context: 0,
-                send_cq: send_cq.as_deref(),
-                recv_cq: recv_cq.as_deref(),
+                send_cq: send_cq.as_ref().map(|x| x.deref().deref()),
+                recv_cq: recv_cq.as_ref().map(|x| x.deref().deref()),
                 cap: a.cap.into(),
                 qp_type: a.qp_type.into(),
                 sq_sig_all: a.sq_sig_all,
@@ -928,28 +953,28 @@ impl Ops {
     #[inline]
     pub fn get_local_addr(&self, cmid: &interface::CmId) -> Result<SocketAddr> {
         let cmid_handle = cmid.0;
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
         Ok(cmid.get_local_addr())
     }
 
     #[inline]
     pub fn get_peer_addr(&self, cmid: &interface::CmId) -> Result<SocketAddr> {
         let cmid_handle = cmid.0;
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
         Ok(cmid.get_peer_addr())
     }
 
     #[inline]
     pub fn get_src_port(&self, cmid: &interface::CmId) -> Result<u16> {
         let cmid_handle = cmid.0;
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
         Ok(cmid.get_src_port())
     }
 
     #[inline]
     pub fn get_dst_port(&self, cmid: &interface::CmId) -> Result<u16> {
         let cmid_handle = cmid.0;
-        let cmid = self.resource().cmid_table.get_dp(&cmid_handle)?;
+        let cmid = self.resource().cmid_table.get_dp(cmid_handle.0 as usize)?;
         Ok(cmid.get_dst_port())
     }
 }

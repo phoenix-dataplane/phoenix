@@ -12,13 +12,16 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+#[cfg(feature = "customer")]
+use std::task::{Context, Poll};
+
 use crossbeam::atomic::AtomicCell;
 use minstant::Instant;
 use uuid::Uuid;
 
 use serde::{Deserialize, Serialize};
 
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingHint, SchedulingMode};
 
 use crate::control;
 use crate::ipc_channel::{IpcReceiver, IpcSender, IpcSenderNotify};
@@ -81,8 +84,6 @@ pub struct Customer<Command, Completion, WorkRequest, WorkCompletion> {
     dp_cq: ShmSender<WorkCompletion>,
     timer: Instant,
     fd_notifier: ShmObject<AtomicUsize>,
-    poll: mio::Poll,
-    events: mio::Events,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -176,14 +177,6 @@ where
             ],
         )?;
 
-        let poll = mio::Poll::new()?;
-        poll.registry().register(
-            &mut mio::unix::SourceFd(&dp_wq.empty_signal().as_raw_fd()),
-            mio::Token(0),
-            mio::Interest::READABLE,
-        )?;
-        let events = mio::Events::with_capacity(1);
-
         // 9. finally, we are done here
         Ok(Self {
             client_path: client_path.as_ref().to_path_buf(),
@@ -195,8 +188,6 @@ where
             dp_cq,
             timer: Instant::now(),
             fd_notifier,
-            poll,
-            events,
         })
     }
 
@@ -275,29 +266,6 @@ where
         self.dp_cq.sender_mut().send(f)?;
         Ok(())
     }
-
-    /// For CPU efficient scenarios.
-    pub fn wait_wr(&mut self, timeout: Option<Duration>) -> Result<bool, Error> {
-        let s = self.dp_wq.receiver_mut().read_count()?;
-        if s > 0 {
-            return Ok(true);
-        };
-
-        self.poll.poll(&mut self.events, timeout)?;
-
-        if self.events.is_empty() {
-            return Ok(false);
-        }
-
-        use std::io::Read;
-        let mut b = [0u8; 8];
-        self.dp_wq.empty_signal().read(&mut b)?;
-
-        // reregister READ if something does not work
-
-        let s = self.dp_wq.receiver_mut().read_count()?;
-        Ok(s > 0)
-    }
 }
 
 /// A `Service` sends Command (contorl path) and WorkRequest (datapath)
@@ -313,8 +281,8 @@ pub struct Service<Command, Completion, WorkRequest, WorkCompletion> {
     timer: AtomicCell<Instant>,
     cmd_rx_entries: ShmObject<AtomicUsize>,
     fd_notifier: ShmObject<AtomicUsize>,
-    poll: RefCell<mio::Poll>,
-    events: RefCell<mio::Events>,
+    #[cfg(feature = "customer")]
+    dp_cq_eventfd: async_io::Async<RawFd>,
 }
 
 impl<Command, Completion, WorkRequest, WorkCompletion>
@@ -338,6 +306,8 @@ where
         koala_prefix: P,
         control_path: P,
         service: String,
+        hint: SchedulingHint,
+        config_str: Option<&str>,
     ) -> Result<Self, Error> {
         let uuid = Uuid::new_v4();
         let arg0 = env::args().next().unwrap();
@@ -351,7 +321,7 @@ where
         }
         let mut sock = DomainSocket::bind(sock_path)?;
 
-        let req = control::Request::NewClient(SchedulingMode::Dedicate, service);
+        let req = control::Request::NewClient(hint, service, config_str.map(|s| s.to_string()));
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
 
@@ -438,13 +408,8 @@ where
                 let cmd_tx_entries = ShmObject::open(cmd_tx_notify_memfd)?;
                 let fd_notifier = ShmObject::open(fd_notifier_memfd)?;
 
-                let poll = mio::Poll::new()?;
-                poll.registry().register(
-                    &mut mio::unix::SourceFd(&dp_cq.empty_signal().as_raw_fd()),
-                    mio::Token(0),
-                    mio::Interest::READABLE,
-                )?;
-                let events = RefCell::new(mio::Events::with_capacity(1));
+                #[cfg(feature = "customer")]
+                let dp_cq_eventfd = async_io::Async::new(dp_cq.empty_signal().as_raw_fd())?;
 
                 Ok(Self {
                     sock,
@@ -455,8 +420,8 @@ where
                     timer: AtomicCell::new(Instant::now()),
                     cmd_rx_entries,
                     fd_notifier,
-                    poll: RefCell::new(poll),
-                    events,
+                    #[cfg(feature = "customer")]
+                    dp_cq_eventfd,
                 })
             }
             _ => panic!("unexpected response: {:?}", res),
@@ -534,26 +499,26 @@ where
     }
 
     /// For CPU efficient scenarios.
-    pub fn wait_wc(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+    /// Returns
+    #[cfg(feature = "customer")]
+    pub fn poll_wc_readable(&self, cx: &mut Context<'_>) -> Poll<Result<bool, Error>> {
         let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
         if s > 0 {
-            return Ok(true);
+            return Poll::Ready(Ok(true));
         };
 
-        let mut events = self.events.borrow_mut();
-        self.poll.borrow_mut().poll(&mut events, timeout)?;
-
-        if events.is_empty() {
-            return Ok(false);
+        match self.dp_cq_eventfd.poll_readable(cx) {
+            Poll::Pending => return Poll::Pending,
+            Poll::Ready(res) => res?,
         }
 
+        // TODO(cjr): set eventfd as nonblocking and use read_with_mut() to move
+        // this read operation to the background thread
         use std::io::Read;
         let mut b = [0u8; 8];
         self.dp_cq.borrow_mut().empty_signal().read(&mut b)?;
 
-        // reregister READ if something does not work
-
-        let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
-        Ok(s > 0)
+        // let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
+        Poll::Ready(Ok(true))
     }
 }

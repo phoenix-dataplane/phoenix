@@ -86,7 +86,7 @@ pub fn generate<T: Service>(
                     &self,
                     req_opaque: ::mrpc::MessageErased,
                     read_heap: std::sync::Arc<::mrpc::ReadHeap>,
-                ) -> ::mrpc::MessageErased {
+                ) -> (::mrpc::WRefOpaque, ::mrpc::MessageErased) {
                     let func_id = req_opaque.meta.func_id;
 
                     match func_id {
@@ -135,9 +135,9 @@ fn generate_trait_methods<T: Service>(
         // mRPC does not support streaming
         let method = quote::quote! {
             #method_doc
-            async fn #name<'s>(
+            async fn #name(
                 &self,
-                request: ::mrpc::RRef<'s, #req_type>
+                request: ::mrpc::RRef<#req_type>
             ) -> Result<::mrpc::WRef<#res_type>, ::mrpc::Status>;
         };
 
@@ -165,7 +165,7 @@ fn generate_methods<T: Service>(
         let match_branch = quote::quote! {
             #func_id => {
                 // let req_view = ::mrpc::stub::service_pre_handler(&req, reclaim_buffer);
-                let req = ::mrpc::RRef::new(&req_opaque, &read_heap);
+                let req = ::mrpc::RRef::new(&req_opaque, read_heap);
                 let res = self.inner.#func_ident(req).await;
                 match res {
                     Ok(reply) => {

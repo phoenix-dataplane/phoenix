@@ -9,7 +9,7 @@ cjr@danyang-05 $ ./start_koala_tcp.sh [/tmp/mrpc-eval]
 
 2. Start the rpc_bench_server and rpc_bench_client
 ```
-cjr@danyang-05 $ ./start_traffic_tcps.sh [/tmp/mrpc-eval]
+cjr@danyang-05 $ ./start_traffic_tcp.sh [/tmp/mrpc-eval]
 ```
 
 3. Attach policy at the client and the server
@@ -19,3 +19,4 @@ cjr@danyang-06 $ python3 attach_policy.py [/tmp/mrpc-eval]
 ```
 
 3. Wait for finshing rpc_bench.
+

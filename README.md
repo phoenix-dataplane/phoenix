@@ -2,6 +2,10 @@
 
 [![Build Status](https://github.com/koalanet-project/koala/workflows/build/badge.svg)](https://github.com/koalanet-project/koala/actions)
 
+Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, globally available.
+```
+# apt install libclang-dev librdmacm-dev libibverbs-dev protobuf-compiler
+```
 
 Start the koala backend service on all servers.
 ```bash

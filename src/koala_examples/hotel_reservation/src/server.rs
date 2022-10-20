@@ -25,17 +25,17 @@ struct Registry {
 
 #[mrpc::async_trait]
 impl Reservation for Registry {
-    async fn make_reservation<'s>(
+    async fn make_reservation(
         &self,
-        _request: RRef<'s, Request>,
+        _request: RRef<Request>,
     ) -> Result<WRef<ReservationResult>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
         Ok(WRef::clone(&self.replies[0]))
     }
 
-    async fn check_availability<'s>(
+    async fn check_availability(
         &self,
-        _request: RRef<'s, Request>,
+        _request: RRef<Request>,
     ) -> Result<WRef<ReservationResult>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
         Ok(WRef::clone(&self.replies[0]))
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let hotel_id = vec!["42".to_string().into()].into();
         let replies = vec![WRef::new(ReservationResult { hotel_id: hotel_id })].into();
 
-        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port))?
+        mrpc::stub::LocalServer::bind(format!("0.0.0.0:{}", args.port))?
             .add_service(ReservationServer::new(Registry { replies }))
             .serve()
             .await?;

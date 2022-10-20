@@ -17,10 +17,10 @@ pub enum Error {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Handle(pub u32);
+pub struct Handle(pub u64);
 
 impl Handle {
-    pub const INVALID: Handle = Handle(u32::MAX);
+    pub const INVALID: Handle = Handle(u64::MAX);
 }
 
 pub trait AsHandle {
@@ -52,7 +52,7 @@ pub struct EventChannel(pub Handle);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompletionQueue(pub Handle);
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct ProtectionDomain(pub Handle);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

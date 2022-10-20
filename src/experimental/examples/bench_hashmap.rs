@@ -12,6 +12,8 @@ use contrie::ConMap;
 use fnv::FnvBuildHasher;
 use sharded::Map as ShardedMap;
 
+use sharded_slab::Slab;
+
 // Concurrent key-value adapter trait.
 trait KvAdapter<K, V> {
     fn insert_kv(&self, key: K, val: V);
@@ -82,6 +84,17 @@ impl<K: Eq + Hash, V, S: BuildHasher> KvAdapter<K, V> for ConMap<K, V, S> {
     #[inline]
     fn get_kv(&self, key: &K) {
         let _val = self.get(key);
+    }
+}
+
+impl<V> KvAdapter<u32, V> for Slab<V> {
+    #[inline]
+    fn insert_kv(&self, _key: u32, val: V) {
+        self.insert(val);
+    }
+    #[inline]
+    fn get_kv(&self, key: &u32) {
+        let _val = self.get(*key as usize);
     }
 }
 
@@ -160,6 +173,9 @@ fn bench<Map: KvAdapter<u32, u32> + Sync + 'static>(nthreads: usize, name: &'sta
 fn bench_concurrent(max_concurrency: usize) {
     for nthreads in 1..=max_concurrency {
         println!("\nTesting across {} threads...", nthreads);
+
+        let slab = Slab::new();
+        bench(nthreads, "sharded_slab", slab);
 
         let map = DashMap::<u32, u32, FnvBuildHasher>::default();
         bench(nthreads, "DashMap", map);

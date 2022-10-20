@@ -55,3 +55,6 @@ mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
 crc32fast = "1.3.2"
 socket2 = "0.4.4"
 unique = "0.9.1"
+sharded-slab = "0.1.4"
+libnuma = "0.0.4"
+libnuma-sys = "0.0.4"

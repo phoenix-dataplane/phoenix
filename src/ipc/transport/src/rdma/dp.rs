@@ -5,7 +5,7 @@ use interface::{Handle, RemoteKey, SendFlags, WorkCompletion};
 
 use ipc_core::buf::Range;
 
-pub type WorkRequestSlot = [u8; 64];
+pub type WorkRequestSlot = [u8; 128];
 
 // TODO(cjr): dedicate a channel for PollCq command.
 
@@ -20,7 +20,7 @@ pub enum WorkRequest {
     PollCq(interface::CompletionQueue),
 }
 
-pub type CompletionSlot = [u8; 64];
+pub type CompletionSlot = [u8; 128];
 
 #[repr(C, align(64))]
 #[derive(Debug)]

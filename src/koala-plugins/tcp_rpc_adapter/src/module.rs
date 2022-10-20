@@ -79,6 +79,7 @@ impl RpcAdapterEngineBuilder {
             serialization_engine: None,
             salloc: salloc_state,
             // start: std::time::Instant::now(),
+            rpc_ctx: Default::default(),
         })
     }
 }
@@ -158,6 +159,7 @@ impl KoalaModule for TcpRpcAdapterModule {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode,
+                    config_string: _,
                 } = request
                 {
                     let (cmd_sender, cmd_receiver) = tokio::sync::mpsc::unbounded_channel();

@@ -1,9 +1,8 @@
+pub use ipc::channel;
+
 pub mod graph;
 pub mod message;
 pub mod node;
-
-pub mod channel;
-pub(crate) mod flavors;
 
 pub use channel::{SendError, TryRecvError};
 pub use graph::ChannelDescriptor;
@@ -15,5 +14,4 @@ pub(crate) use node::{
     create_datapath_channels, refactor_channels_attach_addon, refactor_channels_detach_addon,
 };
 
-pub mod fusion_layout;
 pub mod meta_pool;

@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use structopt::StructOpt;
 
 use mrpc::alloc::Vec;
+use mrpc::stub::TransportType;
 use mrpc::{RRef, WRef};
 
 pub mod rpc_hello {
@@ -48,9 +49,9 @@ struct MyGreeter {
 
 #[mrpc::async_trait]
 impl Greeter for MyGreeter {
-    async fn say_hello<'s>(
+    async fn say_hello(
         &self,
-        _request: RRef<'s, HelloRequest>,
+        _request: RRef<HelloRequest>,
     ) -> Result<WRef<HelloReply>, mrpc::Status> {
         // eprintln!("reply: {:?}", reply);
 
@@ -63,6 +64,9 @@ impl Greeter for MyGreeter {
 }
 
 fn run_server(tid: usize, args: Args) -> Result<(), mrpc::Error> {
+    // bind to NUMA node (tid % num_nodes)
+    mrpc::bind_to_node((tid % mrpc::num_numa_nodes()) as u8);
+
     smol::block_on(async {
         let mut replies = Vec::new();
         for _ in 0..args.provision_count {
@@ -72,7 +76,7 @@ fn run_server(tid: usize, args: Args) -> Result<(), mrpc::Error> {
             replies.push(msg);
         }
 
-        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
+        mrpc::stub::LocalServer::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
             .add_service(GreeterServer::new(MyGreeter {
                 replies,
                 count: AtomicUsize::new(0),

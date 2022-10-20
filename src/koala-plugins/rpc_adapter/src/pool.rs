@@ -29,7 +29,7 @@ impl AsHandle for RecvBuffer {
         let low = self.offset / self.len;
         assert!(high < (1 << 16), "Please consider reduce the number of underlying storage or widen the Handle type to 64-bit");
         assert!(low < (1 << 16), "Please consider reduce the number of recv buffers inside a slab or widen the Handle type to 64-bit");
-        Handle(high * (1 << 16) + low as u32)
+        Handle(((high * (1 << 16)) as u32 + low as u32) as u64)
     }
 }
 

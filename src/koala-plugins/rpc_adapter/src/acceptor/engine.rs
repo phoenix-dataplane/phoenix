@@ -147,25 +147,17 @@ impl AcceptorEngine {
         let mut nwork = 0;
         for entry in table.iter() {
             let listener = entry.data();
-            if let Some(mut builder) = listener.1.try_get_request()? {
+            if let Some(builder) = listener.1.try_get_request()? {
                 // choose an rpc_adapter evenly
                 let rpc_adapter_id = listener.0;
-                let cq = self.state.resource().cq_ref_table.get(&rpc_adapter_id)?;
-                // setup connection parameters
-                let pre_id = builder
-                    .set_send_cq(&cq)
-                    .set_recv_cq(&cq)
-                    .set_max_send_wr(128)
-                    .set_max_recv_wr(128)
-                    .set_max_inline_data(super::super::engine::MAX_INLINE_DATA as _)
-                    .build()?;
+
                 // RpcAdapter please check for new pre_cmid
                 self.state
                     .resource()
-                    .pre_cmid_table
+                    .builder_table
                     .entry(rpc_adapter_id)
                     .or_insert_with(VecDeque::new)
-                    .push_back(pre_id);
+                    .push_back(builder);
                 nwork += 1;
             }
         }

@@ -11,9 +11,12 @@ mrpc = { path = "mrpc", package = "ipc-mrpc", optional = true }
 salloc = { path = "salloc", package = "ipc-salloc", optional = true }
 transport = { path = "transport", package = "ipc-transport", optional = true }
 rpc_adapter = { path = "rpc_adapter", package = "ipc-rpc_adapter", optional = true }
-scheduler = { path = "scheduler", package = "ipc-scheduler", optional = true }
 null = { path = "policy/null", package = "ipc-null", optional = true }
 ratelimit = { path = "policy/ratelimit", package = "ipc-ratelimit", optional = true }
 qos = { path = "policy/qos", package = "ipc-qos", optional = true }
 hotel-acl = { path = "policy/hotel-acl", package = "ipc-hotel-acl", optional = true }
 tcp_rpc_adapter = { path = "tcp_rpc_adapter", package = "ipc-tcp_rpc_adapter", optional = true }
+
+[features]
+default = []
+customer = ["ipc-core/customer"]

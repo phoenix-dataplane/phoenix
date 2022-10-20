@@ -13,7 +13,7 @@ max_event_level = "trace"
 # overwrite with env KOALA_TRACING_SPAN
 span_level = "info"
 # overwrite with env KOALA_TRACING_DIR
-output_dir = "/tmp/lsh-koala-trace"
+output_dir = "/tmp/koala-trace"
 
 [profiling]
 # overwrite with env KOALA_PROFILING_ENABLE_ON_NEW_CLIENT
@@ -26,16 +26,16 @@ duration_ms = 1000
 
 [control]
 # overwrite with KOALA_PREFIX
-prefix = "/tmp/lsh-koala"
+prefix = "/tmp/koala"
 # overwrite with KOALA_CONTROL
 path = "control.sock"
 
 # Modules
 [[modules]]
 name = "RdmaTransport"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_transport_rdma_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_transport_rdma_plugin.so"
 config_string = '''
-prefix = "/tmp/lsh-koala"
+prefix = "/tmp/koala"
 engine_basename = "transport-engine-rdma"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
@@ -44,64 +44,65 @@ command_max_interval_ms = 1000
 
 [[modules]]
 name = "TcpTransport"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_transport_tcp_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_transport_tcp_plugin.so"
 config_string = '''
-prefix = "/tmp/lsh-koala"
+prefix = "/tmp/koala"
 engine_basename = "transport-engine-tcp"
 '''
 
 [[modules]]
 name = "Salloc"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_salloc_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_salloc_plugin.so"
 config_string = '''
-prefix = "/tmp/lsh-koala"
+prefix = "/tmp/koala"
 engine_basename = "salloc"
 '''
 
 [[modules]]
 name = "Mrpc"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_mrpc_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_mrpc_plugin.so"
 config_string = '''
-prefix = "/tmp/lsh-koala"
+prefix = "/tmp/koala"
 engine_basename = "mrpc-engine"
-build_cache = "/tmp/lsh-koala/build-cache"
+build_cache = "/tmp/koala/build-cache"
 transport = "Rdma"
+nic_index = 0
 '''
 
 [[modules]]
 name = "RpcAdapter"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_rpc_adapter_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
 
 
 [[modules]]
 name = "TcpRpcAdapter"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_tcp_rpc_adapter_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_tcp_rpc_adapter_plugin.so"
 
 
 # Addons being here
 [[addons]]
 name = "RateLimit"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_ratelimit_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_ratelimit_plugin.so"
 config_string = '''
 requests_per_sec = 1000
 bucket_size = 1000
 '''
 
 [[addons]]
-name = "Null"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_null_plugin.so"
-config_string = '''
-'''
-
-[[addons]]
 name = "Qos"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_qos_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_qos_plugin.so"
 config_string = '''
 latency_budget_microsecs = 10
 '''
 
 [[addons]]
 name = "HotelAcl"
-lib_path = "/tmp/lsh-koala/plugins/libkoala_hotel_acl_plugin.so"
+lib_path = "/tmp/koala/plugins/libkoala_hotel_acl_plugin.so"
+config_string = '''
+'''
+
+[[addons]]
+name = "Null"
+lib_path = "/tmp/lsh-koala/plugins/libkoala_null_plugin.so"
 config_string = '''
 '''

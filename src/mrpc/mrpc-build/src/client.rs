@@ -47,7 +47,6 @@ pub fn generate<T: Service>(
             #[derive(Debug)]
             pub struct #service_ident {
                 stub: ClientStub,
-                call_counter: std::cell::Cell<u32>,
             }
 
             impl #service_ident {
@@ -66,7 +65,6 @@ pub fn generate<T: Service>(
                     let stub = ClientStub::connect(dst).unwrap();
                     Ok(Self {
                         stub,
-                        call_counter: std::cell::Cell::new(0),
                     })
                 }
 
@@ -112,8 +110,7 @@ fn generate_methods<T: Service>(
             ) -> impl std::future::Future<
                 Output = Result<::mrpc::RRef<#response>, ::mrpc::Status>
             > + '_ {
-                let call_id = self.call_counter.get();
-                self.call_counter.set(call_id + 1);
+                let call_id = self.stub.initiate_call();
 
                 self.stub.unary(#service_id, #func_id, call_id, req.into_wref())
             }

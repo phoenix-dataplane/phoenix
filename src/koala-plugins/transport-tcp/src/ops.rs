@@ -50,7 +50,8 @@ impl Ops {
 
         self.poll().registry().register(
             &mut listener,
-            Token((handle.0 as usize) << 32),
+            // Token((handle.0 as usize) << 32),
+            Token(handle.0 as _),
             Interest::READABLE,
         )?;
         self.state
@@ -197,15 +198,18 @@ impl Ops {
 
         for event in self.events_mut().iter() {
             let Token(handle) = event.token();
-            let (listener_handle, socket_handle) = ((handle >> 32) as u32, handle as u32);
-            if listener_handle > 0 {
-                if let Ok(handle) = self.try_accept(Handle(listener_handle)) {
+            if self
+                .state
+                .listener_table
+                .borrow()
+                .contains_key(&Handle(handle as _))
+            {
+                if let Ok(handle) = self.try_accept(Handle(handle as _)) {
                     conns.push(handle);
                 }
-            }
-            if socket_handle > 0 {
+            } else {
                 let _res = (|| -> Result<(), TransportError> {
-                    let sock_handle = Handle(socket_handle);
+                    let sock_handle = Handle(handle as _);
                     let mut sock_table = self.state.sock_table.borrow_mut();
                     let (sock, status) = sock_table
                         .get_mut(&sock_handle)
@@ -292,7 +296,7 @@ impl Task {
             buf,
             imm,
             expected,
-            offset: offset,
+            offset,
             error: Ok(()),
         }
     }

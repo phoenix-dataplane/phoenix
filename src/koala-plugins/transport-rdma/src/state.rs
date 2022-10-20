@@ -3,7 +3,7 @@ use std::io;
 use std::marker::PhantomPinned;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
+// use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use lazy_static::lazy_static;
@@ -14,26 +14,27 @@ use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
 
-use crate::resource::ResourceTable;
-use crate::state_mgr::ProcessShared;
+use koala::resource::{ResourceSlab, ResourceTable};
+use koala::state_mgr::ProcessShared;
+use koala::tracing;
 
-use crate::transport_rdma::cm_manager::CmEventManager;
-use crate::transport_rdma::ApiError;
+use super::cm::CmEventManager;
+use super::ApiError;
 
 // TODO(cjr): Make this global lock more fine-grained.
-pub struct State {
-    pub shared: Arc<Shared>,
+pub(crate) struct State {
+    pub(crate) shared: Arc<Shared>,
 }
 
 impl State {
-    pub fn new(shared: Arc<Shared>) -> Self {
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
         State { shared }
     }
 }
 
 impl State {
     #[inline]
-    pub fn resource(&self) -> &Resource {
+    pub(crate) fn resource(&self) -> &Resource {
         &self.shared.resource
     }
 }
@@ -41,7 +42,7 @@ impl State {
 pub struct Shared {
     // Control path operations must be per-process level
     // We use an async-friendly Mutex here
-    pub cm_manager: tokio::sync::Mutex<CmEventManager>,
+    pub(crate) cm_manager: tokio::sync::Mutex<CmEventManager>,
     // Pid as the identifier of this process
     pub pid: Pid,
     // Resources
@@ -73,8 +74,8 @@ lazy_static! {
         open_default_verbs().expect("Open default RDMA context failed.");
 }
 
-pub struct PinnedContext {
-    pub verbs: ManuallyDrop<ibv::Context>,
+pub(crate) struct PinnedContext {
+    pub(crate) verbs: ManuallyDrop<ibv::Context>,
     _pin: PhantomPinned,
 }
 
@@ -87,8 +88,8 @@ impl PinnedContext {
     }
 }
 
-pub struct DefaultContext {
-    pub pinned_ctx: Pin<Box<PinnedContext>>,
+pub(crate) struct DefaultContext {
+    pub(crate) pinned_ctx: Pin<Box<PinnedContext>>,
     gid_table: Vec<ibv::Gid>,
 }
 
@@ -144,7 +145,7 @@ impl Deref for EventChannel {
 }
 
 impl EventChannel {
-    pub fn new(inner: rdmacm::EventChannel) -> Self {
+    pub(crate) fn new(inner: rdmacm::EventChannel) -> Self {
         Self {
             inner,
             event_queue: spin::Mutex::new(VecDeque::new()),
@@ -154,7 +155,7 @@ impl EventChannel {
     /// Get an event that matches the event type.
     ///
     /// If there's any event matches, return the first one matched. Otherwise, returns None.
-    pub fn get_one_cm_event(
+    pub(crate) fn get_one_cm_event(
         &self,
         event_type: rdma::ffi::rdma_cm_event_type::Type,
     ) -> Option<rdmacm::CmEvent> {
@@ -166,34 +167,29 @@ impl EventChannel {
         }
     }
 
-    pub fn add_event(&self, cm_event: rdmacm::CmEvent) {
+    pub(crate) fn add_event(&self, cm_event: rdmacm::CmEvent) {
         self.event_queue.lock().push_back(cm_event);
     }
 
-    pub fn clear_event_queue(&self) {
+    pub(crate) fn clear_event_queue(&self) {
         self.event_queue.lock().clear();
     }
 }
 
 /// A variety of tables where each maps a `Handle` to a kind of RNIC resource.
 pub struct Resource {
-    cmid_cnt: AtomicU32,
-    pub default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
+    // pub default_pds: spin::Mutex<Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>>,
+    pub default_pds: Vec<(interface::ProtectionDomain, Vec<ibv::Gid>)>,
     // NOTE(cjr): Do NOT change the order of the following fields. A wrong drop order may cause
     // failures in the underlying library.
-    pub cmid_table: ResourceTable<CmId<'static>>,
+    pub cmid_table: ResourceSlab<CmId<'static>>,
     // NOTE(cjr): On drop, the events in EventChannel buffer must be dropped first before dropping CmId
     pub event_channel_table: ResourceTable<EventChannel>,
     pub qp_table: ResourceTable<ibv::QueuePair<'static>>,
-    pub mr_table: ResourceTable<rdma::mr::MemoryRegion>,
-    pub cq_table: ResourceTable<ibv::CompletionQueue<'static>>,
+    pub mr_table: ResourceSlab<rdma::mr::MemoryRegion>,
+    pub cq_table: ResourceSlab<ibv::CompletionQueue<'static>>,
     pub pd_table: ResourceTable<ibv::ProtectionDomain<'static>>,
 }
-
-/// __Safety__: This is safe because only default_pds is non-concurrent-safe, but it is only
-/// accessed when creating the resource.
-unsafe impl Send for Resource {}
-unsafe impl Sync for Resource {}
 
 impl Resource {
     pub fn new() -> io::Result<Self> {
@@ -215,28 +211,31 @@ impl Resource {
             default_pds.push((interface::ProtectionDomain(pd_handle), gid_table.clone()));
         }
         Ok(Resource {
-            cmid_cnt: AtomicU32::new(0),
-            default_pds: spin::Mutex::new(default_pds),
-            cmid_table: ResourceTable::default(),
+            // default_pds: spin::Mutex::new(default_pds),
+            default_pds,
+            cmid_table: ResourceSlab::default(),
             event_channel_table: ResourceTable::default(),
             qp_table: ResourceTable::default(),
-            mr_table: ResourceTable::default(),
-            cq_table: ResourceTable::default(),
+            mr_table: ResourceSlab::default(),
+            cq_table: ResourceSlab::default(),
             pd_table,
+        })
+    }
+
+    pub fn default_verbs_context(&self, gid: &ibv::Gid) -> Option<interface::VerbsContext> {
+        DEFAULT_CTXS.iter().find_map(|c| {
+            if c.gid_table.contains(&gid) {
+                Some(interface::VerbsContext(c.pinned_ctx.verbs.as_handle()))
+            } else {
+                None
+            }
         })
     }
 
     pub fn default_pd(&self, gid: &ibv::Gid) -> Option<interface::ProtectionDomain> {
         self.default_pds
-            .lock()
             .iter()
             .find_map(|(pd, gids)| if gids.contains(&gid) { Some(*pd) } else { None })
-    }
-
-    pub fn allocate_new_cmid_handle(&self) -> Handle {
-        let ret = Handle(self.cmid_cnt.load(Ordering::Acquire));
-        self.cmid_cnt.fetch_add(1, Ordering::AcqRel);
-        ret
     }
 
     pub fn insert_qp(
@@ -247,22 +246,30 @@ impl Resource {
         // stored carefully into the resource tables.
         let (pd, send_cq, recv_cq) = unsafe { qp.take_inner_objects() };
         let pd_handle = pd.as_handle();
-        let scq_handle = send_cq.as_handle();
-        let rcq_handle = recv_cq.as_handle();
+        let raw_scq_handle = send_cq.as_handle();
+        let raw_rcq_handle = recv_cq.as_handle();
         let qp_handle = qp.as_handle();
         // qp, cqs, and other associated resources are supposed to be open by the user
         // explicited, the error should be safely ignored if the resource has already been
         // created.
         self.qp_table.occupy_or_create_resource(qp_handle, qp);
         self.pd_table.occupy_or_create_resource(pd_handle, pd);
-        self.cq_table.occupy_or_create_resource(scq_handle, send_cq);
-        self.cq_table.occupy_or_create_resource(rcq_handle, recv_cq);
-        Ok((qp_handle, pd_handle, scq_handle, rcq_handle))
+        let scq_key = self
+            .cq_table
+            .occupy_or_create_resource(raw_scq_handle, send_cq)?;
+        let rcq_key = self
+            .cq_table
+            .occupy_or_create_resource(raw_rcq_handle, recv_cq)?;
+        Ok((
+            qp_handle,
+            pd_handle,
+            Handle(scq_key as _),
+            Handle(rcq_key as _),
+        ))
     }
 
     pub fn insert_cmid(&self, cmid: CmId<'static>) -> Result<Handle, ApiError> {
-        let cmid_handle = self.allocate_new_cmid_handle();
-        self.cmid_table.insert(cmid_handle, cmid)?;
-        Ok(cmid_handle)
+        let key = self.cmid_table.insert(cmid)?;
+        Ok(Handle(key as u64))
     }
 }

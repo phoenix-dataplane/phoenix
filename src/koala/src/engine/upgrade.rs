@@ -9,7 +9,7 @@ use futures::executor::{ThreadPool, ThreadPoolBuilder};
 use nix::unistd::Pid;
 use semver::Version;
 
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingHint, SchedulingMode};
 
 use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
 use super::datapath::{ChannelDescriptor, DataPathNode};
@@ -278,7 +278,16 @@ async fn attach_addon<I>(
         if let Some(rid) = rid {
             rm.attach_to_group(pid, sid, group_id, rid, containers, mode);
         } else {
-            rm.submit_group(pid, sid, containers, mode);
+            rm.submit_group(
+                pid,
+                sid,
+                containers,
+                mode,
+                SchedulingHint {
+                    mode,
+                    numa_node_affinity: None,
+                },
+            );
         }
     }
     indicator.remove(&pid);

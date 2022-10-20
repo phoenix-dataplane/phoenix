@@ -156,6 +156,7 @@ impl KoalaModule for SallocModule {
             client_path,
             mode,
             cred,
+            config_string: _config_string,
         } = request
         {
             // 1. generate a path and bind a unix domain socket to it

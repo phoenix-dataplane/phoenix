@@ -23,8 +23,8 @@ pub trait Vertex {
 
 #[macro_export]
 macro_rules! impl_vertex_for_engine {
-    ($engine:ident, $node:ident) => {
-        impl koala::engine::datapath::graph::Vertex for $engine {
+    ($engine:ident, $node:ident $($vars:tt)*) => {
+        impl$($vars)* koala::engine::datapath::graph::Vertex for $engine$($vars)* {
             #[inline]
             fn tx_inputs(&mut self) -> &mut Vec<koala::engine::datapath::graph::TxIQueue> {
                 &mut self.$node.tx_inputs

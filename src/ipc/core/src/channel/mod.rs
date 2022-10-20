@@ -1,6 +1,6 @@
 //! Channel implementations.
 
-use super::flavors;
+pub(crate) mod flavors;
 
 pub type SendError<T> = crossbeam::channel::SendError<T>;
 pub type TryRecvError = crossbeam::channel::TryRecvError;
@@ -78,7 +78,7 @@ pub enum ChannelFlavor {
     Sequential,
 }
 
-pub(crate) fn create_channel<T>(flavor: ChannelFlavor) -> (Sender<T>, Receiver<T>) {
+pub fn create_channel<T>(flavor: ChannelFlavor) -> (Sender<T>, Receiver<T>) {
     match flavor {
         ChannelFlavor::Concurrent => {
             let (sender, receiver) = flavors::concurrent::create_channel();

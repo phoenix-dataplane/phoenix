@@ -23,7 +23,7 @@ struct Opt {
     #[structopt(long)]
     num_keys: usize,
     /// Server address, could be an IP address or domain name. If not specified, server will use
-    /// 0.0.0.0 and client will use 127.0.0.1
+    /// 0.0.0.0
     #[structopt(long)]
     server_addr: Option<String>,
     /// Server port
@@ -66,9 +66,9 @@ impl MasstreeAnalyticsService {
 
 #[mrpc::async_trait]
 impl MasstreeAnalytics for MasstreeAnalyticsService {
-    async fn query_point<'s>(
+    async fn query_point(
         &self,
-        req: RRef<'s, PointRequest>,
+        req: RRef<PointRequest>,
     ) -> Result<WRef<PointResponse>, mrpc::Status> {
         log::trace!("point request: {:?} in mRPC thread {}", req, self.tid);
 
@@ -96,9 +96,9 @@ impl MasstreeAnalytics for MasstreeAnalyticsService {
         Ok(resp)
     }
 
-    async fn query_range<'s>(
+    async fn query_range(
         &self,
-        req: RRef<'s, RangeRequest>,
+        req: RRef<RangeRequest>,
     ) -> Result<WRef<RangeResponse>, mrpc::Status> {
         log::trace!("range request: {:?}", req);
 
@@ -152,9 +152,12 @@ fn run_server(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
             let ti_vec = ti_vec.clone();
             let opt = &opt;
             handles.push(s.spawn(move || {
+                // bind to NUMA node (tid % num_nodes)
+                mrpc::bind_to_node((tid % mrpc::num_numa_nodes()) as u8);
+
                 smol::block_on(async {
                     let service = MasstreeAnalyticsService::new(mti, tid, ti_vec);
-                    mrpc::stub::Server::bind((
+                    mrpc::stub::LocalServer::bind((
                         opt.server_addr.as_deref().unwrap_or("0.0.0.0"),
                         opt.server_port + tid as u16,
                     ))?

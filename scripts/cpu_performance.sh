@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 function usage() {
-    echo "Usage: $0 [performance|powersave]"
+    echo "Usage: $0 [performance|powersave|ondemand]"
     exit 0
 }
 
 [[ -z "${1-}" ]] && usage "$0"
 case $1 in
-    performance|powersave)
+    performance|powersave|ondemand)
         echo "Current scaling_governor:"
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
         echo "Switching to: $1"

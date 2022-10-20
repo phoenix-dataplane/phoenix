@@ -26,7 +26,7 @@ jobs:
         git submodule update --init --recursive
 
     - name: Install RDMA library
-      run: sudo apt install -y rdma-core libibverbs-dev librdmacm-dev
+      run: sudo apt install -y rdma-core libibverbs-dev librdmacm-dev libnuma-dev
 
     - name: Install nightly rust toolchain
       uses: actions-rs/toolchain@v1

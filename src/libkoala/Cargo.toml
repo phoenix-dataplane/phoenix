@@ -19,5 +19,6 @@ memfd = "0.4.1"
 memmap2 = "0.5.0"
 spin = "0.9.3"
 lazy_static = "1.4.0"
+serde_json = "1.0.85"
 
 [features]

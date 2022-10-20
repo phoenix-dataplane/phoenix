@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use memfd::Memfd;
 use thiserror::Error;
 
+use interface::engine::SchedulingHint;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
@@ -73,6 +74,8 @@ impl SAContext {
             KOALA_PREFIX.as_path(),
             KOALA_CONTROL_SOCK.as_path(),
             "Salloc".to_string(),
+            SchedulingHint::default(),
+            None,
         )?;
         Ok(Self { service })
     }

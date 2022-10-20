@@ -48,16 +48,16 @@ pub struct Args {
 }
 
 #[derive(Debug)]
-struct Call<'c> {
+struct Call {
     ts: Instant,
     req_size: usize,
-    result: Result<mrpc::RRef<'c, reservation::Result>, mrpc::Status>,
+    result: Result<mrpc::RRef<reservation::Result>, mrpc::Status>,
 }
 
 fn make_reservation<'c>(
     client: &'c ReservationClient,
     workload: &Workload,
-) -> impl Future<Output = Call<'c>> {
+) -> impl Future<Output = Call> + 'c {
     let ts = Instant::now();
     let (req, req_size) = workload.next_request();
     let fut = client.make_reservation(req);

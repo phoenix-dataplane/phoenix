@@ -13,6 +13,7 @@ use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
 use nix::unistd::Pid;
 
+use super::affinity::CoreMask;
 use super::container::EngineContainer;
 use super::datapath::graph::DataPathGraph;
 use super::group::GroupId;
@@ -23,7 +24,7 @@ use super::SchedulingGroup;
 use crate::config::Config;
 use crate::module::Service;
 use crate::storage::ResourceCollection;
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingHint, SchedulingMode};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,6 +119,7 @@ impl Inner {
         group: SchedulingGroup,
         rm: &Arc<RuntimeManager>,
         mode: SchedulingMode,
+        hint: SchedulingHint,
     ) {
         let (runtime_mode, quota) = match mode {
             SchedulingMode::Dedicate => (RuntimeMode::Dedicated, None),
@@ -125,6 +127,17 @@ impl Inner {
             SchedulingMode::GroupShared(quota) => (RuntimeMode::GroupShared, Some(quota)),
             SchedulingMode::Spread => unimplemented!(),
         };
+
+        // choose cores to schedule
+        let cores = CoreMask::from_numa_node(hint.numa_node_affinity);
+        log::debug!(
+            "group: {:?}, scheduling hint: {:?}, cores: {}",
+            group,
+            hint,
+            cores
+        );
+
+        // calculate group signature
         let mut hasher = Crc32Hasher::new();
         let group_engines = group.engines.iter().map(|x| x.1.engine_type());
         for engine in group_engines {
@@ -132,18 +145,12 @@ impl Inner {
         }
         let group_signature = hasher.finalize();
 
-        let rid = match self
-            .runtimes
-            .iter()
-            .find(|(_i, r)| r.try_acquire(runtime_mode, Some(group_signature), quota))
-        {
+        // find an available runtime
+        let rid = match self.runtimes.iter().find(|(_i, r)| {
+            r.try_acquire(runtime_mode, Some(group_signature), cores.clone(), quota)
+        }) {
             Some((rid, _runtime)) => *rid,
-            None => self.start_runtime(
-                self.runtime_counter as usize,
-                runtime_mode,
-                Some(group_signature),
-                Arc::clone(rm),
-            ),
+            None => self.start_runtime(cores, runtime_mode, Some(group_signature), Arc::clone(rm)),
         };
 
         for (eid, engine) in group.engines.iter() {
@@ -236,6 +243,7 @@ impl RuntimeManager {
         sid: SubscriptionId,
         engines: Vec<EngineContainer>,
         mode: SchedulingMode,
+        hint: SchedulingHint,
     ) {
         let mut inner = self.inner.lock().unwrap();
         let mut submission = Vec::with_capacity(engines.len());
@@ -249,7 +257,7 @@ impl RuntimeManager {
         );
         let group = SchedulingGroup::new(gid, submission);
 
-        inner.schedule(pid, sid, group, self, mode);
+        inner.schedule(pid, sid, group, self, mode, hint);
     }
 
     /// Create a new engine group for service subscription
@@ -285,31 +293,28 @@ impl RuntimeManager {
 impl Inner {
     fn start_runtime(
         &mut self,
-        _core: usize,
+        cores: CoreMask,
         mode: RuntimeMode,
         group_signature: Option<u32>,
         rm: Arc<RuntimeManager>,
     ) -> RuntimeId {
         let runtime_id = RuntimeId(self.runtime_counter);
         self.runtime_counter = self.runtime_counter.checked_add(1).unwrap();
-        let runtime = Arc::new(Runtime::new(runtime_id, Arc::downgrade(&rm)));
-        let flag = runtime.try_acquire(mode, group_signature, None);
+
+        let runtime = Arc::new(Runtime::new(runtime_id, cores.clone(), Arc::downgrade(&rm)));
+        let flag = runtime.try_acquire(mode, group_signature, cores.clone(), None);
         assert!(flag);
+
         self.runtimes.insert(runtime_id, Arc::clone(&runtime));
 
         let handle = thread::Builder::new()
-            .name(format!("Runtime {}", runtime_id.0))
+            .name(format!("Runtime {}, CpuSet: {:?}", runtime_id.0, cores))
             .spawn(move || {
-                // check core id
-                // let num_cpus = num_cpus::get();
-                // if core >= num_cpus {
-                //     return Err(runtime::Error::InvalidId(core));
-                // }
-                // NOTE(cjr): do not set affinity here. It only hurts the performance if the user app
-                // does not run on the hyperthread core pair. Since we cannot expect that we always
-                // have hyperthread core pair available, not setting affinity turns out to be better.
-                // scheduler::set_self_affinity(scheduler::CpuSet::single(core))
-                //     .map_err(|_| runtime::Error::SetAffinity(io::Error::last_os_error()))?;
+                // scheduler::set_self_affinity(cpuset)
+                //     .map_err(|_| runtime::Error::SetAffinity(std::io::Error::last_os_error()))?;
+                if !cores.sched_set_affinity_for_current_thread() {
+                    log::warn!("Set affinity for {:?} failed", runtime_id);
+                }
                 runtime.mainloop()
             })
             .unwrap_or_else(|e| panic!("failed to spawn new threads: {}", e));

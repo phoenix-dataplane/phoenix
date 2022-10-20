@@ -54,10 +54,7 @@ impl Drop for GeoService {
 
 #[mrpc::async_trait]
 impl Geo for GeoService {
-    async fn nearby<'s>(
-        &self,
-        request: RRef<'s, GeoRequest>,
-    ) -> Result<WRef<GeoResult>, mrpc::Status> {
+    async fn nearby(&self, request: RRef<GeoRequest>) -> Result<WRef<GeoResult>, mrpc::Status> {
         let start = Instant::now();
         let nearest = self
             .get_nearby_points(request.lat.into(), request.lon.into())

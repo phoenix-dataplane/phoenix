@@ -1,11 +1,10 @@
 use std::borrow::Borrow;
 use std::io;
 
-use koala::transport_rdma::ApiError;
 use thiserror::Error;
 
-use koala::transport_rdma::ops::Ops;
-use koala::transport_rdma::DatapathError;
+use transport_rdma::ops::Ops;
+use transport_rdma::{ApiError, DatapathError};
 
 #[allow(dead_code)]
 pub(crate) mod fp;
@@ -36,7 +35,7 @@ pub(crate) trait FromBorrow<Borrowed> {
 }
 
 #[inline]
-pub(crate) fn get_ops() -> &'static Ops {
+fn get_ops() -> &'static Ops {
     use super::engine::ELS;
     ELS.with(|els| &els.borrow().as_ref().unwrap().ops)
 }

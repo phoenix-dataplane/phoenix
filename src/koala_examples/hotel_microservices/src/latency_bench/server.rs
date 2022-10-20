@@ -19,10 +19,7 @@ pub struct GeoService;
 
 #[mrpc::async_trait]
 impl Geo for GeoService {
-    async fn nearby<'s>(
-        &self,
-        _request: RRef<'s, GeoRequest>,
-    ) -> Result<WRef<GeoResult>, mrpc::Status> {
+    async fn nearby(&self, _request: RRef<GeoRequest>) -> Result<WRef<GeoResult>, mrpc::Status> {
         let mut points = Vec::with_capacity(5);
         for i in 0..5 {
             points.push(i.to_string().into())
@@ -53,7 +50,7 @@ pub struct Args {
 
 fn run_server(tid: usize, args: Args) -> Result<(), mrpc::Error> {
     smol::block_on(async {
-        mrpc::stub::Server::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
+        mrpc::stub::LocalServer::bind(format!("0.0.0.0:{}", args.port + tid as u16))?
             .add_service(GeoServer::new(GeoService))
             .serve()
             .await

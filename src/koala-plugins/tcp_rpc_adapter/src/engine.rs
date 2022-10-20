@@ -9,6 +9,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use fnv::FnvHashMap;
 use futures::future::BoxFuture;
+use slab::Slab;
 
 use interface::engine::SchedulingMode;
 use interface::rpc::{MessageMeta, RpcId, TransportStatus};
@@ -77,6 +78,7 @@ pub(crate) struct TcpRpcAdapterEngine {
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
     // pub(crate) start: std::time::Instant,
+    pub(crate) rpc_ctx: Slab<RpcId>,
 }
 
 impl_vertex_for_engine!(TcpRpcAdapterEngine, node);
@@ -100,7 +102,7 @@ impl Decompose for TcpRpcAdapterEngine {
         // then the channels must be recreated
         let mut engine = *self;
 
-        let mut collections = ResourceCollection::with_capacity(13);
+        let mut collections = ResourceCollection::with_capacity(14);
         tracing::trace!("dumping RpcAdapterEngine states...");
 
         let node = unsafe {
@@ -130,6 +132,10 @@ impl Decompose for TcpRpcAdapterEngine {
             collections.insert(
                 "salloc".to_string(),
                 Box::new(ptr::read(&mut engine.salloc)),
+            );
+            collections.insert(
+                "rpc_ctx".to_string(),
+                Box::new(ptr::read(&mut engine.rpc_ctx)),
             );
             // don't call the drop function
             ptr::read(&mut engine.node)
@@ -196,6 +202,11 @@ impl TcpRpcAdapterEngine {
             .unwrap()
             .downcast::<SallocState>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let rpc_ctx = *local
+            .remove("rpc_ctx")
+            .unwrap()
+            .downcast::<Slab<RpcId>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = TcpRpcAdapterEngine {
             state,
@@ -210,6 +221,7 @@ impl TcpRpcAdapterEngine {
             indicator: Default::default(),
             salloc,
             // start: std::time::Instant::now(),
+            rpc_ctx,
         };
         Ok(engine)
     }
@@ -226,7 +238,7 @@ use Status::Progress;
 impl Engine for TcpRpcAdapterEngine {
     fn description(self: Pin<&Self>) -> String {
         format!(
-            "RcpAdapterEngine, user: {:?}",
+            "RpcAdapterEngine, user: {:?}",
             self.get_ref().state.shared.pid
         )
     }
@@ -358,14 +370,20 @@ impl TcpRpcAdapterEngine {
     }
 
     fn send_fused(
-        &self,
-        conn_ctx: &ConnectionContext,
+        &mut self,
         mut meta_buf_ptr: MetaBufferPtr,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
-        let call_id = unsafe { &*meta_buf_ptr.as_meta_ptr() }.call_id;
+        let meta_ref = unsafe { &*meta_buf_ptr.as_meta_ptr() };
+        let table = self.state.conn_table.borrow();
+        let conn_ctx = table
+            .get(&meta_ref.conn_id)
+            .ok_or(ResourceError::NotFound)?;
+
+        let call_id = meta_ref.call_id;
         let sock_handle = conn_ctx.sock_handle;
-        let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
+        // let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
+        let ctx = self.rpc_ctx.insert(RpcId::new(sock_handle, call_id));
 
         let off = meta_buf_ptr.0.as_ptr().expose_addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
@@ -391,7 +409,7 @@ impl TcpRpcAdapterEngine {
 
         get_ops().post_send(
             sock_handle,
-            ctx,
+            ctx as u64,
             Range {
                 offset: off as _,
                 len: meta_buf.len() as _,
@@ -403,16 +421,22 @@ impl TcpRpcAdapterEngine {
     }
 
     fn send_standard(
-        &self,
-        conn_ctx: &ConnectionContext,
+        &mut self,
         meta_ref: &MessageMeta,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
+        let table = self.state.conn_table.borrow();
+        let conn_ctx = table
+            .get(&meta_ref.conn_id)
+            .ok_or(ResourceError::NotFound)?;
+
         let call_id = meta_ref.call_id;
         let sock_handle = conn_ctx.sock_handle;
 
         // Sender posts send requests from the SgList
-        let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
+        // let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
+        let ctx = self.rpc_ctx.insert(RpcId::new(sock_handle, call_id));
+
         let meta_sge = SgE {
             ptr: (meta_ref as *const MessageMeta).expose_addr(),
             len: mem::size_of::<MessageMeta>(),
@@ -420,7 +444,7 @@ impl TcpRpcAdapterEngine {
 
         get_ops().post_send(
             sock_handle,
-            ctx,
+            ctx as u64,
             Range {
                 offset: meta_sge.ptr as _,
                 len: meta_sge.len as _,
@@ -433,7 +457,7 @@ impl TcpRpcAdapterEngine {
             let off = sge.ptr;
             get_ops().post_send(
                 sock_handle,
-                ctx,
+                ctx as u64,
                 Range {
                     offset: off as _,
                     len: sge.len as _,
@@ -461,13 +485,10 @@ impl TcpRpcAdapterEngine {
                     for call_id in &call_ids[..1] {
                         let recv_mrs = self
                             .recv_mr_usage
-                            .remove(&RpcId::new(conn_id, *call_id, 0))
+                            .remove(&RpcId::new(conn_id, *call_id))
                             .expect("invalid WR identifier");
                         self.reclaim_recv_buffers(sock_handle, &recv_mrs[..])?;
                     }
-                }
-                _ => {
-                    unreachable!()
                 }
             },
             Err(TryRecvError::Empty) => {}
@@ -477,10 +498,10 @@ impl TcpRpcAdapterEngine {
         while let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
             let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-            let table = self.state.conn_table.borrow_mut();
-            let conn_ctx = table
-                .get(&meta_ref.conn_id)
-                .ok_or(ResourceError::NotFound)?;
+            // let table = self.state.conn_table.borrow_mut();
+            // let conn_ctx = table
+            //     .get(&meta_ref.conn_id)
+            //     .ok_or(ResourceError::NotFound)?;
 
             let sglist = if let Some(ref module) = self.serialization_engine {
                 module.marshal(meta_ref, msg.addr_backend).unwrap()
@@ -489,8 +510,8 @@ impl TcpRpcAdapterEngine {
             };
 
             let status = match Self::choose_strategy(&sglist) {
-                RpcStrategy::Fused => self.send_fused(conn_ctx, msg.meta_buf_ptr, &sglist)?,
-                RpcStrategy::Standard => self.send_standard(conn_ctx, meta_ref, &sglist)?,
+                RpcStrategy::Fused => self.send_fused(msg.meta_buf_ptr, &sglist)?,
+                RpcStrategy::Standard => self.send_standard(meta_ref, &sglist)?,
             };
 
             return Ok(status);
@@ -533,7 +554,7 @@ impl TcpRpcAdapterEngine {
         let meta = unsafe { meta_ptr.as_mut() };
         meta.conn_id = sock_handle;
 
-        let recv_id = RpcId::new(meta.conn_id, meta.call_id, 0);
+        let recv_id = RpcId::new(meta.conn_id, meta.call_id);
 
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
@@ -583,7 +604,8 @@ impl TcpRpcAdapterEngine {
                 match wc.opcode {
                     WcOpcode::Send => {
                         if wc.imm != 0 {
-                            let rpc_id = RpcId::decode_u64(wc.wr_id);
+                            // let rpc_id = RpcId::decode_u64(wc.wr_id);
+                            let rpc_id = self.rpc_ctx.remove(wc.wr_id as usize);
                             self.rx_outputs()[0]
                                 .send(EngineRxMessage::Ack(rpc_id, TransportStatus::Success))
                                 .unwrap();
@@ -591,7 +613,7 @@ impl TcpRpcAdapterEngine {
                     }
                     WcOpcode::Recv => {
                         let mut table = self.state.conn_table.borrow_mut();
-                        let conn_ctx = table.get_mut(&Handle(wc.conn_id as u32));
+                        let conn_ctx = table.get_mut(&Handle(wc.conn_id));
                         if conn_ctx.is_none() {
                             return 0;
                         }
@@ -603,10 +625,7 @@ impl TcpRpcAdapterEngine {
                             len: wc.byte_len as _,
                         };
                         conn_ctx.receiving_ctx.sg_list.0.push(sge);
-                        conn_ctx
-                            .receiving_ctx
-                            .recv_mrs
-                            .push(Handle(wc.wr_id as u32));
+                        conn_ctx.receiving_ctx.recv_mrs.push(Handle(wc.wr_id));
 
                         if wc.imm != 0 {
                             // received an entire RPC message
@@ -633,13 +652,14 @@ impl TcpRpcAdapterEngine {
             }
             WcStatus::Error(code) => {
                 // TODO(cjr): bubble up the error, close the connection, and return an error to the user.
-                let handle = Handle(wc.conn_id as u32);
+                let handle = Handle(wc.conn_id);
                 get_ops().state.listener_table.borrow_mut().remove(&handle);
                 get_ops().state.sock_table.borrow_mut().remove(&handle);
                 get_ops().state.cq_table.borrow_mut().remove(&handle);
                 self.state.conn_table.borrow_mut().remove(&handle);
                 let msg = if wc.opcode == WcOpcode::Send {
-                    let rpc_id = RpcId::decode_u64(wc.wr_id);
+                    // let rpc_id = RpcId::decode_u64(wc.wr_id);
+                    let rpc_id = self.rpc_ctx.remove(wc.wr_id as usize);
                     EngineRxMessage::Ack(rpc_id, TransportStatus::Error(code))
                 } else if wc.opcode == WcOpcode::Recv {
                     EngineRxMessage::RecvError(handle, TransportStatus::Error(code))

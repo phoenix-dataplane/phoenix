@@ -81,9 +81,9 @@ impl Drop for ProfileService {
 
 #[mrpc::async_trait]
 impl Profile for ProfileService {
-    async fn get_profiles<'s>(
+    async fn get_profiles(
         &self,
-        request: RRef<'s, ProfileRequest>,
+        request: RRef<ProfileRequest>,
     ) -> Result<WRef<ProfileResult>, mrpc::Status> {
         let start = Instant::now();
         let result = self
@@ -102,10 +102,7 @@ impl Profile for ProfileService {
 
 impl ProfileService {
     #[inline]
-    async fn get_profiles_internal<'s>(
-        &self,
-        request: RRef<'s, ProfileRequest>,
-    ) -> Result<ProfileResult> {
+    async fn get_profiles_internal(&self, request: RRef<ProfileRequest>) -> Result<ProfileResult> {
         let mut hotels = Vec::with_capacity(request.hotel_ids.len());
         for hotel_id in request.hotel_ids.iter() {
             let item: Option<String> = self.memc_client.get(hotel_id.as_str())?;

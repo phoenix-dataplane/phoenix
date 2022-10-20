@@ -1,45 +1,62 @@
 TODO
 
-Yongji
-- codegen for RpcAdapter's dyanmic dispatch
-- builder of shared library of generated code
-  for dyanmic binding
-- live upgrade
+Big Refactoring
+- merge code from multiple branches
+- auto testing and CI become more and more important as the code grows
+- transport-trait in libkoala (with async/.await)
+- unify the interface for tcp 
+- merge rpc adapter and tcp rpc adapter
+- seperate mrpc from koala
+- doc for public API
+- clippy is a must
+- error reporting should print stack trace
+- mrpc compiler does not consider all the dependent code
+- since we have many paths appearing in the configuration, we should have a
+  centralized place (one line) to allow users to specify them. Otherwise even we
+  developers run into many annoying path/permission problems.
+- find a good way to do adaptive polling/eventfd, for both rdma/tcp (is
+  that even possible?)
+- backend and frontend runtime (tokio scheduling actually makes sense)
+- tcp/rdma dynamic switch or at least allow the user choose one at boot
+- rdma post send batch
+- allow to specify static_resources/addons at program's start
+- support for larger than 8MB app (using post_send/recv on private
+  heap and read/write)
+- more importantly, (merge rdma scheduler with rdma engine), allowing
+  chunking in the network pipeline
+- more importantly, allow memory sharing because connection buffer size
+  should not be proportional to #conns, should be proportional to line rate
+- the code in frontend stub is kind of a mess
+- overload control
+- distributed tracing
+- WRef, RRef can be wrapped in Request/Response further (but we still
+  suggest the user to know they are using shm version of their data
+  structures, right?)
+- zbus/handle_request
+- really map the shm as read only for user.
+- Engine's interface
+- live upgrade flush queues -> merge_queue
+- mrpc stub multithreaded support / LocalClient LocalServer
+- more serious shm data structures (hashmap, ShmCow, ShmBorrow, should
+  add two APIs called from std or into std, separate frontend and
+  backend two features)
+- faster compilation time for libmarshal.so
+- more example apps
+- integrating into real apps (deepscheduler/byteps, memcached, redis,
+  raft, what's the killer apps?)
 
-Shihan
-- TCP backend + RpcAdapterTcp
-    - two RPs, the first only add this RpcAdapterTcp and leave other
-      code untouched, the second reorganize the tree structure
-    - enable #[deny(missing_doc)] for module while developing
-- live upgrade, implement that feature in a particular engine
 
-Yechen
-- more koala_examples
-    - allreduce and alltoall examples
-    - write some code with mRPC
-- scheduling layer
-
-Jingrong
-- dynamic binding
-- API
-- real apps
-- policy evals
-
-Other major tasks
-- performance deep dive
-	- engine overhead
-	- explicit mr registration
 
 Policy evals
-- content-based custom ACL
-- cross-app QoS (video-streaming + background)
+-[x] content-based custom ACL
+-[x] cross-app QoS (video-streaming + background)
 - distributed tracing/telemetry
-- maintain a eval folder
+-[x] maintain a eval folder
 
 Real Applications
-- eRPC maastree
-- thpt is 10x lower than eRPC, why, increase req-window?
-- DeathStarBench seems to be running in containers. How to deal with
+-[x] eRPC maastree
+-[x] thpt is 10x lower than eRPC, why, increase req-window?
+-[x] DeathStarBench seems to be running in containers. How to deal with
   this situation?
 
 Prost codegen
@@ -47,10 +64,10 @@ Prost codegen
 -[x] writing the correct codegen, this file should be out-of-tree, give
   it correct visibility
 -[x] write mrpc-build, generate the above code
-- generate marshal/unmarshal
-- dynamic loading
+-[x] generate marshal/unmarshal
+-[x] dynamic loading
 -[x] remove redundant language features and dependencies
-- add support for string
+-[x] add support for string
 
 Security
 - sanity check addresses passed by user
@@ -58,7 +75,7 @@ Security
   only this way r/o permission can be enforced
 
 RPC
-- need a multi-threaded throughput test (see if tput can scale linearly)
+-[x] need a multi-threaded throughput test (see if tput can scale linearly)
 - server cannot have too many connections, this becomes a problem for
   eRPC's test (both fd recycle and maximal number of fds need fixed)
 -[x] too many different things called recv_mr
@@ -70,7 +87,7 @@ RPC
 - remove the dependencies in thread_local
 - Make connect async too
 - Rename MessageErased to MessageOpaque
-- adding ReclaimRecvBuf back, but in another way
+-[x] adding ReclaimRecvBuf back, but in another way
 - add a IoReactor in userland
 - credit implementation has issues
 -[x] Prost codegen
@@ -79,6 +96,12 @@ RPC
 -[x] Heap allocator
 - RPC scalability: How much more memory is needed for RPC as a service
   this architecture?
+
+Transport Trait
+- Design a unified transport trait for both socket and ibverbs
+- Let every data path operation return a future, and implement a runtime
+  for that
+- *Implement a socket datapath*
 
 API
 -[x] the return value of a rpc call at the service side should be a Future
@@ -157,12 +180,12 @@ Misc
   --affinity=[none,hyperthread,numa,crossnuma/inter_numa/inter_cpu]
   --affinity=[casual,l1,l3,mem]
 
-- SAllocEngine and CmEngine should be per-process one engine. optmize
-  the number of engines to build.
+-[x] SAllocEngine and CmEngine should be per-process one engine. optmize
+     the number of engines to build.
 
 Shared memory heap
-- *check if a read only shm file descriptor can be open with write
-  permission and really written*
+-[x] *check if a read only shm file descriptor can be open with write
+     permission and really written*
 - need some tests for memory reclamation
 - remove file_off (it should be all zero now, given the existence of
   AddressMediator)
@@ -206,8 +229,8 @@ RPC init version
 -[x] resize cq on connection setup/destroy
 -[x] credit control on post send
 -[x] koala configuration, engine paths are not read from koala.toml
-- make modules in control.rs optional, based on their occurrences in
-  koala.toml
+-[x] make modules in control.rs optional, based on their occurrences in
+     koala.toml
 -[x] error handling at various places (user glue code, marshal/unmarshal)
 -[x] Rewrite the marshal/unmarshal and SgList
 - MutableResourceTable (global lock and slot lock) (State)
@@ -215,12 +238,6 @@ RPC init version
 
 Policy
 - Implement more engines for global policy
-
-Transport Trait
-- Design a unified transport trait for both socket and ibverbs
-- Let every data path operation return a future, and implement a runtime
-  for that
-- *Implement a socket datapath*
 
 Performance & CPU efficiency
 -[x] run latency test for more itertions and use eRPC::Latency util
@@ -242,8 +259,8 @@ Performance & CPU efficiency
       multiple CQs</s>
 
 Testing
-- *write a multi-thread RPC test*
 - *Crash consistency test*
+-[x] *write a multi-thread RPC test*
 -[x] test various threading models for koala
 - One thread post_send/recv, another thread poll_cq
 - Multiple threads operate on their own QPs, and poll the CQs associated
@@ -252,7 +269,7 @@ Testing
 
 Small example code
 - allreduce
-- alltoall is so slow, why?
+-[x] alltoall is so slow, why?
 
 Thread-safety
 -[x] Move Resource struct of transport engine up a level.
@@ -265,7 +282,7 @@ Thread-safety
 
 Resource Releasing
 - *Think over it carefully, rollback the creating resource operation when
-  there is exception in the middle.*
+  there is exception in the middle using DropGuard *
 -[x] implement resource release
 -[x] Finally find a solution to deal with Fd/Handle that can come from
      everywhere: use explicit open/close call to update the reference 
@@ -291,7 +308,8 @@ libkoala interface
 -[x] CmIdListener::incoming()
 -[x] CmIdListener::accept()
 
-Multi-NIC
+-[x] Multi-NIC. Done, except that resource needs to occupy an entire
+     page.
 
 Cloud native
 - Let koala run on Azure

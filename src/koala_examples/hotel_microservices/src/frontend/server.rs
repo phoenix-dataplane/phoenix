@@ -147,7 +147,7 @@ impl FrontendService {
     }
 }
 
-fn geo_json_response<'s>(res: RRef<'s, ProfileResult>) -> Result<String> {
+fn geo_json_response(res: RRef<ProfileResult>) -> Result<String> {
     let mut hotels = Vec::with_capacity(res.hotels.len());
     for hotel in res.hotels.iter() {
         let id = hotel.id.as_str();

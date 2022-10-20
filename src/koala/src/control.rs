@@ -15,7 +15,7 @@ use ipc::control::ResponseKind;
 use itertools::Itertools;
 use nix::unistd::Pid;
 
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingHint, SchedulingMode};
 use ipc::control::ServiceSubscriptionInfo;
 use ipc::unix::DomainSocket;
 
@@ -45,7 +45,9 @@ impl Control {
         service: Service,
         client_path: &Path,
         service_mode: SchedulingMode,
+        scheduling_hint: SchedulingHint,
         cred: &UCred,
+        config_string: Option<String>,
     ) -> anyhow::Result<()> {
         let pid = Pid::from_raw(cred.pid.unwrap());
         if self.upgrader.is_upgrading(pid) {
@@ -99,6 +101,7 @@ impl Control {
             let request = NewEngineRequest::Auxiliary {
                 pid,
                 mode: specified_mode,
+                config_string: config_string.clone(),
             };
             let engine = module.create_engine(
                 *aux_engine_type,
@@ -144,6 +147,7 @@ impl Control {
             client_path,
             mode: specified_mode,
             cred,
+            config_string: config_string.clone(),
         };
         let node = nodes
             .remove(service_engine_type)
@@ -156,11 +160,20 @@ impl Control {
                 global.value_mut(),
                 node,
                 &self.plugins.modules,
-            )?
+            )
+            .or_else(|e| {
+                log::error!(
+                    "create_engine failed: engine_type: {:?}, error: {}",
+                    service_engine_type,
+                    e
+                );
+                Err(e)
+            })?
             .ok_or(anyhow!(
                 "service engine must always be created, engine_type={:?}",
                 service_engine_type
             ))?;
+        // TODO(cjr): use let-else.
         tracing::info!(
             "Created engine {:?} of service {:?} for client pid={:?}",
             service_engine_type,
@@ -203,7 +216,7 @@ impl Control {
 
         for (containers, mode) in groups_to_submit {
             self.runtime_manager
-                .submit_group(pid, sid, containers, mode);
+                .submit_group(pid, sid, containers, mode, scheduling_hint);
         }
         Ok(())
     }
@@ -296,7 +309,7 @@ impl Control {
         use ipc::control;
         let msg: control::Request = bincode::deserialize(buf).unwrap();
         match msg {
-            control::Request::NewClient(mode, service_name) => {
+            control::Request::NewClient(hint, service_name, config_str) => {
                 let client_path = sender
                     .as_pathname()
                     .ok_or_else(|| anyhow!("peer is unnamed, something is wrong"))?;
@@ -307,12 +320,13 @@ impl Control {
                     .get(&service)
                     .ok_or(anyhow!("service {:?} not found", sender))?
                     .key();
+                let desired_mode = hint.mode;
                 let mode_override = self
                     .scheduling_override
                     .get(&service_name)
                     .map(|x| *x)
-                    .unwrap_or(mode);
-                self.create_service(service, client_path, mode_override, cred)?;
+                    .unwrap_or(desired_mode);
+                self.create_service(service, client_path, mode_override, hint, cred, config_str)?;
                 Ok(())
             }
             control::Request::EngineRequest(eid, request) => {

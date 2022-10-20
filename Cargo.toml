@@ -55,7 +55,7 @@ members = [
   "src/koala_examples/rpc_bench_plus",
   "src/koala_examples/masstree_analytics",
   "src/koala_examples/hotel_reservation",
-  "src/koala_examples/hotel_microservices",
+  # "src/koala_examples/hotel_microservices",
   "src/koalactl",
   "benchmark",
 ]

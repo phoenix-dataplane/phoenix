@@ -61,7 +61,10 @@ impl AsHandle for MemoryRegion {
     #[inline]
     fn as_handle(&self) -> Handle {
         assert!(!self.mr.is_null());
-        Handle(unsafe { &*self.mr }.handle)
+        let mr = unsafe { &*self.mr };
+        let ctx_handle = (&mr.context).as_ref().as_handle();
+        let mr_handle = mr.handle;
+        Handle(ctx_handle.0 << 32 | mr_handle as u64)
     }
 }
 
@@ -254,7 +257,10 @@ impl AsHandle for OdpMemoryRegion {
     #[inline]
     fn as_handle(&self) -> Handle {
         assert!(!self.mr.0.is_null());
-        Handle(unsafe { &*self.mr.0 }.handle)
+        let mr = unsafe { &*self.mr.0 };
+        let ctx_handle = (&mr.context).as_ref().as_handle();
+        let mr_handle = mr.handle;
+        Handle(ctx_handle.0 << 32 | mr_handle as u64)
     }
 }
 

@@ -18,3 +18,7 @@ find src/koala_examples -type f -name "*.rs" | xargs wc -l
 
 info "koala total:"
 find src/ -type f -name "*.rs" | grep -v "experimental" | grep -v slabmalloc | grep -v 3rdparty | grep -v bindings.rs | grep -v koala_examples | xargs wc -l
+
+
+info "doc/comments:"
+find src/ -type f -name "*.rs" | grep -v "experimental" | grep -v slabmalloc | grep -v 3rdparty | grep -v bindings.rs | grep -v koala_examples | xargs grep -r '[[:space:]]*//' | wc -l

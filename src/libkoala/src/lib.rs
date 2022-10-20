@@ -1,3 +1,4 @@
+#![feature(local_key_cell_methods)]
 use std::borrow::Borrow;
 use std::env;
 use std::path::PathBuf;

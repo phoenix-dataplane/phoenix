@@ -65,14 +65,15 @@ config_string = '''
 prefix = "/tmp/koala"
 engine_basename = "mrpc-engine"
 build_cache = "/tmp/koala/build-cache"
-transport = "Tcp"
+transport = "Rdma"
+nic_index = 0
 '''
 
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/koala/plugins/libkoala_rpc_adapter_plugin.so"
 config_string = '''
-enable_scheduler = true
+enable_scheduler = false
 '''
 
 

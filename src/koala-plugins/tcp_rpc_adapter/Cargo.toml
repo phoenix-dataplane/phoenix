@@ -13,7 +13,7 @@ interface = { path = "../../interface" }
 ipc = { path = "../../ipc", features = ["mrpc", "tcp_rpc_adapter"] }
 koala = { path = "../../koala" }
 transport_tcp = { path = "../transport-tcp", package = "koala-transport-tcp" }
-mrpc-marshal = { path = "../../mrpc-marshal" } 
+mrpc-marshal = { path = "../../mrpc-marshal" }
 salloc = { path = "../salloc", package = "koala-salloc" }
 mrpc = { path = "../mrpc", package = "koala-mrpc" }
 
@@ -32,3 +32,4 @@ fastrand = "1.8.0"
 bitvec = "1.0.1"
 bincode = "1.3.3"
 socket2 = "0.4.7"
+slab = "0.4.7"

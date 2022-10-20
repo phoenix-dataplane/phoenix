@@ -27,7 +27,6 @@ pub mod greeter_client {
     #[derive(Debug)]
     pub struct GreeterClient {
         stub: ClientStub,
-        call_counter: std::cell::Cell<u32>,
     }
 
     impl GreeterClient {
@@ -41,16 +40,11 @@ pub mod greeter_client {
         }
 
         pub fn connect<A: std::net::ToSocketAddrs>(dst: A) -> Result<Self, ::mrpc::Error> {
-            // use the cmid builder to create a CmId.
-            // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
-            // cmid communicates directly to the transport engine. you need to pass your raw rpc
-            // request/response to/from the rpc engine rather than the transport engine.
+            // Force loading/reloading protos at the backend
             Self::update_protos()?;
+
             let stub = ClientStub::connect(dst).unwrap();
-            Ok(Self {
-                stub,
-                call_counter: std::cell::Cell::new(0),
-            })
+            Ok(Self { stub })
         }
 
         pub fn say_hello(
@@ -58,9 +52,8 @@ pub mod greeter_client {
             req: impl mrpc::IntoWRef<HelloRequest>,
         ) -> impl std::future::Future<Output = Result<mrpc::RRef<HelloReply>, ::mrpc::Status>> + '_
         {
-            let call_id = self.call_counter.get();
-            self.call_counter.set(call_id + 1);
-            // TODO(cjr): fill this with the right func_id
+            let call_id = self.stub.initiate_call();
+            // Fill this with the right func_id
             let func_id = 3687134534u32;
 
             self.stub
@@ -80,9 +73,9 @@ pub mod greeter_server {
 
     #[mrpc::async_trait]
     pub trait Greeter: Send + Sync + 'static {
-        async fn say_hello<'s>(
+        async fn say_hello(
             &self,
-            request: mrpc::RRef<'s, HelloRequest>,
+            request: mrpc::RRef<HelloRequest>,
         ) -> Result<mrpc::WRef<HelloReply>, mrpc::Status>;
     }
 
@@ -118,13 +111,13 @@ pub mod greeter_server {
         async fn call(
             &self,
             req_opaque: mrpc::MessageErased,
-            read_heap: Arc<mrpc::salloc::ReadHeap>,
-        ) -> mrpc::MessageErased {
+            read_heap: std::sync::Arc<mrpc::ReadHeap>,
+        ) -> (mrpc::WRefOpaque, mrpc::MessageErased) {
             let func_id = req_opaque.meta.func_id;
             match func_id {
                 // TODO(cjr): fill this with the right func_id
                 3687134534u32 => {
-                    let req = mrpc::RRef::new(&req_opaque, &read_heap);
+                    let req = ::mrpc::RRef::new(&req_opaque, read_heap);
                     let res = self.inner.say_hello(req).await;
                     match res {
                         Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),

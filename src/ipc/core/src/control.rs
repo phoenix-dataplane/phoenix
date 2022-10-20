@@ -3,7 +3,7 @@ use std::path::PathBuf;
 pub use libc::pid_t;
 use serde::{Deserialize, Serialize};
 
-use interface::engine::SchedulingMode;
+use interface::engine::{SchedulingHint, SchedulingMode};
 
 type IResult<T> = Result<T, interface::Error>;
 
@@ -64,8 +64,8 @@ pub struct AddonRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
-    /// New service subscription, scheduling mode and service name
-    NewClient(SchedulingMode, String),
+    /// New service subscription, scheduling mode, service name, and an optional config string
+    NewClient(SchedulingHint, String, Option<String>),
     /// Send a request to a specified engine, identified by the EngineId
     EngineRequest(u64, Vec<u8>),
     /// List all service subscriptions

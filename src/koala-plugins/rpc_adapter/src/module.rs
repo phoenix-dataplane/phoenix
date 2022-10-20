@@ -8,11 +8,11 @@ use interface::engine::SchedulingMode;
 use ipc;
 use ipc::mrpc::cmd;
 
-use koala::transport_rdma::ops::Ops;
 use salloc::module::SallocModule;
 use salloc::region::AddressMediator;
 use salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_rdma::module::RdmaTransportModule;
+use transport_rdma::ops::Ops;
 
 use koala::engine::datapath::DataPathNode;
 use koala::engine::{Engine, EnginePair, EngineType};
@@ -53,7 +53,6 @@ impl AcceptorEngineBuilder {
 
 pub(crate) struct RpcAdapterEngineBuilder {
     _client_pid: Pid,
-    enable_scheduler: bool,
     mode: SchedulingMode,
     cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
@@ -67,7 +66,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
 impl RpcAdapterEngineBuilder {
     fn new(
         client_pid: Pid,
-        enable_scheduler: bool,
+        _enable_scheduler: bool,
         mode: SchedulingMode,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<ipc::mrpc::cmd::Completion>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<ipc::mrpc::cmd::Command>,
@@ -79,7 +78,6 @@ impl RpcAdapterEngineBuilder {
     ) -> Self {
         RpcAdapterEngineBuilder {
             _client_pid: client_pid,
-            enable_scheduler,
             mode,
             cmd_tx,
             cmd_rx,
@@ -107,9 +105,9 @@ impl RpcAdapterEngineBuilder {
             node: self.node,
             _mode: self.mode,
             indicator: Default::default(),
-            enable_scheduler: self.enable_scheduler,
             recv_mr_usage: fnv::FnvHashMap::default(),
             serialization_engine: None,
+            rpc_ctx: slab::Slab::with_capacity(128),
             wc_read_buffer: Vec::with_capacity(BUF_LEN),
             salloc: salloc_state,
         })
@@ -219,10 +217,16 @@ impl KoalaModule for RpcAdapterModule {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode: _,
+                    config_string,
                 } = request
                 {
-                    let engine =
-                        self.create_acceptor_engine(client_pid, salloc, rdma_transport, node)?;
+                    let engine = self.create_acceptor_engine(
+                        client_pid,
+                        salloc,
+                        rdma_transport,
+                        node,
+                        config_string,
+                    )?;
                     let boxed = engine.map(|x| Box::new(x) as _);
                     Ok(boxed)
                 } else {
@@ -233,6 +237,7 @@ impl KoalaModule for RpcAdapterModule {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode,
+                    config_string,
                 } = request
                 {
                     let (cmd_sender, cmd_receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -252,6 +257,7 @@ impl KoalaModule for RpcAdapterModule {
                         node,
                         salloc,
                         rdma_transport,
+                        config_string,
                     )?;
                     Ok(Some(Box::new(engine)))
                 } else {
@@ -298,9 +304,11 @@ impl RpcAdapterModule {
         node: DataPathNode,
         salloc: &mut SallocModule,
         rdma_transport: &mut RdmaTransportModule,
+        _config_string: Option<String>,
     ) -> Result<RpcAdapterEngine> {
         // Acceptor engine should already been created at this moment
         let ops = rdma_transport.create_ops(client_pid)?;
+
         // Get salloc state
         let addr_mediator = salloc.get_addr_mediator();
         let addr_mediator_clone = Arc::clone(&addr_mediator);
@@ -331,7 +339,9 @@ impl RpcAdapterModule {
         salloc: &mut SallocModule,
         rdma_transport: &mut RdmaTransportModule,
         node: DataPathNode,
+        _config_string: Option<String>,
     ) -> Result<Option<AcceptorEngine>> {
+        koala::log::warn!("create_acceptor_engine");
         let ops = rdma_transport.create_ops(client_pid)?;
 
         let addr_mediator = salloc.get_addr_mediator();

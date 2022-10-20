@@ -40,10 +40,12 @@ pub enum NewEngineRequest<'a> {
         client_path: &'a Path,
         mode: SchedulingMode,
         cred: &'a UCred,
+        config_string: Option<String>,
     },
     Auxiliary {
         pid: Pid,
         mode: SchedulingMode,
+        config_string: Option<String>,
     },
 }
 
@@ -110,7 +112,7 @@ pub trait KoalaModule: TypeTagged + Send + Sync + 'static {
     /// * `global`: Per user application process global resources
     /// * `plugged`:
     ///     All modules currently plugged in koala-control
-    ///     Enable state sharing between engines in different services    
+    ///     Enable state sharing between engines in different services
     fn create_engine(
         &mut self,
         ty: EngineType,

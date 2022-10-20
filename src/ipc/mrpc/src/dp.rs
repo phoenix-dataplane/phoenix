@@ -1,7 +1,7 @@
 //! mRPC data path operations.
 use serde::{Deserialize, Serialize};
 
-use interface::rpc::{MessageErased, RpcId, TransportStatus};
+use interface::rpc::{CallId, MessageErased, RpcId, TransportStatus};
 use interface::Handle;
 
 pub type WorkRequestSlot = [u8; 64];
@@ -15,14 +15,14 @@ pub enum WorkRequest {
     // this will also deallocate
     Reply(MessageErased),
     // conn_id and an array of call_id
-    ReclaimRecvBuf(Handle, [u32; RECV_RECLAIM_BS]),
+    ReclaimRecvBuf(Handle, [CallId; RECV_RECLAIM_BS]),
 }
 
 pub type CompletionSlot = [u8; 64];
 
 // Avoid using too much `Send`/`Recv` in the code.
 #[repr(C, align(64))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Completion {
     Incoming(MessageErased),
     Outgoing(RpcId, TransportStatus),

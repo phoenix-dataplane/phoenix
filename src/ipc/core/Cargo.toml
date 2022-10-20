@@ -24,3 +24,8 @@ crossbeam = "0.8.1"
 unique = "0.9.1"
 minstant = "0.1.1"
 mio = "0.8.4"
+async-io = { version = "1.9.0", optional = true }
+
+[features]
+default = []
+customer = ["dep:async-io"]

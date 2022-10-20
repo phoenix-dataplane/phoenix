@@ -49,6 +49,7 @@ impl From<ResourceError> for ApiError {
         match other {
             ResourceError::NotFound => ApiError::NotFound,
             ResourceError::Exists => panic!(),
+            ResourceError::SlabFull => todo!(),
         }
     }
 }
@@ -74,6 +75,7 @@ impl From<ResourceError> for TransportError {
         match other {
             ResourceError::NotFound => TransportError::NotFound,
             ResourceError::Exists => panic!(),
+            ResourceError::SlabFull => panic!(),
         }
     }
 }

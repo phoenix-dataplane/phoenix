@@ -8,18 +8,12 @@ use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
-use crate::engine::datapath::DataPathNode;
-use crate::engine::{Engine, EngineType, Vertex};
-use crate::log;
-use crate::scheduler::engine::SchedulerEngine;
-use crate::scheduler::module::SchedulerModule;
 use dashmap::DashMap;
-use interface::engine::SchedulingMode::Dedicate;
 use minstant::Instant;
-use semver::Version;
 use spin::Mutex;
 use thiserror::Error;
 
+use super::affinity::CoreMask;
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
 use super::{EngineContainer, EngineResult, SchedulingGroup};
@@ -113,6 +107,9 @@ pub(crate) enum RuntimeMode {
 pub(crate) struct Runtime {
     /// runtime id
     pub(crate) id: RuntimeId,
+    /// Cores that the runtime affinites to.
+    cores: CoreMask,
+
     // we use RefCell here for unsynchronized interior mutability.
     // Engine has only one consumer, thus, no need to lock it.
     pub(crate) running: RefCell<Vec<RefCell<SchedulingGroup>>>,
@@ -139,14 +136,13 @@ pub(crate) struct Runtime {
     pub(crate) control_requests: Mutex<Vec<(EngineId, Vec<u8>, UCred)>>,
 
     pub(crate) runtime_manager: Weak<RuntimeManager>,
-
-    pub(crate) scheduler: Mutex<Option<EngineContainer>>,
 }
 
 impl Runtime {
-    pub(crate) fn new(id: RuntimeId, rm: Weak<RuntimeManager>) -> Self {
+    pub(crate) fn new(id: RuntimeId, cores: CoreMask, rm: Weak<RuntimeManager>) -> Self {
         Runtime {
             id,
+            cores,
             running: RefCell::new(Vec::new()),
             active_cnt: AtomicUsize::new(0),
 
@@ -164,48 +160,6 @@ impl Runtime {
             control_requests: Mutex::new(Vec::new()),
 
             runtime_manager: rm,
-
-            scheduler: Mutex::new(None),
-        }
-    }
-
-    fn lazy_create_scheduler(&self, engines: &mut Vec<(EngineId, EngineContainer)>) {
-        use crate::engine::datapath::channel;
-        for (eng_id, eng_ctn) in engines {
-            if eng_ctn.engine_type() == EngineType("RpcAdapterEngine") {
-                let mut eng = eng_ctn.engine_mut();
-                assert_eq!(eng.tx_outputs().len(), 0);
-                assert_eq!(eng.rx_inputs().len(), 0);
-                let (tx_sender, tx_receiver) =
-                    channel::create_channel(channel::ChannelFlavor::Sequential);
-                let (rx_sender, rx_receiver) =
-                    channel::create_channel(channel::ChannelFlavor::Sequential);
-                eng.tx_outputs().push(tx_sender);
-                eng.rx_inputs().push(rx_receiver);
-                let mut guard = self.scheduler.lock();
-                if guard.is_none() {
-                    let scheduler = SchedulerEngine::new(DataPathNode::new(), Dedicate);
-                    let container = EngineContainer::new(
-                        Box::new(scheduler),
-                        SchedulerModule::SCHEDULER_ENGINE,
-                        Version::new(1, 0, 0),
-                    );
-                    *guard = Some(container);
-                }
-                guard
-                    .as_mut()
-                    .unwrap()
-                    .engine_mut()
-                    .tx_inputs()
-                    .push(tx_receiver);
-                guard
-                    .as_mut()
-                    .unwrap()
-                    .engine_mut()
-                    .rx_outputs()
-                    .push(rx_sender);
-                log::debug!("Connect rpc_adapter-{} to scheduler", eng_id.0);
-            }
         }
     }
 
@@ -231,8 +185,12 @@ impl Runtime {
         &self,
         mode: RuntimeMode,
         group_signature: Option<u32>,
+        cores: CoreMask,
         quota: Option<usize>,
     ) -> bool {
+        if self.cores != cores {
+            return false;
+        }
         // NOTE(wyj): Relaxed ordering should be fine
         let scheduled_groups = self.active_cnt.load(Ordering::Relaxed) + self.pending.lock().len();
         if scheduled_groups == 0 {
@@ -285,8 +243,7 @@ impl Runtime {
     }
 
     /// Submit a scheduling group to the runtime
-    pub(crate) fn add_group(&self, mut group: SchedulingGroup) {
-        self.lazy_create_scheduler(&mut group.engines);
+    pub(crate) fn add_group(&self, group: SchedulingGroup) {
         let submission = RuntimeSubmission::NewGroup(group);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -296,9 +253,8 @@ impl Runtime {
     pub(crate) fn attach_engines_to_group(
         &self,
         gid: GroupId,
-        mut engines: Vec<(EngineId, EngineContainer)>,
+        engines: Vec<(EngineId, EngineContainer)>,
     ) {
-        self.lazy_create_scheduler(&mut engines);
         let submission = RuntimeSubmission::AttachToGroup(gid, engines);
         self.pending.lock().push(submission);
         self.new_pending.store(true, Ordering::Release);
@@ -394,41 +350,6 @@ impl Runtime {
                         }
                     }
                 }
-            }
-            {
-                let mut guard = self.scheduler.lock();
-                if guard.is_some() {
-                    guard.as_mut().unwrap().engine_mut().set_els();
-
-                    // bind to a variable first (otherwise engine is borrowed in the match expression)
-                    let ret = guard.as_mut().unwrap().future().poll(&mut cx);
-                    match ret {
-                        Poll::Pending => {
-                            let tracker = guard.as_mut().unwrap().engine_mut().tracker();
-                            // has_work += tracker.nwork();
-                            if tracker.nwork() > 0 {
-                                last_event_ts = Instant::now();
-                            }
-                            tracker.set_nwork(0);
-                        }
-                        Poll::Ready(EngineResult::Ok(())) => {
-                            log::info!(
-                                "Engine [{}] completed, shutting down...",
-                                guard.as_ref().unwrap().engine().description()
-                            );
-                            *guard = None;
-                        }
-                        Poll::Ready(EngineResult::Err(e)) => {
-                            log::error!(
-                                "Engine [{}] error: {}",
-                                guard.as_ref().unwrap().engine().description(),
-                                e
-                            );
-                            *guard = None;
-                        }
-                    }
-                }
-                drop(guard);
             }
 
             // garbage collect every several rounds, maybe move to another thread.
