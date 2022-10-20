@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 mmap = { path = "../../mmap" }
 slabmalloc = { path = "../../slabmalloc" }
-libkoala = { path = "../../libkoala" }
+libphoenix = { path = "../../libphoenix" }
 interface = { path = "../../interface" }
 ipc = { path = "../../ipc", features = ["salloc"] }
 shm = { path = "../../shm" }

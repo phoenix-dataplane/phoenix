@@ -1,0 +1,15 @@
+name = "launch_phoenix"
+description = "Launch phoenix daemon"
+group = "launch_phoenix"
+timeout_secs = 600
+
+[[worker]]
+host = "danyang-06"
+bin = "phoenix"
+args = "-c eval/micro-bench/bandwidth/phoenix.toml"
+
+[[worker]]
+host = "danyang-05"
+bin = "phoenix"
+args = "-c eval/micro-bench/bandwidth/phoenix.toml"
+dependencies = [0] # launch in order, no very necessary

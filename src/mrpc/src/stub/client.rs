@@ -11,7 +11,7 @@ use interface::AsHandle;
 use ipc::channel::{Receiver, TryRecvError};
 use ipc::mrpc::cmd::{Command, CompletionKind};
 use ipc::mrpc::dp;
-use libkoala::_rx_recv_impl as rx_recv_impl;
+use libphoenix::_rx_recv_impl as rx_recv_impl;
 
 use super::conn::Connection;
 use super::reply_cache::ReplyCache;

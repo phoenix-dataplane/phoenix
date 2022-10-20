@@ -29,7 +29,7 @@ use crate::service::MAX_MSG_LEN;
 use crate::unix::DomainSocket;
 use crate::{Error, IpcRecvError, IpcSendError, ShmObject, ShmReceiver, ShmSender, TryRecvError};
 
-// TODO(cjr): make these configurable, see koala.toml
+// TODO(cjr): make these configurable, see phoenix.toml
 const DP_WQ_DEPTH: usize = 32;
 const DP_CQ_DEPTH: usize = 32;
 
@@ -303,7 +303,7 @@ where
     }
 
     pub fn register<P: AsRef<Path>>(
-        koala_prefix: P,
+        phoenix_prefix: P,
         control_path: P,
         service: String,
         hint: SchedulingHint,
@@ -313,9 +313,9 @@ where
         let arg0 = env::args().next().unwrap();
         let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
 
-        let sock_path = koala_prefix
+        let sock_path = phoenix_prefix
             .as_ref()
-            .join(format!("koala-client-{}_{}.sock", appname, uuid));
+            .join(format!("phoenix-client-{}_{}.sock", appname, uuid));
         if sock_path.exists() {
             fs::remove_file(&sock_path).expect("remove_file");
         }
@@ -325,7 +325,7 @@ where
         let buf = bincode::serialize(&req)?;
         assert!(buf.len() < MAX_MSG_LEN);
 
-        let service_path = koala_prefix.as_ref().join(control_path);
+        let service_path = phoenix_prefix.as_ref().join(control_path);
         sock.send_to(&buf, &service_path)?;
 
         // receive NewClient response

@@ -11,14 +11,14 @@ use std::ptr;
 use std::slice;
 use std::sync::atomic::AtomicU64;
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 use std::ops::DerefMut;
 
 use socket2::SockAddr;
 
 use nix::sys::socket::{AddressFamily, SockaddrLike, SockaddrStorage};
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 use interface::{AsHandle, Handle};
 
 use crate::ffi;
@@ -411,7 +411,7 @@ impl AsRef<EventChannel> for *mut ffi::rdma_event_channel {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl AsHandle for EventChannel {
     #[inline]
     fn as_handle(&self) -> Handle {
@@ -483,7 +483,7 @@ pub struct MemoryRegion<'a>(
 unsafe impl<'a> Send for MemoryRegion<'a> {}
 unsafe impl<'a> Sync for MemoryRegion<'a> {}
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'a> AsHandle for MemoryRegion<'a> {
     #[inline]
     fn as_handle(&self) -> Handle {
@@ -510,7 +510,7 @@ impl<'a> MemoryRegion<'a> {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'a> Deref for MemoryRegion<'a> {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
@@ -520,7 +520,7 @@ impl<'a> Deref for MemoryRegion<'a> {
     }
 }
 
-#[cfg(feature = "koala")]
+#[cfg(feature = "phoenix")]
 impl<'a> DerefMut for MemoryRegion<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         assert!(!self.0.is_null());

@@ -6,5 +6,5 @@ build-plan = "build --build-plan -Z unstable-options"
 RUST_BACKTRACE = "1"
 
 [build]
-# link libkoala and all engine plugins as dynamic library
+# link libphoenix and all engine plugins as dynamic library
 rustflags = ["-C", "prefer-dynamic", "-C", "rpath"]

@@ -1,5 +1,5 @@
-//! Convert ibv types and rdmacm types from and to koala types.
-#![cfg(feature = "koala")]
+//! Convert ibv types and rdmacm types from and to phoenix types.
+#![cfg(feature = "phoenix")]
 use std::num::NonZeroU32;
 
 use socket2::SockAddr;

@@ -9,27 +9,27 @@ use interface::engine::SchedulingHint;
 use ipc::salloc::{cmd, dp};
 use ipc::service::ShmService;
 
-const DEFAULT_KOALA_PREFIX: &str = "/tmp/koala";
-const DEFAULT_KOALA_CONTROL: &str = "control.sock";
+const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
+const DEFAULT_PHOENIX_CONTROL: &str = "control.sock";
 
 lazy_static::lazy_static! {
-    pub static ref KOALA_PREFIX: PathBuf = {
-        env::var("KOALA_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+    pub static ref PHOENIX_PREFIX: PathBuf = {
+        env::var("PHOENIX_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_PREFIX), |p| {
             let path = PathBuf::from(p);
             assert!(path.is_dir(), "{:?} is not a directly", path);
             path
         })
     };
 
-    pub static ref KOALA_CONTROL_SOCK: PathBuf = {
-        env::var("KOALA_CONTROL")
-            .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
+    pub static ref PHOENIX_CONTROL_SOCK: PathBuf = {
+        env::var("PHOENIX_CONTROL")
+            .map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_CONTROL), PathBuf::from)
     };
 }
 
 thread_local! {
     // Initialization is dynamically performed on the first call to with within a thread.
-    pub(crate) static SA_CTX: SAContext = SAContext::register().expect("koala salloc register failed");
+    pub(crate) static SA_CTX: SAContext = SAContext::register().expect("phoenix salloc register failed");
 }
 
 macro_rules! rx_recv_impl {
@@ -71,8 +71,8 @@ pub(crate) struct SAContext {
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
         let service = ShmService::register(
-            KOALA_PREFIX.as_path(),
-            KOALA_CONTROL_SOCK.as_path(),
+            PHOENIX_PREFIX.as_path(),
+            PHOENIX_CONTROL_SOCK.as_path(),
             "Salloc".to_string(),
             SchedulingHint::default(),
             None,

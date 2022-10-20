@@ -20,7 +20,7 @@ CONFIG_PATH = os.path.join(SCRIPTDIR, "config.toml")
 config = toml.load(CONFIG_PATH)
 workdir = config["workdir"]
 workdir = os.path.expanduser(workdir)
-os.environ['KOALA_PREFIX'] = config['env']['KOALA_PREFIX']
+os.environ['PHOENIX_PREFIX'] = config['env']['PHOENIX_PREFIX']
 
 os.chdir(workdir)
 os.makedirs(OD+"/qos", exist_ok=True)

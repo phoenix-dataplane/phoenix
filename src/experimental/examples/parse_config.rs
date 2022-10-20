@@ -138,7 +138,7 @@ impl Config {
 }
 
 fn main() {
-    let content = fs::read_to_string("koala.toml").unwrap();
+    let content = fs::read_to_string("phoenix.toml").unwrap();
     let config = content.parse::<toml::Value>().unwrap();
     // println!("config: {:#?}", config["log_env"]);
     // println!("config: {:#?}", config["default_log_level"]);
@@ -155,5 +155,5 @@ fn main() {
     let profile: Profile = toml::from_str(&content).unwrap();
     println!("profile: {:#?}", profile);
 
-    let config = Config::from_path("koala.toml").unwrap();
+    let config = Config::from_path("phoenix.toml").unwrap();
 }

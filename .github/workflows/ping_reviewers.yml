@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   ping:
-    if: github.repository == 'koalanet-project/koala'
+    if: github.repository == 'phoenix-dataplane/phoenix'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2

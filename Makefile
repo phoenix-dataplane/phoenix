@@ -1,12 +1,12 @@
 .PHONY: clean compile
 
-WD ?= /tmp/koala
+WD ?= /tmp/phoenix
 
 compile:
 	cargo b --release && ./scripts/deploy_plugins.sh ${WD}
 
 run: compile
-	cargo rr --bin koala
+	cargo rr --bin phoenix
 
 clean:
 	cargo clean

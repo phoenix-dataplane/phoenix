@@ -25,4 +25,4 @@ nix = { version = "0.25.0", features = ["socket"] }
 ipc = { path = "../ipc", features = []}
 
 [features]
-koala = ["interface", "serde", "bincode", "mmap", "spin", "lazy_static"]
+phoenix = ["interface", "serde", "bincode", "mmap", "spin", "lazy_static"]

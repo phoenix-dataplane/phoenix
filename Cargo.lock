@@ -33,7 +33,7 @@ name = "alltoall"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "libkoala",
+ "libphoenix",
  "structopt",
 ]
 
@@ -247,8 +247,8 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 name = "bench"
 version = "0.1.0"
 dependencies = [
- "libkoala",
  "libnuma",
+ "libphoenix",
  "scheduler",
  "structopt",
 ]
@@ -847,7 +847,6 @@ dependencies = [
  "fnv",
  "interface",
  "ipc",
- "koala",
  "lazy_static",
  "libc",
  "linked-hash-map",
@@ -857,6 +856,7 @@ dependencies = [
  "nix 0.23.1",
  "num_cpus",
  "petgraph",
+ "phoenix",
  "rand 0.8.5",
  "ringbuf",
  "serde",
@@ -1166,7 +1166,7 @@ checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
 name = "hello"
 version = "0.1.0"
 dependencies = [
- "libkoala",
+ "libphoenix",
 ]
 
 [[package]]
@@ -1458,373 +1458,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "koala"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "anyhow",
- "bincode",
- "chrono",
- "crc32fast",
- "crossbeam",
- "dashmap",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "itertools",
- "json",
- "lazy_static",
- "libc",
- "libloading",
- "libnuma",
- "libnuma-sys",
- "memfd",
- "memmap2 0.5.7",
- "minstant",
- "mio 0.7.14",
- "nix 0.23.1",
- "num_cpus",
- "petgraph",
- "prost-build",
- "rdma",
- "scheduler",
- "semver 1.0.14",
- "serde",
- "sharded-slab",
- "smallvec 1.10.0",
- "socket2",
- "spin",
- "static_assertions",
- "structopt",
- "thiserror",
- "tokio",
- "toml",
- "tracing",
- "tracing-appender",
- "tracing-chrome",
- "tracing-subscriber",
- "unique",
- "uuid",
- "version",
-]
-
-[[package]]
-name = "koala-hotel-acl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "koala",
- "minstant",
- "mrpc-derive",
- "mrpc-marshal",
- "nix 0.23.1",
- "serde",
- "serde_json",
- "shm",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "koala-hotel-acl-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-hotel-acl",
-]
-
-[[package]]
-name = "koala-mrpc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crc32fast",
- "fastrand",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "itertools",
- "koala",
- "lazy_static",
- "md5",
- "mrpc-marshal",
- "nix 0.23.1",
- "prettyplease",
- "proc-macro2",
- "prost-build",
- "quote",
- "serde",
- "serde_json",
- "static_assertions",
- "syn",
- "thiserror",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "koala-mrpc-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-mrpc",
-]
-
-[[package]]
-name = "koala-null"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "ipc",
- "koala",
- "minstant",
- "nix 0.23.1",
- "serde",
- "serde_json",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "koala-null-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-null",
-]
-
-[[package]]
-name = "koala-qos"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "ipc",
- "koala",
- "minstant",
- "nix 0.23.1",
- "serde",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "koala-qos-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-qos",
-]
-
-[[package]]
-name = "koala-ratelimit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "ipc",
- "koala",
- "minstant",
- "nix 0.23.1",
- "serde",
- "serde_json",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "koala-ratelimit-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-ratelimit",
-]
-
-[[package]]
-name = "koala-rpc_adapter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "bitvec",
- "dashmap",
- "fastrand",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "koala",
- "koala-mrpc",
- "koala-salloc",
- "koala-transport-rdma",
- "libloading",
- "mrpc-marshal",
- "nix 0.23.1",
- "rdma",
- "serde",
- "serde_json",
- "slab",
- "spin",
- "thiserror",
- "tokio",
- "toml",
-]
-
-[[package]]
-name = "koala-rpc_adapter-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-rpc_adapter",
-]
-
-[[package]]
-name = "koala-salloc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures",
- "interface",
- "ipc",
- "koala",
- "libc",
- "memfd",
- "mmap",
- "nix 0.23.1",
- "serde",
- "spin",
- "thiserror",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "koala-salloc-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-salloc",
-]
-
-[[package]]
-name = "koala-tcp_rpc_adapter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "bitvec",
- "dashmap",
- "fastrand",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "koala",
- "koala-mrpc",
- "koala-salloc",
- "koala-transport-tcp",
- "libloading",
- "mrpc-marshal",
- "nix 0.23.1",
- "serde",
- "slab",
- "socket2",
- "spin",
- "thiserror",
- "tokio",
- "toml",
-]
-
-[[package]]
-name = "koala-tcp_rpc_adapter-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-tcp_rpc_adapter",
-]
-
-[[package]]
-name = "koala-transport-rdma"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "koala",
- "lazy_static",
- "memoffset 0.6.5",
- "mio 0.7.14",
- "nix 0.23.1",
- "rdma",
- "serde",
- "serde_json",
- "spin",
- "thiserror",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "koala-transport-rdma-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-transport-rdma",
-]
-
-[[package]]
-name = "koala-transport-tcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fnv",
- "futures",
- "interface",
- "ipc",
- "koala",
- "lazy_static",
- "memoffset 0.6.5",
- "mio 0.8.4",
- "nix 0.23.1",
- "serde",
- "socket2",
- "spin",
- "thiserror",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "koala-transport-tcp-plugin"
-version = "0.1.0"
-dependencies = [
- "koala-transport-tcp",
-]
-
-[[package]]
-name = "koalactl"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "interface",
- "ipc",
- "lazy_static",
- "prettytable-rs",
- "serde",
- "serde_json",
- "structopt",
- "toml",
- "uuid",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1841,25 +1474,6 @@ name = "libc"
 version = "0.2.135"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68783febc7782c6c5cb401fbda4de5a9898be1762314da0bb2c10ced61f18b0c"
-
-[[package]]
-name = "libkoala"
-version = "0.1.0"
-dependencies = [
- "fnv",
- "interface",
- "ipc",
- "lazy_static",
- "libc",
- "memfd",
- "memmap2 0.5.7",
- "nix 0.23.1",
- "serde_json",
- "spin",
- "thiserror",
- "utils",
- "uuid",
-]
 
 [[package]]
 name = "libloading"
@@ -1891,6 +1505,25 @@ checksum = "cf3c04e9d759ab6999ca6e4f4846f009188edecbe52d700483d9912919984ade"
 dependencies = [
  "bitflags 0.6.0",
  "libc",
+]
+
+[[package]]
+name = "libphoenix"
+version = "0.1.0"
+dependencies = [
+ "fnv",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "libc",
+ "memfd",
+ "memmap2 0.5.7",
+ "nix 0.23.1",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "utils",
+ "uuid",
 ]
 
 [[package]]
@@ -2135,8 +1768,8 @@ dependencies = [
  "ipc",
  "lazy_static",
  "libc",
- "libkoala",
  "libnuma",
+ "libphoenix",
  "log",
  "memfd",
  "minstant",
@@ -2445,6 +2078,373 @@ checksum = "e6d5014253a1331579ce62aa67443b4a658c5e7dd03d4bc6d302b94474888143"
 dependencies = [
  "fixedbitset",
  "indexmap",
+]
+
+[[package]]
+name = "phoenix"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "anyhow",
+ "bincode",
+ "chrono",
+ "crc32fast",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "itertools",
+ "json",
+ "lazy_static",
+ "libc",
+ "libloading",
+ "libnuma",
+ "libnuma-sys",
+ "memfd",
+ "memmap2 0.5.7",
+ "minstant",
+ "mio 0.7.14",
+ "nix 0.23.1",
+ "num_cpus",
+ "petgraph",
+ "prost-build",
+ "rdma",
+ "scheduler",
+ "semver 1.0.14",
+ "serde",
+ "sharded-slab",
+ "smallvec 1.10.0",
+ "socket2",
+ "spin",
+ "static_assertions",
+ "structopt",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-appender",
+ "tracing-chrome",
+ "tracing-subscriber",
+ "unique",
+ "uuid",
+ "version",
+]
+
+[[package]]
+name = "phoenix-hotel-acl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-hotel-acl-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-hotel-acl",
+]
+
+[[package]]
+name = "phoenix-mrpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "fastrand",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "itertools",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "phoenix",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-mrpc-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-mrpc",
+]
+
+[[package]]
+name = "phoenix-null"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "minstant",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-null-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-null",
+]
+
+[[package]]
+name = "phoenix-qos"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "minstant",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-qos-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-qos",
+]
+
+[[package]]
+name = "phoenix-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "ipc",
+ "minstant",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-ratelimit-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-ratelimit",
+]
+
+[[package]]
+name = "phoenix-rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "phoenix",
+ "phoenix-mrpc",
+ "phoenix-salloc",
+ "phoenix-transport-rdma",
+ "rdma",
+ "serde",
+ "serde_json",
+ "slab",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-rpc_adapter-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-rpc_adapter",
+]
+
+[[package]]
+name = "phoenix-salloc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "interface",
+ "ipc",
+ "libc",
+ "memfd",
+ "mmap",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "spin",
+ "thiserror",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-salloc-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-salloc",
+]
+
+[[package]]
+name = "phoenix-tcp_rpc_adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "libloading",
+ "mrpc-marshal",
+ "nix 0.23.1",
+ "phoenix",
+ "phoenix-mrpc",
+ "phoenix-salloc",
+ "phoenix-transport-tcp",
+ "serde",
+ "slab",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-tcp_rpc_adapter-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-tcp_rpc_adapter",
+]
+
+[[package]]
+name = "phoenix-transport-rdma"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "memoffset 0.6.5",
+ "mio 0.7.14",
+ "nix 0.23.1",
+ "phoenix",
+ "rdma",
+ "serde",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-transport-rdma-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-transport-rdma",
+]
+
+[[package]]
+name = "phoenix-transport-tcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "memoffset 0.6.5",
+ "mio 0.8.4",
+ "nix 0.23.1",
+ "phoenix",
+ "serde",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-transport-tcp-plugin"
+version = "0.1.0"
+dependencies = [
+ "phoenix-transport-tcp",
+]
+
+[[package]]
+name = "phoenixctl"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "interface",
+ "ipc",
+ "lazy_static",
+ "prettytable-rs",
+ "serde",
+ "serde_json",
+ "structopt",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -2894,7 +2894,7 @@ dependencies = [
  "interface",
  "ipc",
  "lazy_static",
- "libkoala",
+ "libphoenix",
  "memfd",
  "mmap",
  "nix 0.25.0",
@@ -2981,7 +2981,7 @@ dependencies = [
 name = "send_bw"
 version = "0.1.0"
 dependencies = [
- "libkoala",
+ "libphoenix",
  "structopt",
 ]
 
@@ -2989,7 +2989,7 @@ dependencies = [
 name = "send_lat"
 version = "0.1.0"
 dependencies = [
- "libkoala",
+ "libphoenix",
  "structopt",
 ]
 

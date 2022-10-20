@@ -1,9 +1,9 @@
-workdir = "~/nfs/Developing/koala"
+workdir = "~/nfs/Developing/phoenix"
 
 [env]
 RUST_BACKTRACE = "1"
 RUST_LOG_STYLE = "never"
 CARGO_TERM_COLOR = "never"
-KOALA_LOG = "info"
+PHOENIX_LOG = "info"
 PROTOC = "/usr/bin/protoc"
-KOALA_PREFIX = "/tmp/koala"
+PHOENIX_PREFIX = "/tmp/phoenix"

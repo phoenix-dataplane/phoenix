@@ -34,7 +34,7 @@ pub mod greeter_client {
         // may find the proto file from differnt path (even from two different machines).
         fn update_protos() -> Result<(), ::mrpc::Error> {
             let srcs = [include_str!(
-                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+                "../../phoenix_examples/proto/rpc_hello/rpc_hello.proto"
             )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }
@@ -89,7 +89,7 @@ pub mod greeter_server {
     impl<T: Greeter> GreeterServer<T> {
         fn update_protos() -> Result<(), ::mrpc::Error> {
             let srcs = [include_str!(
-                "../../koala_examples/proto/rpc_hello/rpc_hello.proto"
+                "../../phoenix_examples/proto/rpc_hello/rpc_hello.proto"
             )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }
