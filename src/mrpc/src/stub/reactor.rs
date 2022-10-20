@@ -45,7 +45,7 @@ impl Reactor {
         }
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize, Error>> {
+    pub fn poll(&mut self, _cx: &mut Context<'_>) -> Poll<Result<usize, Error>> {
         MRPC_CTX.with(|ctx| {
             // let has_work = futures::ready!(ctx.service.poll_wc_readable(cx))?;
             // if !has_work {

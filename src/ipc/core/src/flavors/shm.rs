@@ -518,7 +518,7 @@ where
         let mut b = [0u8; 8];
         self.dp_cq.borrow_mut().empty_signal().read(&mut b)?;
 
-        let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
+        // let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
         Poll::Ready(Ok(true))
     }
 }

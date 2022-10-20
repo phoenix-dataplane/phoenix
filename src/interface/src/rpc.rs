@@ -53,34 +53,6 @@ impl RpcId {
     pub fn new(conn_id: Handle, call_id: CallId) -> Self {
         RpcId(conn_id, call_id)
     }
-
-    #[deprecated(note = "RpcId no longer fits into a u64")]
-    #[inline]
-    pub fn encode_u64(self) -> u64 {
-        assert!(self.0 .0 <= 0xffffffffff, "self.0.0: {:#0x?}", self.0 .0);
-        (self.0 .0 as u64) | ((self.1 .0) << 40)
-    }
-
-    #[deprecated(note = "RpcId no longer fits into a u64")]
-    #[inline]
-    pub fn decode_u64(val: u64) -> Self {
-        Self::new(
-            Handle(val & 0xffffffffff),
-            CallId(((val >> 40) & 0xffffff) as u64),
-        )
-    }
-}
-
-impl From<u64> for RpcId {
-    fn from(val: u64) -> Self {
-        Self::decode_u64(val)
-    }
-}
-
-impl From<RpcId> for u64 {
-    fn from(val: RpcId) -> Self {
-        RpcId::encode_u64(val)
-    }
 }
 
 /// Transport layer status.
