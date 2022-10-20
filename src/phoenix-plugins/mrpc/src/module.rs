@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
+use nix::unistd::Pid;
 use phoenix::engine::datapath::graph::ChannelDescriptor;
 use phoenix::engine::datapath::node::DataPathNode;
-use nix::unistd::Pid;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
@@ -17,7 +17,8 @@ use ipc::mrpc::{cmd, dp};
 use phoenix::engine::{EnginePair, EngineType};
 use phoenix::log;
 use phoenix::module::{
-    PhoenixModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo, Version,
+    ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, Service, ServiceInfo,
+    Version,
 };
 use phoenix::state_mgr::SharedStateManager;
 use phoenix::storage::{ResourceCollection, SharedStorage};

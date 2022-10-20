@@ -223,8 +223,9 @@ impl Control {
 
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
         let phoenix_prefix = &config.control.prefix;
-        fs::create_dir_all(phoenix_prefix)
-            .unwrap_or_else(|e| panic!("Failed to create directory for {:?}: {}", phoenix_prefix, e));
+        fs::create_dir_all(phoenix_prefix).unwrap_or_else(|e| {
+            panic!("Failed to create directory for {:?}: {}", phoenix_prefix, e)
+        });
 
         let phoenix_path = phoenix_prefix.join(&config.control.path);
         if phoenix_path.exists() {

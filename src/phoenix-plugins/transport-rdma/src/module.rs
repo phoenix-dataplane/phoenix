@@ -15,7 +15,8 @@ use ipc::unix::DomainSocket;
 use phoenix::engine::datapath::DataPathNode;
 use phoenix::engine::{Engine, EnginePair, EngineType};
 use phoenix::module::{
-    PhoenixModule, ModuleCollection, ModuleDowncast, NewEngineRequest, Service, ServiceInfo, Version,
+    ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, Service, ServiceInfo,
+    Version,
 };
 use phoenix::state_mgr::SharedStateManager;
 use phoenix::storage::{ResourceCollection, SharedStorage};

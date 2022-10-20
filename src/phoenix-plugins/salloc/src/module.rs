@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
-use phoenix::engine::datapath::node::DataPathNode;
 use nix::unistd::Pid;
+use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
@@ -11,8 +11,8 @@ use ipc::customer::{Customer, ShmCustomer};
 use ipc::salloc::{cmd, dp};
 
 use phoenix::engine::{EnginePair, EngineType};
-use phoenix::module::{PhoenixModule, ModuleDowncast, ServiceInfo};
 use phoenix::module::{ModuleCollection, NewEngineRequest, Service, Version};
+use phoenix::module::{ModuleDowncast, PhoenixModule, ServiceInfo};
 use phoenix::state_mgr::SharedStateManager;
 use phoenix::storage::{ResourceCollection, SharedStorage};
 

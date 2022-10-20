@@ -17,7 +17,7 @@ use transport_tcp::ops::Ops;
 use phoenix::engine::datapath::DataPathNode;
 use phoenix::engine::{Engine, EnginePair, EngineType};
 use phoenix::module::{
-    PhoenixModule, ModuleCollection, ModuleDowncast, NewEngineRequest, ServiceInfo, Version,
+    ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, ServiceInfo, Version,
 };
 use phoenix::state_mgr::SharedStateManager;
 use phoenix::storage::{ResourceCollection, SharedStorage};

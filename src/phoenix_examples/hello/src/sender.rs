@@ -44,6 +44,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", recv_mr.as_slice());
 
-    assert_eq!(&recv_mr[..send_mr.len()], "Hello phoenix client!".as_bytes());
+    assert_eq!(
+        &recv_mr[..send_mr.len()],
+        "Hello phoenix client!".as_bytes()
+    );
     Ok(())
 }

@@ -1,6 +1,6 @@
 use crate::engine::datapath::DataPathNode;
 use crate::engine::{Engine, EnginePair, EngineType};
-use crate::module::{PhoenixModule, ModuleCollection, NewEngineRequest, Service, ServiceInfo};
+use crate::module::{ModuleCollection, NewEngineRequest, PhoenixModule, Service, ServiceInfo};
 use anyhow::bail;
 use std::collections::HashMap;
 // use crate::state_mgr::SharedStateManager;
