@@ -28,7 +28,6 @@
 #![feature(pattern)]
 #![feature(slice_range)]
 #![feature(utf8_chunks)]
-
 #![allow(clippy::explicit_auto_deref)]
 #![allow(clippy::missing_safety_doc)]
 

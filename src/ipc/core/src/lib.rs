@@ -1,12 +1,10 @@
 #![feature(unix_socket_ancillary_data)]
 #![feature(peer_credentials_unix_socket)]
 #![feature(slice_index_methods)]
-use serde::{Deserialize, Serialize};
 use std::io;
 use std::os::unix::net::UCred;
 
 use thiserror::Error;
-use zerocopy::{AsBytes, FromBytes};
 
 /// Re-exports ipc_channel
 pub mod ipc_channel;
@@ -20,8 +18,6 @@ pub mod control;
 /// Provides Range
 pub mod buf;
 
-pub mod queue;
-
 /// Provides DomainSocket
 pub mod unix;
 
@@ -31,7 +27,6 @@ pub(crate) use shmobj::ShmObject;
 
 /// Provides Customer and Service
 pub mod customer;
-pub(crate) mod flavors;
 pub mod service;
 
 pub mod channel;
@@ -108,50 +103,36 @@ pub enum Error {
     ControlPlane(&'static str, interface::Error),
 }
 
-pub enum ChannelFlavor {
-    SharedMemory,
-    Concurrent,
-    Sequential,
-}
-
-pub fn create_channel<A, B, C, D>(
-    flavor: ChannelFlavor,
-) -> (service::Service<A, B, C, D>, customer::Customer<A, B, C, D>)
-where
-    A: for<'de> Deserialize<'de> + Serialize,
-    B: for<'de> Deserialize<'de> + Serialize,
-    C: Copy + FromBytes + AsBytes,
-    D: Copy + FromBytes + AsBytes,
-{
-    use customer::CustomerFlavor;
-    use service::ServiceFlavor;
-    use std::{cell::RefCell, rc::Rc};
-    match flavor {
-        ChannelFlavor::Concurrent => {
-            let (service, customer) = flavors::concurrent::create_channel();
-            (
-                service::Service {
-                    flavor: ServiceFlavor::Concurrent(service),
-                },
-                customer::Customer {
-                    flavor: CustomerFlavor::Concurrent(customer),
-                },
-            )
-        }
-        ChannelFlavor::Sequential => {
-            use flavors::sequential::Shared;
-            let shared = Rc::new(RefCell::new(Shared::new()));
-            (
-                service::Service {
-                    flavor: ServiceFlavor::Sequential(service::SeqService::new(&shared)),
-                },
-                customer::Customer {
-                    flavor: CustomerFlavor::Sequential(customer::SeqCustomer::new(&shared)),
-                },
-            )
-        }
-        _ => {
-            panic!("Invalid channel flavor");
+impl From<crate::ipc_channel::TryRecvError> for TryRecvError {
+    fn from(other: crate::ipc_channel::TryRecvError) -> Self {
+        use crate::ipc_channel::IpcRecvError as IRE;
+        use crate::ipc_channel::TryRecvError as ITRE;
+        match other {
+            ITRE::Empty => TryRecvError::Empty,
+            ITRE::IpcError(e) => match e {
+                IRE::Disconnected => TryRecvError::Disconnected,
+                IRE::Io(err) => TryRecvError::Other(Box::new(err)),
+                IRE::Bincode(err) => TryRecvError::Other(Box::new(err)),
+            },
         }
     }
 }
+
+impl From<crate::ipc_channel::IpcSendError> for IpcSendError {
+    fn from(other: crate::ipc_channel::IpcSendError) -> Self {
+        IpcSendError::Bincode(other)
+    }
+}
+
+impl From<crate::ipc_channel::IpcRecvError> for IpcRecvError {
+    fn from(other: crate::ipc_channel::IpcRecvError) -> Self {
+        use crate::ipc_channel::IpcRecvError as IRE;
+        match other {
+            IRE::Disconnected => IpcRecvError::Disconnected,
+            IRE::Io(err) => IpcRecvError::Other(Box::new(err)),
+            IRE::Bincode(err) => IpcRecvError::Other(Box::new(err)),
+        }
+    }
+}
+
+pub(crate) const MAX_MSG_LEN: usize = 65536;
