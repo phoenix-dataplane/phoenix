@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
 /// Port space
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortSpace {
     IPOIB,
     TCP,
@@ -14,7 +14,7 @@ pub enum PortSpace {
 }
 
 /// Address family for the source and destination address.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AddrFamily {
     /// IP protocol family.
     Inet,

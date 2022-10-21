@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(clippy::missing_safety_doc)]
 
 pub mod bytes;
 pub mod message;

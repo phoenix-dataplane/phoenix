@@ -1,4 +1,5 @@
 //! Shared memory version of std::ptr::NonNull.
+#![allow(clippy::len_without_is_empty)]
 use std::fmt;
 
 use std::ptr;
@@ -29,7 +30,9 @@ impl<T: Sized> ShmNonNull<T> {
 }
 
 impl<T: ?Sized> ShmNonNull<T> {
-    /// # Safety: `ptr_app` and `ptr_backend` must be non-null and points to the same shared memory.
+    /// # Safety
+    ///
+    /// `ptr_app` and `ptr_backend` must be non-null and points to the same shared memory.
     #[must_use]
     #[inline]
     pub const unsafe fn new_unchecked(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
@@ -68,6 +71,21 @@ impl<T: ?Sized> ShmNonNull<T> {
     /// The resulting lifetime is bound to self so this behaves "as if"
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&*my_ptr.as_ptr_app()`.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
+    ///
+    /// This applies even if the result of this method is unused!
     #[must_use]
     #[inline]
     pub const unsafe fn as_ref_app<'a>(&self) -> &'a T {
@@ -77,6 +95,25 @@ impl<T: ?Sized> ShmNonNull<T> {
     }
 
     /// Dereferences the content on backend side.
+    ///
+    /// The resulting lifetime is bound to self so this behaves "as if"
+    /// it were actually an instance of T that is getting borrowed. If a longer
+    /// (unbound) lifetime is needed, use `&*my_ptr.as_ptr_app()`.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
+    ///
+    /// This applies even if the result of this method is unused!
     #[must_use]
     #[inline]
     pub const unsafe fn as_ref_backend<'a>(&self) -> &'a T {
@@ -90,6 +127,25 @@ impl<T: ?Sized> ShmNonNull<T> {
     /// The resulting lifetime is bound to self so this behaves "as if"
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&mut *my_ptr.as_ptr_app()`.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * The pointer must point to an initialized instance of `T`.
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get accessed (read or written) through any other pointer.
+    ///
+    /// This applies even if the result of this method is unused!
+    /// (The part about being initialized is not yet fully decided, but until
+    /// it is, the only safe approach is to ensure that they are indeed initialized.)
     #[must_use]
     #[inline]
     pub const unsafe fn as_mut_app<'a>(&mut self) -> &'a mut T {
@@ -99,6 +155,25 @@ impl<T: ?Sized> ShmNonNull<T> {
     }
 
     /// Mutably dereferences the content on backend side.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * The pointer must point to an initialized instance of `T`.
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get accessed (read or written) through any other pointer.
+    ///
+    /// This applies even if the result of this method is unused!
+    /// (The part about being initialized is not yet fully decided, but until
+    /// it is, the only safe approach is to ensure that they are indeed initialized.)
     #[must_use]
     #[inline]
     pub const unsafe fn as_mut_backend<'a>(&mut self) -> &'a mut T {

@@ -77,6 +77,15 @@ impl<T, A: ShmAllocator + Default> Box<T, A> {
 }
 
 impl<T, A: ShmAllocator> Box<mem::MaybeUninit<T>, A> {
+    /// Converts to `Box<T, A>`.
+    ///
+    /// # Safety
+    ///
+    /// As with [`MaybeUninit::assume_init`],
+    /// it is up to the caller to guarantee that the value
+    /// really is in an initialized state.
+    /// Calling this when the content is not yet fully initialized
+    /// causes immediate undefined behavior.
     #[inline]
     pub unsafe fn assume_init(self) -> Box<T, A> {
         let ((raw_app, raw_backend), alloc) = Box::into_raw_with_allocator(self);
@@ -93,6 +102,15 @@ impl<T, A: ShmAllocator> Box<mem::MaybeUninit<T>, A> {
 }
 
 impl<T, A: ShmAllocator> Box<[mem::MaybeUninit<T>], A> {
+    /// Converts to `Box<[T], A>`.
+    ///
+    /// # Safety
+    ///
+    /// As with [`MaybeUninit::assume_init`],
+    /// it is up to the caller to guarantee that the value
+    /// really is in an initialized state.
+    /// Calling this when the content is not yet fully initialized
+    /// causes immediate undefined behavior.
     #[inline]
     pub unsafe fn assume_init(self) -> Box<[T], A> {
         let ((raw_app, raw_backend), alloc) = Box::into_raw_with_allocator(self);
@@ -327,10 +345,6 @@ impl<T: ?Sized + PartialEq, A: ShmAllocator> PartialEq for Box<T, A> {
     fn eq(&self, other: &Self) -> bool {
         PartialEq::eq(&**self, &**other)
     }
-    #[inline]
-    fn ne(&self, other: &Self) -> bool {
-        PartialEq::ne(&**self, &**other)
-    }
 }
 
 impl<T: ?Sized + PartialOrd, A: ShmAllocator> PartialOrd for Box<T, A> {
@@ -439,6 +453,12 @@ impl<A: ShmAllocator> Box<dyn Any, A> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The contained value must be of type `T`. Calling this method
+    /// with the incorrect type is *undefined behavior*.
+    ///
+    /// [`downcast`]: Self::downcast
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T, A> {
         debug_assert!(self.is::<T>());
@@ -458,6 +478,12 @@ impl<A: ShmAllocator> Box<dyn Any + Send, A> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The contained value must be of type `T`. Calling this method
+    /// with the incorrect type is *undefined behavior*.
+    ///
+    /// [`downcast`]: Self::downcast
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T, A> {
         debug_assert!(self.is::<T>());
@@ -477,6 +503,12 @@ impl<A: ShmAllocator> Box<dyn Any + Send + Sync, A> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The contained value must be of type `T`. Calling this method
+    /// with the incorrect type is *undefined behavior*.
+    ///
+    /// [`downcast`]: Self::downcast
     #[inline]
     pub unsafe fn downcast_unchecked<T: Any>(self) -> Box<T, A> {
         debug_assert!(self.is::<T>());

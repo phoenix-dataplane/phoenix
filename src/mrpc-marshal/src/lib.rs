@@ -109,14 +109,26 @@ pub struct ExcavateContext<'a, A: AddressArbiter> {
 
 pub trait RpcMessage: Sized {
     fn marshal(&self) -> Result<SgList, MarshalError>;
+
+    /// # Safety
+    ///
+    /// This operation may be zero-copy. Thus, the user must ensure the underlying data remain
+    /// valid after unmarshalling.
     unsafe fn unmarshal<'a, A: AddressArbiter>(
         ctx: &mut ExcavateContext<'a, A>,
     ) -> Result<ShmPtr<Self>, UnmarshalError>;
+
     fn emplace(&self, sgl: &mut SgList) -> Result<(), MarshalError>;
+
+    /// # Safety
+    ///
+    /// This operation may be zero-copy. Thus, the user must ensure the underlying data remain
+    /// valid after excavating.
     unsafe fn excavate<'a, A: AddressArbiter>(
         &mut self,
         ctx: &mut ExcavateContext<'a, A>,
     ) -> Result<(), UnmarshalError>;
+
     fn extent(&self) -> usize;
 }
 
@@ -155,6 +167,12 @@ impl AddressArbiter for NaiveAddressMap {
     }
 }
 
+impl Default for NaiveAddressMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(unused)]
 impl NaiveAddressMap {
     pub fn new() -> Self {
@@ -185,6 +203,12 @@ impl AddressArbiter for NoopAddressMap {
     fn query_app_addr(&self, backend_addr: usize) -> Result<usize, AddressNotFound> {
         // NoopAddressMap assumes we map the address using the same virtual address
         Ok(backend_addr)
+    }
+}
+
+impl Default for NoopAddressMap {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

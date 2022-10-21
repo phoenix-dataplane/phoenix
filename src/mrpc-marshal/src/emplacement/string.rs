@@ -134,11 +134,12 @@ pub unsafe fn excavate_repeated<'a, A: AddressArbiter>(
 
 #[inline]
 pub fn extent(val: &String) -> usize {
-    if !val.is_empty() {
-        1
-    } else {
-        0
-    }
+    // if !val.is_empty() {
+    //     1
+    // } else {
+    //     0
+    // }
+    !val.is_empty() as usize
 }
 
 #[inline]
@@ -148,7 +149,7 @@ pub fn extent_optional(val: &Option<String>) -> usize {
 
 #[inline]
 pub fn extent_repeated(val: &Vec<String>) -> usize {
-    if val.len() > 0 {
+    if !val.is_empty() {
         1 + val.iter().map(extent).sum::<usize>()
     } else {
         0
