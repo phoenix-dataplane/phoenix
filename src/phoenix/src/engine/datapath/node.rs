@@ -76,6 +76,7 @@ impl EndpointCollection {
     }
 
     // create DataPathNode and insert the endpoint information into graph
+    #[allow(clippy::type_complexity)]
     fn create_node(mut self) -> Result<(DataPathNode, [Vec<(EngineType, usize)>; 4]), Error> {
         self.tx_inputs.sort_by_key(|x| x.3);
         self.tx_outputs.sort_by_key(|x| x.3);

@@ -64,6 +64,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
 }
 
 impl RpcAdapterEngineBuilder {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         client_pid: Pid,
         _enable_scheduler: bool,
@@ -201,16 +202,16 @@ impl PhoenixModule for RpcAdapterModule {
     ) -> Result<Option<Box<dyn Engine>>> {
         let mut rdma_transport_module = plugged
             .get_mut("RdmaTransport")
-            .ok_or(anyhow!("fail to get RdmaTransport module"))?;
+            .ok_or_else(|| anyhow!("fail to get RdmaTransport module"))?;
         let rdma_transport = rdma_transport_module
             .downcast_mut()
-            .ok_or(anyhow!("fail to downcast RdmaTransport module"))?;
+            .ok_or_else(|| anyhow!("fail to downcast RdmaTransport module"))?;
         let mut salloc_module = plugged
             .get_mut("Salloc")
-            .ok_or(anyhow!("fail to get Salloc module"))?;
+            .ok_or_else(|| anyhow!("fail to get Salloc module"))?;
         let salloc = salloc_module
             .downcast_mut()
-            .ok_or(anyhow!("fail to downcast Salloc module"))?;
+            .ok_or_else(|| anyhow!("fail to downcast Salloc module"))?;
 
         match ty {
             Self::RPC_ACCEPTOR_ENGINE => {
@@ -295,6 +296,7 @@ impl PhoenixModule for RpcAdapterModule {
 }
 
 impl RpcAdapterModule {
+    #[allow(clippy::too_many_arguments)]
     fn create_rpc_adapter_engine(
         &mut self,
         mode: SchedulingMode,

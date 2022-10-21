@@ -90,7 +90,7 @@ fn generate_methods<T: Service>(
 
     // println!("cargo:warning={}", "================generate_methods================");
     for method in service.methods() {
-        let path = get_method_path(package, service, &method);
+        let path = get_method_path(package, service, method);
         let func_id = mrpc_get_func_id(&path);
         let service_id = mrpc_get_service_id(&get_service_path(package, service));
 

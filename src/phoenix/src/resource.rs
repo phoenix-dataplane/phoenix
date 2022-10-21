@@ -240,7 +240,7 @@ impl<R> ResourceSlab<R> {
     fn associate(&self, handle: Handle, key: usize) -> Result<(), Error> {
         // log::warn!("handle: {:?}, key: {}", handle, key);
         // log::warn!("self.inverse_table: {:?}", self.inverse_table);
-        if let Some(_) = self.inverse_table.insert(key, handle) {
+        if self.inverse_table.insert(key, handle).is_some() {
             return Err(Error::Exists);
         }
         // log::warn!("self.table: {:?}", self.table);

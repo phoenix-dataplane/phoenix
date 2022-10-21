@@ -15,6 +15,7 @@ impl State {
     }
 }
 
+#[allow(clippy::manual_non_exhaustive)]
 pub struct Shared {
     pub pid: Pid,
     _other_state: (),

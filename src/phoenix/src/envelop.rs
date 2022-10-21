@@ -155,7 +155,7 @@ impl AnyCommandSender {
     /// Command channels should be MPSC, so senders can be cloned, but not receiver
     #[inline]
     pub fn downcast_clone<T: AnyMessage>(&self) -> Option<CommandSender<T>> {
-        self.0.downcast_ref::<CommandSender<T>>().map(|x| x.clone())
+        self.0.downcast_ref::<CommandSender<T>>().cloned()
     }
 
     /// Downcast AnyCommanderSender and obtain a clone

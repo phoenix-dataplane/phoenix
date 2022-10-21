@@ -361,7 +361,7 @@ use crate::vec::Vec;
 /// [Deref]: core::ops::Deref "ops::Deref"
 /// [`Deref`]: core::ops::Deref "ops::Deref"
 /// [`as_str()`]: String::as_str
-#[derive(PartialOrd, Eq, Ord)]
+#[derive(PartialOrd, Ord)]
 pub struct String<A: ShmAllocator = System> {
     vec: Vec<u8, A>,
 }
@@ -1907,6 +1907,8 @@ impl<'a, 'b, A: ShmAllocator> Pattern<'a> for &'b String<A> {
         self[..].strip_suffix_of(haystack)
     }
 }
+
+impl<A: ShmAllocator> Eq for String<A> {}
 
 impl<A1: ShmAllocator, A2: ShmAllocator> PartialEq<String<A2>> for String<A1> {
     #[inline]

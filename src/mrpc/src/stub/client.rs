@@ -62,7 +62,7 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
                         .conn
                         .map_alive(|alive| Arc::clone(&alive.read_heap))
                         .expect("TODO: return an error when connection is dead rather than panic");
-                    Ok(RRef::new(&reply, read_heap))
+                    Ok(RRef::new(reply, read_heap))
                 }
                 Err(status) => Err(Status::from_incoming_transport(*status)),
             };
@@ -138,8 +138,8 @@ impl ClientStub {
 impl ClientStub {
     /// Dispatch one completion from the Receiver, and update PendingWRef and ReplyCache.
     fn dispatch_one(&self, comp: &dp::Completion, inner: &mut Inner) -> Result<(), Error> {
-        match comp {
-            &dp::Completion::Incoming(msg) => {
+        match *comp {
+            dp::Completion::Incoming(msg) => {
                 let call_id = msg.meta.call_id;
                 match msg.meta.msg_type {
                     RpcMsgType::Request => {
@@ -152,7 +152,7 @@ impl ClientStub {
                     }
                 }
             }
-            &dp::Completion::Outgoing(rpc_id, status) => {
+            dp::Completion::Outgoing(rpc_id, status) => {
                 // Receive an Ack for an previous outgoing RPC.
                 self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
 
@@ -161,7 +161,7 @@ impl ClientStub {
                     inner.reply_cache.update(rpc_id.1, Err(status)).unwrap();
                 }
             }
-            &dp::Completion::RecvError(conn_id, status) => {
+            dp::Completion::RecvError(conn_id, status) => {
                 // On recv error, the peer probably disconnects.
                 // The client should release the relevant resources of this connection.
                 // Just drop the connection structure should be fine.

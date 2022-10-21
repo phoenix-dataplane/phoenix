@@ -377,7 +377,7 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     // format!("cd {cargo_dir}; cargo build --release {args_bins}");
     let mut cargo_build_cmd = Command::new("cargo");
     cargo_build_cmd
-        .args(&[
+        .args([
             "build",
             "--release",
             "--manifest-path",
@@ -527,7 +527,7 @@ fn run_benchmark(opt: &Opt, path: path::PathBuf) -> anyhow::Result<()> {
     let mut handles = vec![];
     for (i, w) in spec.worker.iter().enumerate() {
         let delay = Duration::from_millis(start_ts[i] * spec.start_delay * 1000);
-        let h = thread::spawn(start_ssh(&opt, &spec, w.clone(), &config, &envs, delay));
+        let h = thread::spawn(start_ssh(opt, &spec, w.clone(), &config, &envs, delay));
         handles.push(h);
     }
 

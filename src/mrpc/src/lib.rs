@@ -40,11 +40,11 @@ pub fn set(setting: &Setting) {
 }
 
 pub fn get_schedulint_hint() -> SchedulingHint {
-    SCHEDULING_HINT.with_borrow(|h| h.clone())
+    SCHEDULING_HINT.with_borrow(|h| *h)
 }
 
 pub fn set_schedulint_hint(hint: &SchedulingHint) {
-    SCHEDULING_HINT.with_borrow_mut(|h| *h = hint.clone());
+    SCHEDULING_HINT.with_borrow_mut(|h| *h = *hint);
 }
 
 thread_local! {
@@ -72,7 +72,7 @@ impl Context {
             &*KOALA_PREFIX,
             &*KOALA_CONTROL_SOCK,
             "Mrpc".to_string(),
-            SCHEDULING_HINT.with_borrow(|h| h.clone()),
+            SCHEDULING_HINT.with_borrow(|h| *h),
             Some(&setting_str),
         )?;
         Ok(Self { protos, service })

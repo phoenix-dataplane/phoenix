@@ -37,6 +37,42 @@ impl<T, A: ShmAllocator + Default> Vec<T, A> {
         Self::with_capacity_in(capacity, A::default())
     }
 
+    /// # Safety
+    ///
+    /// This is highly unsafe, due to the number of invariants that aren't
+    /// checked:
+    ///
+    /// * `ptr_app` and `ptr_backend` need to have been previously allocated via
+    ///   [`ShmString`]/`Vec<T>` (at least, it's highly likely to be incorrect if it wasn't).
+    /// * `T` needs to have the same alignment as what `ptr` was allocated with.
+    ///   (`T` having a less strict alignment is not sufficient, the alignment really
+    ///   needs to be equal to satisfy the [`dealloc`] requirement that memory must be
+    ///   allocated and deallocated with the same layout.)
+    /// * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs
+    ///   to be the same size as the pointer was allocated with. (Because similar to
+    ///   alignment, [`dealloc`] must be called with the same layout `size`.)
+    /// * `length` needs to be less than or equal to `capacity`.
+    ///
+    /// Violating these may cause problems like corrupting the allocator's
+    /// internal data structures. For example it is normally **not** safe
+    /// to build a `Vec<u8>` from a pointer to a C `char` array with length
+    /// `size_t`, doing so is only safe if the array was initially allocated by
+    /// a `Vec` or `String`.
+    /// It's also not safe to build one from a `Vec<u16>` and its length, because
+    /// the allocator cares about the alignment, and these two types have different
+    /// alignments. The buffer was allocated with alignment 2 (for `u16`), but after
+    /// turning it into a `Vec<u8>` it'll be deallocated with alignment 1. To avoid
+    /// these issues, it is often preferable to do casting/transmuting using
+    /// [`slice::from_raw_parts`] instead.
+    ///
+    /// The ownership of `ptr` is effectively transferred to the
+    /// `Vec<T>` which may then deallocate, reallocate or change the
+    /// contents of memory pointed to by the pointer at will. Ensure
+    /// that nothing else uses the pointer after calling this
+    /// function.
+    ///
+    /// [`ShmString`]: crate::string::String
+    /// [`dealloc`]: crate::alloc::ShmAllocator::dealloc
     pub unsafe fn from_raw_parts(
         ptr_app: *mut T,
         ptr_backend: *mut T,
@@ -67,6 +103,42 @@ impl<T, A: ShmAllocator> Vec<T, A> {
         }
     }
 
+    /// # Safety
+    ///
+    /// This is highly unsafe, due to the number of invariants that aren't
+    /// checked:
+    ///
+    /// * `ptr_app` and `ptr_backend` need to have been previously allocated via
+    ///   [`ShmString`]/`Vec<T>` (at least, it's highly likely to be incorrect if it wasn't).
+    /// * `T` needs to have the same alignment as what `ptr` was allocated with.
+    ///   (`T` having a less strict alignment is not sufficient, the alignment really
+    ///   needs to be equal to satisfy the [`dealloc`] requirement that memory must be
+    ///   allocated and deallocated with the same layout.)
+    /// * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs
+    ///   to be the same size as the pointer was allocated with. (Because similar to
+    ///   alignment, [`dealloc`] must be called with the same layout `size`.)
+    /// * `length` needs to be less than or equal to `capacity`.
+    ///
+    /// Violating these may cause problems like corrupting the allocator's
+    /// internal data structures. For example it is normally **not** safe
+    /// to build a `Vec<u8>` from a pointer to a C `char` array with length
+    /// `size_t`, doing so is only safe if the array was initially allocated by
+    /// a `Vec` or `String`.
+    /// It's also not safe to build one from a `Vec<u16>` and its length, because
+    /// the allocator cares about the alignment, and these two types have different
+    /// alignments. The buffer was allocated with alignment 2 (for `u16`), but after
+    /// turning it into a `Vec<u8>` it'll be deallocated with alignment 1. To avoid
+    /// these issues, it is often preferable to do casting/transmuting using
+    /// [`slice::from_raw_parts`] instead.
+    ///
+    /// The ownership of `ptr` is effectively transferred to the
+    /// `Vec<T>` which may then deallocate, reallocate or change the
+    /// contents of memory pointed to by the pointer at will. Ensure
+    /// that nothing else uses the pointer after calling this
+    /// function.
+    ///
+    /// [`ShmString`]: crate::string::String
+    /// [`dealloc`]: crate::alloc::ShmAllocator::dealloc
     #[inline]
     pub unsafe fn from_raw_parts_in(
         ptr_app: *mut T,
@@ -196,6 +268,12 @@ impl<T, A: ShmAllocator> Vec<T, A> {
         self.buf.allocator()
     }
 
+    /// # Safety
+    ///
+    /// - `new_len` must be less than or equal to [`capacity()`].
+    /// - The elements at `old_len..new_len` must be initialized.
+    ///
+    /// [`capacity()`]: Vec::capacity
     #[inline]
     pub unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= self.capacity());
@@ -1468,21 +1546,19 @@ impl<T, A: ShmAllocator> Iterator for IntoIter<T, A> {
         unsafe {
             if self.ptr as *const _ == self.end {
                 None
+            } else if mem::size_of::<T>() == 0 {
+                // purposefully don't use 'ptr.offset' because for
+                // vectors with 0-size elements this would return the
+                // same pointer.
+                self.ptr = arith_offset(self.ptr as *const i8, 1) as *mut T;
+
+                // Make up a value of this ZST.
+                Some(mem::zeroed())
             } else {
-                if mem::size_of::<T>() == 0 {
-                    // purposefully don't use 'ptr.offset' because for
-                    // vectors with 0-size elements this would return the
-                    // same pointer.
-                    self.ptr = arith_offset(self.ptr as *const i8, 1) as *mut T;
+                let old = self.ptr;
+                self.ptr = self.ptr.offset(1);
 
-                    // Make up a value of this ZST.
-                    Some(mem::zeroed())
-                } else {
-                    let old = self.ptr;
-                    self.ptr = self.ptr.offset(1);
-
-                    Some(ptr::read(old))
-                }
+                Some(ptr::read(old))
             }
         }
     }
@@ -1509,18 +1585,16 @@ impl<T, A: ShmAllocator> DoubleEndedIterator for IntoIter<T, A> {
         unsafe {
             if self.end == self.ptr {
                 None
+            } else if mem::size_of::<T>() == 0 {
+                // See above for why 'ptr.offset' isn't used
+                self.end = arith_offset(self.end as *const i8, -1) as *mut T;
+
+                // Make up a value of this ZST.
+                Some(mem::zeroed())
             } else {
-                if mem::size_of::<T>() == 0 {
-                    // See above for why 'ptr.offset' isn't used
-                    self.end = arith_offset(self.end as *const i8, -1) as *mut T;
+                self.end = self.end.offset(-1);
 
-                    // Make up a value of this ZST.
-                    Some(mem::zeroed())
-                } else {
-                    self.end = self.end.offset(-1);
-
-                    Some(ptr::read(self.end))
-                }
+                Some(ptr::read(self.end))
             }
         }
     }

@@ -39,9 +39,8 @@ fn run_server(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("listen_id created");
 
     let builder = loop {
-        match listener.try_get_request().expect("Get request failed!") {
-            Some(b) => break b,
-            None => {}
+        if let Some(b) = listener.try_get_request().expect("Get request failed!") {
+            break b;
         }
     };
     // let builder = listener.get_request().expect("Get request failed!");

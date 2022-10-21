@@ -97,9 +97,8 @@ impl LocalServer {
     }
 
     pub fn add_service<S: Service + NamedService + 'static>(&mut self, svc: S) -> &mut Self {
-        match self.routes.insert(S::SERVICE_ID, Box::new(svc)) {
-            Some(_) => panic!("Hash collisions in func_id: {}", S::SERVICE_ID),
-            None => {}
+        if self.routes.insert(S::SERVICE_ID, Box::new(svc)).is_some() {
+            panic!("Hash collisions in func_id: {}", S::SERVICE_ID);
         }
         self
     }
@@ -235,7 +234,7 @@ impl LocalServer {
                 // NO NEED TO WAIT
                 Ok(())
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -302,8 +301,8 @@ impl LocalServer {
         inner: &mut Inner,
         running: &mut FuturesUnordered<LocalFutureObj<'s, (WRefOpaque, MessageErased)>>,
     ) -> Result<(), Error> {
-        match comp {
-            &dp::Completion::Incoming(request) => {
+        match *comp {
+            dp::Completion::Incoming(request) => {
                 match request.meta.msg_type {
                     RpcMsgType::Request => {
                         // server receives requests
@@ -330,7 +329,7 @@ impl LocalServer {
                     }
                 }
             }
-            &dp::Completion::Outgoing(rpc_id, status) => {
+            dp::Completion::Outgoing(rpc_id, status) => {
                 // Receive an Ack for a previous outgoing RPC.
                 inner
                     .get_connection(rpc_id.0)?
@@ -344,7 +343,7 @@ impl LocalServer {
                     );
                 }
             }
-            &dp::Completion::RecvError(conn_id, status) => {
+            dp::Completion::RecvError(conn_id, status) => {
                 // On recv error, the peer probably disconnects.
                 // The client should release the relevant resources of this connection.
                 // Just drop the connection structure should be fine.

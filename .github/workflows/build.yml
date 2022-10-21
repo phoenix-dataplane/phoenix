@@ -43,6 +43,11 @@ jobs:
       env:
         RUST_BACKTRACE: 1
 
+    - name: Run cargo clippy
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+
     - name: Check formatting
       uses: actions-rs/cargo@v1
       with:

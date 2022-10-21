@@ -38,7 +38,7 @@ fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
         ctx.service.send_cmd(req)?;
         rx_recv_impl!(ctx.service, CompletionKind::GetDefaultPds, pds, {
             pds.into_iter()
-                .map(|pd| ProtectionDomain::open(pd))
+                .map(ProtectionDomain::open)
                 .collect::<Result<Vec<_>, Error>>()
         })
     })
@@ -51,7 +51,7 @@ fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
         rx_recv_impl!(ctx.service, CompletionKind::GetDefaultContexts, ctx_list, {
             ctx_list
                 .into_iter()
-                .map(|ctx| VerbsContext::new(ctx))
+                .map(VerbsContext::new)
                 .collect::<Result<Vec<_>, Error>>()
         })
     })

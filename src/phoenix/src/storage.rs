@@ -60,6 +60,10 @@ impl CommandPathBroker {
     }
 
     /// Downcast the sender without type checking
+    ///
+    /// # Safety
+    ///
+    /// TBD
     pub unsafe fn get_sender_unchecked<T: AnyMessage>(
         &mut self,
         engine: &EngineType,
@@ -76,10 +80,13 @@ impl CommandPathBroker {
         let sender = self.senders.get(engine).ok_or(Error::NotFound)?;
         let cloned = sender
             .downcast_clone()
-            .ok_or(Error::Downcast(sender.type_name().to_string()))?;
+            .ok_or_else(|| Error::Downcast(sender.type_name().to_string()))?;
         Ok(cloned)
     }
 
+    /// # Safety
+    ///
+    /// TBD
     pub unsafe fn get_sender_clone_unchecked<T: AnyMessage>(
         &self,
         engine: &EngineType,
@@ -112,6 +119,9 @@ impl CommandPathBroker {
             .map_err(|x| Error::Downcast(x.type_name().to_string()))
     }
 
+    /// # Safety
+    ///
+    /// TBD
     pub unsafe fn get_receiver_unchekced<T: AnyMessage>(
         &mut self,
         engine: &EngineType,

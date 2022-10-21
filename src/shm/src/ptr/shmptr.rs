@@ -32,6 +32,11 @@ impl<T: Sized> ShmPtr<T> {
 }
 
 impl<T: ?Sized> ShmPtr<T> {
+    /// Creates a new `ShmPtr` (similar to `Unique`).
+    ///
+    /// # Safety
+    ///
+    /// `ptr_app` and `ptr_backend` must be non-null and point to the same shared memory.
     #[must_use]
     #[inline]
     pub const unsafe fn new_unchecked(ptr_app: *mut T, ptr_backend: *mut T) -> Self {
@@ -80,6 +85,21 @@ impl<T: ?Sized> ShmPtr<T> {
     /// The resulting lifetime is bound to self so this behaves "as if"
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&*my_ptr.as_ptr_app()`.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
+    ///
+    /// This applies even if the result of this method is unused!
     #[must_use]
     #[inline]
     pub const unsafe fn as_ref_app(&self) -> &T {
@@ -89,6 +109,21 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Dereferences the content on backend side.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
+    ///
+    /// This applies even if the result of this method is unused!
     #[must_use]
     #[inline]
     pub const unsafe fn as_ref_backend(&self) -> &T {
@@ -102,6 +137,25 @@ impl<T: ?Sized> ShmPtr<T> {
     /// The resulting lifetime is bound to self so this behaves "as if"
     /// it were actually an instance of T that is getting borrowed. If a longer
     /// (unbound) lifetime is needed, use `&mut *my_ptr.as_ptr()`.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * The pointer must point to an initialized instance of `T`.
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get accessed (read or written) through any other pointer.
+    ///
+    /// This applies even if the result of this method is unused!
+    /// (The part about being initialized is not yet fully decided, but until
+    /// it is, the only safe approach is to ensure that they are indeed initialized.)
     #[must_use]
     #[inline]
     pub const unsafe fn as_mut_app(&mut self) -> &mut T {
@@ -111,6 +165,25 @@ impl<T: ?Sized> ShmPtr<T> {
     }
 
     /// Mutably dereferences the content on backend side.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be properly aligned.
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * The pointer must point to an initialized instance of `T`.
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get accessed (read or written) through any other pointer.
+    ///
+    /// This applies even if the result of this method is unused!
+    /// (The part about being initialized is not yet fully decided, but until
+    /// it is, the only safe approach is to ensure that they are indeed initialized.)
     #[must_use]
     #[inline]
     pub const unsafe fn as_mut_backend(&mut self) -> &mut T {

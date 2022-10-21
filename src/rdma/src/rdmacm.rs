@@ -496,6 +496,7 @@ impl<'a> AsHandle for MemoryRegion<'a> {
 }
 
 impl<'a> MemoryRegion<'a> {
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn new_on_demand_paging(pd: *mut ffi::ibv_pd) -> io::Result<Self> {
         let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE

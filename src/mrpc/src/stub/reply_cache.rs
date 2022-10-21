@@ -36,9 +36,9 @@ impl<T> ReplyCacheT<T> {
         match self.slab.get_mut(call_id.0 as usize) {
             Some(entry) => {
                 entry.replace(val);
-                return Ok(());
+                Ok(())
             }
-            None => return Err(Error::NotFound(call_id)),
+            None => Err(Error::NotFound(call_id)),
         }
     }
 

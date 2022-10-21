@@ -188,6 +188,7 @@ impl fmt::Display for Latency {
 impl Latency {
     #[inline]
     pub const fn new() -> Self {
+        #[allow(clippy::identity_op, clippy::erasing_op)]
         Self {
             bin0: Bucket::new(128 * 0, 1 << 0),
             bin1: Bucket::new(128 * 1, 1 << 1),

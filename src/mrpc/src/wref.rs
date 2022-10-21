@@ -9,7 +9,7 @@ use shm::ptr::ShmNonNull;
 use crate::alloc::Box as ShmBox;
 use crate::stub::RpcData;
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub struct WRefOpaqueVTable {
     /// This function will be called when the [`WRefOpaque`] gets cloned, e.g. when
     /// the [`WRef<T>`] which the [`WRefOpaque`] shadowed gets cloned.
@@ -52,7 +52,7 @@ impl WRefOpaqueVTable {
 }
 
 /// A type erased object for WRef. The implemention is largely learned from `std::task::RawWaker`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct WRefOpaque {
     data: *const (),
     vtable: WRefOpaqueVTable,
@@ -147,7 +147,7 @@ impl<T: RpcData> IntoWRef<T> for WRef<T> {
 
 impl<T: RpcData> IntoWRef<T> for &WRef<T> {
     fn into_wref(self) -> WRef<T> {
-        WRef::clone(&self)
+        WRef::clone(self)
     }
 }
 
@@ -260,6 +260,12 @@ impl<T: RpcData> WRef<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// Any other `WRef` pointers to the same allocation must not be dereferenced
+    /// for the duration of the returned borrow.
+    /// This is trivially the case if no such pointers exist,
+    /// for example immediately after `WRef::new`.
     #[inline]
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
         // We are careful to *not* create a reference covering the "count" fields, as

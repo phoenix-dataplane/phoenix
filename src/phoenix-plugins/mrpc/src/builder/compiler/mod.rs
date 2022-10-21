@@ -9,11 +9,11 @@ use super::{MethodIdentifier, RpcMethodInfo};
 
 mod code_generator;
 
-const MRPC_DERIVE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-derive");
-const MRPC_MARSHAL: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
-const SHM: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../shm");
-const INTERFACE: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../interface");
-const TOOLCHAIN: &'static str = include_str!(concat!(
+const MRPC_DERIVE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-derive");
+const MRPC_MARSHAL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
+const SHM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../shm");
+const INTERFACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../interface");
+const TOOLCHAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../rust-toolchain"
 ));
@@ -29,9 +29,9 @@ pub enum Error {
 }
 
 #[cfg(target_os = "macos")]
-pub const DYLIB_FILENAME: &'static str = "libdispatch.dylib";
+pub const DYLIB_FILENAME: &str = "libdispatch.dylib";
 #[cfg(target_os = "linux")]
-pub const DYLIB_FILENAME: &'static str = "libdispatch.so";
+pub const DYLIB_FILENAME: &str = "libdispatch.so";
 
 pub struct Builder {
     /// directory to emit the dispatch dylib crate
@@ -58,14 +58,9 @@ impl Builder {
         let prost_out_dir = self
             .prost_out_dir
             .to_owned()
-            .unwrap_or(self.emit_crate_dir.parent().unwrap().join("prost"));
+            .unwrap_or_else(|| self.emit_crate_dir.parent().unwrap().join("prost"));
         let prost_include_file = prost_out_dir
-            .join(
-                self.include_filename
-                    .as_ref()
-                    .map(|x| x.as_str())
-                    .unwrap_or("_include.rs"),
-            )
+            .join(self.include_filename.as_deref().unwrap_or("_include.rs"))
             .canonicalize()
             .unwrap();
 

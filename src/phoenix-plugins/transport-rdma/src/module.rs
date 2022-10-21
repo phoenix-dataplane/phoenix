@@ -8,7 +8,7 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
-use ipc::customer::{Customer, ShmCustomer};
+use ipc::customer::ShmCustomer;
 use ipc::transport::rdma::{cmd, dp};
 use ipc::unix::DomainSocket;
 
@@ -28,7 +28,7 @@ use crate::ops::Ops;
 use crate::state::{Shared, State};
 
 pub type CustomerType =
-    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+    ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct CmEngineBuilder {
     _client_pid: Pid,
@@ -247,8 +247,7 @@ impl RdmaTransportModule {
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
         let engine_path = self.config.prefix.join(instance_name);
 
-        let customer =
-            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
         // 3. the following part are expected to be done in the Engine's constructor.
         // the transport module is responsible for initializing and starting the transport engines

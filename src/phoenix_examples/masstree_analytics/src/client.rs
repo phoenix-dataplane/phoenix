@@ -171,7 +171,7 @@ impl Client {
             accum.lat_us_50 /= stats.len() as f64;
             accum.lat_us_99 /= stats.len() as f64;
             // write accum to file
-            let accum_text = accum.to_row();
+            let accum_text = accum.display();
             println!("{accum_text}");
         }
 
@@ -207,7 +207,7 @@ impl Stats {
         "mrps lat_us_50 lat_us_99"
     }
 
-    fn to_row(&self) -> String {
+    fn display(&self) -> String {
         format!("{} {} {}", self.mrps, self.lat_us_50, self.lat_us_99)
     }
 }
@@ -237,9 +237,9 @@ fn run_client_thread(
     log::info!("main: Thread {}: Connected. Sending requests.", tid);
 
     let mut req_ts = Vec::with_capacity(opt.req_window);
-    req_ts.resize_with(opt.req_window, || Instant::now());
+    req_ts.resize_with(opt.req_window, Instant::now);
 
-    let workload = Workload::new(&opt);
+    let workload = Workload::new(opt);
 
     smol::block_on(async {
         let start = Instant::now();

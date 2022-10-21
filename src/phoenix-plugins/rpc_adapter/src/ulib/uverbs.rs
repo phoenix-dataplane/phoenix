@@ -20,7 +20,7 @@ pub(crate) fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
     let ctx_list = get_ops().get_default_contexts()?;
     ctx_list
         .into_iter()
-        .map(|ctx| VerbsContext::new(ctx))
+        .map(VerbsContext::new)
         .collect::<Result<Vec<_>, Error>>()
 }
 
@@ -29,7 +29,7 @@ pub(crate) fn get_default_pds() -> Result<Vec<ProtectionDomain>, Error> {
     // already been initialized.
     let pds = get_ops().get_default_pds()?;
     pds.into_iter()
-        .map(|pd| ProtectionDomain::open(pd))
+        .map(ProtectionDomain::open)
         .collect::<Result<Vec<_>, Error>>()
 }
 
@@ -59,7 +59,7 @@ impl VerbsContext {
         cq_context: u64,
     ) -> Result<CompletionQueue, Error> {
         let cq = get_ops().create_cq(&self.inner, min_cq_entries, cq_context)?;
-        Ok(CompletionQueue::open(cq)?)
+        CompletionQueue::open(cq)
     }
 }
 

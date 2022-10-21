@@ -180,7 +180,7 @@ use Status::Progress;
 
 impl Engine for MrpcEngine {
     fn description(self: Pin<&Self>) -> String {
-        format!("MrpcEngine, todo show more information")
+        "MrpcEngine, todo show more information".to_string()
     }
 
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
@@ -242,7 +242,7 @@ impl MrpcEngine {
         }
 
         self.wait_outstanding_complete().await?;
-        return Ok(());
+        Ok(())
     }
 }
 

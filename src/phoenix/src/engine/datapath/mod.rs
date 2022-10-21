@@ -14,4 +14,5 @@ pub(crate) use node::{
     create_datapath_channels, refactor_channels_attach_addon, refactor_channels_detach_addon,
 };
 
+#[allow(clippy::len_without_is_empty)]
 pub mod meta_pool;

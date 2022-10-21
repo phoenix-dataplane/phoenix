@@ -78,7 +78,7 @@ impl Engine for QosEngine {
     }
 
     fn description(self: Pin<&Self>) -> String {
-        format!("QosEngine")
+        "QosEngine".to_owned()
     }
 
     #[inline]
@@ -103,13 +103,7 @@ impl Engine for QosEngine {
         BUFFER.with_borrow_mut(|buf| {
             let mut messages = buf.drain().collect::<Vec<_>>();
             let client_pid = self.client_pid;
-            let drained = messages.drain_filter(|msg| {
-                if msg.0.source == client_pid {
-                    true
-                } else {
-                    false
-                }
-            });
+            let drained = messages.drain_filter(|msg| msg.0.source == client_pid);
             for msg in drained {
                 self.tx_outputs()[0].send(msg.0.message)?;
             }
@@ -121,11 +115,8 @@ impl Engine for QosEngine {
 
 impl Decompose for QosEngine {
     fn flush(&mut self) -> Result<()> {
-        loop {
-            match self.tx_inputs()[0].try_recv() {
-                Ok(m) => self.tx_outputs()[0].send(m)?,
-                _ => break,
-            }
+        while let Ok(m) = self.tx_inputs()[0].try_recv() {
+            self.tx_outputs()[0].send(m)?;
         }
         Ok(())
     }
@@ -224,7 +215,7 @@ impl QosEngine {
                             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                         }
                     }
-                    m @ _ => self.tx_outputs()[0].send(m)?,
+                    m => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));
             }

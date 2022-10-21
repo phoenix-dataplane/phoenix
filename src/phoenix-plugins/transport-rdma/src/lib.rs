@@ -13,6 +13,8 @@ pub(crate) mod cm;
 pub mod config;
 pub(crate) mod engine;
 pub mod module;
+
+#[allow(clippy::too_many_arguments)]
 pub mod ops;
 pub mod state;
 

@@ -49,11 +49,9 @@ impl<'a> GlobalPagePool<'a> {
             buf.empty.push_back(page);
         }
 
-        let page = buf
-            .empty
+        buf.empty
             .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
+            .map(|page| unsafe { &mut *page.as_ptr() })
     }
 
     pub fn acquire_large_page(&self) -> Option<&'a mut LargeObjectPage<'a>> {
@@ -65,11 +63,10 @@ impl<'a> GlobalPagePool<'a> {
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
-        let page = buf
-            .empty
+
+        buf.empty
             .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
+            .map(|page| unsafe { &mut *page.as_ptr() })
     }
 
     pub fn acquire_huge_page(&self) -> Option<&'a mut HugeObjectPage<'a>> {
@@ -82,11 +79,9 @@ impl<'a> GlobalPagePool<'a> {
             buf.empty.push_back(page);
         }
 
-        let page = buf
-            .empty
+        buf.empty
             .pop_front()
-            .map(|page| unsafe { &mut *page.as_ptr() });
-        page
+            .map(|page| unsafe { &mut *page.as_ptr() })
     }
 
     pub(crate) fn recycle_small_pages<I: IntoIterator<Item = &'a mut ObjectPage<'a>>>(

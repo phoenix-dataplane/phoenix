@@ -7,7 +7,7 @@ use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
-use ipc::customer::{Customer, ShmCustomer};
+use ipc::customer::ShmCustomer;
 use ipc::salloc::{cmd, dp};
 
 use phoenix::engine::{EnginePair, EngineType};
@@ -22,7 +22,7 @@ use crate::config::SallocConfig;
 use crate::region::AddressMediator;
 
 pub(crate) type CustomerType =
-    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+    ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct SallocEngineBuilder {
     customer: CustomerType,
@@ -167,8 +167,7 @@ impl PhoenixModule for SallocModule {
             let engine_path = self.config.prefix.join(instance_name);
 
             // 2. create customer stub
-            let customer =
-                Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+            let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
             // 3. the following part are expected to be done in the Engine's constructor.
             // the transport module is responsible for initializing and starting the transport engines

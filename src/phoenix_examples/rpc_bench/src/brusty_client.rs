@@ -250,7 +250,7 @@ fn run_client_thread(
         }
 
         std::thread::sleep(Duration::from_secs(args.startup_delay));
-        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &reqs, tid).await?;
+        let (dura, total_bytes, rcnt, hist) = run_bench(args, &client, &reqs, tid).await?;
 
         my_print!(
             "Thread {tid}, duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",

@@ -29,6 +29,11 @@ impl Timer {
     pub fn len(&self) -> usize {
         self.durations.len()
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.durations.is_empty()
+    }
 }
 
 impl Default for Timer {

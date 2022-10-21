@@ -159,7 +159,7 @@ pub struct SharedHeapAllocator;
 impl SharedHeapAllocator {
     #[inline]
     pub(crate) fn query_backend_addr(addr: usize, _align: usize) -> usize {
-        return addr;
+        addr
         // TODO(cjr, wyj): Change to HashMap
         // align can be obtained by addr + layout through ZoneAllocator
         // let guard = SHARED_HEAP_REGIONS.lock();
@@ -248,25 +248,23 @@ unsafe impl ShmAllocator for SharedHeapAllocator {
                                 } else {
                                     return Err(AllocError);
                                 }
-                            } else {
-                                if let Some(huge_page) = shared_heap.allocate_huge_page() {
-                                    let addr = huge_page as *mut _ as usize;
-                                    assert!(
-                                        addr % (1024 * 1024 * 1024) == 0,
-                                        "addr: {:#0x?} is not huge page aligned",
-                                        addr
-                                    );
-                                    unsafe {
-                                        shared_heap
-                                            .zone_allocator
-                                            .refill_huge(layout, huge_page)
-                                            .unwrap_or_else(|_| {
-                                                panic!("Cannot refill? layout: {:?}", layout)
-                                            });
-                                    }
-                                } else {
-                                    return Err(AllocError);
+                            } else if let Some(huge_page) = shared_heap.allocate_huge_page() {
+                                let addr = huge_page as *mut _ as usize;
+                                assert!(
+                                    addr % (1024 * 1024 * 1024) == 0,
+                                    "addr: {:#0x?} is not huge page aligned",
+                                    addr
+                                );
+                                unsafe {
+                                    shared_heap
+                                        .zone_allocator
+                                        .refill_huge(layout, huge_page)
+                                        .unwrap_or_else(|_| {
+                                            panic!("Cannot refill? layout: {:?}", layout)
+                                        });
                                 }
+                            } else {
+                                return Err(AllocError);
                             }
                             let ptr_app = shared_heap
                                 .zone_allocator

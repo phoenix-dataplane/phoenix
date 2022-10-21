@@ -263,7 +263,7 @@ impl TransportEngine {
             wr_id,
             conn_id: sock_handle.0 as _,
             opcode: WcOpcode::Invalid,
-            status: WcStatus::Error(NonZeroU32::new(e.into_vendor_err()).unwrap()),
+            status: WcStatus::Error(NonZeroU32::new(e.as_vendor_err()).unwrap()),
             buf: ipc::buf::Range { offset: 0, len: 0 },
             byte_len: 0,
             imm: 0,

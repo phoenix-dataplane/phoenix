@@ -99,19 +99,38 @@ pub enum AllocationError {
     InvalidLayout,
 }
 
+/// Allocator trait to be implemented by users of slabmalloc to provide memory to slabmalloc.
+///
+/// # Safety
+/// Needs to adhere to safety requirements of a rust allocator (see GlobalAlloc et. al.).
 pub unsafe trait Allocator<'a> {
     fn allocate(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocationError>;
     fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) -> Result<(), AllocationError>;
+
+    /// Refill the allocator with a [`ObjectPage`].
+    //
+    /// # Safety
+    /// TBD (this API needs to change anyways, likely new page should be a raw pointer)
     unsafe fn refill(
         &mut self,
         layout: Layout,
         new_page: &'a mut ObjectPage<'a>,
     ) -> Result<(), AllocationError>;
+
+    /// Refill the allocator with a [`LargeObjectPage`].
+    //
+    /// # Safety
+    /// TBD (this API needs to change anyways, likely new page should be a raw pointer)
     unsafe fn refill_large(
         &mut self,
         layout: Layout,
         new_page: &'a mut LargeObjectPage<'a>,
     ) -> Result<(), AllocationError>;
+
+    /// Refill the allocator with a [`ObjectPage`].
+    ///
+    /// # Safety
+    /// TBD (this API needs to change anyways, likely new page should be a raw pointer)
     unsafe fn refill_huge(
         &mut self,
         layout: Layout,

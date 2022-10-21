@@ -51,8 +51,7 @@ struct Config {
 impl Config {
     fn from_path<P: AsRef<Path>>(path: P) -> Self {
         let content = std::fs::read_to_string(path).unwrap();
-        let config = toml::from_str(&content).unwrap();
-        config
+        toml::from_str(&content).unwrap()
     }
 }
 

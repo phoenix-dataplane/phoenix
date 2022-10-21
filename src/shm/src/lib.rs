@@ -28,8 +28,11 @@
 #![feature(pattern)]
 #![feature(slice_range)]
 #![feature(utf8_chunks)]
+#![allow(clippy::explicit_auto_deref)]
+#![allow(clippy::missing_safety_doc)]
 
 /// shm::ptr is similar to core::ptr
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub mod ptr;
 
 /// shm::alloc is similar to alloc::alloc
@@ -41,6 +44,8 @@ pub mod boxed;
 
 pub(crate) mod raw_vec;
 /// shm::vec is similar to alloc::vec
+#[allow(clippy::bool_comparison)]
+#[allow(clippy::partialeq_ne_impl)]
 #[allow(unused)]
 pub mod vec;
 
@@ -48,4 +53,5 @@ pub mod vec;
 pub mod collections;
 
 /// shared-memory version for std::String
+#[allow(clippy::partialeq_ne_impl)]
 pub mod string;

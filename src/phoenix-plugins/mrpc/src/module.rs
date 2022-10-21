@@ -9,7 +9,7 @@ use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
-use ipc::customer::{Customer, ShmCustomer};
+use ipc::customer::ShmCustomer;
 use ipc::mrpc::control_plane::Setting;
 use ipc::mrpc::control_plane::TransportType;
 use ipc::mrpc::{cmd, dp};
@@ -30,7 +30,7 @@ use super::state::{Shared, State};
 use phoenix::engine::datapath::meta_pool::MetaBufferPool;
 
 pub type CustomerType =
-    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+    ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct MrpcEngineBuilder {
     customer: CustomerType,
@@ -44,6 +44,7 @@ pub(crate) struct MrpcEngineBuilder {
 }
 
 impl MrpcEngineBuilder {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         customer: CustomerType,
         client_pid: Pid,
@@ -218,8 +219,7 @@ impl PhoenixModule for MrpcModule {
             let engine_path = self.config.prefix.join(instance_name);
 
             // create customer stub
-            let customer =
-                Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+            let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
             let client_pid = Pid::from_raw(cred.pid.unwrap());
             let shared_state = self.state_mgr.get_or_create(client_pid)?;

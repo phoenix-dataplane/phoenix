@@ -139,6 +139,7 @@ pub trait PhoenixModule: TypeTagged + Send + Sync + 'static {
     /// In case some of the states' types are changed in an upgrade,
     /// engines should dumped their states to atomic components,
     /// so that the new state type can be reassembled from the components.
+    #[allow(clippy::too_many_arguments)]
     fn restore_engine(
         &mut self,
         ty: EngineType,
@@ -151,11 +152,13 @@ pub trait PhoenixModule: TypeTagged + Send + Sync + 'static {
     ) -> Result<Box<dyn Engine>>;
 }
 
+#[allow(clippy::missing_safety_doc)]
 pub trait ModuleDowncast: Sized {
     fn downcast<T: PhoenixModule>(self) -> Result<Box<T>, Self>;
     unsafe fn downcast_unchecked<T: PhoenixModule>(self) -> Box<T>;
 }
 
+#[allow(clippy::missing_safety_doc)]
 impl ModuleDowncast for Box<dyn PhoenixModule> {
     #[inline]
     fn downcast<T: PhoenixModule>(self) -> Result<Box<T>, Self> {

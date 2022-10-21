@@ -7,7 +7,7 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use interface::engine::SchedulingMode;
-use ipc::customer::{Customer, ShmCustomer};
+use ipc::customer::ShmCustomer;
 use ipc::transport::tcp::{cmd, dp};
 use ipc::unix::DomainSocket;
 
@@ -26,7 +26,7 @@ use crate::config::TcpTransportConfig;
 use crate::state::{Shared, State};
 
 pub type CustomerType =
-    Customer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
+    ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
 pub(crate) struct TransportEngineBuilder {
     customer: CustomerType,
@@ -181,8 +181,7 @@ impl TcpTransportModule {
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
         let engine_path = self.config.prefix.join(instance_name);
 
-        let customer =
-            Customer::from_shm(ShmCustomer::accept(sock, client_path, mode, engine_path)?);
+        let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
         let client_pid = Pid::from_raw(cred.pid.unwrap());
         let ops = self.create_ops(client_pid)?;

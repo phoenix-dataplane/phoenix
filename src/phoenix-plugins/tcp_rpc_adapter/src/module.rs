@@ -38,6 +38,7 @@ pub(crate) struct RpcAdapterEngineBuilder {
 }
 
 impl RpcAdapterEngineBuilder {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         client_pid: Pid,
         mode: SchedulingMode,
@@ -94,6 +95,12 @@ impl TcpRpcAdapterModule {
     pub const DEPENDENCIES: &'static [EnginePair] = &[];
 }
 
+impl Default for TcpRpcAdapterModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TcpRpcAdapterModule {
     pub fn new() -> Self {
         TcpRpcAdapterModule {
@@ -143,16 +150,16 @@ impl PhoenixModule for TcpRpcAdapterModule {
     ) -> Result<Option<Box<dyn Engine>>> {
         let mut tcp_transport_module = plugged
             .get_mut("TcpTransport")
-            .ok_or(anyhow!("fail to get TcpTransport module"))?;
+            .ok_or_else(|| anyhow!("fail to get TcpTransport module"))?;
         let tcp_transport = tcp_transport_module
             .downcast_mut()
-            .ok_or(anyhow!("fail to downcast TcpTransport module"))?;
+            .ok_or_else(|| anyhow!("fail to downcast TcpTransport module"))?;
         let mut salloc_module = plugged
             .get_mut("Salloc")
-            .ok_or(anyhow!("fail to get Salloc module"))?;
+            .ok_or_else(|| anyhow!("fail to get Salloc module"))?;
         let salloc = salloc_module
             .downcast_mut()
-            .ok_or(anyhow!("fail to downcast Salloc module"))?;
+            .ok_or_else(|| anyhow!("fail to downcast Salloc module"))?;
 
         match ty {
             Self::TCP_RPC_ADAPTER_ENGINE => {
@@ -217,6 +224,7 @@ impl PhoenixModule for TcpRpcAdapterModule {
 }
 
 impl TcpRpcAdapterModule {
+    #[allow(clippy::too_many_arguments)]
     fn create_rpc_adapter_engine(
         &mut self,
         mode: SchedulingMode,

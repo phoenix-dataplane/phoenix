@@ -224,7 +224,7 @@ impl Resource {
 
     pub fn default_verbs_context(&self, gid: &ibv::Gid) -> Option<interface::VerbsContext> {
         DEFAULT_CTXS.iter().find_map(|c| {
-            if c.gid_table.contains(&gid) {
+            if c.gid_table.contains(gid) {
                 Some(interface::VerbsContext(c.pinned_ctx.verbs.as_handle()))
             } else {
                 None
@@ -235,7 +235,7 @@ impl Resource {
     pub fn default_pd(&self, gid: &ibv::Gid) -> Option<interface::ProtectionDomain> {
         self.default_pds
             .iter()
-            .find_map(|(pd, gids)| if gids.contains(&gid) { Some(*pd) } else { None })
+            .find_map(|(pd, gids)| if gids.contains(gid) { Some(*pd) } else { None })
     }
 
     pub fn insert_qp(

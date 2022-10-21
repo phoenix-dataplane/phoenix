@@ -100,45 +100,33 @@ impl Decompose for TcpRpcAdapterEngine {
     ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
-        let mut engine = *self;
+        let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(14);
         tracing::trace!("dumping RpcAdapterEngine states...");
 
         let node = unsafe {
-            collections.insert("state".to_string(), Box::new(ptr::read(&mut engine.state)));
-            collections.insert("tls".to_string(), Box::new(ptr::read(&mut engine.tls)));
-            collections.insert("mode".to_string(), Box::new(ptr::read(&mut engine._mode)));
+            collections.insert("state".to_string(), Box::new(ptr::read(&engine.state)));
+            collections.insert("tls".to_string(), Box::new(ptr::read(&engine.tls)));
+            collections.insert("mode".to_string(), Box::new(ptr::read(&engine._mode)));
             collections.insert(
                 "local_buffer".to_string(),
-                Box::new(ptr::read(&mut engine.local_buffer)),
+                Box::new(ptr::read(&engine.local_buffer)),
             );
             collections.insert(
                 "recv_mr_usage".to_string(),
-                Box::new(ptr::read(&mut engine.recv_mr_usage)),
+                Box::new(ptr::read(&engine.recv_mr_usage)),
             );
             collections.insert(
                 "serialization_engine".to_string(),
-                Box::new(ptr::read(&mut engine.serialization_engine)),
+                Box::new(ptr::read(&engine.serialization_engine)),
             );
-            collections.insert(
-                "cmd_tx".to_string(),
-                Box::new(ptr::read(&mut engine.cmd_tx)),
-            );
-            collections.insert(
-                "cmd_rx".to_string(),
-                Box::new(ptr::read(&mut engine.cmd_rx)),
-            );
-            collections.insert(
-                "salloc".to_string(),
-                Box::new(ptr::read(&mut engine.salloc)),
-            );
-            collections.insert(
-                "rpc_ctx".to_string(),
-                Box::new(ptr::read(&mut engine.rpc_ctx)),
-            );
+            collections.insert("cmd_tx".to_string(), Box::new(ptr::read(&engine.cmd_tx)));
+            collections.insert("cmd_rx".to_string(), Box::new(ptr::read(&engine.cmd_rx)));
+            collections.insert("salloc".to_string(), Box::new(ptr::read(&engine.salloc)));
+            collections.insert("rpc_ctx".to_string(), Box::new(ptr::read(&engine.rpc_ctx)));
             // don't call the drop function
-            ptr::read(&mut engine.node)
+            ptr::read(&engine.node)
         };
 
         mem::forget(engine);
@@ -495,7 +483,7 @@ impl TcpRpcAdapterEngine {
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
 
-        while let Some(msg) = self.local_buffer.pop_front() {
+        if let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
             let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
             // let table = self.state.conn_table.borrow_mut();
@@ -537,13 +525,13 @@ impl TcpRpcAdapterEngine {
         let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
         let mut value_offset = 0;
 
-        for i in 0..num_sge {
+        for len in lens.iter().take(num_sge).map(|x| *x as usize) {
             sg_list.0.push(SgE {
                 ptr: value_buf_base + value_offset,
-                len: lens[i] as usize,
+                len,
             });
 
-            value_offset += lens[i] as usize;
+            value_offset += len;
         }
 
         // tracing::trace!("reshape_fused_sg_list: sg_list: {:?}", sg_list);
@@ -581,7 +569,7 @@ impl TcpRpcAdapterEngine {
     }
 
     fn process_new_connection(&mut self, handle: &Handle) -> usize {
-        if let Ok(_) = (|| -> Result<(), ControlPathError> {
+        (|| -> Result<(), ControlPathError> {
             let (read_regions, fds) = self.prepare_recv_buffers(*handle)?;
             let conn_resp = ConnectResponse {
                 conn_handle: *handle,
@@ -592,12 +580,10 @@ impl TcpRpcAdapterEngine {
             ));
             self.cmd_tx.send(comp)?;
             Ok(())
-        })() {
-            1
-        } else {
-            0
-        }
+        })()
+        .is_ok() as usize
     }
+
     fn process_completion(&mut self, wc: &Completion) -> usize {
         match wc.status {
             WcStatus::Success => {
@@ -669,7 +655,8 @@ impl TcpRpcAdapterEngine {
                 self.rx_outputs()[0].send(msg).unwrap();
             }
         }
-        return 1;
+
+        1
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {

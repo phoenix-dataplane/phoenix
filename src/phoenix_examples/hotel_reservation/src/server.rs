@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     smol::block_on(async {
         // provisioned replies
         let hotel_id = vec!["42".to_string().into()].into();
-        let replies = vec![WRef::new(ReservationResult { hotel_id: hotel_id })].into();
+        let replies = vec![WRef::new(ReservationResult { hotel_id })].into();
 
         mrpc::stub::LocalServer::bind(format!("0.0.0.0:{}", args.port))?
             .add_service(ReservationServer::new(Registry { replies }))
