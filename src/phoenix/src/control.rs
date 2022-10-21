@@ -414,10 +414,9 @@ impl Control {
                     .plugins
                     .engine_registry
                     .get(&addon_engine)
-                    .ok_or_else(|| anyhow!(
-                        "Addon engine type {:?} not found",
-                        request.addon_engine
-                    ))?
+                    .ok_or_else(|| {
+                        anyhow!("Addon engine type {:?} not found", request.addon_engine)
+                    })?
                     .key();
 
                 let tx_edges_replacement =
@@ -460,10 +459,9 @@ impl Control {
                     .plugins
                     .engine_registry
                     .get(&addon_engine)
-                    .ok_or_else(|| anyhow!(
-                        "Addon engine type {:?} not found",
-                        request.addon_engine
-                    ))?
+                    .ok_or_else(|| {
+                        anyhow!("Addon engine type {:?} not found", request.addon_engine)
+                    })?
                     .key();
 
                 let tx_edges_replacement =

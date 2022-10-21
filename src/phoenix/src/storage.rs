@@ -62,7 +62,7 @@ impl CommandPathBroker {
     /// Downcast the sender without type checking
     ///
     /// # Safety
-    /// 
+    ///
     /// TBD
     pub unsafe fn get_sender_unchecked<T: AnyMessage>(
         &mut self,
@@ -85,7 +85,7 @@ impl CommandPathBroker {
     }
 
     /// # Safety
-    /// 
+    ///
     /// TBD
     pub unsafe fn get_sender_clone_unchecked<T: AnyMessage>(
         &self,
@@ -120,7 +120,7 @@ impl CommandPathBroker {
     }
 
     /// # Safety
-    /// 
+    ///
     /// TBD
     pub unsafe fn get_receiver_unchekced<T: AnyMessage>(
         &mut self,

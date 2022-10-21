@@ -78,9 +78,7 @@ pub(crate) fn create_channel<T>() -> (Sender<T>, Receiver<T>) {
         Sender {
             shared: shared.clone(),
         },
-        Receiver {
-            shared,
-        },
+        Receiver { shared },
     )
 }
 
