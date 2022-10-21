@@ -1908,7 +1908,7 @@ impl<'a, 'b, A: ShmAllocator> Pattern<'a> for &'b String<A> {
     }
 }
 
-impl<A: ShmAllocator> Eq for String<A> { }
+impl<A: ShmAllocator> Eq for String<A> {}
 
 impl<A1: ShmAllocator, A2: ShmAllocator> PartialEq<String<A2>> for String<A1> {
     #[inline]
