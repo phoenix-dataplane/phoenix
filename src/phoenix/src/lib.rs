@@ -13,12 +13,15 @@ pub extern crate tracing;
 // alias
 pub extern crate tracing as log;
 
+#[allow(clippy::missing_safety_doc)]
 pub mod addon;
 pub mod config;
 pub mod control;
 pub mod engine;
+#[allow(clippy::missing_safety_doc)]
 pub mod envelop;
 pub mod local_resource;
+#[allow(clippy::missing_safety_doc)]
 pub mod module;
 pub mod page_padded;
 pub mod plugin;

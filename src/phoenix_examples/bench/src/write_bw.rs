@@ -231,7 +231,7 @@ fn server_accept(
     let mut rkey_mr: MemoryRegion<RemoteKey> = id.alloc_msgs(1)?;
     rkey_mr[0] = local_mr.rkey();
     unsafe {
-        id.post_send(&mut rkey_mr, .., 0, SendFlags::SIGNALED)?;
+        id.post_send(&rkey_mr, .., 0, SendFlags::SIGNALED)?;
     }
 
     assert!(id.get_send_comp()?.success());
@@ -280,8 +280,8 @@ fn run_server_thread(tid: usize, ctx: Context) -> Result<(), Error> {
 
     eprintln!("server waiting for end signal...");
     // Wait for the recv
-    for i in 0..server_qp_num {
-        let wc = channels[i].0.get_recv_comp()?;
+    for channel in channels.iter().take(server_qp_num) {
+        let wc = channel.0.get_recv_comp()?;
         assert!(wc.success(), "wc: {:?}", wc);
         assert_eq!(wc.opcode, verbs::WcOpcode::Recv);
     }

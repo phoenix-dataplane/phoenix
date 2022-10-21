@@ -109,57 +109,42 @@ impl Decompose for RpcAdapterEngine {
     ) -> (ResourceCollection, DataPathNode) {
         // NOTE(wyj): if command/data queue types need to be upgraded
         // then the channels must be recreated
-        let mut engine = *self;
+        let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(14);
         tracing::trace!("dumping RpcAdapterEngine states...");
 
         let node = unsafe {
-            collections.insert("state".to_string(), Box::new(ptr::read(&mut engine.state)));
-            collections.insert("tls".to_string(), Box::new(ptr::read(&mut engine.tls)));
-            collections.insert("mode".to_string(), Box::new(ptr::read(&mut engine._mode)));
-            collections.insert(
-                "odp_mr".to_string(),
-                Box::new(ptr::read(&mut engine.odp_mr)),
-            );
+            collections.insert("state".to_string(), Box::new(ptr::read(&engine.state)));
+            collections.insert("tls".to_string(), Box::new(ptr::read(&engine.tls)));
+            collections.insert("mode".to_string(), Box::new(ptr::read(&engine._mode)));
+            collections.insert("odp_mr".to_string(), Box::new(ptr::read(&engine.odp_mr)));
             collections.insert(
                 "local_buffer".to_string(),
-                Box::new(ptr::read(&mut engine.local_buffer)),
+                Box::new(ptr::read(&engine.local_buffer)),
             );
             collections.insert(
                 "pending_recv".to_string(),
-                Box::new(ptr::read(&mut engine.pending_recv)),
+                Box::new(ptr::read(&engine.pending_recv)),
             );
             collections.insert(
                 "recv_mr_usage".to_string(),
-                Box::new(ptr::read(&mut engine.recv_mr_usage)),
+                Box::new(ptr::read(&engine.recv_mr_usage)),
             );
             collections.insert(
                 "serialization_engine".to_string(),
-                Box::new(ptr::read(&mut engine.serialization_engine)),
+                Box::new(ptr::read(&engine.serialization_engine)),
             );
-            collections.insert(
-                "cmd_tx".to_string(),
-                Box::new(ptr::read(&mut engine.cmd_tx)),
-            );
-            collections.insert(
-                "cmd_rx".to_string(),
-                Box::new(ptr::read(&mut engine.cmd_rx)),
-            );
-            collections.insert(
-                "rpc_ctx".to_string(),
-                Box::new(ptr::read(&mut engine.rpc_ctx)),
-            );
+            collections.insert("cmd_tx".to_string(), Box::new(ptr::read(&engine.cmd_tx)));
+            collections.insert("cmd_rx".to_string(), Box::new(ptr::read(&engine.cmd_rx)));
+            collections.insert("rpc_ctx".to_string(), Box::new(ptr::read(&engine.rpc_ctx)));
             collections.insert(
                 "wc_read_buffer".to_string(),
-                Box::new(ptr::read(&mut engine.wc_read_buffer)),
+                Box::new(ptr::read(&engine.wc_read_buffer)),
             );
-            collections.insert(
-                "salloc".to_string(),
-                Box::new(ptr::read(&mut engine.salloc)),
-            );
+            collections.insert("salloc".to_string(), Box::new(ptr::read(&engine.salloc)));
             // don't call the drop function
-            ptr::read(&mut engine.node)
+            ptr::read(&engine.node)
         };
 
         mem::forget(engine);
@@ -624,7 +609,7 @@ impl RpcAdapterEngine {
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
 
-        while let Some(msg) = self.local_buffer.pop_front() {
+        if let Some(msg) = self.local_buffer.pop_front() {
             // SAFETY: don't know what kind of UB can be triggered
             let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
             let cmid_handle = meta_ref.conn_id;
@@ -635,7 +620,7 @@ impl RpcAdapterEngine {
             if conn_ctx.credit.load(Ordering::Acquire) <= 5 {
                 // some random number for now TODO(cjr): update this
                 self.local_buffer.push_front(msg);
-                break;
+                return Ok(Progress(0));
             }
             // let mut timer = crate::timer::Timer::new();
 
@@ -679,6 +664,7 @@ impl RpcAdapterEngine {
         let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
         let mut value_offset = 0;
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..num_sge {
             sg_list.0.push(SgE {
                 ptr: value_buf_base + value_offset,
@@ -882,9 +868,9 @@ impl RpcAdapterEngine {
             let off = recv_buffer.addr();
             let len = recv_buffer.len();
 
-            let mut odp_mr = self.odp_mr.as_mut().unwrap();
+            let odp_mr = self.odp_mr.as_mut().unwrap();
             unsafe {
-                cmid.post_recv(&mut odp_mr, off..off + len, handle.0 as u64)?;
+                cmid.post_recv(odp_mr, off..off + len, handle.0 as u64)?;
             }
         }
         Ok(())
@@ -904,8 +890,8 @@ impl RpcAdapterEngine {
             Some(mut builder) => {
                 let cq = self.state.get_or_init_cq(2048, 0, &builder)?;
                 let mut pre_id = builder
-                    .set_send_cq(&cq)
-                    .set_recv_cq(&cq)
+                    .set_send_cq(cq)
+                    .set_recv_cq(cq)
                     .set_max_send_wr(128)
                     .set_max_recv_wr(128)
                     .set_max_inline_data(MAX_INLINE_DATA as _)
@@ -947,7 +933,7 @@ impl RpcAdapterEngine {
 
         // post receives
         for _ in 0..128 {
-            let mut odp_mr = self.get_or_init_odp_mr(pre_id);
+            let odp_mr = self.get_or_init_odp_mr(pre_id);
 
             // This is fine because we just allocated 128 buffers there
             let recv_buffer = slab.obtain().unwrap();
@@ -963,7 +949,7 @@ impl RpcAdapterEngine {
             let len = recv_buffer.len();
 
             unsafe {
-                pre_id.post_recv(&mut odp_mr, off..off + len, wr_id)?;
+                pre_id.post_recv(odp_mr, off..off + len, wr_id)?;
             }
             self.state
                 .local_resource()
@@ -1027,7 +1013,7 @@ impl RpcAdapterEngine {
                 // create or get CQ
                 let cq = self.state.get_or_init_cq(2048, 0, &builder)?;
 
-                builder.set_send_cq(&cq).set_recv_cq(&cq);
+                builder.set_send_cq(cq).set_recv_cq(cq);
                 let mut pre_id = builder.build()?;
 
                 // prepare and post receive buffers
@@ -1073,7 +1059,7 @@ impl RpcAdapterEngine {
                     .state
                     .resource()
                     .staging_pre_cmid_table
-                    .close_resource(&conn_handle)
+                    .close_resource(conn_handle)
                 {
                     // accept connection after we get the AddrMap updated
                     let id = Arc::try_unwrap(pre_id).unwrap().accept(None).await?;

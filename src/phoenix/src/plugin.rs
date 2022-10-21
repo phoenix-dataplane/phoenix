@@ -143,6 +143,12 @@ pub struct PluginCollection {
 //     }
 // }
 
+impl Default for PluginCollection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginCollection {
     /// Returns an empty PluginCollection.
     pub fn new() -> Self {
@@ -358,7 +364,7 @@ impl PluginCollection {
                     let group = group.into_iter().map(|x| x.0).join(" ");
                     match signatures.entry(hash) {
                         Entry::Occupied(e) => {
-                            if &*group != &**e.get() {
+                            if group != *e.get() {
                                 tracing::warn!(
                                     "Scheduling group signatures collided, Group 1: [{}], Group 2: [{}]",
                                     group,

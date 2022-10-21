@@ -181,7 +181,7 @@ impl Ops {
     pub fn poll_cq(
         &self,
         _sock_handle: Handle,
-        _wcs: &mut Vec<dp::Completion>,
+        _wcs: &mut [dp::Completion],
     ) -> Result<(), TransportError> {
         unimplemented!("poll cq");
     }
@@ -307,7 +307,7 @@ impl Task {
             let magic: u32 = 2563;
             std::ptr::write(meta.as_mut_ptr() as *mut u32, magic);
             std::ptr::write(meta.as_mut_ptr().offset(4) as *mut u32, imm);
-            std::ptr::write(meta.as_mut_ptr().offset((8) as isize) as *mut u64, len);
+            std::ptr::write(meta.as_mut_ptr().offset(8) as *mut u64, len);
         }
         meta
     }
@@ -336,7 +336,7 @@ impl Task {
             opcode: self.opcode,
             status: match &self.error {
                 Ok(_) => WcStatus::Success,
-                Err(e) => WcStatus::Error(NonZeroU32::new(e.into_vendor_err()).unwrap()),
+                Err(e) => WcStatus::Error(NonZeroU32::new(e.as_vendor_err()).unwrap()),
             },
             buf: self.buf,
             byte_len: self.offset - HEADER_BYTES,
@@ -348,6 +348,12 @@ impl Task {
 pub struct CompletionQueue {
     send_tasks: VecDeque<Task>,
     recv_tasks: VecDeque<Task>,
+}
+
+impl Default for CompletionQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CompletionQueue {

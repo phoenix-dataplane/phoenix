@@ -32,7 +32,7 @@ impl fmt::Debug for SchedulingGroup {
         let engine_names: Vec<String> = self
             .engines
             .iter()
-            .map(|e| e.1.engine().description().to_string())
+            .map(|e| e.1.engine().description())
             .collect();
         f.debug_struct("SchedulingGroup")
             .field("engines", &engine_names)

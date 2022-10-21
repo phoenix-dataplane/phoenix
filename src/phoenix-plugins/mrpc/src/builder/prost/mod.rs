@@ -1,3 +1,4 @@
+#![allow(clippy::module_inception)]
 use thiserror::Error;
 
 pub mod prost;

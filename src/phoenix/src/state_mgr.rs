@@ -15,6 +15,12 @@ pub struct SharedStateManager<S> {
     states: HashMap<Pid, Weak<S>>,
 }
 
+impl<S: ProcessShared> Default for SharedStateManager<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: ProcessShared> SharedStateManager<S> {
     pub fn new() -> Self {
         SharedStateManager {

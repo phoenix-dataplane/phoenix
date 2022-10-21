@@ -22,6 +22,12 @@ pub struct Reactor {
 
 // After all, someone is going to do the mapping from conn_id to stub_id
 
+impl Default for Reactor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Reactor {
     pub fn new() -> Self {
         Reactor {

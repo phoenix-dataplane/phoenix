@@ -4,6 +4,10 @@ use interface::rpc::MessageMeta;
 use mrpc_marshal::{SgE, UnmarshalError};
 
 pub trait UnpackFromSgE: Sized {
+    /// # Safety
+    ///
+    /// This operation may be zero-copy. Thus, the user must ensure the underlying data remain
+    /// valid after unpacking.
     unsafe fn unpack(sge: &SgE) -> Result<Unique<Self>, UnmarshalError>;
 }
 

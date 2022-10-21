@@ -38,6 +38,7 @@ struct EngineDumped {
 
 /// Attach an addon to a serivce subscription
 /// * group: the scheduling group to attach the addon to
+#[allow(clippy::too_many_arguments)]
 async fn attach_addon<I>(
     rm: Arc<RuntimeManager>,
     plugins: Arc<PluginCollection>,
@@ -57,7 +58,7 @@ async fn attach_addon<I>(
         .engine_subscriptions
         .iter()
         .filter(|e| e.pid == pid && e.sid == sid)
-        .map(|e| (*e.key(), e.value().clone()))
+        .map(|e| (*e.key(), *e.value()))
         .collect::<Vec<_>>();
 
     if subscription_engines.is_empty() {
@@ -90,11 +91,11 @@ async fn attach_addon<I>(
         return;
     }
     let mut engine_containers = Vec::with_capacity(subscription_engines.len());
-    while subscription_engines.len() > 0 {
+    while !subscription_engines.is_empty() {
         let guard = rm.inner.lock().unwrap();
         subscription_engines.retain(|(eid, info)| {
             let runtime = guard.runtimes.get(&info.rid).unwrap();
-            if let Some((_, result)) = runtime.suspended.remove(&eid) {
+            if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
                     engine_containers.push((container, *info));
                     rm.engine_subscriptions.remove(eid);
@@ -309,7 +310,7 @@ async fn detach_addon<I>(
         .engine_subscriptions
         .iter()
         .filter(|e| e.pid == pid && e.sid == sid)
-        .map(|e| (*e.key(), e.value().clone()))
+        .map(|e| (*e.key(), *e.value()))
         .collect::<Vec<_>>();
 
     if subscription_engines.is_empty() {
@@ -345,11 +346,11 @@ async fn detach_addon<I>(
         return;
     }
     let mut engine_containers = Vec::with_capacity(subscription_engines.len());
-    while subscription_engines.len() > 0 {
+    while !subscription_engines.is_empty() {
         let guard = rm.inner.lock().unwrap();
         subscription_engines.retain(|(eid, info)| {
             let runtime = guard.runtimes.get(&info.rid).unwrap();
-            if let Some((_, result)) = runtime.suspended.remove(&eid) {
+            if let Some((_, result)) = runtime.suspended.remove(eid) {
                 if let SuspendResult::Engine(container) = result {
                     engine_containers.push((container, *info));
                     rm.engine_subscriptions.remove(eid);
@@ -471,7 +472,7 @@ async fn upgrade_client(
     // EngineContainers for engines in the same engine subscription
     // that do not need update, but need to suspend from runtimes,
     let mut containers_suspended = HashMap::new();
-    while to_upgrade.len() > 0 || to_suspend.len() > 0 {
+    while !to_upgrade.is_empty() || !to_suspend.is_empty() {
         let guard = rm.inner.lock().unwrap();
         to_upgrade.retain(|(eid, info)| {
             let runtime = guard.runtimes.get(&info.rid).unwrap();
@@ -517,7 +518,7 @@ async fn upgrade_client(
     let subscribed = engines_to_upgrade
         .keys()
         .chain(containers_suspended.keys())
-        .map(|x| *x)
+        .copied()
         .collect::<Vec<_>>();
 
     // Each engine to upgrade's local state
@@ -637,8 +638,8 @@ async fn upgrade_client(
                 .iter_mut()
                 .chain(subscription.addons.iter_mut())
             {
-                if let Some(dumped) = engine_group.remove(&subscribed_engine_ty) {
-                    let plugin = plugins.engine_registry.get(&subscribed_engine_ty).unwrap();
+                if let Some(dumped) = engine_group.remove(subscribed_engine_ty) {
+                    let plugin = plugins.engine_registry.get(subscribed_engine_ty).unwrap();
 
                     // redirects all `EngineType` in `subscription`
                     // to point to &'static str in the new shared library
@@ -799,6 +800,7 @@ impl EngineUpgrader {
     }
 
     /// Attach an addon to a service subscription
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn attach_addon<I>(
         &mut self,
         pid: Pid,
@@ -919,7 +921,7 @@ impl EngineUpgrader {
                 })
             {
                 let client = engines_to_detach.entry(engine.pid).or_insert_with(Vec::new);
-                client.push((*engine.key(), engine.value().clone()));
+                client.push((*engine.key(), *engine.value()));
             }
         }
 

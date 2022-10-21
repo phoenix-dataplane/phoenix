@@ -225,7 +225,7 @@ impl AsRef<Context> for *mut ffi::ibv_context {
 }
 
 #[cfg(feature = "phoenix")]
-impl<'ctx> AsHandle for Context {
+impl AsHandle for Context {
     /// Returns the inner handle of this Context (ibv_context). We use ibv_context.cmd_fd as its
     /// handle.
     fn as_handle(&self) -> Handle {

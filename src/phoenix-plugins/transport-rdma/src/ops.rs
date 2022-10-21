@@ -45,6 +45,11 @@ impl Ops {
 
 // Datapath APIs
 impl Ops {
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `Ops::poll_cq` returns a completion for this receive).
     #[inline]
     pub unsafe fn post_recv(
         &self,
@@ -69,11 +74,16 @@ impl Ops {
         // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
         let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-        cmid.post_recv(wr_id, buf_mut, &mr)
+        cmid.post_recv(wr_id, buf_mut, mr)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `Ops::poll_cq` returns a completion for this receive).
     #[inline]
     pub unsafe fn post_send(
         &self,
@@ -97,11 +107,16 @@ impl Ops {
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_send(wr_id, buf, &mr, flags.0)
+        cmid.post_send(wr_id, buf, mr, flags.0)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `Ops::poll_cq` returns a completion for this receive).
     #[inline]
     pub unsafe fn post_send_with_imm(
         &self,
@@ -118,11 +133,16 @@ impl Ops {
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_send_with_imm(wr_id, buf, &mr, flags.0, imm)
+        cmid.post_send_with_imm(wr_id, buf, mr, flags.0, imm)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `Ops::poll_cq` returns a completion for this receive).
     #[inline]
     pub unsafe fn post_write(
         &self,
@@ -141,12 +161,17 @@ impl Ops {
         let remote_addr = rkey.addr + remote_offset;
 
         let flags: ibv::SendFlags = send_flags.into();
-        cmid.post_write(wr_id, buf, &mr, flags.0, remote_addr, rkey.rkey)
+        cmid.post_write(wr_id, buf, mr, flags.0, remote_addr, rkey.rkey)
             .map_err(DatapathError::RdmaCm)?;
 
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// The memory region can only be safely reused or dropped after the request is fully executed
+    /// and a work completion has been retrieved from the corresponding completion queue (i.e.,
+    /// until `Ops::poll_cq` returns a completion for this receive).
     #[inline]
     pub unsafe fn post_read(
         &self,
@@ -166,7 +191,7 @@ impl Ops {
         // let rdma_mr = rdmacm::MemoryRegion::from(mr);
         let buf = &mr[range.offset as usize..(range.offset + range.len) as usize];
         let buf_mut = slice::from_raw_parts_mut(buf.as_ptr() as _, buf.len());
-        cmid.post_read(wr_id, buf_mut, &mr, flags.0, remote_addr, rkey.rkey)
+        cmid.post_read(wr_id, buf_mut, mr, flags.0, remote_addr, rkey.rkey)
             .map_err(DatapathError::RdmaCm)?;
         Ok(())
     }
@@ -183,9 +208,8 @@ impl Ops {
             return Ok(());
         }
         // Safety: this is fine here because we will resize the wc to the number of elements it really gets
-        let mut wc_slice =
-            unsafe { slice::from_raw_parts_mut(wc.as_mut_ptr().cast(), wc.capacity()) };
-        match cq.poll(&mut wc_slice) {
+        let wc_slice = unsafe { slice::from_raw_parts_mut(wc.as_mut_ptr().cast(), wc.capacity()) };
+        match cq.poll(wc_slice) {
             Ok(completions) => {
                 unsafe { wc.set_len(completions.len()) };
                 Ok(())
@@ -792,7 +816,7 @@ impl Ops {
     ) -> Result<rdmacm::MemoryRegion<'static>> {
         log::debug!("CreateMrOnDemandPaging: pd_handle: {:?}", pd_handle);
         let pd = self.resource().pd_table.get(&pd_handle.0)?;
-        Ok(rdmacm::MemoryRegion::new_on_demand_paging(pd.pd()).map_err(ApiError::Ibv)?)
+        rdmacm::MemoryRegion::new_on_demand_paging(pd.pd()).map_err(ApiError::Ibv)
     }
 
     fn get_qp_params(

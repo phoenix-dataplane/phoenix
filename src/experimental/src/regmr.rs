@@ -142,12 +142,12 @@ impl<'a> Drop for SMR<'a> {
                 .unwrap();
 
                 assert_eq!(new_pa, self.page_aligned_begin() as _);
-                let mut orig_buffer = slice::from_raw_parts_mut(
+                let orig_buffer = slice::from_raw_parts_mut(
                     self.page_aligned_begin() as _,
                     self.page_aligned_len(),
                 );
                 self.memfd
-                    .read_exact(&mut orig_buffer)
+                    .read_exact(orig_buffer)
                     .unwrap_or_else(|e| panic!("read_exact: {}", e));
             }
         }

@@ -38,7 +38,7 @@ impl Engine for NullEngine {
     }
 
     fn description(self: Pin<&Self>) -> String {
-        format!("NullEngine")
+        "NullEngine".to_owned()
     }
 
     #[inline]
@@ -132,7 +132,7 @@ impl NullEngine {
                     EngineTxMessage::RpcMessage(msg) => {
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
-                    m @ _ => self.tx_outputs()[0].send(m)?,
+                    m => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));
             }

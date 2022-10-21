@@ -61,16 +61,12 @@ impl Deref for DomainSocket {
 
 impl Drop for DomainSocket {
     fn drop(&mut self) {
-        match self.sock.local_addr() {
-            Ok(local_addr) => {
-                if let Some(path) = local_addr.as_pathname() {
-                    let _ = std::fs::remove_file(path);
-                }
-            }
-            Err(_) => {
-                // sliently ignore the error in drop
+        if let Ok(local_addr) = self.sock.local_addr() {
+            if let Some(path) = local_addr.as_pathname() {
+                let _ = std::fs::remove_file(path);
             }
         }
+        // sliently ignore the error otherwise in drop function
     }
 }
 
@@ -246,6 +242,7 @@ impl DomainSocket {
         Ok((fds, cred))
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn try_recv_fd(&self) -> Result<Option<(Vec<RawFd>, Option<UCred>)>, Error> {
         self.set_read_timeout(Some(time::Duration::from_micros(1)))?;
         let ret = match self.recv_fd() {

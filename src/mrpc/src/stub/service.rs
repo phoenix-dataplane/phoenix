@@ -22,7 +22,7 @@ pub trait Service {
 }
 
 pub fn service_pre_handler<T: Unpin>(req: &MessageErased, read_heap: Arc<ReadHeap>) -> RRef<T> {
-    RRef::new(&req, read_heap)
+    RRef::new(req, read_heap)
 }
 
 pub fn service_post_handler<T: RpcData>(

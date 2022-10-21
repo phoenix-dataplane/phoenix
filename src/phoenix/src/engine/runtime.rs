@@ -220,7 +220,7 @@ impl Runtime {
                     RuntimeMode::Dedicated => false,
                     RuntimeMode::Compact => {
                         if let Some(quota) = quota {
-                            quota >= scheduled_groups + 1
+                            quota > scheduled_groups
                         } else {
                             true
                         }
@@ -229,7 +229,7 @@ impl Runtime {
                         let curr_signature = self.group_signature.load(Ordering::Relaxed);
                         if curr_signature == group_signature.unwrap() {
                             if let Some(quota) = quota {
-                                quota >= scheduled_groups + 1
+                                quota > scheduled_groups
                             } else {
                                 true
                             }

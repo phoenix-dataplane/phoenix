@@ -57,7 +57,7 @@ impl Control {
             .plugins
             .service_registry
             .get(&service)
-            .ok_or(anyhow!("service {:?} not found in the registry", service))?;
+            .ok_or_else(|| anyhow!("service {:?} not found in the registry", service))?;
         let tx_channels = service_registry.tx_channels.iter().copied();
         let rx_channels = service_registry.rx_channels.iter().copied();
         let (mut nodes, graph) = create_datapath_channels(
@@ -67,7 +67,7 @@ impl Control {
         )?;
 
         let subscription = ServiceSubscription {
-            service: service.clone(),
+            service,
             addons: Vec::new(),
             graph,
         };
@@ -96,7 +96,9 @@ impl Control {
                 service,
                 pid
             );
-            let node = nodes.remove(aux_engine_type).unwrap_or(DataPathNode::new());
+            let node = nodes
+                .remove(aux_engine_type)
+                .unwrap_or_else(DataPathNode::new);
             let specified_mode = specified_mode.unwrap_or(service_mode);
             let request = NewEngineRequest::Auxiliary {
                 pid,
@@ -113,8 +115,7 @@ impl Control {
             )?;
             // submit auxiliary to runtime manager
             if let Some(engine) = engine {
-                let container =
-                    EngineContainer::new(engine, aux_engine_type.clone(), module.version());
+                let container = EngineContainer::new(engine, *aux_engine_type, module.version());
                 let representative = service_registry
                     .scheduling_groups
                     .find_representative(*aux_engine_type)
@@ -147,11 +148,11 @@ impl Control {
             client_path,
             mode: specified_mode,
             cred,
-            config_string: config_string.clone(),
+            config_string,
         };
         let node = nodes
             .remove(service_engine_type)
-            .unwrap_or(DataPathNode::new());
+            .unwrap_or_else(DataPathNode::new);
         let engine = module
             .create_engine(
                 *service_engine_type,
@@ -161,18 +162,20 @@ impl Control {
                 node,
                 &self.plugins.modules,
             )
-            .or_else(|e| {
+            .map_err(|e| {
                 log::error!(
                     "create_engine failed: engine_type: {:?}, error: {}",
                     service_engine_type,
                     e
                 );
-                Err(e)
+                e
             })?
-            .ok_or(anyhow!(
-                "service engine must always be created, engine_type={:?}",
-                service_engine_type
-            ))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "service engine must always be created, engine_type={:?}",
+                    service_engine_type
+                )
+            })?;
         // TODO(cjr): use let-else.
         tracing::info!(
             "Created engine {:?} of service {:?} for client pid={:?}",
@@ -181,7 +184,7 @@ impl Control {
             pid
         );
         // Submit service engine to runtime manager
-        let container = EngineContainer::new(engine, service_engine_type.clone(), module.version());
+        let container = EngineContainer::new(engine, *service_engine_type, module.version());
         let representative = service_registry
             .scheduling_groups
             .find_representative(*service_engine_type)
@@ -319,13 +322,13 @@ impl Control {
                     .plugins
                     .service_registry
                     .get(&service)
-                    .ok_or(anyhow!("service {:?} not found", sender))?
+                    .ok_or_else(|| anyhow!("service {:?} not found", sender))?
                     .key();
                 let desired_mode = hint.mode;
                 let mode_override = self
                     .scheduling_override
                     .get(&service_name)
-                    .map(|x| *x)
+                    .copied()
                     .unwrap_or(desired_mode);
                 self.create_service(service, client_path, mode_override, hint, cred, config_str)?;
                 Ok(())
@@ -379,7 +382,7 @@ impl Control {
                     }
                     let engines = engine_subscriptions
                         .remove(&(subscription.key().0, subscription.key().1))
-                        .unwrap_or(Vec::new());
+                        .unwrap_or_default();
 
                     let info = ServiceSubscriptionInfo {
                         pid,
@@ -392,7 +395,7 @@ impl Control {
                 }
                 let response = Response(Ok(ResponseKind::ListSubscription(subscriptions_info)));
                 let mut buf = bincode::serialize(&response)?;
-                let nbytes = self.sock.send_to(buf.as_mut_slice(), &client_path)?;
+                let nbytes = self.sock.send_to(buf.as_mut_slice(), client_path)?;
                 assert_eq!(
                     nbytes,
                     buf.len(),
@@ -411,7 +414,7 @@ impl Control {
                     .plugins
                     .engine_registry
                     .get(&addon_engine)
-                    .ok_or(anyhow!(
+                    .ok_or_else(|| anyhow!(
                         "Addon engine type {:?} not found",
                         request.addon_engine
                     ))?
@@ -428,7 +431,7 @@ impl Control {
                         .plugins
                         .engine_registry
                         .get(&engine_ty)
-                        .ok_or(anyhow!("Engine type {:?} not found", engine))?
+                        .ok_or_else(|| anyhow!("Engine type {:?} not found", engine))?
                         .key();
                     group.insert(engine_ty);
                 }
@@ -457,7 +460,7 @@ impl Control {
                     .plugins
                     .engine_registry
                     .get(&addon_engine)
-                    .ok_or(anyhow!(
+                    .ok_or_else(|| anyhow!(
                         "Addon engine type {:?} not found",
                         request.addon_engine
                     ))?
@@ -494,13 +497,13 @@ impl Control {
                 .plugins
                 .engine_registry
                 .get(&sender_engine)
-                .ok_or(anyhow!("Engine type {:?} not found", sender))?
+                .ok_or_else(|| anyhow!("Engine type {:?} not found", sender))?
                 .key();
             let receiver_engine = *self
                 .plugins
                 .engine_registry
                 .get(&receiver_engine)
-                .ok_or(anyhow!("Engine type {:?} not found", receiver))?
+                .ok_or_else(|| anyhow!("Engine type {:?} not found", receiver))?
                 .key();
             edges.push(ChannelDescriptor(
                 sender_engine,

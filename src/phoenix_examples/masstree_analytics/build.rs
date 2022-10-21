@@ -1,5 +1,3 @@
-use cmake;
-
 const PROTO: &str = "../proto/masstree_analytics/masstree_analytics.proto";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

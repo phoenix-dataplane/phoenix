@@ -9,10 +9,10 @@ pub mod cache;
 pub mod compiler;
 pub mod prost;
 
-const PROTO_DIR: &'static str = "proto";
-const PROST_DIR: &'static str = "prost";
-const LIBRARY_DIR: &'static str = "marshal";
-const PROST_INCLUDE_FILE: &'static str = "_include.rs";
+const PROTO_DIR: &str = "proto";
+const PROST_DIR: &str = "prost";
+const LIBRARY_DIR: &str = "marshal";
+const PROST_INCLUDE_FILE: &str = "_include.rs";
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct MethodIdentifier(u32, u32);

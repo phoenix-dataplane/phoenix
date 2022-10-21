@@ -18,7 +18,7 @@ impl prost_build::ServiceGenerator for ServiceRecorder {
         let service_path = get_service_path(package, &service);
         let service_id = get_mrpc_service_id(&service_path);
         for method in service.methods.iter() {
-            let method_path = get_method_path(package, &service, &method);
+            let method_path = get_method_path(package, &service, method);
             let func_id = get_mrpc_func_id(&method_path);
             let input_type_canonical = resolve_ident(
                 package,

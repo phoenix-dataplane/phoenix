@@ -479,7 +479,7 @@ impl TransportEngine {
         match req {
             WorkRequest::PostRecv(cmid_handle, wr_id, range, mr_handle) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref());
                 unsafe {
                     self.ops.post_recv(*cmid_handle, &rdma_mr, *range, *wr_id)?;
                 }
@@ -487,7 +487,7 @@ impl TransportEngine {
             }
             WorkRequest::PostSend(cmid_handle, wr_id, range, mr_handle, send_flags) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref());
                 unsafe {
                     self.ops
                         .post_send(*cmid_handle, &rdma_mr, *range, *wr_id, *send_flags)?;
@@ -496,7 +496,7 @@ impl TransportEngine {
             }
             WorkRequest::PostSendWithImm(cmid_handle, wr_id, range, mr_handle, send_flags, imm) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref());
                 unsafe {
                     self.ops.post_send_with_imm(
                         *cmid_handle,
@@ -519,7 +519,7 @@ impl TransportEngine {
                 send_flags,
             ) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref());
                 unsafe {
                     self.ops.post_write(
                         *cmid_handle,
@@ -543,7 +543,7 @@ impl TransportEngine {
                 send_flags,
             ) => {
                 let mr = self.ops.resource().mr_table.get_dp(mr_handle.0 as usize)?;
-                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref().as_ref());
+                let rdma_mr = rdmacm::MemoryRegion::from(mr.as_ref());
                 unsafe {
                     self.ops.post_read(
                         *cmid_handle,
@@ -602,11 +602,11 @@ impl TransportEngine {
                             // In these ways, the CQ can be polled in batch.
                             let handle_ptr: *mut interface::CompletionQueue = ptr.add(cnt).cast();
                             handle_ptr.write(*cq_handle);
-                            let mut wc = slice::from_raw_parts_mut(
+                            let wc = slice::from_raw_parts_mut(
                                 memoffset::raw_field!(handle_ptr, dp::Completion, wc) as _,
                                 1,
                             );
-                            match cq.poll(&mut wc) {
+                            match cq.poll(wc) {
                                 Ok(completions) if !completions.is_empty() => cnt += 1,
                                 Ok(_) => {
                                     wc.as_mut_ptr()

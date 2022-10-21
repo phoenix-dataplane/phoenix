@@ -353,7 +353,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
         let tokens = quote! {
             pub mod #package_mod {
-                pub const PROTO_SRCS: &'static [&'static str] = &[#(#proto_srcs),*];
+                pub const PROTO_SRCS: &[&str] = &[#(#proto_srcs),*];
             }
         };
         let ast: syn::File = syn::parse2(tokens).expect("not a valid tokenstream");

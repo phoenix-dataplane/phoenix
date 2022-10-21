@@ -20,7 +20,7 @@ impl Default for TcpTransportConfig {
 
 impl TcpTransportConfig {
     pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
-        let config = toml::from_str(&config.unwrap_or(""))?;
+        let config = toml::from_str(config.unwrap_or(""))?;
         Ok(config)
     }
 }

@@ -51,7 +51,7 @@ impl Engine for RateLimitEngine {
     }
 
     fn description(self: Pin<&Self>) -> String {
-        format!("RateLimitEngine")
+        "RateLimitEngine".to_owned()
     }
 
     #[inline]
@@ -212,7 +212,7 @@ impl RateLimitEngine {
                         }
                     }
                     // XXX TODO(cjr): it is best not to reorder the message
-                    m @ _ => self.tx_outputs()[0].send(m)?,
+                    m => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));
             }

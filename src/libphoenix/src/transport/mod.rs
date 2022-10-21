@@ -25,7 +25,7 @@ pub fn set(setting: &Setting) {
 }
 
 pub fn set_schedulint_hint(hint: &SchedulingHint) {
-    SCHEDULING_HINT.with_borrow_mut(|h| *h = hint.clone());
+    SCHEDULING_HINT.with_borrow_mut(|h| *h = *hint);
 }
 
 // NOTE(cjr): Will lazy_static affect the performance?
@@ -52,7 +52,7 @@ impl Context {
             &*KOALA_PREFIX,
             &*KOALA_CONTROL_SOCK,
             "RdmaTransport".to_string(),
-            SCHEDULING_HINT.with_borrow(|h| h.clone()),
+            SCHEDULING_HINT.with_borrow(|h| *h),
             Some(&setting_str),
         )?;
         Ok(Self { service })

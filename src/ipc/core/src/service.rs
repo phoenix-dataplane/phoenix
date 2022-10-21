@@ -218,7 +218,7 @@ where
 
     #[inline]
     pub fn recv_comp(&self) -> Result<Completion, Error> {
-        Ok(self.cmd_rx.recv().map_err(|e| Error::IpcRecv(e.into()))?)
+        self.cmd_rx.recv().map_err(|e| Error::IpcRecv(e.into()))
     }
 
     #[inline]
@@ -280,7 +280,7 @@ where
         // this read operation to the background thread
         use std::io::Read;
         let mut b = [0u8; 8];
-        self.dp_cq.borrow_mut().empty_signal().read(&mut b)?;
+        let _ = self.dp_cq.borrow_mut().empty_signal().read(&mut b)?;
 
         // let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;
         Poll::Ready(Ok(true))

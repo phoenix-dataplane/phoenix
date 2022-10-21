@@ -1,7 +1,7 @@
 use std::path::Path;
 
 pub fn check_cache<P: AsRef<Path>>(
-    protos: &Vec<String>,
+    protos: &[String],
     // dir to backend build cache
     cache_dir: P,
     // directory name where the proto files are stored
@@ -34,7 +34,7 @@ pub fn check_cache<P: AsRef<Path>>(
 
 pub fn write_protos_to_cache<P: AsRef<Path>>(
     identifier: &str,
-    protos: &Vec<String>,
+    protos: &[String],
     // dir to backend build cache
     cache_dir: P,
     // directory name where the proto files are stored

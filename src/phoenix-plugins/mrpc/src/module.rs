@@ -44,6 +44,7 @@ pub(crate) struct MrpcEngineBuilder {
 }
 
 impl MrpcEngineBuilder {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         customer: CustomerType,
         client_pid: Pid,

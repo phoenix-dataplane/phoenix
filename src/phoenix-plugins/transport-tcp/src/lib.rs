@@ -91,7 +91,7 @@ impl From<ipc::Error> for TransportError {
 }
 
 impl TransportError {
-    pub(crate) fn into_vendor_err(&self) -> u32 {
+    pub(crate) fn as_vendor_err(&self) -> u32 {
         match self {
             Self::NotFound => 1024,
             Self::ShmIpc(_) => 1025,

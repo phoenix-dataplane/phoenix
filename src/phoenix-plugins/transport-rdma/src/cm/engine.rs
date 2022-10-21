@@ -128,9 +128,9 @@ impl CmEngine {
                     .blocking_lock()
                     .err_buffer
                     .push_back(e);
-                return Ok(Progress(1));
+                Ok(Progress(2))
             }
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
     }
 

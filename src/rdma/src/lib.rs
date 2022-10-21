@@ -79,14 +79,18 @@ pub mod ffi;
 pub(crate) mod sliceindex;
 
 /// ibverbs API.
+#[allow(clippy::needless_borrow)]
 pub mod ibv;
 
 /// rdmacm API.
+#[allow(clippy::needless_borrow)]
 #[allow(missing_docs)]
 pub mod rdmacm;
 
 /// convert types from and to phoenix interface.
 #[allow(missing_docs)]
 pub mod convert;
+
+#[allow(clippy::needless_borrow)]
 #[allow(missing_docs)]
 pub mod mr;

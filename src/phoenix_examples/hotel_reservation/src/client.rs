@@ -212,7 +212,7 @@ impl Workload {
     }
 
     fn next_request(&self) -> (WRef<Request>, usize) {
-        let index = if fastrand::usize(..100) < 1 { 0 } else { 1 };
+        let index = (fastrand::usize(..100) >= 1) as usize;
         (WRef::clone(&self.reqs[index]), self.req_sizes[index])
     }
 }
@@ -224,7 +224,7 @@ fn run_client(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         // provision
         let workload = Workload::new();
 
-        let (dura, total_bytes, rcnt, hist) = run_bench(&args, &client, &workload).await?;
+        let (dura, total_bytes, rcnt, hist) = run_bench(args, &client, &workload).await?;
 
         println!(
             "duration: {:?}, bandwidth: {:?} Gb/s, rate: {:.5} Mrps",

@@ -92,10 +92,9 @@ impl AliveConnection {
     }
 
     pub(crate) fn close(&mut self) -> DeadConnection {
-        let dead = DeadConnection {
+        DeadConnection {
             handle: self.handle,
-        };
+        }
         // todo!("notify the backend to close the connection");
-        dead
     }
 }

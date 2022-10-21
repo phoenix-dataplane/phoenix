@@ -162,10 +162,9 @@ where
     #[inline]
     pub fn send_fd(&self, fds: &[RawFd]) -> Result<(), Error> {
         self.fd_notifier.fetch_add(1, Ordering::AcqRel);
-        Ok(self
-            .sock
+        self.sock
             .send_fd(&self.client_path, fds)
-            .map_err(|e| Error::SendFd(Box::new(e)))?)
+            .map_err(|e| Error::SendFd(Box::new(e)))
     }
 
     #[inline]
@@ -180,10 +179,7 @@ where
 
     #[inline]
     pub fn send_comp(&self, comp: Completion) -> Result<(), Error> {
-        Ok(self
-            .cmd_tx
-            .send(comp)
-            .map_err(|e| Error::IpcSend(e.into()))?)
+        self.cmd_tx.send(comp).map_err(|e| Error::IpcSend(e.into()))
     }
 
     #[inline]

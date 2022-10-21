@@ -114,8 +114,8 @@ pub trait RpcMessage: Sized {
     ///
     /// This operation may be zero-copy. Thus, the user must ensure the underlying data remain
     /// valid after unmarshalling.
-    unsafe fn unmarshal<'a, A: AddressArbiter>(
-        ctx: &mut ExcavateContext<'a, A>,
+    unsafe fn unmarshal<A: AddressArbiter>(
+        ctx: &mut ExcavateContext<A>,
     ) -> Result<ShmPtr<Self>, UnmarshalError>;
 
     fn emplace(&self, sgl: &mut SgList) -> Result<(), MarshalError>;
@@ -124,9 +124,9 @@ pub trait RpcMessage: Sized {
     ///
     /// This operation may be zero-copy. Thus, the user must ensure the underlying data remain
     /// valid after excavating.
-    unsafe fn excavate<'a, A: AddressArbiter>(
+    unsafe fn excavate<A: AddressArbiter>(
         &mut self,
-        ctx: &mut ExcavateContext<'a, A>,
+        ctx: &mut ExcavateContext<A>,
     ) -> Result<(), UnmarshalError>;
 
     fn extent(&self) -> usize;

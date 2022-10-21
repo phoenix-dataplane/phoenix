@@ -175,6 +175,6 @@ impl BufferPool {
                     None
                 }
             })
-            .map_or_else(|| Err(ResourceError::NotFound.into()), |s| Ok(s))
+            .map_or_else(|| Err(ResourceError::NotFound.into()), Ok)
     }
 }
