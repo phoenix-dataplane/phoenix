@@ -1,5 +1,4 @@
 #![feature(exclusive_range_pattern)]
-#![feature(scoped_threads)]
 use std::mem;
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};

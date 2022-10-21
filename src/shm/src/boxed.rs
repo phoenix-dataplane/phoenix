@@ -192,10 +192,10 @@ impl<T, A: ShmAllocator> Box<T, A> {
         let src = non_null.as_ptr_app();
         unsafe {
             // copy the content from shared heap to stack
-            ptr::copy_nonoverlapping(src.as_const(), dst.as_mut_ptr(), 1);
+            ptr::copy_nonoverlapping(src.cast_const(), dst.as_mut_ptr(), 1);
             // drop the content on the shared heap
-            let size = core::intrinsics::size_of_val(src.as_const());
-            let align = core::intrinsics::min_align_of_val(src.as_const());
+            let size = core::intrinsics::size_of_val(src.cast_const());
+            let align = core::intrinsics::min_align_of_val(src.cast_const());
             ptr::drop_in_place(src);
             // let non_null: ptr::NonNull<T> = ptr::NonNull::new_unchecked(src);
             let layout = Layout::from_size_align_unchecked(size, align);

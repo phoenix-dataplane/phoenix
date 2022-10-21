@@ -1,4 +1,3 @@
-#![feature(scoped_threads)]
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

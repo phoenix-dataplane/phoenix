@@ -56,10 +56,9 @@ use core::ops::Bound::{Excluded, Included, Unbounded};
 use core::ops::{self, Index, IndexMut, Range, RangeBounds};
 use core::ptr;
 use core::slice;
-#[cfg(not(no_global_oom_handling))]
-use core::str::lossy;
 use core::str::pattern::Pattern;
-
+use core::str::Utf8Chunks;
+#[cfg(not(no_global_oom_handling))]
 #[cfg(not(no_global_oom_handling))]
 use std::borrow::Cow; // TODO(cjr): Consider to ShmCow and ShmBorrow in the future?
 use std::collections::TryReserveError;
@@ -550,11 +549,11 @@ impl<A: ShmAllocator + Default> String<A> {
     #[must_use]
     #[cfg(not(no_global_oom_handling))]
     pub fn from_utf8_lossy(v: &[u8]) -> Self {
-        let mut iter = lossy::Utf8Lossy::from_bytes(v).chunks();
+        let mut iter = Utf8Chunks::new(v);
 
         let first_valid = if let Some(chunk) = iter.next() {
-            let lossy::Utf8LossyChunk { valid, broken } = chunk;
-            if broken.is_empty() {
+            let valid = chunk.valid();
+            if chunk.invalid().is_empty() {
                 debug_assert_eq!(valid.len(), v.len());
                 return Self::from(valid);
             }
@@ -569,9 +568,9 @@ impl<A: ShmAllocator + Default> String<A> {
         res.push_str(first_valid);
         res.push_str(REPLACEMENT);
 
-        for lossy::Utf8LossyChunk { valid, broken } in iter {
-            res.push_str(valid);
-            if !broken.is_empty() {
+        for chunk in iter {
+            res.push_str(chunk.valid());
+            if !chunk.invalid().is_empty() {
                 res.push_str(REPLACEMENT);
             }
         }

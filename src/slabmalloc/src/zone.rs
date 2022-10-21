@@ -158,9 +158,9 @@ impl ZoneAllocator {
     fn get_slab(requested_size: usize) -> Slab {
         match requested_size {
             0..=8 => Slab::Base(0),
-            9..=256 => Slab::Base((requested_size - 1).wrapping_shr(2).log2() as _),
-            257..=131_072 => Slab::Large((requested_size - 1).wrapping_shr(8).log2() as _),
-            131_073..=67_108_864 => Slab::Huge((requested_size - 1).wrapping_shr(17).log2() as _),
+            9..=256 => Slab::Base((requested_size - 1).wrapping_shr(2).ilog2() as _),
+            257..=131_072 => Slab::Large((requested_size - 1).wrapping_shr(8).ilog2() as _),
+            131_073..=67_108_864 => Slab::Huge((requested_size - 1).wrapping_shr(17).ilog2() as _),
             _ => Slab::Unsupported,
         }
     }
