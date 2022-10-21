@@ -1,4 +1,3 @@
-#![feature(scoped_threads)]
 use std::future::Future;
 use std::time::Duration;
 

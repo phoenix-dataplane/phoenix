@@ -1,5 +1,3 @@
-#![feature(scoped_threads)]
-
 use std::cmp;
 use std::path::PathBuf;
 use std::time::Duration;

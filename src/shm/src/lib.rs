@@ -9,7 +9,6 @@
 #![feature(ptr_internals)]
 #![feature(ptr_metadata)]
 #![feature(core_intrinsics)]
-#![feature(ptr_const_cast)]
 #![feature(try_reserve_kind)]
 #![feature(trusted_len)]
 #![feature(extend_one)]
@@ -22,12 +21,13 @@
 #![feature(const_ptr_as_ref)]
 #![feature(const_mut_refs)]
 #![feature(const_ptr_is_null)]
-#![feature(const_slice_from_raw_parts)]
+#![feature(const_slice_from_raw_parts_mut)]
 #![feature(const_slice_ptr_len)]
 // string.rs
 #![feature(str_internals)]
 #![feature(pattern)]
 #![feature(slice_range)]
+#![feature(utf8_chunks)]
 
 /// shm::ptr is similar to core::ptr
 pub mod ptr;
