@@ -52,7 +52,7 @@ impl WRefOpaqueVTable {
 }
 
 /// A type erased object for WRef. The implemention is largely learned from `std::task::RawWaker`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct WRefOpaque {
     data: *const (),
     vtable: WRefOpaqueVTable,
