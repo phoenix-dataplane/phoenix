@@ -94,3 +94,6 @@ pub mod convert;
 #[allow(clippy::needless_borrow)]
 #[allow(missing_docs)]
 pub mod mr;
+
+#[allow(missing_docs)]
+pub mod net;

@@ -23,6 +23,7 @@ use interface::{AsHandle, Handle};
 
 use crate::ffi;
 use crate::ibv;
+use crate::net::IntoInner;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AddrInfoHints {
@@ -669,11 +670,8 @@ impl<'res> CmId<'res> {
 
     pub fn bind_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {
         let id = self.0;
-        let addr = match sockaddr {
-            SocketAddr::V4(saddr) => saddr as *const _ as *mut ffi::sockaddr,
-            SocketAddr::V6(saddr) => saddr as *const _ as *mut ffi::sockaddr,
-        };
-        let rc = unsafe { ffi::rdma_bind_addr(id, addr) };
+        let (mut addr, _socklen) = sockaddr.into_inner();
+        let rc = unsafe { ffi::rdma_bind_addr(id, addr.as_mut_ptr()) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -720,13 +718,10 @@ impl<'res> CmId<'res> {
     pub fn resolve_addr(&self, sockaddr: &SocketAddr) -> io::Result<()> {
         let id = self.0;
         let src_addr = ptr::null_mut();
-        let dst_addr = match sockaddr {
-            SocketAddr::V4(saddr) => saddr as *const _ as *mut ffi::sockaddr,
-            SocketAddr::V6(saddr) => saddr as *const _ as *mut ffi::sockaddr,
-        };
+        let (mut dst_addr, _socklen) = sockaddr.into_inner();
         let timeout_ms = 1500;
 
-        let rc = unsafe { ffi::rdma_resolve_addr(id, src_addr, dst_addr, timeout_ms) };
+        let rc = unsafe { ffi::rdma_resolve_addr(id, src_addr, dst_addr.as_mut_ptr(), timeout_ms) };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
