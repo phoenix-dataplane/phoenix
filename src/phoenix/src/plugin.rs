@@ -224,7 +224,7 @@ impl PluginCollection {
     /// Returns a set of affected engine types.
     pub fn load_or_upgrade_modules(
         &self,
-        descriptors: &Vec<PluginDescriptor>,
+        descriptors: &[PluginDescriptor],
     ) -> anyhow::Result<HashSet<EngineType>> {
         let plugins = descriptors
             .iter()
@@ -258,6 +258,7 @@ impl PluginCollection {
                 descriptor.config_path.as_ref(),
                 descriptor.config_string.as_ref(),
             )?;
+
             let new_module = dylib.init_module(config_string.as_deref())?;
             self.libraries.insert(plugin.clone(), dylib);
             new_versions.insert(&descriptor.name[..], new_module.version());
@@ -289,6 +290,9 @@ impl PluginCollection {
         for (name, module) in new_modules.iter_mut() {
             let plugin = Plugin::Module(name.to_string());
             if let Some((_, old_module)) = self.modules.remove(*name) {
+                // remove dependencies of the old module from the dependency graph
+                let old_edges = old_module.dependencies();
+                graph_guard.remove_dependency(old_edges.iter().copied())?;
                 // migrate any states/resources from old module
                 module.migrate(old_module);
             }
@@ -305,6 +309,7 @@ impl PluginCollection {
                 }
             }
         }
+
         for (name, module) in new_modules.into_iter() {
             let edges = module.dependencies();
             graph_guard.add_dependency(edges.iter().copied())?;

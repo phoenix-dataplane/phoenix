@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use std::sync::Mutex;
 
 use anyhow::{anyhow, bail};
 use ipc::control::Response;
@@ -37,6 +38,41 @@ pub struct Control {
     plugins: Arc<PluginCollection>,
     upgrader: EngineUpgrader,
     scheduling_override: HashMap<String, SchedulingMode>,
+    config: Mutex<Config>,
+}
+
+impl Control {
+    fn choose_transport(
+        &self,
+        service: &Service,
+        config_string: Option<&String>,
+    ) -> anyhow::Result<()> {
+        if service == &Service("Mrpc") {
+            if let Some(config_string) = config_string {
+                use ipc::mrpc::control_plane::{Setting, TransportType};
+                let setting: Setting = serde_json::from_str(config_string)?;
+                let mut config = self.config.lock().unwrap();
+                if let Some(mrpc_module) = config.modules.iter_mut().find(|x| x.name == "Mrpc") {
+                    match setting.transport {
+                        TransportType::Rdma => {
+                            if let Some(c) = mrpc_module.config_string.as_ref() {
+                                mrpc_module.config_string = Some(c.replace("Tcp", "Rdma"));
+                            }
+                        }
+                        TransportType::Tcp => {
+                            if let Some(c) = mrpc_module.config_string.as_ref() {
+                                mrpc_module.config_string = Some(c.replace("Rdma", "Tcp"));
+                            }
+                        }
+                    }
+                    self.plugins
+                        .load_or_upgrade_modules(&vec![mrpc_module.clone()])
+                        .expect("failed to load modules");
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Control {
@@ -53,6 +89,11 @@ impl Control {
         if self.upgrader.is_upgrading(pid) {
             bail!("client {} still upgrading", pid);
         }
+
+        // NOTE(cjr): Specially handle here. A complete solution needs a large refactoring.
+        // TODO(cjr): Need a complete refactoring.
+        self.choose_transport(&service, config_string.as_ref())?;
+
         let service_registry = self
             .plugins
             .service_registry
@@ -89,6 +130,7 @@ impl Control {
                 (Plugin::Module(module), mode) => (module, *mode),
                 (Plugin::Addon(_), _) => panic!("service engine {:?} is an addon", aux_engine_type),
             };
+
             let mut module = self.plugins.modules.get_mut(module_name).unwrap();
             tracing::info!(
                 "Created engine {:?} of service {:?} for client pid={:?}",
@@ -105,6 +147,7 @@ impl Control {
                 mode: specified_mode,
                 config_string: config_string.clone(),
             };
+
             let engine = module.create_engine(
                 *aux_engine_type,
                 request,
@@ -113,6 +156,7 @@ impl Control {
                 node,
                 &self.plugins.modules,
             )?;
+
             // submit auxiliary to runtime manager
             if let Some(engine) = engine {
                 let container = EngineContainer::new(engine, *aux_engine_type, module.version());
@@ -150,9 +194,11 @@ impl Control {
             cred,
             config_string,
         };
+
         let node = nodes
             .remove(service_engine_type)
             .unwrap_or_else(DataPathNode::new);
+
         let engine = module
             .create_engine(
                 *service_engine_type,
@@ -225,6 +271,7 @@ impl Control {
     }
 
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
+        let config_clone = config.clone();
         let phoenix_prefix = &config.control.prefix;
         fs::create_dir_all(phoenix_prefix).unwrap_or_else(|e| {
             panic!("Failed to create directory for {:?}: {}", phoenix_prefix, e)
@@ -269,6 +316,7 @@ impl Control {
             plugins,
             upgrader,
             scheduling_override,
+            config: Mutex::new(config_clone),
         }
     }
 

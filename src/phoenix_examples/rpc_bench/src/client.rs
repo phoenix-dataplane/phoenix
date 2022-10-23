@@ -79,6 +79,10 @@ pub struct Args {
     /// Number of server threads.
     #[structopt(long, default_value = "1")]
     pub num_server_threads: usize,
+
+    /// Which transport to use, rdma or tcp
+    #[structopt(long, default_value = "rdma")]
+    pub transport: TransportType,
 }
 
 // mod bench_app;
@@ -283,6 +287,11 @@ fn run_client_thread(tid: usize, args: &Args) -> Result<(), Box<dyn std::error::
             }
         }
     }
+
+    // Set transport type
+    let mut setting = mrpc::current_setting();
+    setting.transport = args.transport;
+    mrpc::set(&setting);
 
     // bind to NUMA node (tid % num_nodes)
     mrpc::bind_to_node((tid % mrpc::num_numa_nodes()) as u8);

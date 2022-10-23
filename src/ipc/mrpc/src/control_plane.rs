@@ -2,12 +2,25 @@ use serde::{Deserialize, Serialize};
 
 type IResult<T> = Result<T, interface::Error>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TransportType {
+    #[default]
     #[serde(alias = "Rdma")]
     Rdma,
     #[serde(alias = "Tcp")]
     Tcp,
+}
+
+impl std::str::FromStr for TransportType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "RDMA" => Ok(Self::Rdma),
+            "TCP" => Ok(Self::Tcp),
+            _ => Err("Expect RDMA or TCP")
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,7 +33,7 @@ pub enum ResponseKind {}
 pub struct Response(pub IResult<ResponseKind>);
 
 /// Service setting. Each use thread can have its own service setting.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Setting {
     /// The transport to use.
     pub transport: TransportType,
@@ -29,14 +42,4 @@ pub struct Setting {
     pub nic_index: usize,
     /// Set when the user thread binds to a CPU core.
     pub core_id: Option<usize>,
-}
-
-impl Default for Setting {
-    fn default() -> Self {
-        Setting {
-            transport: TransportType::Rdma,
-            nic_index: 0,
-            core_id: None,
-        }
-    }
 }

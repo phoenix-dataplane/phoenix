@@ -58,3 +58,5 @@ unique = "0.9.1"
 sharded-slab = "0.1.4"
 libnuma = "0.0.4"
 libnuma-sys = "0.0.4"
+
+serde_json = "1.0.81"
