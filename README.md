@@ -4,7 +4,7 @@
 
 Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, globally available.
 ```
-# apt install libclang-dev librdmacm-dev libibverbs-dev protobuf-compiler
+# apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler
 ```
 
 Start the phoenix backend service on all servers.

@@ -14,8 +14,8 @@ cd $workdir
 concurrency=128
 sed -i 's/--concurrency [0-9]*/--concurrency '"$concurrency"'/g' ../../../benchmark/benchmark/rpc_bench_rate/*.toml
 sed -i 's/-D [0-9]*/-D 10/g' ../../../benchmark/benchmark/rpc_bench_rate/*.toml
-sed -i 's/timeout_secs = [0-9]*/timeout_secs = 15/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
-sed -i 's/transport =\(.*\)/transport = "Tcp"/g' phoenix.toml
+sed -i 's/--transport \(rdma\|tcp\)//g' ../../../benchmark/benchmark/rpc_bench_rate/*.toml
+sed -i 's/args = "/args = "--transport tcp /g' ../../../benchmark/benchmark/rpc_bench_rate/*.toml
 timestamp=$(date +%s%N)
 
 for i in 1 2 4 8; do

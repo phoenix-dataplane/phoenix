@@ -4,9 +4,9 @@ type IResult<T> = Result<T, interface::Error>;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TransportType {
-    #[default]
     #[serde(alias = "Rdma")]
     Rdma,
+    #[default]
     #[serde(alias = "Tcp")]
     Tcp,
 }

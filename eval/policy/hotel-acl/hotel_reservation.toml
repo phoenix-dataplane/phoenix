@@ -6,10 +6,10 @@ timeout_secs = 70
 [[worker]]
 host = "danyang-06"
 bin = "hotel_reservation_server"
-args = ""
+args = "--transport tcp"
 
 [[worker]]
 host = "danyang-05"
 bin = "hotel_reservation_client"
-args = "-c rdma0.danyang-06 --concurrency 128 -D 65 -i 1"
+args = "--transport tcp -c rdma0.danyang-06 --concurrency 128 -D 65 -i 1"
 dependencies = [0]

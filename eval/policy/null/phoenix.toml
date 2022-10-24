@@ -72,7 +72,9 @@ nic_index = 0
 [[modules]]
 name = "RpcAdapter"
 lib_path = "/tmp/phoenix/plugins/libphoenix_rpc_adapter_plugin.so"
-
+config_string = '''
+enable_scheduler = false
+'''
 
 [[modules]]
 name = "TcpRpcAdapter"
