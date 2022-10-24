@@ -11,8 +11,6 @@ scalability.
    results under `/tmp/mrpc-eval`.
 ```
 ./start_traffic_rdma.sh [/tmp/mrpc-eval]
-./start_phoenix_rdma.sh [/tmp/mrpc-eval]
-./start_phoenix_tcp.sh [/tmp/mrpc-eval]
 ./start_traffic_tcp.sh [/tmp/mrpc-eval] [danyang-06]
 ```
 

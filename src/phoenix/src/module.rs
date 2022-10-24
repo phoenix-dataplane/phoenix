@@ -21,6 +21,7 @@ pub type ModuleCollection = DashMap<String, Box<dyn PhoenixModule>>;
 pub struct Service(pub &'static str);
 
 /// Information about a service
+#[derive(Debug)]
 pub struct ServiceInfo {
     /// Name of the service
     pub service: Service,

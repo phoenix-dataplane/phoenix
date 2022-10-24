@@ -15,7 +15,8 @@ for concurrency in 32; do
     sed -i 's/--concurrency [0-9]*/--concurrency '"$concurrency"'/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
     sed -i 's/-D [0-9]*/-D 10/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
     sed -i 's/timeout_secs = [0-9]*/timeout_secs = 15/g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
-    sed -i 's/transport =\(.*\)/transport = "Rdma"/g' phoenix.toml
+	sed -i 's/--transport \(rdma\|tcp\)//g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
+    sed -i 's/args = "/args = "--transport rdma /g' ../../../benchmark/benchmark/rpc_bench_tput/*.toml
     timestamp=$(date +%s%N)
 
     for i in 2kb; do

@@ -2114,6 +2114,7 @@ dependencies = [
  "scheduler",
  "semver 1.0.14",
  "serde",
+ "serde_json",
  "sharded-slab",
  "smallvec 1.10.0",
  "socket2",

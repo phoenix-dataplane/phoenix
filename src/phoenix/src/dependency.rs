@@ -42,6 +42,28 @@ impl EngineGraph {
         }
     }
 
+    pub(crate) fn remove_dependency<I>(&mut self, edges: I) -> Result<(), Error>
+    where
+        I: IntoIterator<Item = EnginePair>,
+    {
+        for edge in edges {
+            let from = *self
+                .index
+                .get(&edge.0)
+                .ok_or(Error::EngineNotFound(edge.0))?;
+            let to = *self
+                .index
+                .get(&edge.1)
+                .ok_or(Error::EngineNotFound(edge.1))?;
+            if let Some(edge_ix) = self.graph.find_edge(from, to) {
+                self.graph.remove_edge(edge_ix);
+            } else {
+                log::warn!("no such edge from {:?} to {:?}", edge.0, edge.1);
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn add_dependency<I>(&mut self, edges: I) -> Result<(), Error>
     where
         I: IntoIterator<Item = EnginePair>,
