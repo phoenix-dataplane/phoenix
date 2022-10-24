@@ -7,8 +7,8 @@ use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use anyhow::{anyhow, bail};
 use ipc::control::Response;
@@ -66,7 +66,7 @@ impl Control {
                         }
                     }
                     self.plugins
-                        .load_or_upgrade_modules(&vec![mrpc_module.clone()])
+                        .load_or_upgrade_modules(&[mrpc_module.clone()])
                         .expect("failed to load modules");
                 }
             }

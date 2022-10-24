@@ -18,7 +18,7 @@ impl std::str::FromStr for TransportType {
         match s.to_uppercase().as_str() {
             "RDMA" => Ok(Self::Rdma),
             "TCP" => Ok(Self::Tcp),
-            _ => Err("Expect RDMA or TCP")
+            _ => Err("Expect RDMA or TCP"),
         }
     }
 }

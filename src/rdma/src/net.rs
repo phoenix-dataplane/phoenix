@@ -54,7 +54,6 @@ impl IntoInner<ffi::sockaddr_in6> for SocketAddrV6 {
             sin6_addr: self.ip().into_inner(),
             sin6_flowinfo: self.flowinfo(),
             sin6_scope_id: self.scope_id(),
-            ..unsafe { mem::zeroed() }
         }
     }
 }
