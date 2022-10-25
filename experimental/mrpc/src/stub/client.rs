@@ -9,8 +9,8 @@ use std::task::{Context, Poll};
 use uapi::rpc::{CallId, MessageErased, MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use uapi::AsHandle;
 use ipc::channel::{Receiver, TryRecvError};
-use protocol::mrpc::cmd::{Command, CompletionKind};
-use protocol::mrpc::dp;
+use uapi_mrpc::cmd::{Command, CompletionKind};
+use uapi_mrpc::dp;
 use libphoenix::_rx_recv_impl as rx_recv_impl;
 
 use super::conn::Connection;

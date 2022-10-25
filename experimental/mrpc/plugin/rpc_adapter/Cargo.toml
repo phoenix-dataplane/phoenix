@@ -11,8 +11,8 @@ crate-type = ["rlib"]
 [dependencies]
 mrpc-marshal.workspace = true
 uapi-mrpc.workspace = true
-uapi-rpc-adapter = { path = "../../rpc_adapter", package = "uapi-rpc_adapter" }
-mrpc = { path = "../mrpc", package = "phoenix-mrpc" }
+uapi-rpc-adapter.workspace = true
+phoenix-mrpc.workspace = true
 
 uapi = { workspace = true, features = ["mrpc"] }
 ipc.workspace = true

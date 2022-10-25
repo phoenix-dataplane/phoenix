@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use uapi::rpc::{CallId, MessageErased, RpcId, Token};
-use protocol::mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
+use uapi_mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 use shm::ptr::ShmPtr;
 
 use crate::ReadHeap;

@@ -18,8 +18,8 @@ use thiserror::Error;
 
 pub use uapi::engine::SchedulingHint;
 use uapi::Handle;
-use protocol::mrpc::control_plane::Setting;
-use protocol::mrpc::{cmd, dp};
+use uapi_mrpc::control_plane::Setting;
+use uapi_mrpc::{cmd, dp};
 use ipc::service::ShmService;
 use libphoenix::_rx_recv_impl as rx_recv_impl;
 use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
@@ -29,7 +29,7 @@ pub use libphoenix;
 pub mod rheap;
 pub use rheap::ReadHeap;
 
-use salloc::backend::SA_CTX;
+use shmalloc::backend::SA_CTX;
 
 pub fn current_setting() -> Setting {
     SETTING.with_borrow(|s| s.clone())
@@ -95,7 +95,7 @@ impl Context {
 // Re-exports shared memory collections and data types.
 pub use shm::collections;
 pub mod alloc {
-    use salloc::SharedHeapAllocator;
+    use shmalloc::SharedHeapAllocator;
     pub type Box<T> = shm::boxed::Box<T, SharedHeapAllocator>;
     pub type Vec<T> = shm::vec::Vec<T, SharedHeapAllocator>;
     pub type String = shm::string::String<SharedHeapAllocator>;

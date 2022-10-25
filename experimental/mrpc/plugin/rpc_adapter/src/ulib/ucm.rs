@@ -3,6 +3,7 @@ use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use uapi::{AsHandle, Handle};
+use uapi::net;
 use phoenix::log;
 use rdma::rdmacm;
 

@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-tcp_rpc_adapter"
+name = "phoenix-tcp-rpc-adapter"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-uapi-mrpc = true
+uapi-mrpc.workspace = true
 uapi-tcp-rpc-adapter.workspace = true
 phoenix-mrpc.workspace = true
 mrpc-marshal.workspace = true
@@ -17,7 +17,7 @@ mrpc-marshal.workspace = true
 uapi = { workspace = true, features = ["mrpc", "transport"] }
 ipc.workspace = true
 phoenix.workspace = true
-transport_tcp.workspace = true
+transport-tcp.workspace = true
 phoenix-salloc.workspace = true
 
 fnv.workspace = true

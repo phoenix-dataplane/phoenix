@@ -4,7 +4,7 @@ use crate::{Error, MRPC_CTX};
 
 /// Re-exports
 pub use uapi::rpc::{MessageErased, MessageMeta, RpcMsgType};
-pub use protocol::mrpc::control_plane::TransportType;
+pub use uapi_mrpc::control_plane::TransportType;
 
 pub mod service;
 pub use service::{service_post_handler, service_pre_handler, NamedService, Service};

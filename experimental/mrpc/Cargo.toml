@@ -16,7 +16,7 @@ ipc = { workspace = true, features = ["customer"] }
 shm = { workspace = true, features = ["mrpc"] }
 mmap.workspace = true
 libphoenix.workspace = true
-salloc.workspace = true
+shmalloc.workspace = true
 
 minstant = { workspace = true, optional = true }
 thiserror.workspace = true
@@ -60,7 +60,7 @@ members = [
   "plugin/tcp_rpc_adapter",
   "plugin/tcp_rpc_adapter/plugin",
   "plugin/policy/null",
-  "plugin/policy/plugin",
+  "plugin/policy/null/plugin",
   "plugin/policy/ratelimit",
   "plugin/policy/ratelimit/plugin",
   "plugin/policy/qos",
@@ -93,15 +93,17 @@ uapi-policy-hotel-acl = { path = "uapi/policy/hotel-acl" }
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
 mrpc-marshal = { path = "mrpc-marshal" }
-prost-build = { path = "../3rdparty/prost/prost-build" }
+prost = { path = "3rdparty/prost" }
+prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
 
 libphoenix = { path = "../../src/libphoenix" }
 uapi = { path = "../../src/uapi" }
 ipc = { path = "../../src/ipc" }
 mmap = { path = "../../src/mmap" }
+rdma = { path = "../../src/rdma" }
 shm = { path = "../../src/shm" }
-salloc = { path = "../../src/shm/salloc" }
+shmalloc = { path = "../../src/shm/shmalloc" }
 phoenix = { path = "../../src/phoenix" }
 transport-rdma = { path = "../../src/plugin/transport-rdma", package = "phoenix-transport-rdma" }
 transport-tcp = { path = "../../src/plugin/transport-tcp", package = "phoenix-transport-tcp" }

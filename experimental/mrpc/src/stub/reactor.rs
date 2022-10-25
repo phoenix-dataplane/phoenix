@@ -7,7 +7,7 @@ use slab::Slab;
 
 use uapi::Handle;
 use ipc::channel::{create_channel, ChannelFlavor, Receiver, Sender};
-use protocol::mrpc::dp;
+use uapi_mrpc::dp;
 
 use super::conn::Connection;
 use crate::{Error, MRPC_CTX};

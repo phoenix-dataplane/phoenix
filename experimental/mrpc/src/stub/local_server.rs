@@ -14,8 +14,8 @@ use futures::FutureExt;
 use uapi::rpc::{MessageErased, RpcId, RpcMsgType, TransportStatus};
 use uapi::{AsHandle, Handle};
 use ipc::channel::{Receiver, TryRecvError};
-use protocol::mrpc::cmd::{Command, CompletionKind, ConnectResponse};
-use protocol::mrpc::dp;
+use uapi_mrpc::cmd::{Command, CompletionKind, ConnectResponse};
+use uapi_mrpc::dp;
 use libphoenix::_rx_recv_impl as rx_recv_impl;
 
 use super::conn::Connection;

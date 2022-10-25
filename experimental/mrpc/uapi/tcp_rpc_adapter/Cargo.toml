@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 uapi.workspace = true
 
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }

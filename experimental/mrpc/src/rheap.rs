@@ -8,7 +8,7 @@ use memfd::Memfd;
 use mmap::MmapFixed;
 
 use uapi::{AsHandle, Handle};
-use protocol::mrpc::cmd::ConnectResponse;
+use uapi_mrpc::cmd::ConnectResponse;
 
 use super::Error;
 
