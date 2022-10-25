@@ -1,5 +1,5 @@
 //! Provide transport independ address translation.
-use crate::QpType;
+use crate::net::QpType;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;

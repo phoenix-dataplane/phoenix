@@ -4,12 +4,12 @@ use std::io;
 use std::sync::Arc;
 
 use fnv::FnvHashMap as HashMap;
-use uapi::Handle;
-use uapi::MappedAddrStatus;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Poll};
 use nix::unistd::Pid;
 
+use uapi::Handle;
+use uapi::net::MappedAddrStatus;
 use phoenix::state_mgr::ProcessShared;
 
 use super::ops::CompletionQueue;

@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::os::unix::net::UCred;
 use std::path::Path;
 use std::sync::atomic::AtomicUsize;

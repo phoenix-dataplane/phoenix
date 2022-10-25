@@ -3,9 +3,11 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
+use uapi::addrinfo;
 use uapi::net;
 use uapi::net::returned;
-use uapi::net::{addrinfo, ConnParam, Handle, QpInitAttr};
+use uapi::net::{ConnParam, QpInitAttr};
+use uapi::Handle;
 
 type IResult<T> = Result<T, uapi::Error>;
 

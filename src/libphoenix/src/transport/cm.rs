@@ -13,7 +13,7 @@ use verbs::AccessFlags;
 use verbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
 // Re-exports
-pub use uapi::net::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
+pub use uapi::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(

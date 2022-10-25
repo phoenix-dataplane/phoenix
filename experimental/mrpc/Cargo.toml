@@ -125,7 +125,6 @@ log = "0.4.17"
 minstant = "0.1.1"
 futures = "0.3.23"
 libnuma = "0.0.4"
-slab = "0.4.7"
 spin = "0.9.3"
 static_assertions = "1.1.0"
 tokio = "1.18.2" # only sync is enabled

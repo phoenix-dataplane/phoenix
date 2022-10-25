@@ -8,11 +8,9 @@ members = [
   "src/rdma",
   "src/utils",
   "src/ipc",
-  "src/ipc/core",
-  "src/ipc/mrpc",
   # shared memory data types
   "src/shm",
-  "src/shm/salloc",
+  "src/shm/shmalloc",
   # plugins
   "src/plugin/salloc",
   "src/plugin/salloc/plugin",
@@ -20,7 +18,7 @@ members = [
   "src/plugin/transport-rdma/plugin",
   "src/plugin/transport-tcp",
   "src/plugin/transport-tcp/plugin",
-  # products
+  # the products
   "src/phoenix",
   "src/phoenixctl",
   "src/libphoenix",
@@ -46,6 +44,7 @@ ipc = { path = "src/ipc" }
 slabmalloc = { path = "src/slabmalloc" }
 libphoenix = { path = "src/libphoenix" }
 shmalloc = { path = "src/shm/shmalloc" }
+phoenix = { path = "src/phoenix" }
 
 libc = "0.2.103"
 thiserror = "1.0.29"
@@ -63,7 +62,6 @@ bincode = "1.3.3"
 
 ipc-channel = "0.15.0"
 serde = "1.0.130"
-bincode = "1.3.3"
 shmem-ipc = "0.2.0"
 zerocopy = "0.3.0"
 uuid = "0.8.2"

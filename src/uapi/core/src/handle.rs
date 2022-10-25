@@ -1,3 +1,5 @@
+use std::os::unix::io::RawFd;
+
 use serde::{Deserialize, Serialize};
 
 #[repr(transparent)]

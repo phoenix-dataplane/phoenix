@@ -20,8 +20,8 @@ memfd.workspace = true
 bincode = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 mmap = { workspace = true, optional = true }
-spin = { workspace = true", optional = true }
-lazy_static = { workspace = true", optional = true }
+spin = { workspace = true, optional = true }
+lazy_static = { workspace = true, optional = true }
 nix = { workspace = true, features = ["socket"] }
 
 [features]

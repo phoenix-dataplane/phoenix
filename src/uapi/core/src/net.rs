@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::os::unix::io::RawFd;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};

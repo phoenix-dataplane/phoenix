@@ -11,7 +11,7 @@ pub enum Request {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Connection {
-    pub cmid: uapi::CmId,
+    pub cmid: uapi::net::CmId,
     pub local: SocketAddr,
     pub peer: SocketAddr,
 }

@@ -12,7 +12,7 @@ use crate::rdmacm;
 
 mod sa {
     use super::*;
-    use uapi::net::addrinfo::AddrInfoFlags;
+    use uapi::addrinfo::AddrInfoFlags;
     const_assert_eq!(AddrInfoFlags::PASSIVE.bits(), ffi::RAI_PASSIVE);
     const_assert_eq!(AddrInfoFlags::NUMERICHOST.bits(), ffi::RAI_NUMERICHOST);
     const_assert_eq!(AddrInfoFlags::NOROUTE.bits(), ffi::RAI_NOROUTE);
@@ -61,9 +61,9 @@ mod sa {
     );
 }
 
-impl From<uapi::net::addrinfo::PortSpace> for rdmacm::PortSpace {
-    fn from(other: uapi::net::addrinfo::PortSpace) -> Self {
-        use uapi::net::addrinfo::PortSpace;
+impl From<uapi::addrinfo::PortSpace> for rdmacm::PortSpace {
+    fn from(other: uapi::addrinfo::PortSpace) -> Self {
+        use uapi::addrinfo::PortSpace;
         let inner = match other {
             PortSpace::IPOIB => ffi::rdma_port_space::RDMA_PS_IPOIB,
             PortSpace::TCP => ffi::rdma_port_space::RDMA_PS_TCP,
@@ -74,9 +74,9 @@ impl From<uapi::net::addrinfo::PortSpace> for rdmacm::PortSpace {
     }
 }
 
-impl From<uapi::net::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
-    fn from(h: uapi::net::addrinfo::AddrInfoHints) -> Self {
-        use uapi::net::addrinfo::AddrFamily;
+impl From<uapi::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
+    fn from(h: uapi::addrinfo::AddrInfoHints) -> Self {
+        use uapi::addrinfo::AddrFamily;
         use uapi::net::QpType;
         let flags = h.flags.bits();
 
@@ -105,11 +105,11 @@ impl From<uapi::net::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
     }
 }
 
-impl From<rdmacm::AddrInfo> for uapi::net::addrinfo::AddrInfo {
+impl From<rdmacm::AddrInfo> for uapi::addrinfo::AddrInfo {
     fn from(other: rdmacm::AddrInfo) -> Self {
-        use uapi::net::addrinfo::AddrFamily;
-        use uapi::net::addrinfo::AddrInfoFlags;
-        use uapi::net::addrinfo::PortSpace;
+        use uapi::addrinfo::AddrFamily;
+        use uapi::addrinfo::AddrInfoFlags;
+        use uapi::addrinfo::PortSpace;
         use uapi::net::QpType;
 
         let ai = other;
@@ -135,7 +135,7 @@ impl From<rdmacm::AddrInfo> for uapi::net::addrinfo::AddrInfo {
         let mut buffer = Vec::new();
         bincode::serialize_into(&mut buffer, &(ai.ai_route, ai.ai_connect))
             .expect("serialize_into");
-        uapi::net::addrinfo::AddrInfo {
+        uapi::addrinfo::AddrInfo {
             flags,
             family,
             qp_type,
@@ -149,9 +149,9 @@ impl From<rdmacm::AddrInfo> for uapi::net::addrinfo::AddrInfo {
     }
 }
 
-impl From<uapi::net::addrinfo::AddrInfo> for rdmacm::AddrInfo {
-    fn from(other: uapi::net::addrinfo::AddrInfo) -> Self {
-        let hints = uapi::net::addrinfo::AddrInfoHints::new(
+impl From<uapi::addrinfo::AddrInfo> for rdmacm::AddrInfo {
+    fn from(other: uapi::addrinfo::AddrInfo) -> Self {
+        let hints = uapi::addrinfo::AddrInfoHints::new(
             other.flags,
             other.family,
             other.qp_type,
