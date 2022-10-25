@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use fnv::FnvHashMap as HashMap;
-use uapi::Handle;
 use mrpc_marshal::SgList;
 use nix::unistd::Pid;
 use phoenix_salloc::region::AddressMediator;
+use uapi::Handle;
 
 use phoenix::state_mgr::ProcessShared;
 

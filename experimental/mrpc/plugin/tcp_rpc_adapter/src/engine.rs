@@ -11,8 +11,6 @@ use fnv::FnvHashMap;
 use futures::future::BoxFuture;
 use slab::Slab;
 
-use uapi_tcp_rpc_adapter::control_plane;
-use uapi::transport::tcp::dp::Completion;
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use phoenix_mrpc::unpack::UnpackFromSgE;
 use phoenix_salloc::state::State as SallocState;
@@ -22,8 +20,10 @@ use uapi::buf::Range;
 use uapi::engine::SchedulingMode;
 use uapi::net::{MappedAddrStatus, WcOpcode, WcStatus};
 use uapi::rpc::{MessageMeta, RpcId, TransportStatus};
+use uapi::transport::tcp::dp::Completion;
 use uapi::{AsHandle, Handle};
 use uapi_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
+use uapi_tcp_rpc_adapter::control_plane;
 
 use phoenix::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,

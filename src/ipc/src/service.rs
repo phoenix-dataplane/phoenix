@@ -12,9 +12,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 #[cfg(feature = "customer")]
-use std::task::{Context, Poll};
-#[cfg(feature = "customer")]
 use std::os::unix::io::AsRawFd;
+#[cfg(feature = "customer")]
+use std::task::{Context, Poll};
 
 use crossbeam::atomic::AtomicCell;
 use minstant::Instant;

@@ -6,13 +6,13 @@ use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use uapi::{AsHandle, Handle};
-use uapi::net;
-use uapi::net::returned;
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
+use uapi::net;
+use uapi::net::returned;
+use uapi::{AsHandle, Handle};
 
 use phoenix::engine::future;
 use phoenix::log;
@@ -251,10 +251,7 @@ impl Ops {
             .map(|pd| returned::ProtectionDomain { handle: pd }))
     }
 
-    pub fn get_verbs_for_cq(
-        &self,
-        cq: &net::CompletionQueue,
-    ) -> Result<returned::VerbsContext> {
+    pub fn get_verbs_for_cq(&self, cq: &net::CompletionQueue) -> Result<returned::VerbsContext> {
         let cq_handle = self
             .resource()
             .cq_table

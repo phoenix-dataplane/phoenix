@@ -1,9 +1,9 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use uapi::engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+use uapi::engine::SchedulingMode;
 use uuid::Uuid;
 
 use ipc::control::Request;

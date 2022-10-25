@@ -2,9 +2,9 @@ use std::io;
 
 use thiserror::Error;
 
+use ipc::service::ShmService;
 use uapi::engine::SchedulingHint;
 use uapi::salloc::{cmd, dp};
-use ipc::service::ShmService;
 
 use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 

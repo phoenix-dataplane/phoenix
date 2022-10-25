@@ -2,9 +2,9 @@
 //! COMMENT(cjr): What if we just provide the same set of interfaces as in rdma datapath?
 use serde::{Deserialize, Serialize};
 
-use uapi::Handle;
-use uapi::net::{WcOpcode, WcStatus};
 use uapi::buf::Range;
+use uapi::net::{WcOpcode, WcStatus};
+use uapi::Handle;
 
 pub type WorkRequestSlot = [u8; 64];
 

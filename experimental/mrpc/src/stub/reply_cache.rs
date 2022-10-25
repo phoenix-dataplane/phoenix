@@ -1,5 +1,5 @@
-use uapi::rpc::{CallId, MessageErased, TransportStatus};
 use thiserror::Error;
+use uapi::rpc::{CallId, MessageErased, TransportStatus};
 
 use slab::Slab;
 

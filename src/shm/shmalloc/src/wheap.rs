@@ -12,8 +12,8 @@ use memfd::Memfd;
 use slabmalloc::GLOBAL_PAGE_POOL;
 use slabmalloc::{AllocablePage, HugeObjectPage, LargeObjectPage, ObjectPage, ZoneAllocator};
 
-use uapi::salloc::cmd;
 use shm::ptr::ShmNonNull;
+use uapi::salloc::cmd;
 
 use super::backend::{Error, SA_CTX};
 use region::WriteRegion;
@@ -355,8 +355,8 @@ mod region {
     use memfd::Memfd;
     use mmap::MmapFixed;
 
-    use uapi::salloc::cmd::{Command, CompletionKind};
     use libphoenix::_rx_recv_impl as rx_recv_impl;
+    use uapi::salloc::cmd::{Command, CompletionKind};
 
     use super::{Error, SA_CTX};
 

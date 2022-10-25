@@ -9,10 +9,10 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use uapi::engine::SchedulingMode;
-use uapi::{AsHandle, Handle};
 use uapi::net;
 use uapi::net::returned;
 use uapi::transport::rdma::{cmd, dp};
+use uapi::{AsHandle, Handle};
 
 // use rdma::ibv;
 use rdma::rdmacm;

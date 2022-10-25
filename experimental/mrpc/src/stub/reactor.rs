@@ -5,8 +5,8 @@ use std::task::{Context, Poll};
 use fnv::FnvHashMap as HashMap;
 use slab::Slab;
 
-use uapi::Handle;
 use ipc::channel::{create_channel, ChannelFlavor, Receiver, Sender};
+use uapi::Handle;
 use uapi_mrpc::dp;
 
 use super::conn::Connection;

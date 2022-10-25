@@ -6,10 +6,10 @@ use anyhow::{bail, Result};
 use nix::unistd::Pid;
 use uuid::Uuid;
 
-use uapi::engine::SchedulingMode;
 use ipc::customer::ShmCustomer;
-use uapi::transport::tcp::{cmd, dp};
 use ipc::unix::DomainSocket;
+use uapi::engine::SchedulingMode;
+use uapi::transport::tcp::{cmd, dp};
 
 use phoenix::engine::datapath::DataPathNode;
 use phoenix::engine::{Engine, EnginePair, EngineType};

@@ -5,12 +5,12 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
 
-use uapi::{AsHandle, Handle};
-use uapi::net;
-use uapi::net::returned;
 use phoenix::log;
 use rdma::mr::OdpMemoryRegion;
 use rdma::rdmacm;
+use uapi::net;
+use uapi::net::returned;
+use uapi::{AsHandle, Handle};
 
 use super::{get_ops, Error, FromBorrow};
 
@@ -287,9 +287,7 @@ impl<'ctx, 'scq, 'rcq, 'srq> Default for QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     }
 }
 
-impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
-    for net::QpInitAttr
-{
+impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>> for net::QpInitAttr {
     fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
         net::QpInitAttr {

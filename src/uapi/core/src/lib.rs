@@ -7,8 +7,8 @@ pub use handle::{AsHandle, Handle};
 pub mod error;
 pub use error::Error;
 
-pub mod net;
 pub mod buf;
+pub mod net;
 
 pub mod addrinfo;
 pub mod engine;

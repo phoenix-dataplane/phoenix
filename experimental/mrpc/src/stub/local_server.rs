@@ -11,12 +11,12 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use futures::task::LocalFutureObj;
 use futures::FutureExt;
 
+use ipc::channel::{Receiver, TryRecvError};
+use libphoenix::_rx_recv_impl as rx_recv_impl;
 use uapi::rpc::{MessageErased, RpcId, RpcMsgType, TransportStatus};
 use uapi::{AsHandle, Handle};
-use ipc::channel::{Receiver, TryRecvError};
 use uapi_mrpc::cmd::{Command, CompletionKind, ConnectResponse};
 use uapi_mrpc::dp;
-use libphoenix::_rx_recv_impl as rx_recv_impl;
 
 use super::conn::Connection;
 use super::service::{NamedService, Service};

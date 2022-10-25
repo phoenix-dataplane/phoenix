@@ -1,8 +1,8 @@
 use std::ffi::OsStr;
 
-use uapi::rpc::MessageMeta;
 use mrpc_marshal::{ExcavateContext, SgList};
 use mrpc_marshal::{MarshalError, UnmarshalError};
+use uapi::rpc::MessageMeta;
 
 pub(crate) use mrpc_marshal::AddressMap;
 

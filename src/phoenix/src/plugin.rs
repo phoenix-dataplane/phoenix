@@ -8,8 +8,8 @@ use std::sync::Mutex;
 use anyhow::bail;
 use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
-use uapi::engine::SchedulingMode;
 use itertools::Itertools;
+use uapi::engine::SchedulingMode;
 
 use ipc::control::PluginDescriptor;
 

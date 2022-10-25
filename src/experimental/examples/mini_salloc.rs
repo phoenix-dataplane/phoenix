@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use memfd::Memfd;
 use thiserror::Error;
 
+use ipc::service::ShmService;
 use uapi::engine::SchedulingHint;
 use uapi_salloc::{cmd, dp};
-use ipc::service::ShmService;
 
 const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
 const DEFAULT_PHOENIX_CONTROL: &str = "control.sock";

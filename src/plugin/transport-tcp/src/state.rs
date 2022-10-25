@@ -8,9 +8,9 @@ use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Poll};
 use nix::unistd::Pid;
 
-use uapi::Handle;
-use uapi::net::MappedAddrStatus;
 use phoenix::state_mgr::ProcessShared;
+use uapi::net::MappedAddrStatus;
+use uapi::Handle;
 
 use super::ops::CompletionQueue;
 

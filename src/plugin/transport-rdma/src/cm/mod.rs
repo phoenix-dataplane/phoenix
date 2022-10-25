@@ -5,8 +5,8 @@ use std::os::unix::io::AsRawFd;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use uapi::Handle;
 use rdma::rdmacm;
+use uapi::Handle;
 
 use phoenix::log;
 use phoenix::resource::{Error as ResourceError, ResourceTable};

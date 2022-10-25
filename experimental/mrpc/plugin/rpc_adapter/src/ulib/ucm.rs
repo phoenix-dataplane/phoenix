@@ -2,10 +2,10 @@ use std::any::Any;
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use uapi::{AsHandle, Handle};
-use uapi::net;
 use phoenix::log;
 use rdma::rdmacm;
+use uapi::net;
+use uapi::{AsHandle, Handle};
 
 use super::get_ops;
 use super::{uverbs, Error, FromBorrow};

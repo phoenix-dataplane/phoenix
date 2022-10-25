@@ -8,8 +8,8 @@ use phoenix::engine::datapath::graph::ChannelDescriptor;
 use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
 
-use uapi::engine::SchedulingMode;
 use ipc::customer::ShmCustomer;
+use uapi::engine::SchedulingMode;
 use uapi_mrpc::control_plane::Setting;
 use uapi_mrpc::control_plane::TransportType;
 use uapi_mrpc::{cmd, dp};

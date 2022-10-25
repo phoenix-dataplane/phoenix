@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
-use uapi::Handle;
 use serde::{Deserialize, Serialize};
+use uapi::Handle;
 
 type IResult<T> = Result<T, uapi::Error>;
 

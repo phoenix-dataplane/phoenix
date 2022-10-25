@@ -4,7 +4,7 @@ use std::slice::SliceIndex;
 use std::sync::atomic::Ordering;
 
 use uapi::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
-use uapi::{net, buf};
+use uapi::{buf, net};
 
 use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
 

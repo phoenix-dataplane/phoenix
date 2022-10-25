@@ -8,9 +8,6 @@ use crate::transport_rdma::DatapathError;
 use crate::{log, tracing};
 use anyhow::anyhow;
 use futures::future::BoxFuture;
-use uapi::engine::SchedulingMode;
-use uapi::rpc::{ImmFlags, RpcId, TransportStatus};
-use uapi::Handle;
 use ipc::RawRdmaMsgTx;
 use minstant::Instant;
 use rdma::POST_BUF_LEN;
@@ -23,6 +20,9 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 use std::{mem, ptr};
+use uapi::engine::SchedulingMode;
+use uapi::rpc::{ImmFlags, RpcId, TransportStatus};
+use uapi::Handle;
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);

@@ -1,9 +1,9 @@
 //! Data path operations.
 use serde::{Deserialize, Serialize};
 
-use uapi::Handle;
-use uapi::net::{RemoteKey, SendFlags, WorkCompletion, CompletionQueue};
 use uapi::buf::Range;
+use uapi::net::{CompletionQueue, RemoteKey, SendFlags, WorkCompletion};
+use uapi::Handle;
 
 pub type WorkRequestSlot = [u8; 128];
 

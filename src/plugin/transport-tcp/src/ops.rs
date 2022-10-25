@@ -6,12 +6,12 @@ use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
-use uapi::{AsHandle, Handle};
-use uapi::net::{MappedAddrStatus, WcOpcode, WcStatus};
-use uapi::buf::Range;
-use uapi::transport::tcp::dp;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
+use uapi::buf::Range;
+use uapi::net::{MappedAddrStatus, WcOpcode, WcStatus};
+use uapi::transport::tcp::dp;
+use uapi::{AsHandle, Handle};
 
 use super::state::State;
 use super::{ApiError, TransportError};

@@ -2,8 +2,8 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
-use uapi::transport::rdma::cmd::{Command, CompletionKind};
 use uapi::net;
+use uapi::transport::rdma::cmd::{Command, CompletionKind};
 
 use crate::transport::verbs;
 use crate::transport::Error;

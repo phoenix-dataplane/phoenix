@@ -6,9 +6,9 @@ use lazy_static::lazy_static;
 use thiserror::Error;
 
 use ipc::service::ShmService;
+pub use uapi::engine::SchedulingHint;
 use uapi::transport::rdma::control_plane::Setting;
 use uapi::transport::rdma::{cmd, dp};
-pub use uapi::engine::SchedulingHint;
 
 use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 

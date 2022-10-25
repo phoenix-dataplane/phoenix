@@ -16,9 +16,9 @@ use ipc::control::ResponseKind;
 use itertools::Itertools;
 use nix::unistd::Pid;
 
-use uapi::engine::{SchedulingHint, SchedulingMode};
 use ipc::control::ServiceSubscriptionInfo;
 use ipc::unix::DomainSocket;
+use uapi::engine::{SchedulingHint, SchedulingMode};
 
 use crate::config::Config;
 use crate::engine::container::EngineContainer;

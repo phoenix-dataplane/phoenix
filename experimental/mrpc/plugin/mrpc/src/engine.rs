@@ -528,8 +528,8 @@ impl MrpcEngine {
     }
 
     fn check_input_cmd_queue(&mut self) -> Result<Status, Error> {
-        use uapi_mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
+        use uapi_mrpc::cmd::{Completion, CompletionKind};
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {
