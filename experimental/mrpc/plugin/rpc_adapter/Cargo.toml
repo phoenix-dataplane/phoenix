@@ -1,0 +1,39 @@
+[package]
+name = "phoenix-rpc-adapter"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+mrpc-marshal.workspace = true
+uapi-mrpc.workspace = true
+uapi-rpc-adapter = { path = "../../rpc_adapter", package = "uapi-rpc_adapter" }
+mrpc = { path = "../mrpc", package = "phoenix-mrpc" }
+
+uapi = { workspace = true, features = ["mrpc"] }
+ipc.workspace = true
+phoenix.workspace = true
+rdma = { workspace = true, features = ["phoenix"] }
+transport-rdma = { workspace = true, package = "phoenix-transport-rdma" }
+phoenix-salloc.workspace = true
+
+fnv.workspace = true
+anyhow.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+thiserror.workspace = true
+nix.workspace = true
+futures.workspace = true
+dashmap.workspace = true
+spin.workspace = true
+libloading.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true, features = ["preserve_order"] }
+fastrand.workspace = true
+bitvec.workspace = true
+bincode.workspace = true
+slab.workspace = true
+serde_json.workspace = true

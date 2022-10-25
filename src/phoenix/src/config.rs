@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use interface::engine::CustomSchedulingSpec;
+use uapi::engine::CustomSchedulingSpec;
 use serde::{Deserialize, Serialize};
 
 use ipc::control::PluginDescriptor;

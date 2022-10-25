@@ -1,0 +1,21 @@
+[package]
+name = "uapi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+salloc = { path = "salloc", package = "uapi-salloc", optional = true }
+transport = { path = "transport", package = "uapi-transport", optional = true }
+
+serde = { workspace = true, features = ["derive"] }
+libc.workspace = true
+thiserror.workspace = true
+bitflags.workspace = true
+static_assertions.workspace = true
+
+[features]
+salloc = ["dep:salloc"]
+transport = ["dep:transport"]
+mrpc = []

@@ -5,7 +5,7 @@ use structopt::StructOpt;
 use uuid::Uuid;
 
 use ipc::control::Request;
-use ipc::ratelimit::control_plane::Request as RateLimitRequest;
+use uapi_policy_ratelimit::control_plane::Request as RateLimitRequest;
 use ipc::unix::DomainSocket;
 
 const MAX_MSG_LEN: usize = 65536;

@@ -1,0 +1,22 @@
+[package]
+name = "bench"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libphoenix.workspace = true
+
+structopt.workspace = true
+scheduler.workspace = true
+libnuma.workspace = true
+ 
+
+[[bin]]
+name = "bench_lat"
+path = "src/bench_lat.rs"
+
+[[bin]]
+name = "bench_bw"
+path = "src/bench_bw.rs"

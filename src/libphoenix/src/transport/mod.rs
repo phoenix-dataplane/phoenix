@@ -5,10 +5,10 @@ use fnv::FnvHashMap as HashMap;
 use lazy_static::lazy_static;
 use thiserror::Error;
 
-pub use interface::engine::SchedulingHint;
 use ipc::service::ShmService;
-use ipc::transport::rdma::control_plane::Setting;
-use ipc::transport::rdma::{cmd, dp};
+use uapi::transport::rdma::control_plane::Setting;
+use uapi::transport::rdma::{cmd, dp};
+pub use uapi::engine::SchedulingHint;
 
 use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
 
@@ -31,7 +31,7 @@ pub fn set_schedulint_hint(hint: &SchedulingHint) {
 // NOTE(cjr): Will lazy_static affect the performance?
 lazy_static! {
     // A cq can be created by calling create_cq, but it can also come from create_ep
-    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<interface::CompletionQueue, verbs::CqBuffer>> =
+    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<uapi::net::CompletionQueue, verbs::CqBuffer>> =
         spin::Mutex::new(HashMap::default());
 }
 
@@ -68,9 +68,9 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, interface::Error),
+    Interface(&'static str, uapi::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
     #[error("Connect failed: {0}")]
-    Connect(interface::Error),
+    Connect(uapi::Error),
 }

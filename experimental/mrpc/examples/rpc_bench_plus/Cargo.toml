@@ -1,0 +1,31 @@
+[package]
+name = "rpc_bench_plus"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+mrpc-build.workspace = true
+
+[dependencies]
+mrpc.workspace = true
+prost = { workspace = true, features = ["mrpc-frontend"] }
+
+structopt.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-appender.workspace = true
+futures.workspace = true
+smol.workspace = true
+minstant.workspace = true
+hdrhistogram.workspace = true
+
+
+[[bin]]
+name = "rpc_bench_plus_client"
+path = "src/client.rs"
+
+[[bin]]
+name = "rpc_bench_plus_server"
+path = "src/server.rs"

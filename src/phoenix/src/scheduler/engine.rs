@@ -8,9 +8,9 @@ use crate::transport_rdma::DatapathError;
 use crate::{log, tracing};
 use anyhow::anyhow;
 use futures::future::BoxFuture;
-use interface::engine::SchedulingMode;
-use interface::rpc::{ImmFlags, RpcId, TransportStatus};
-use interface::Handle;
+use uapi::engine::SchedulingMode;
+use uapi::rpc::{ImmFlags, RpcId, TransportStatus};
+use uapi::Handle;
 use ipc::RawRdmaMsgTx;
 use minstant::Instant;
 use rdma::POST_BUF_LEN;
@@ -236,8 +236,8 @@ impl BufferPool {
     }
 
     #[allow(unused)]
-    fn get_range_handle(&self, handle: usize) -> ipc::buf::Range {
-        ipc::buf::Range {
+    fn get_range_handle(&self, handle: usize) -> uapi::buf::Range {
+        uapi::buf::Range {
             offset: unsafe { self.buf.as_ptr().offset(handle as isize) } as u64,
             len: PAGE_SIZE as u64,
         }
@@ -591,7 +591,7 @@ impl SchedulerEngine {
                             });
                             temp_arr[cursor].write(RawRdmaMsgTx {
                                 mr: prev.mr,
-                                range: ipc::buf::Range { offset: 0, len: 1 }, // should be examined later
+                                range: uapi::buf::Range { offset: 0, len: 1 }, // should be examined later
                                 rpc_id,
                             });
                             buffer.copy_in(

@@ -2,7 +2,7 @@ pub use anyhow::Result;
 use nix::unistd::Pid;
 pub use semver::Version;
 
-use interface::engine::SchedulingMode;
+use uapi::engine::SchedulingMode;
 
 use crate::engine::datapath::node::DataPathNode;
 use crate::engine::{Engine, EngineType};

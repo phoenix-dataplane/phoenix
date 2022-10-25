@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use interface::engine::SchedulingMode;
+use uapi::engine::SchedulingMode;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use uuid::Uuid;

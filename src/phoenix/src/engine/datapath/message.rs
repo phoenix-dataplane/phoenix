@@ -1,8 +1,8 @@
 use std::ptr::Unique;
 
-use interface::rpc::{CallId, MessageMeta, RpcId, TransportStatus};
-use interface::Handle;
-use ipc::mrpc::dp::RECV_RECLAIM_BS;
+use uapi::rpc::{CallId, MessageMeta, RpcId, TransportStatus};
+use uapi::Handle;
+use uapi_mrpc::dp::RECV_RECLAIM_BS;
 
 // use crate::mrpc::meta_pool::MetaBufferPtr;
 use super::meta_pool::MetaBufferPtr;

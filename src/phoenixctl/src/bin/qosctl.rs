@@ -5,7 +5,7 @@ use structopt::StructOpt;
 use uuid::Uuid;
 
 use ipc::control::Request;
-use ipc::qos::control_plane::Request as QosRequest;
+use uapi_policy_qos::control_plane::Request as QosRequest;
 use ipc::unix::DomainSocket;
 
 const MAX_MSG_LEN: usize = 65536;

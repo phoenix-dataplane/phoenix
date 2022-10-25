@@ -6,19 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-interface = { path = "../interface" }
-ipc = { path = "../ipc", features = ["transport"] }
-utils = { path = "../utils" }
+uapi = { workspace = true, features = ["transport"] }
+ipc.workspace = true
+utils.workspace = true
 
-thiserror = "1.0.29"
-uuid = "0.8.2"
-libc = "0.2.103"
-nix = "0.23.0"
-fnv = "1.0.7"
-memfd = "0.4.1"
-memmap2 = "0.5.0"
-spin = "0.9.3"
-lazy_static = "1.4.0"
-serde_json = "1.0.85"
+thiserror.workspace = true
+uuid.workspace = true
+libc.workspace = true
+nix.workspace = true
+fnv.workspace = true
+memfd.workspace = true
+memmap2.workspace = true
+spin.workspace = true
+lazy_static.workspace = true
+serde_json.workspace = true
 
 [features]

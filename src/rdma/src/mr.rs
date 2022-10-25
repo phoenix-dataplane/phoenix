@@ -11,8 +11,8 @@ use thiserror::Error;
 
 use crate::{ffi, ibv, rdmacm};
 
-use interface::{AccessFlags, RemoteKey};
-use interface::{AsHandle, Handle};
+use uapi::net::{AccessFlags, RemoteKey};
+use uapi::{AsHandle, Handle};
 
 #[derive(Debug, Error)]
 pub enum Error {

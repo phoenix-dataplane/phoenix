@@ -18,7 +18,7 @@ pub use ffi::ibv_wc_status;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "phoenix")]
-use interface::{AsHandle, Handle};
+use uapi::{AsHandle, Handle};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;

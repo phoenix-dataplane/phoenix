@@ -3,7 +3,7 @@ use std::{os::unix::ucred::UCred, path::Path};
 
 pub use anyhow::Result;
 use dashmap::DashMap;
-use interface::engine::SchedulingMode;
+use uapi::engine::SchedulingMode;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
 pub use semver::Version;

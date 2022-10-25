@@ -2,6 +2,14 @@
 
 [![Build Status](https://github.com/phoenix-dataplane/phoenix/workflows/build/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions)
 
+Clone the repo and its submodule.
+```
+$ git clone git@github.com:phoenix-dataplane/phoenix.git --recursive
+or
+$ git clone git@github.com:phoenix-dataplane/phoenix.git
+$ git submodule update --init --recursive
+```
+
 Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, globally available.
 ```
 # apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler

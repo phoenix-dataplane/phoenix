@@ -3,8 +3,8 @@ use std::mem;
 use std::slice::SliceIndex;
 use std::sync::atomic::Ordering;
 
-use ipc::buf;
-use ipc::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
+use uapi::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
+use uapi::{net, buf};
 
 use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
 
@@ -140,7 +140,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: verbs::SendFlags,
-        rkey: interface::RemoteKey,
+        rkey: net::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where
@@ -184,7 +184,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: verbs::SendFlags,
-        rkey: interface::RemoteKey,
+        rkey: net::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where
@@ -256,7 +256,7 @@ impl Context {
                 if let Some(buffer) = cq_buffers.get(&c.cq_handle) {
                     buffer.shared.outstanding.store(false, Ordering::Release);
                     // this is just a notification that outstanding flag should be flapped
-                    if c.wc.status != interface::WcStatus::AGAIN {
+                    if c.wc.status != net::WcStatus::AGAIN {
                         buffer
                             .shared
                             .queue

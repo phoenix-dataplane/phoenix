@@ -1,0 +1,36 @@
+[package]
+name = "masstree_analytics"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+cmake.workspace = true
+mrpc-build.workspace = true
+
+[dependencies]
+mrpc.workspace = true
+prost = { workspace = true, features = ["mrpc-frontend"] }
+
+chrono.workspace = true
+env_logger.workspace = true
+fasthash.workspace = true
+link-cplusplus.workspace = true
+log.workspace = true
+nix = { workspace = true, features = ["signal"], default-features = false }
+structopt = { workspace = true, features = ["color", "suggestions", "doc"] }
+smol.workspace = true
+minstant.workspace = true
+futures.workspace = true
+fastrand.workspace = true
+arc-swap.workspace = true
+crossbeam-utils.workspace = true
+
+[[bin]]
+name = "masstree_analytics_client"
+path = "src/client.rs"
+
+[[bin]]
+name = "masstree_analytics_server"
+path = "src/server.rs"

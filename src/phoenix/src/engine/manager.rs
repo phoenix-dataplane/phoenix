@@ -24,7 +24,7 @@ use super::SchedulingGroup;
 use crate::config::Config;
 use crate::module::Service;
 use crate::storage::ResourceCollection;
-use interface::engine::{SchedulingHint, SchedulingMode};
+use uapi::engine::{SchedulingHint, SchedulingMode};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

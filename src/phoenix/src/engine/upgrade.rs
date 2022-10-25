@@ -9,7 +9,7 @@ use futures::executor::{ThreadPool, ThreadPoolBuilder};
 use nix::unistd::Pid;
 use semver::Version;
 
-use interface::engine::{SchedulingHint, SchedulingMode};
+use uapi::engine::{SchedulingHint, SchedulingMode};
 
 use super::datapath::{refactor_channels_attach_addon, refactor_channels_detach_addon};
 use super::datapath::{ChannelDescriptor, DataPathNode};

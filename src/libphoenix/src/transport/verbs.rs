@@ -13,15 +13,16 @@ use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 use utils::bounded_vec::BoundedVecDeque;
 
-use interface::returned;
-use ipc::transport::rdma::cmd::{Command, CompletionKind};
+use uapi::net;
+use uapi::net::returned;
+use uapi::transport::rdma::cmd::{Command, CompletionKind};
 
 use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 use crate::{rx_recv_impl, FromBorrow};
 
 // Re-exports
-pub use interface::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
-pub use interface::{QpCapability, QpType, RemoteKey};
+pub use uapi::net::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
+pub use uapi::net::{QpCapability, QpType, RemoteKey};
 
 lazy_static! {
     pub static ref DEFAULT_PDS: Vec<ProtectionDomain> =
@@ -59,7 +60,7 @@ fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
 
 #[derive(Debug)]
 pub struct VerbsContext {
-    pub(crate) inner: interface::VerbsContext,
+    pub(crate) inner: net::VerbsContext,
 }
 
 // Default verbs contexts are 'static, no need to drop and open them
@@ -94,7 +95,7 @@ impl VerbsContext {
 
 #[derive(Debug)]
 pub struct ProtectionDomain {
-    pub(crate) inner: interface::ProtectionDomain,
+    pub(crate) inner: net::ProtectionDomain,
 }
 
 impl Drop for ProtectionDomain {
@@ -125,7 +126,7 @@ impl ProtectionDomain {
     pub fn allocate<T: Sized + Copy>(
         &self,
         len: usize,
-        access: interface::AccessFlags,
+        access: net::AccessFlags,
     ) -> Result<MemoryRegion<T>, Error> {
         let nbytes = len * mem::size_of::<T>();
         assert!(nbytes > 0);
@@ -154,7 +155,7 @@ impl ProtectionDomain {
 
 #[derive(Debug)]
 pub struct CompletionQueue {
-    pub(crate) inner: interface::CompletionQueue,
+    pub(crate) inner: net::CompletionQueue,
     pub(crate) buffer: CqBuffer,
 }
 
@@ -236,12 +237,12 @@ impl CompletionQueue {
 }
 
 pub struct SharedReceiveQueue {
-    pub(crate) inner: interface::SharedReceiveQueue,
+    pub(crate) inner: net::SharedReceiveQueue,
 }
 
 #[derive(Debug)]
 pub struct MemoryRegion<T> {
-    pub(crate) inner: interface::MemoryRegion,
+    pub(crate) inner: net::MemoryRegion,
     mmap: MmapRaw,
     rkey: RemoteKey,
     // offset between the remote mapped shared memory address and the local shared memory in bytes
@@ -288,8 +289,8 @@ impl<T> Drop for MemoryRegion<T> {
 
 impl<T: Sized + Copy> MemoryRegion<T> {
     pub(crate) fn new(
-        pd: interface::ProtectionDomain,
-        inner: interface::MemoryRegion,
+        pd: net::ProtectionDomain,
+        inner: net::MemoryRegion,
         rkey: RemoteKey,
         memfd: Memfd,
     ) -> Result<Self, Error> {
@@ -332,7 +333,7 @@ impl<T: Sized + Copy> MemoryRegion<T> {
 
 #[derive(Debug)]
 pub struct QueuePair {
-    pub(crate) inner: interface::QueuePair,
+    pub(crate) inner: net::QueuePair,
     pub(crate) pd: ProtectionDomain,
     pub(crate) send_cq: CompletionQueue,
     pub(crate) recv_cq: CompletionQueue,
@@ -415,12 +416,10 @@ impl<'ctx, 'scq, 'rcq, 'srq> Default for QpInitAttr<'ctx, 'scq, 'rcq, 'srq> {
     }
 }
 
-impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>
-    for interface::QpInitAttr
-{
+impl<'ctx, 'scq, 'rcq, 'srq> FromBorrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>> for net::QpInitAttr {
     fn from_borrow<T: Borrow<QpInitAttr<'ctx, 'scq, 'rcq, 'srq>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
-        interface::QpInitAttr {
+        net::QpInitAttr {
             send_cq: b.send_cq.map(|x| x.inner),
             recv_cq: b.recv_cq.map(|x| x.inner),
             srq: b.srq.map(|x| x.inner),
@@ -443,10 +442,10 @@ pub struct ConnParam<'priv_data> {
     pub qp_num: u32,
 }
 
-impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for interface::ConnParam {
+impl<'priv_data> FromBorrow<ConnParam<'priv_data>> for net::ConnParam {
     fn from_borrow<T: Borrow<ConnParam<'priv_data>>>(borrow: &T) -> Self {
         let b = borrow.borrow();
-        interface::ConnParam {
+        net::ConnParam {
             private_data: b.private_data.map(|x| x.to_owned()),
             responder_resources: b.responder_resources,
             initiator_depth: b.initiator_depth,

@@ -2,7 +2,8 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
-use ipc::transport::rdma::cmd::{Command, CompletionKind};
+use uapi::transport::rdma::cmd::{Command, CompletionKind};
+use uapi::net;
 
 use crate::transport::verbs;
 use crate::transport::Error;
@@ -12,7 +13,7 @@ use verbs::AccessFlags;
 use verbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
 // Re-exports
-pub use interface::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
+pub use uapi::net::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(
@@ -38,7 +39,7 @@ pub fn getaddrinfo(
 
 #[derive(Clone)]
 pub struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
-    handle: interface::CmId,
+    handle: net::CmId,
     pd: Option<&'pd ProtectionDomain>,
     qp_init_attr: QpInitAttr<'ctx, 'scq, 'rcq, 'srq>,
 }
@@ -52,7 +53,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq,
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub fn new() -> Self {
         CmIdBuilder {
-            handle: interface::CmId(interface::Handle::INVALID),
+            handle: net::CmId(uapi::Handle::INVALID),
             pd: None,
             qp_init_attr: Default::default(),
         }
@@ -189,7 +190,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
             let req = Command::CmCreateQp(
                 self.handle.0,
                 pd,
-                interface::QpInitAttr::from_borrow(&self.qp_init_attr),
+                net::QpInitAttr::from_borrow(&self.qp_init_attr),
             );
             ctx.service.send_cmd(req)?;
             let qp = rx_recv_impl!(ctx.service, CompletionKind::CmCreateQp, qp, { Ok(qp) })?;
@@ -203,7 +204,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     }
 }
 
-struct DropCmId(interface::CmId);
+struct DropCmId(net::CmId);
 
 impl Drop for DropCmId {
     fn drop(&mut self) {
@@ -220,7 +221,7 @@ impl Drop for DropCmId {
 }
 
 pub struct CmIdListener<'pd, 'ctx, 'scq, 'rcq, 'srq> {
-    pub(crate) handle: interface::CmId,
+    pub(crate) handle: net::CmId,
     builder: CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq>,
 }
 
@@ -283,7 +284,7 @@ impl PreparedCmId {
             // accept
             let req = Command::Accept(
                 self.inner.handle.0,
-                conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
+                conn_param.map(|param| net::ConnParam::from_borrow(&param)),
             );
             ctx.service.send_cmd(req)?;
             rx_recv_impl!(ctx.service, CompletionKind::Accept)?;
@@ -296,7 +297,7 @@ impl PreparedCmId {
             // connect
             let req = Command::Connect(
                 self.inner.handle.0,
-                conn_param.map(|param| interface::ConnParam::from_borrow(&param)),
+                conn_param.map(|param| net::ConnParam::from_borrow(&param)),
             );
             ctx.service.send_cmd(req)?;
             rx_recv_impl!(
@@ -378,7 +379,7 @@ impl_for_cmid!(PreparedCmId, inner);
 
 #[derive(Debug)]
 pub(crate) struct Inner {
-    pub(crate) handle: interface::CmId,
+    pub(crate) handle: net::CmId,
     pub(crate) qp: verbs::QueuePair,
 }
 
@@ -401,7 +402,7 @@ impl Inner {
     //     let req = Command::CreateEp(
     //         ai.clone(),
     //         pd.map(|pd| pd.inner),
-    //         qp_init_attr.map(|attr| interface::QpInitAttr::from_borrow(attr)),
+    //         qp_init_attr.map(|attr| net::QpInitAttr::from_borrow(attr)),
     //     );
     //     KL_CTX.with(|ctx| {
     //         ctx.service.send_cmd(req)?;
@@ -444,7 +445,7 @@ impl Inner {
     // pub fn accept(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
     //     let req = Command::Accept(
     //         self.handle.0,
-    //         conn_param.map(|param| interface::ConnParam::from_borrow(param)),
+    //         conn_param.map(|param| net::ConnParam::from_borrow(param)),
     //     );
     //     KL_CTX.with(|ctx| {
     //         ctx.service.send_cmd(req)?;
@@ -455,7 +456,7 @@ impl Inner {
     // pub fn connect(&self, conn_param: Option<&verbs::ConnParam>) -> Result<(), Error> {
     //     let req = Command::Connect(
     //         self.handle.0,
-    //         conn_param.map(|param| interface::ConnParam::from_borrow(param)),
+    //         conn_param.map(|param| net::ConnParam::from_borrow(param)),
     //     );
     //     KL_CTX.with(|ctx| {
     //         ctx.service.send_cmd(req)?;

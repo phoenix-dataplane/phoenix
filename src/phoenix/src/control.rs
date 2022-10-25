@@ -16,7 +16,7 @@ use ipc::control::ResponseKind;
 use itertools::Itertools;
 use nix::unistd::Pid;
 
-use interface::engine::{SchedulingHint, SchedulingMode};
+use uapi::engine::{SchedulingHint, SchedulingMode};
 use ipc::control::ServiceSubscriptionInfo;
 use ipc::unix::DomainSocket;
 
@@ -49,7 +49,7 @@ impl Control {
     ) -> anyhow::Result<()> {
         if service == &Service("Mrpc") {
             if let Some(config_string) = config_string {
-                use ipc::mrpc::control_plane::{Setting, TransportType};
+                use uapi_mrpc::control_plane::{Setting, TransportType};
                 let setting: Setting = serde_json::from_str(config_string)?;
                 let mut config = self.config.lock().unwrap();
                 if let Some(mrpc_module) = config.modules.iter_mut().find(|x| x.name == "Mrpc") {

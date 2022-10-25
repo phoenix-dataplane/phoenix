@@ -1,68 +1,111 @@
 [workspace]
 members = [
-  "src/experimental",
-  "src/interface",
+  # "src/experimental",
+  "src/uapi",
+  "src/uapi/salloc",
+  "src/uapi/transport",
   "src/mmap",
+  "src/rdma",
+  "src/utils",
   "src/ipc",
   "src/ipc/core",
   "src/ipc/mrpc",
-  "src/ipc/salloc",
-  "src/ipc/transport",
-  "src/ipc/rpc_adapter",
-  "src/ipc/tcp_rpc_adapter",
-  "src/ipc/policy/null",
-  "src/ipc/policy/ratelimit",
-  "src/ipc/policy/qos",
-  "src/ipc/policy/hotel-acl",
+  # shared memory data types
   "src/shm",
   "src/shm/salloc",
+  # plugins
+  "src/plugin/salloc",
+  "src/plugin/salloc/plugin",
+  "src/plugin/transport-rdma",
+  "src/plugin/transport-rdma/plugin",
+  "src/plugin/transport-tcp",
+  "src/plugin/transport-tcp/plugin",
+  # products
   "src/phoenix",
-  "src/phoenix-plugins/salloc",
-  "src/phoenix-plugins/salloc/plugin",
-  "src/phoenix-plugins/transport-rdma",
-  "src/phoenix-plugins/transport-rdma/plugin",
-  "src/phoenix-plugins/transport-tcp",
-  "src/phoenix-plugins/transport-tcp/plugin",
-  "src/phoenix-plugins/rpc_adapter",
-  "src/phoenix-plugins/rpc_adapter/plugin",
-  "src/phoenix-plugins/tcp_rpc_adapter",
-  "src/phoenix-plugins/tcp_rpc_adapter/plugin",
-  "src/phoenix-plugins/mrpc",
-  "src/phoenix-plugins/mrpc/plugin",
-  "src/phoenix-plugins/policy/null",
-  "src/phoenix-plugins/policy/null/plugin",
-  "src/phoenix-plugins/policy/ratelimit",
-  "src/phoenix-plugins/policy/ratelimit/plugin",
-  "src/phoenix-plugins/policy/qos",
-  "src/phoenix-plugins/policy/qos/plugin",
-  "src/phoenix-plugins/policy/hotel-acl",
-  "src/phoenix-plugins/policy/hotel-acl/plugin",
   "src/phoenixctl",
-  "src/mrpc-derive",
-  "src/mrpc-marshal",
-  "src/rdma",
-  "src/utils",
   "src/libphoenix",
-  "src/mrpc",
-  "src/mrpc/mrpc-build",
-  "src/phoenix_examples/hello",
-  "src/phoenix_examples/send_bw",
-  "src/phoenix_examples/send_lat",
-  "src/phoenix_examples/bench",
-  "src/phoenix_examples/alltoall",
-  "src/phoenix_examples/rpc_hello",
-  "src/phoenix_examples/rpc_bench",
-  "src/phoenix_examples/rpc_bench_plus",
-  "src/phoenix_examples/masstree_analytics",
-  "src/phoenix_examples/hotel_reservation",
-  # "src/phoenix_examples/hotel_microservices",
-  "src/phoenixctl",
   "benchmark",
+  # examples
+  "examples/hello",
+  "examples/send_bw",
+  "examples/send_lat",
+  "examples/bench",
+  "examples/alltoall",
 ]
 exclude = [
-  "src/3rdparty/prost",
+  "experimental/mrpc"
 ]
-resolver = "2"
+
+[workspace.dependencies]
+uapi = { path = "src/uapi" }
+mmap = { path = "src/mmap" }
+rdma = { path = "src/rdma" }
+utils = { path = "src/utils" }
+shm = { path = "src/shm" }
+ipc = { path = "src/ipc" }
+slabmalloc = { path = "src/slabmalloc" }
+libphoenix = { path = "src/libphoenix" }
+shmalloc = { path = "src/shm/shmalloc" }
+
+libc = "0.2.103"
+thiserror = "1.0.29"
+bitflags = "1.3.2"
+static_assertions = "1.1.0"
+nix = "0.25.0"
+lazy_static = "1.4.0"
+smol = "1.2.5"
+memfd = "0.4.1"
+memmap2 = "0.5.0"
+spin = "0.9.3"
+tracing = "0.1"
+log = "0.4.14"
+bincode = "1.3.3"
+
+ipc-channel = "0.15.0"
+serde = "1.0.130"
+bincode = "1.3.3"
+shmem-ipc = "0.2.0"
+zerocopy = "0.3.0"
+uuid = "0.8.2"
+atomic-traits = "0.3.0"
+crossbeam = "0.8.2"
+unique = "0.9.1"
+minstant = "0.1.1"
+mio = "0.8.4"
+async-io = "1.9.0"
+futures = "0.3.21"
+tokio = "1.18.2"
+memoffset = "0.6.5"
+socket2 = "0.4.7"
+
+chrono = "0.4.19"
+ansi_term = "0.12.1"
+tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+tracing-chrome = "0.6"
+anyhow = "1.0.58"
+num_cpus = "1.13.0"
+fnv = "1.0.7"
+structopt = "0.3.26"
+toml = "0.5.8"
+version = "3.0.0"
+scheduler = "0.1.3"
+dashmap = "5.3.4"
+smallvec = "1.8.0"
+json = "0.12.4"
+itertools = "0.10.3"
+libloading = "0.7.3"
+petgraph = "0.6.2"
+semver = "1.0.12"
+crc32fast = "1.3.2"
+sharded-slab = "0.1.4"
+libnuma = "0.0.4"
+libnuma-sys = "0.0.4"
+serde_json = "1.0.81"
+prettytable-rs = "0.9"
+
+bindgen = "0.59.1"
+cc = "1.0.70"
 
 [profile.release]
 debug = true

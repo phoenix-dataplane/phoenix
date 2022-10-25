@@ -5,7 +5,7 @@ use structopt::StructOpt;
 use uuid::Uuid;
 
 use ipc::control::Request;
-use ipc::rpc_adapter::control_plane::Request as RpcAdapterRequest;
+use uapi_rpc_adapter::control_plane::Request as RpcAdapterRequest;
 use ipc::unix::DomainSocket;
 
 const MAX_MSG_LEN: usize = 65536;

@@ -1,0 +1,166 @@
+[package]
+name = "mrpc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+timing = ["dep:minstant"]
+
+[dependencies]
+uapi-mrpc.workspace = true
+
+uapi = { workspace = true, features = ["mrpc"] }
+ipc = { workspace = true, features = ["customer"] }
+shm = { workspace = true, features = ["mrpc"] }
+mmap.workspace = true
+libphoenix.workspace = true
+salloc.workspace = true
+
+minstant = { workspace = true, optional = true }
+thiserror.workspace = true
+uuid.workspace = true
+libc.workspace = true
+nix.workspace = true
+fnv.workspace = true
+memfd.workspace = true
+lazy_static.workspace = true
+tracing.workspace = true
+dashmap.workspace = true
+async-executor.workspace = true
+arrayvec.workspace = true
+async-trait.workspace = true
+log.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+libnuma.workspace = true
+slab.workspace = true
+spin.workspace = true
+
+[workspace]
+members = [
+  # products
+  "mrpc-build",
+  "mrpc-derive",
+  "mrpc-marshal",
+  # uapi
+  "uapi/mrpc",
+  "uapi/rpc_adapter",
+  "uapi/tcp_rpc_adapter",
+  "uapi/policy/null",
+  "uapi/policy/ratelimit",
+  "uapi/policy/qos",
+  "uapi/policy/hotel-acl",
+  # plugins
+  "plugin/mrpc",
+  "plugin/mrpc/plugin",
+  "plugin/rpc_adapter",
+  "plugin/rpc_adapter/plugin",
+  "plugin/tcp_rpc_adapter",
+  "plugin/tcp_rpc_adapter/plugin",
+  "plugin/policy/null",
+  "plugin/policy/plugin",
+  "plugin/policy/ratelimit",
+  "plugin/policy/ratelimit/plugin",
+  "plugin/policy/qos",
+  "plugin/policy/qos/plugin",
+  "plugin/policy/hotel-acl",
+  "plugin/policy/hotel-acl/plugin",
+  # examples
+  "examples/rpc_hello",
+  "examples/rpc_bench",
+  "examples/rpc_bench_plus",
+  "examples/masstree_analytics",
+  "examples/hotel_reservation",
+  # "examples/hotel_microservices",
+]
+exclude = [
+  "3rdparty/prost",
+]
+
+
+[workspace.dependencies]
+mrpc = { path = "." }
+uapi-mrpc = { path = "uapi/mrpc" }
+uapi-tcp-rpc-adapter = { path = "uapi/tcp_rpc_adapter" }
+uapi-rpc-adapter = { path = "uapi/rpc_adapter" }
+uapi-policy-null = { path = "uapi/policy/null" }
+uapi-policy-ratelimit = { path = "uapi/policy/ratelimit" }
+uapi-policy-qos = { path = "uapi/policy/qos" }
+uapi-policy-hotel-acl = { path = "uapi/policy/hotel-acl" }
+
+mrpc-build = { path = "mrpc-build" }
+mrpc-derive = { path = "mrpc-derive" }
+mrpc-marshal = { path = "mrpc-marshal" }
+prost-build = { path = "../3rdparty/prost/prost-build" }
+phoenix-mrpc = { path = "plugin/mrpc" }
+
+libphoenix = { path = "../../src/libphoenix" }
+uapi = { path = "../../src/uapi" }
+ipc = { path = "../../src/ipc" }
+mmap = { path = "../../src/mmap" }
+shm = { path = "../../src/shm" }
+salloc = { path = "../../src/shm/salloc" }
+phoenix = { path = "../../src/phoenix" }
+transport-rdma = { path = "../../src/plugin/transport-rdma", package = "phoenix-transport-rdma" }
+transport-tcp = { path = "../../src/plugin/transport-tcp", package = "phoenix-transport-tcp" }
+phoenix-salloc = { path = "../../src/plugin/salloc", package = "phoenix-salloc" }
+
+thiserror = "1.0.31"
+uuid = "0.8.2"
+libc = "0.2.103"
+nix = "0.25.0"
+serde = "1.0.130"
+serde_json = "1.0.85"
+fnv = "1.0.7"
+memfd = "0.4.1"
+lazy_static = "1.4.0"
+tracing = "0.1"
+dashmap = "5.3.4"
+async-executor = "1.4.1"
+arrayvec = "0.7"
+async-trait = "0.1.56"
+log = "0.4.17"
+minstant = "0.1.1"
+futures = "0.3.23"
+libnuma = "0.0.4"
+slab = "0.4.7"
+spin = "0.9.3"
+static_assertions = "1.1.0"
+tokio = "1.18.2" # only sync is enabled
+anyhow = "1.0.58"
+itertools = "0.10.3"
+crc32fast = "1.3.2"
+fastrand = "1.8.0"
+syn = "1.0.98"
+quote = "1.0.20"
+proc-macro2 = "1.0.40"
+md5 = "0.7.0"
+prettyplease = "0.1.15"
+toml = "0.5.8"
+
+libloading = "0.7.3"
+bitvec = "1.0.1"
+bincode = "1.3.3"
+socket2 = "0.4.7"
+slab = "0.4.7"
+
+smol = "1.2.5"
+structopt = "0.3.23"
+tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+hdrhistogram = "7.5.0"
+scheduler = "0.1.3"
+cmake = "0.1.48"
+chrono = "0.4.19"
+env_logger = "0.9.0"
+fasthash = "0.4.0"
+link-cplusplus = "1.0"
+arc-swap = "1.5.0"
+crossbeam-utils = "0.8.12"
+
+
+
+[profile.release]
+debug = true

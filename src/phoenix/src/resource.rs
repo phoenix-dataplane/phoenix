@@ -8,7 +8,7 @@ use fnv::FnvBuildHasher;
 
 use thiserror::Error;
 
-use interface::Handle;
+use uapi::Handle;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
