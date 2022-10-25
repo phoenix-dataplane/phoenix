@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  # "src/experimental",
+  "src/experimental",
   "src/uapi",
   "src/uapi/salloc",
   "src/uapi/transport",

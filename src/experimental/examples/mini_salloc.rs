@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use memfd::Memfd;
 use thiserror::Error;
 
-use interface::engine::SchedulingHint;
-use ipc::salloc::{cmd, dp};
+use uapi::engine::SchedulingHint;
+use uapi_salloc::{cmd, dp};
 use ipc::service::ShmService;
 
 const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
@@ -119,7 +119,7 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, interface::Error),
+    Interface(&'static str, uapi::Error),
 }
 
 fn main() {
