@@ -6,7 +6,7 @@ use uapi_mrpc::control_plane::TransportType;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MrpcConfig {
-    pub prefix: PathBuf,
+    pub prefix: Option<PathBuf>,
     pub engine_basename: String,
     #[serde(alias = "build_cache")]
     pub build_cache: PathBuf,

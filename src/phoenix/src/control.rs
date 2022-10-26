@@ -28,8 +28,7 @@ use crate::engine::upgrade::EngineUpgrader;
 use crate::engine::EngineType;
 use crate::module::{NewEngineRequest, Service};
 use crate::plugin::{Plugin, PluginCollection};
-use crate::storage::ResourceCollection;
-use crate::storage::SharedStorage;
+use crate::storage::{ResourceCollection, SharedStorage, PHOENIX_PREFIX_KEY};
 
 pub struct Control {
     sock: DomainSocket,
@@ -120,6 +119,12 @@ impl Control {
             .entry(pid)
             .or_insert_with(ResourceCollection::new);
 
+        // Make PHOENIX_PREFIX available during engine creation.
+        global.value_mut().insert(
+            PHOENIX_PREFIX_KEY.to_owned(),
+            Box::new(self.config.control.prefix.clone()), // Box<PathBuf>
+        );
+
         let mut singleton_id = service_registry.scheduling_groups.size();
         let mut containers_to_submit = HashMap::new();
         // crate auxiliary engines in (reverse) topological order
@@ -198,30 +203,29 @@ impl Control {
             .remove(service_engine_type)
             .unwrap_or_else(DataPathNode::new);
 
-        let engine = module
-            .create_engine(
-                *service_engine_type,
-                request,
-                &mut shared,
-                global.value_mut(),
-                node,
-                &self.plugins.modules,
-            )
-            .map_err(|e| {
+        let engine = match module.create_engine(
+            *service_engine_type,
+            request,
+            &mut shared,
+            global.value_mut(),
+            node,
+            &self.plugins.modules,
+        ) {
+            Ok(Some(ret)) => ret,
+            Ok(None) => bail!(
+                "service engine must always be created, engine_type={:?}",
+                service_engine_type
+            ),
+            Err(e) => {
                 log::error!(
                     "create_engine failed: engine_type: {:?}, error: {}",
                     service_engine_type,
                     e
                 );
-                e
-            })?
-            .ok_or_else(|| {
-                anyhow!(
-                    "service engine must always be created, engine_type={:?}",
-                    service_engine_type
-                )
-            })?;
-        // TODO(cjr): use let-else.
+                return Err(e);
+            }
+        };
+
         tracing::info!(
             "Created engine {:?} of service {:?} for client pid={:?}",
             service_engine_type,

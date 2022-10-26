@@ -21,7 +21,7 @@ use phoenix::module::{
     Version,
 };
 use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use crate::config::MrpcConfig;
 
@@ -198,7 +198,7 @@ impl PhoenixModule for MrpcModule {
         ty: EngineType,
         request: NewEngineRequest,
         shared: &mut SharedStorage,
-        _global: &mut ResourceCollection,
+        global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn phoenix::engine::Engine>>> {
@@ -216,7 +216,11 @@ impl PhoenixModule for MrpcModule {
             // generate a path and bind a unix domain socket to it
             let uuid = Uuid::new_v4();
             let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-            let engine_path = self.config.prefix.join(instance_name);
+
+            // use the phoenix_prefix if not otherwise specified
+            let phoenix_prefix = get_default_prefix(global)?;
+            let engine_prefix = self.config.prefix.as_ref().unwrap_or(phoenix_prefix);
+            let engine_path = engine_prefix.join(instance_name);
 
             // create customer stub
             let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;

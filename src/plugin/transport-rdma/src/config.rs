@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RdmaTransportConfig {
-    pub prefix: PathBuf,
+    pub prefix: Option<PathBuf>,
     pub engine_basename: String,
     pub datapath_wq_depth: usize,
     pub datapath_cq_depth: usize,
@@ -15,7 +15,7 @@ pub struct RdmaTransportConfig {
 impl Default for RdmaTransportConfig {
     fn default() -> Self {
         RdmaTransportConfig {
-            prefix: PathBuf::from("/tmp/phoenix"),
+            prefix: None,
             engine_basename: String::from("transport-engine-rdma"),
             datapath_wq_depth: 32,
             datapath_cq_depth: 32,

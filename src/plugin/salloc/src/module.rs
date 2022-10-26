@@ -14,7 +14,7 @@ use phoenix::engine::{EnginePair, EngineType};
 use phoenix::module::{ModuleCollection, NewEngineRequest, Service, Version};
 use phoenix::module::{ModuleDowncast, PhoenixModule, ServiceInfo};
 use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
@@ -144,7 +144,7 @@ impl PhoenixModule for SallocModule {
         ty: EngineType,
         request: NewEngineRequest,
         _shared: &mut SharedStorage,
-        _global: &mut ResourceCollection,
+        global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn phoenix::engine::Engine>>> {
@@ -164,7 +164,11 @@ impl PhoenixModule for SallocModule {
 
             // let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
             let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-            let engine_path = self.config.prefix.join(instance_name);
+
+            // use the phoenix_prefix if not otherwise specified
+            let phoenix_prefix = get_default_prefix(global)?;
+            let engine_prefix = self.config.prefix.as_ref().unwrap_or(phoenix_prefix);
+            let engine_path = engine_prefix.join(instance_name);
 
             // 2. create customer stub
             let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;

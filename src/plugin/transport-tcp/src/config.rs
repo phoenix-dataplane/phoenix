@@ -5,14 +5,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TcpTransportConfig {
-    pub prefix: PathBuf,
+    pub prefix: Option<PathBuf>,
     pub engine_basename: String,
 }
 
 impl Default for TcpTransportConfig {
     fn default() -> Self {
         TcpTransportConfig {
-            prefix: PathBuf::from("/tmp/phoenix"),
+            prefix: None,
             engine_basename: String::from("transport-engine-tcp"),
         }
     }

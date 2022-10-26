@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::os::unix::net::UCred;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
@@ -18,7 +18,7 @@ use phoenix::module::{
     Version,
 };
 use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use super::engine::TransportEngine;
 use super::ops::Ops;
@@ -122,7 +122,7 @@ impl PhoenixModule for TcpTransportModule {
         ty: EngineType,
         request: NewEngineRequest,
         _shared: &mut SharedStorage,
-        _global: &mut ResourceCollection,
+        global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
@@ -136,8 +136,15 @@ impl PhoenixModule for TcpTransportModule {
                     config_string: _config_string,
                 } = request
                 {
-                    let engine =
-                        self.create_transport_engine(sock, client_path, mode, node, cred)?;
+                    let phoenix_prefix = get_default_prefix(global)?;
+                    let engine = self.create_transport_engine(
+                        sock,
+                        client_path,
+                        mode,
+                        node,
+                        phoenix_prefix,
+                        cred,
+                    )?;
                     Ok(Some(Box::new(engine)))
                 } else {
                     bail!("invalid request type")
@@ -175,11 +182,15 @@ impl TcpTransportModule {
         client_path: &Path,
         mode: SchedulingMode,
         node: DataPathNode,
+        phoenix_prefix: &PathBuf,
         cred: &UCred,
     ) -> Result<TransportEngine> {
         let uuid = Uuid::new_v4();
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-        let engine_path = self.config.prefix.join(instance_name);
+
+        // use the phoenix_prefix if not otherwise specified
+        let engine_prefix = self.config.prefix.as_ref().unwrap_or(phoenix_prefix);
+        let engine_path = engine_prefix.join(instance_name);
 
         let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 

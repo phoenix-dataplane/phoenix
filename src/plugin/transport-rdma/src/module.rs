@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::os::unix::ucred::UCred;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
@@ -19,7 +19,7 @@ use phoenix::module::{
     Version,
 };
 use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use crate::cm::engine::CmEngine;
 use crate::config::RdmaTransportConfig;
@@ -163,7 +163,7 @@ impl PhoenixModule for RdmaTransportModule {
         ty: EngineType,
         request: NewEngineRequest,
         _shared: &mut SharedStorage,
-        _global: &mut ResourceCollection,
+        global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
@@ -191,12 +191,14 @@ impl PhoenixModule for RdmaTransportModule {
                     config_string,
                 } = request
                 {
+                    let phoenix_prefix = get_default_prefix(global)?;
                     let engine = self.create_transport_engine(
                         sock,
                         client_path,
                         mode,
                         node,
                         cred,
+                        phoenix_prefix,
                         config_string,
                     )?;
                     Ok(Some(Box::new(engine)))
@@ -241,11 +243,15 @@ impl RdmaTransportModule {
         mode: SchedulingMode,
         node: DataPathNode,
         cred: &UCred,
+        phoenix_prefix: &PathBuf,
         _config_string: Option<String>,
     ) -> Result<TransportEngine> {
         let uuid = Uuid::new_v4();
         let instance_name = format!("{}-{}.sock", self.config.engine_basename, uuid);
-        let engine_path = self.config.prefix.join(instance_name);
+
+        // use the phoenix_prefix if not otherwise specified
+        let engine_prefix = self.config.prefix.as_ref().unwrap_or(phoenix_prefix);
+        let engine_path = engine_prefix.join(instance_name);
 
         let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 

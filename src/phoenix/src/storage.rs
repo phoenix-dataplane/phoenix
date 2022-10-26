@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use thiserror::Error;
 use tokio::sync::mpsc::UnboundedReceiver as CommandReceiver;
@@ -19,6 +20,20 @@ pub enum Error {
 }
 
 pub type ResourceCollection = HashMap<String, Box<dyn AnyResource>>;
+
+pub const PHOENIX_PREFIX_KEY: &str = "PHOENIX_PREFIX";
+
+/// Returns the default phoenix prefix on success. Returns an error if the prefix is not found or
+/// fails to downcast to a PathBuf.
+pub fn get_default_prefix(global: &ResourceCollection) -> anyhow::Result<&PathBuf> {
+    global
+        .get(PHOENIX_PREFIX_KEY)
+        .map(|x| {
+            x.downcast_ref::<PathBuf>()
+                .expect("Expect a PathBuf for {PHOENIX_PREFIX_KEY}")
+        })
+        .ok_or_else(|| anyhow::anyhow!("{PHOENIX_PREFIX_KEY} not found in ResourceCollection"))
+}
 
 pub struct CommandPathBroker {
     senders: HashMap<EngineType, AnyCommandSender>,
