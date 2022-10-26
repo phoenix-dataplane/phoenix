@@ -1,4 +1,4 @@
-//! A Control is the entry of control plane. It directs commands from the external
+//! A Control is the entry of control plane. It forwards commands from the external
 //! world to corresponding module.
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -7,7 +7,6 @@ use std::os::unix::net::{SocketAddr, UCred};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};
@@ -38,12 +37,12 @@ pub struct Control {
     plugins: Arc<PluginCollection>,
     upgrader: EngineUpgrader,
     scheduling_override: HashMap<String, SchedulingMode>,
-    config: Mutex<Config>,
+    config: Config,
 }
 
 impl Control {
     fn choose_transport(
-        &self,
+        &mut self,
         service: &Service,
         config_string: Option<&String>,
     ) -> anyhow::Result<()> {
@@ -51,8 +50,8 @@ impl Control {
             if let Some(config_string) = config_string {
                 use uapi_mrpc::control_plane::{Setting, TransportType};
                 let setting: Setting = serde_json::from_str(config_string)?;
-                let mut config = self.config.lock().unwrap();
-                if let Some(mrpc_module) = config.modules.iter_mut().find(|x| x.name == "Mrpc") {
+                if let Some(mrpc_module) = self.config.modules.iter_mut().find(|x| x.name == "Mrpc")
+                {
                     match setting.transport {
                         TransportType::Rdma => {
                             if let Some(c) = mrpc_module.config_string.as_ref() {
@@ -77,7 +76,7 @@ impl Control {
 
 impl Control {
     fn create_service(
-        &self,
+        &mut self,
         service: Service,
         client_path: &Path,
         service_mode: SchedulingMode,
@@ -270,8 +269,11 @@ impl Control {
         Ok(())
     }
 
+    /// Create a `Control` instance.
     pub fn new(runtime_manager: Arc<RuntimeManager>, config: Config) -> Self {
         let config_clone = config.clone();
+
+        // Create phoenix working directory if not existing
         let phoenix_prefix = &config.control.prefix;
         fs::create_dir_all(phoenix_prefix).unwrap_or_else(|e| {
             panic!("Failed to create directory for {:?}: {}", phoenix_prefix, e)
@@ -282,6 +284,7 @@ impl Control {
             fs::remove_file(&phoenix_path).expect("remove_file");
         }
 
+        // Create the control plane domain socket
         let sock = DomainSocket::bind(&phoenix_path)
             .unwrap_or_else(|e| panic!("Cannot bind domain socket at {:?}: {}", phoenix_path, e));
 
@@ -290,15 +293,16 @@ impl Control {
         sock.set_write_timeout(Some(Duration::from_millis(1)))
             .expect("set_write_timeout");
 
-        let plugins = Arc::new(PluginCollection::new());
+        // load all preset static modules and addons
+        let plugins = Arc::new(PluginCollection::new(phoenix_prefix));
         plugins
             .load_or_upgrade_modules(&config.modules)
-            .expect("failed to load modules");
+            .expect("failed to load preset modules");
 
         for addon in config.addons.iter() {
             plugins
                 .load_or_upgrade_addon(addon)
-                .expect("failed to load addon");
+                .expect("failed to load preset addons");
         }
 
         let upgrader = EngineUpgrader::new(Arc::clone(&runtime_manager), Arc::clone(&plugins));
@@ -316,7 +320,7 @@ impl Control {
             plugins,
             upgrader,
             scheduling_override,
-            config: Mutex::new(config_clone),
+            config: config_clone,
         }
     }
 

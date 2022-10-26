@@ -2,10 +2,10 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
 use itertools::Itertools;
@@ -24,10 +24,12 @@ use crate::module::Service;
 // Re-export for plugin dynamic library's use
 pub type InitFnResult<T> = anyhow::Result<T>;
 
+// Takes an optional configuration string.
 pub type InitModuleFn = fn(Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>>;
 pub type InitAddonFn = fn(Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>>;
 
 pub struct DynamicLibrary {
+    path: PathBuf,
     lib: libloading::Library,
     _old: Option<libloading::Library>,
 }
@@ -35,23 +37,50 @@ pub struct DynamicLibrary {
 impl DynamicLibrary {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let lib = unsafe { libloading::Library::new(path.as_ref()).unwrap() };
-        DynamicLibrary { lib, _old: None }
+        DynamicLibrary {
+            path: path.as_ref().to_path_buf(),
+            lib,
+            _old: None,
+        }
     }
 
     pub fn init_module(&self, config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
-        let func = unsafe { self.lib.get::<InitModuleFn>(b"init_module").unwrap() };
+        let func = unsafe {
+            self.lib
+                .get::<InitModuleFn>(b"init_module")
+                .with_context(|| {
+                    format!(
+                        "Fail to get symbol 'init_module' for {}",
+                        self.path.display()
+                    )
+                })?
+        };
+
         func(config_string)
+            .with_context(|| format!("Fail to init_module for {}", self.path.display()))
     }
 
     pub fn init_addon(&self, config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>> {
-        let func = unsafe { self.lib.get::<InitAddonFn>(b"init_addon").unwrap() };
+        let func = unsafe {
+            self.lib
+                .get::<InitAddonFn>(b"init_addon")
+                .with_context(|| {
+                    format!(
+                        "Fail to get symbol 'init_addon' for {}",
+                        self.path.display()
+                    )
+                })?
+        };
+
         func(config_string)
+            .with_context(|| format!("Fail to init_addon for {}", self.path.display()))
     }
 
     pub fn upgrade<P: AsRef<Path>>(self, path: P) -> Self {
         let new = unsafe { libloading::Library::new(path.as_ref()).unwrap() };
         let old = self.lib;
         DynamicLibrary {
+            path: path.as_ref().to_path_buf(),
             lib: new,
             _old: Some(old),
         }
@@ -87,6 +116,7 @@ pub(crate) struct ServiceRegistry {
 
 // COMMENT(wyj): drop order matters
 pub struct PluginCollection {
+    default_prefix: PathBuf,
     pub(crate) modules: DashMap<String, Box<dyn PhoenixModule>>,
     pub(crate) addons: DashMap<String, Box<dyn PhoenixAddon>>,
     pub(crate) engine_registry: DashMap<EngineType, (Plugin, Option<SchedulingMode>)>,
@@ -143,16 +173,11 @@ pub struct PluginCollection {
 //     }
 // }
 
-impl Default for PluginCollection {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl PluginCollection {
     /// Returns an empty PluginCollection.
-    pub fn new() -> Self {
+    pub fn new<P: AsRef<Path>>(prefix: P) -> Self {
         PluginCollection {
+            default_prefix: prefix.as_ref().to_path_buf(),
             modules: DashMap::new(),
             addons: DashMap::new(),
             engine_registry: DashMap::new(),
@@ -179,14 +204,24 @@ impl PluginCollection {
         }
     }
 
+    fn get_library_path<P: AsRef<Path>>(&self, lib_path: P) -> PathBuf {
+        if lib_path.as_ref().is_absolute() {
+            lib_path.as_ref().to_path_buf()
+        } else {
+            self.default_prefix.join(lib_path)
+        }
+    }
+
     pub fn load_or_upgrade_addon(&self, addon: &PluginDescriptor) -> anyhow::Result<()> {
         let old_ver = self.addons.get(&addon.name).map(|x| x.value().version());
         let plugin = Plugin::Addon(addon.name.clone());
         let old_dylib = self.libraries.remove(&plugin);
+
+        let lib_path = self.get_library_path(&addon.lib_path);
         let dylib = if let Some((_, old)) = old_dylib {
-            old.upgrade(&addon.lib_path)
+            old.upgrade(lib_path)
         } else {
-            DynamicLibrary::new(&addon.lib_path)
+            DynamicLibrary::new(lib_path)
         };
 
         // read config from path or string
@@ -243,14 +278,16 @@ impl PluginCollection {
         for (descriptor, plugin) in descriptors.iter().zip(plugins.iter()) {
             let old_dylib = self.libraries.remove(plugin);
 
+            let lib_path = self.get_library_path(&descriptor.lib_path);
+
             let dylib = if let Some((_, old)) = old_dylib {
                 // upgrade from the old library
                 let old_ver = new_versions.remove(&descriptor.name[..]).unwrap();
                 old_verions.insert(&descriptor.name[..], old_ver);
-                old.upgrade(&descriptor.lib_path)
+                old.upgrade(lib_path)
             } else {
                 // directly load the new library since it's the new
-                DynamicLibrary::new(&descriptor.lib_path)
+                DynamicLibrary::new(lib_path)
             };
 
             // read config from path or string
