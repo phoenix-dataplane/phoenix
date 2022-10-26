@@ -14,6 +14,7 @@ use uapi_mrpc::control_plane::Setting;
 use uapi_mrpc::control_plane::TransportType;
 use uapi_mrpc::{cmd, dp};
 
+use phoenix::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix::engine::{EnginePair, EngineType};
 use phoenix::log;
 use phoenix::module::{
@@ -27,7 +28,6 @@ use crate::config::MrpcConfig;
 
 use super::engine::MrpcEngine;
 use super::state::{Shared, State};
-use phoenix::engine::datapath::meta_pool::MetaBufferPool;
 
 pub type CustomerType =
     ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
@@ -137,6 +137,17 @@ impl MrpcModule {
             state_mgr: SharedStateManager::new(),
         }
     }
+
+    // Returns build_cache if it's already an absolute path. Otherwise returns the path relative
+    // to the engine's prefix.
+    fn get_build_cache_directory(&self, engine_prefix: &PathBuf) -> PathBuf {
+        let build_cache = self.config.build_cache.clone();
+        if build_cache.is_absolute() {
+            build_cache
+        } else {
+            engine_prefix.join(build_cache)
+        }
+    }
 }
 
 impl PhoenixModule for MrpcModule {
@@ -222,6 +233,9 @@ impl PhoenixModule for MrpcModule {
             let engine_prefix = self.config.prefix.as_ref().unwrap_or(phoenix_prefix);
             let engine_path = engine_prefix.join(instance_name);
 
+            // get the directory of build cache
+            let build_cache = self.get_build_cache_directory(engine_prefix);
+
             // create customer stub
             let customer = ShmCustomer::accept(sock, client_path, mode, engine_path)?;
 
@@ -258,7 +272,7 @@ impl PhoenixModule for MrpcModule {
                 cmd_tx,
                 cmd_rx,
                 node,
-                self.config.build_cache.clone(),
+                build_cache,
                 shared_state,
                 // TODO(cjr): store the setting, not necessary now.
             );

@@ -236,6 +236,7 @@ impl PhoenixModule for RdmaTransportModule {
 }
 
 impl RdmaTransportModule {
+    #[allow(clippy::too_many_arguments)]
     fn create_transport_engine(
         &mut self,
         sock: &DomainSocket,
