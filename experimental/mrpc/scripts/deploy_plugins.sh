@@ -9,6 +9,6 @@ mkdir -p $prefix/plugins
 WORKDIR=`dirname $(realpath $0)`
 TARGETDIR="${WORKDIR}"/../target
 
-for plugin in `find "${TARGETDIR}"/release/ -maxdepth 1 -type f -name "libphoenix_*_plugin.so" -o -name "libphoenix.so"`; do
+for plugin in `find "${TARGETDIR}"/release/ -maxdepth 1 -type f -name "libphoenix_*_plugin.so"`; do
     install -v -Dm755 "${plugin}" -t "${prefix}"/plugins/
 done

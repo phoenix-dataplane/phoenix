@@ -1,0 +1,41 @@
+[config]
+default_to_workspace = false
+
+[tasks.build]
+args = ["build", "--workspace"]
+
+[tasks.build-release]
+args = ["build", "--release", "--workspace"]
+
+[tasks.deploy-mrpc-plugins]
+script = "scripts/deploy_plugins.sh"
+
+[tasks.build-phoenix]
+command = "cargo"
+args = ["build", "--release", "--workspace", "--manifest-path", "../../Cargo.toml"]
+
+[tasks.deploy-phoenix-plugins]
+script = "../../scripts/deploy_plugins.sh"
+dependencies = ["build-phoenix"]
+
+[tasks.run-phoenix]
+command = "cargo"
+args = [
+  "run", "--release", "--bin", "phoenix",
+  "--manifest-path", "../../Cargo.toml",
+  "--",
+  "-c", "../../phoenix.toml"
+]
+dependencies = ["deploy-phoenix-plugins"]
+
+# the default target
+[tasks.dev-test-flow]
+description = '''
+Development testing flow.
+Build and deploy mRPC plugins. Build and deploy phoenix plugins. Run phoenix daemon.
+'''
+dependencies = [
+  "build-release",
+  "deploy-mrpc-plugins",
+  "run-phoenix",
+]
