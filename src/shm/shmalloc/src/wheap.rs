@@ -293,7 +293,7 @@ unsafe impl ShmAllocator for SharedHeapAllocator {
             }
             _ => {
                 // WARNING(wyj): dealloc will not be properly handled in this case
-                tracing::error!(
+                eprintln!(
                     "Requested: {} bytes. Please handle object size larger than {}",
                     layout.size(),
                     ZoneAllocator::MAX_ALLOC_SIZE
@@ -404,7 +404,7 @@ mod region {
             file_off: i64,
             memfd: Memfd,
         ) -> Result<Self, Error> {
-            tracing::debug!("WriteRegion::new, remote_addr: {:#0x?}", remote_addr);
+            // eprintln!("WriteRegion::new, remote_addr: {:#0x?}", remote_addr);
 
             // Map to the same address as remote_addr, panic if it does not work
             let mmap = MmapFixed::new(remote_addr, nbytes, file_off as i64, memfd.as_file())?;

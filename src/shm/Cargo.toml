@@ -13,7 +13,6 @@ lazy_static.workspace = true
 smol.workspace = true
 memfd.workspace = true
 spin.workspace = true
-tracing.workspace = true
 thiserror.workspace = true
 
 [features]

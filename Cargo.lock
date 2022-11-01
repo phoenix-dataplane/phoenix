@@ -2370,7 +2370,6 @@ dependencies = [
  "smol",
  "spin",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -2388,7 +2387,6 @@ dependencies = [
  "smol",
  "spin",
  "thiserror",
- "tracing",
  "uapi",
 ]
 

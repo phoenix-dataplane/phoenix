@@ -1344,7 +1344,6 @@ dependencies = [
  "memfd",
  "minstant",
  "mmap",
- "nix",
  "serde_json",
  "shm",
  "shmalloc",
@@ -2340,7 +2339,6 @@ dependencies = [
  "smol",
  "spin",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -2358,7 +2356,6 @@ dependencies = [
  "smol",
  "spin",
  "thiserror",
- "tracing",
  "uapi",
 ]
 

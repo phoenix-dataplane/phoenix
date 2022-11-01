@@ -22,7 +22,6 @@ minstant = { workspace = true, optional = true }
 thiserror.workspace = true
 uuid.workspace = true
 libc.workspace = true
-nix.workspace = true
 fnv.workspace = true
 memfd.workspace = true
 lazy_static.workspace = true
