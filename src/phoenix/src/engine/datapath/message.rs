@@ -7,6 +7,8 @@ use uapi_mrpc::dp::RECV_RECLAIM_BS;
 // use crate::mrpc::meta_pool::MetaBufferPtr;
 use super::meta_pool::MetaBufferPtr;
 
+// TODO(cjr): Should be repr(C)
+
 #[derive(Debug)]
 pub struct RpcMessageTx {
     // Each RPC message is assigned a buffer for meta and optionally for its data

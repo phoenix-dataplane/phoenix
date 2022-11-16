@@ -22,7 +22,7 @@ serde = { workspace = true, features = ["derive"], optional = true }
 mmap = { workspace = true, optional = true }
 spin = { workspace = true, optional = true }
 lazy_static = { workspace = true, optional = true }
-nix = { workspace = true, features = ["socket"] }
+nix = { workspace = true, default-features = false, features = ["socket"] }
 
 [features]
 phoenix = ["dep:uapi", "dep:serde", "dep:bincode", "dep:mmap", "dep:spin", "dep:lazy_static"]

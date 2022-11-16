@@ -26,7 +26,7 @@ thiserror.workspace = true
 crossbeam.workspace = true
 uuid.workspace = true
 num_cpus.workspace = true
-nix.workspace = true
+nix = { workspace = true, default-features = false, features = ["signal", "process"] }
 libc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 bincode.workspace = true

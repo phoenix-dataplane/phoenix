@@ -1103,7 +1103,6 @@ dependencies = [
  "libc",
  "memfd",
  "memmap2 0.5.7",
- "nix",
  "serde_json",
  "spin",
  "thiserror",
@@ -1599,35 +1598,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-hotel-acl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "fnv",
- "futures",
- "minstant",
- "mrpc-derive",
- "mrpc-marshal",
- "nix",
- "phoenix",
- "serde",
- "serde_json",
- "shm",
- "thiserror",
- "toml",
- "uapi",
- "uapi-policy-hotel-acl",
-]
-
-[[package]]
-name = "phoenix-hotel-acl-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-hotel-acl",
-]
-
-[[package]]
 name = "phoenix-mrpc"
 version = "0.1.0"
 dependencies = [
@@ -1664,77 +1634,6 @@ name = "phoenix-mrpc-plugin"
 version = "0.1.0"
 dependencies = [
  "phoenix-mrpc",
-]
-
-[[package]]
-name = "phoenix-null"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "minstant",
- "nix",
- "phoenix",
- "serde",
- "serde_json",
- "thiserror",
- "toml",
- "uapi-policy-null",
-]
-
-[[package]]
-name = "phoenix-null-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-null",
-]
-
-[[package]]
-name = "phoenix-qos"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "minstant",
- "nix",
- "phoenix",
- "serde",
- "thiserror",
- "toml",
- "uapi-policy-qos",
-]
-
-[[package]]
-name = "phoenix-qos-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-qos",
-]
-
-[[package]]
-name = "phoenix-ratelimit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "futures",
- "minstant",
- "nix",
- "phoenix",
- "serde",
- "serde_json",
- "thiserror",
- "toml",
- "uapi-policy-ratelimit",
-]
-
-[[package]]
-name = "phoenix-ratelimit-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-ratelimit",
 ]
 
 [[package]]
@@ -1797,44 +1696,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-tcp-rpc-adapter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "bitvec",
- "dashmap",
- "fastrand",
- "fnv",
- "futures",
- "ipc",
- "libloading",
- "mrpc-marshal",
- "nix",
- "phoenix",
- "phoenix-mrpc",
- "phoenix-salloc",
- "phoenix-transport-tcp",
- "serde",
- "slab",
- "socket2",
- "spin",
- "thiserror",
- "tokio",
- "toml",
- "uapi",
- "uapi-mrpc",
- "uapi-tcp-rpc-adapter",
-]
-
-[[package]]
-name = "phoenix-tcp_rpc_adapter-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-tcp-rpc-adapter",
-]
-
-[[package]]
 name = "phoenix-transport-rdma"
 version = "0.1.0"
 dependencies = [
@@ -1850,29 +1711,6 @@ dependencies = [
  "rdma",
  "serde",
  "serde_json",
- "spin",
- "thiserror",
- "tokio",
- "toml",
- "uapi",
- "uuid",
-]
-
-[[package]]
-name = "phoenix-transport-tcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fnv",
- "futures",
- "ipc",
- "lazy_static",
- "memoffset",
- "mio 0.8.5",
- "nix",
- "phoenix",
- "serde",
- "socket2",
  "spin",
  "thiserror",
  "tokio",
@@ -2350,7 +2188,6 @@ dependencies = [
  "libphoenix",
  "memfd",
  "mmap",
- "nix",
  "shm",
  "slabmalloc",
  "smol",
