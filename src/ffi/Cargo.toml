@@ -1,0 +1,17 @@
+[package]
+name = "ffi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cxx = "1.0"
+interface = { path = "../interface" }
+ipc = { path = "../ipc", features = ["mrpc"] }
+mrpc = { path = "../mrpc" }
+libc = "0.2"
+raw-parts = "1.1.2"
+
+[build-dependencies]
+cxx-build = "1.0"

@@ -52,6 +52,7 @@ Session.vim
 # Added by cargo
 
 /target
+/src/ffi/target
 
 # macOS
 # General

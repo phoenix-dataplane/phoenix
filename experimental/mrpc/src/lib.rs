@@ -51,7 +51,7 @@ thread_local! {
     pub(crate) static SETTING: RefCell<Setting> = RefCell::new(Setting::default());
     // Initialization is dynamically performed on the first call to with within a thread.
     pub(crate) static SCHEDULING_HINT: RefCell<SchedulingHint> = RefCell::new(Default::default());
-    pub(crate) static MRPC_CTX: Context = {
+    pub static MRPC_CTX: Context = {
         SA_CTX.with(|_ctx| {
             // do nothing, just to ensure SA_CTX is initialized before MRPC_CTX
         });
@@ -59,9 +59,9 @@ thread_local! {
     }
 }
 
-pub(crate) struct Context {
-    protos: RefCell<BTreeSet<String>>,
-    service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
+pub struct Context {
+    pub protos: RefCell<BTreeSet<String>>,
+    pub service: ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
 impl Context {
