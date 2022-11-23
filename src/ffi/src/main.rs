@@ -31,18 +31,6 @@ mod ipc_bridge {
         id: u64,
     }
 
-    pub struct ReadHeapRegionBridge {
-        handle: HandleBridge,
-        addr: usize,
-        len: usize,
-        file_off: i64,
-    }
-
-    pub struct ConnectResponseBridge {
-        conn_handle: HandleBridge,
-        read_regions: Vec<ReadHeapRegionBridge>,
-    }
-
     pub struct Vaddr {
         handle: HandleBridge,
         ptr: usize,
@@ -50,7 +38,7 @@ mod ipc_bridge {
 
     extern "Rust" {
         fn send_cmd_connect(addr: &CxxString);
-        fn send_cmd_mapped_addrs(conn_handle: ConnectResponseBridge, vaddrs: Vec<Vaddr>);
+        fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<Vaddr>);
     }
 }
 
@@ -72,8 +60,8 @@ fn send_cmd_connect(addr: &CxxString) {
     });
 }
 
-use ipc_bridge::{ConnectResponseBridge, Vaddr};
-fn send_cmd_mapped_addrs(conn_handle: ConnectResponseBridge, vaddrs: Vec<Vaddr>) {
+use ipc_bridge::{Vaddr, HandleBridge};
+fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<Vaddr>) {
 
 }
 
