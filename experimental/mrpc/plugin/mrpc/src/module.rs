@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
-use nix::unistd::Pid;
 use phoenix::engine::datapath::graph::ChannelDescriptor;
 use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
@@ -17,11 +16,12 @@ use uapi_mrpc::{cmd, dp};
 use phoenix::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix::engine::{EnginePair, EngineType};
 use phoenix::log;
+use phoenix::PhoenixResult;
 use phoenix::module::{
     ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, Service, ServiceInfo,
     Version,
 };
-use phoenix::state_mgr::SharedStateManager;
+use phoenix::state_mgr::{SharedStateManager, Pid};
 use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use crate::config::MrpcConfig;
@@ -212,7 +212,7 @@ impl PhoenixModule for MrpcModule {
         global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
-    ) -> Result<Option<Box<dyn phoenix::engine::Engine>>> {
+    ) -> PhoenixResult<Option<Box<dyn phoenix::engine::Engine>>> {
         if ty != MrpcModule::MRPC_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
@@ -293,7 +293,7 @@ impl PhoenixModule for MrpcModule {
         node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
-    ) -> Result<Box<dyn phoenix::engine::Engine>> {
+    ) -> PhoenixResult<Box<dyn phoenix::engine::Engine>> {
         if ty != MrpcModule::MRPC_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }

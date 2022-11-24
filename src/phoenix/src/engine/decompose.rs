@@ -1,12 +1,12 @@
-pub use anyhow::Result;
-
 use super::datapath::node::DataPathNode;
 use crate::storage::{ResourceCollection, SharedStorage};
+
+pub type DecomposeResult<T> = anyhow::Result<T>;
 
 pub trait Decompose {
     /// Perform preparatory work before decompose the engine,
     /// e.g., flush data and command queues
-    fn flush(&mut self) -> Result<()>;
+    fn flush(&mut self) -> DecomposeResult<()>;
 
     /// Decompose the engines to compositional states,
     /// and extract the data path node

@@ -12,7 +12,9 @@ use uapi_mrpc::{cmd, control_plane, dp};
 use phoenix::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
+use phoenix::engine::{
+    future, Decompose, DecomposeResult, Engine, EngineResult, Indicator, Vertex,
+};
 use phoenix::envelop::ResourceDowncast;
 use phoenix::impl_vertex_for_engine;
 use phoenix::module::{ModuleCollection, Version};
@@ -51,7 +53,7 @@ impl_vertex_for_engine!(MrpcEngine, node);
 
 impl Decompose for MrpcEngine {
     #[inline]
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> DecomposeResult<()> {
         // mRPC engine has a single receiver on data path,
         // i.e., rx_inputs()[0]
         // each call to `check_input_queue()` processes at most one message

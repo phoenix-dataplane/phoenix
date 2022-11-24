@@ -1611,7 +1611,6 @@ dependencies = [
  "lazy_static",
  "md5",
  "mrpc-marshal",
- "nix",
  "phoenix",
  "prettyplease",
  "proc-macro2",

@@ -1,9 +1,7 @@
 use std::io;
 use std::sync::Arc;
 
-use nix::unistd::Pid;
-
-use phoenix::state_mgr::ProcessShared;
+use phoenix::state_mgr::{ProcessShared, Pid};
 
 pub(crate) struct State {
     pub(crate) _shared: Arc<Shared>,

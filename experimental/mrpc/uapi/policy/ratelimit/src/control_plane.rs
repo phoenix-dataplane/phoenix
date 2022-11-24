@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-type IResult<T> = Result<T, uapi::Error>;
+type IResult<T> = Result<T, String>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {

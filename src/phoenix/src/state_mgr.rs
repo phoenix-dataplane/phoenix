@@ -2,7 +2,7 @@ use std::collections::hash_map;
 use std::sync::{Arc, Weak};
 
 use fnv::FnvHashMap as HashMap;
-use nix::unistd::Pid;
+pub use nix::unistd::Pid;
 
 pub trait ProcessShared: Sized {
     type Err;

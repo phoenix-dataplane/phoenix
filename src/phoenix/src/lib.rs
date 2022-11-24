@@ -38,3 +38,5 @@ pub(crate) mod dependency;
 pub mod timer;
 
 pub use rdma;
+
+pub type PhoenixResult<T> = anyhow::Result<T>;

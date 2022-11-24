@@ -1,8 +1,9 @@
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
 
-pub use anyhow::Result;
 use futures::future::BoxFuture;
+
+pub use crate::PhoenixResult;
 
 pub(crate) mod container;
 pub(crate) use container::EngineContainer;
@@ -14,7 +15,7 @@ pub mod datapath;
 pub use datapath::graph::Vertex;
 
 pub mod decompose;
-pub use decompose::Decompose;
+pub use decompose::{Decompose, DecomposeResult};
 
 pub(crate) mod group;
 pub(crate) use group::SchedulingGroup;
@@ -62,7 +63,7 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
 
     /// Handle request sent by the network operator.
     #[inline]
-    fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> Result<()> {
+    fn handle_request(&mut self, _request: Vec<u8>, _cred: UCred) -> PhoenixResult<()> {
         Ok(())
     }
 
@@ -71,7 +72,7 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     /// Preform preparatory work before detaching the engine from runtime
     /// e.g., clean thread-local states
     #[inline]
-    fn pre_detach(&mut self) -> Result<()> {
+    fn pre_detach(&mut self) -> PhoenixResult<()> {
         // empty default impl
         Ok(())
     }

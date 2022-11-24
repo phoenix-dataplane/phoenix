@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::{os::unix::ucred::UCred, path::Path};
 
-pub use anyhow::Result;
 use dashmap::DashMap;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
@@ -13,6 +12,7 @@ use crate::engine::datapath::node::DataPathNode;
 use crate::engine::{Engine, EnginePair, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::{ResourceCollection, SharedStorage};
+use crate::PhoenixResult;
 
 pub type ModuleCollection = DashMap<String, Box<dyn PhoenixModule>>;
 
@@ -122,7 +122,7 @@ pub trait PhoenixModule: TypeTagged + Send + Sync + 'static {
         global: &mut ResourceCollection,
         node: DataPathNode,
         plugged: &ModuleCollection,
-    ) -> Result<Option<Box<dyn Engine>>>;
+    ) -> PhoenixResult<Option<Box<dyn Engine>>>;
 
     /// Restore and upgrade an engine from dumped states
     /// * `local`: The engine's local states
@@ -150,7 +150,7 @@ pub trait PhoenixModule: TypeTagged + Send + Sync + 'static {
         node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
-    ) -> Result<Box<dyn Engine>>;
+    ) -> PhoenixResult<Box<dyn Engine>>;
 }
 
 #[allow(clippy::missing_safety_doc)]

@@ -29,6 +29,8 @@ members = [
   "examples/send_lat",
   "examples/bench",
   "examples/alltoall",
+  # 3rdparty (mostly dynamic shim crates)
+  "src/3rdparty/*",
 ]
 exclude = [
   "experimental/mrpc"
@@ -46,11 +48,14 @@ libphoenix = { path = "src/libphoenix" }
 shmalloc = { path = "src/shm/shmalloc" }
 phoenix = { path = "src/phoenix" }
 
-libc = "0.2.103"
-thiserror = "1.0.29"
 bitflags = "1.3.2"
+# bitflags = { path = "src/3rdparty/bitflags-dynamic", package = "bitflags-dynamic" }
+libc = "0.2.103"
+# libc = { path = "src/3rdparty/libc-dynamic", package = "libc-dynamic" }
+thiserror = "1.0.29"
 static_assertions = "1.1.0"
 nix = "0.25.0"
+# nix = { path = "src/3rdparty/nix-dynamic", package = "nix-dynamic" }
 lazy_static = "1.4.0"
 smol = "1.2.5"
 memfd = "0.4.1"
@@ -62,6 +67,7 @@ bincode = "1.3.3"
 
 ipc-channel = "0.15.0"
 serde = "1.0.130"
+serde_derive = "1.0.130"
 shmem-ipc = "0.2.0"
 zerocopy = "0.3.0"
 uuid = "0.8.2"
