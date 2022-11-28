@@ -12,5 +12,12 @@ int main() {
   std::cout << fds.front().fd << std::endl;
   CompletionConnect conn_resp = recv_comp_connect();
   std::cout << conn_resp.success << std::endl;
-  
+  std::cout << conn_resp.regions.size() << std::endl;
+  std::cout << conn_resp.regions.front().handle.id << std::endl;
+  std::cout << conn_resp.conn_handle.id << std::endl;
+
+  send_cmd_mapped_addrs(conn_resp.conn_handle, conn_resp.regions);
+ 
+  CompletionMappedAddrs comp = recv_comp_mapped_addrs();
+  std::cout << comp.success << std::endl;
 }
