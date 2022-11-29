@@ -2,7 +2,7 @@
 use std::net::SocketAddr;
 use memfd::Memfd;
 use std::io;
-use alloc::AllocShmCompletion;
+use alloc::AllocShmCompletionBridge;
 use cxx::{CxxString};
 use interface::{Handle, rpc::{MessageMeta, RpcMsgType}};
 use ipc::mrpc::{cmd::{Command, CompletionKind}, dp::{self, WorkRequest}};
@@ -29,7 +29,7 @@ mod ipc_bridge {
         id: u64,
     }
 
-    pub struct Vaddr {
+    pub struct VaddrBridge {
         handle: HandleBridge,
         ptr: usize,
     }
@@ -41,13 +41,13 @@ mod ipc_bridge {
         file_off: i64,
     }
 
-    pub struct CompletionConnect {
+    pub struct CompletionConnectBridge {
         success: bool,
         conn_handle: HandleBridge,
         regions: Vec<ReadHeapRegionBridge>,
     }
 
-    pub struct CompletionMappedAddrs {
+    pub struct CompletionMappedAddrsBridge {
         success: bool,
     }
 
@@ -55,9 +55,9 @@ mod ipc_bridge {
         type WorkRequestBridge;
 
         fn send_cmd_connect(addr: &CxxString) -> bool;
-        fn recv_comp_connect() -> CompletionConnect;
+        fn recv_comp_connect() -> CompletionConnectBridge;
         fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<ReadHeapRegionBridge>) -> bool;
-        fn recv_comp_mapped_addrs() -> CompletionMappedAddrs;
+        fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge;
         fn enqueue_wr(wr: Box<WorkRequestBridge>) -> bool;
         fn create_call_wr_bridge(conn_id: u64, service_id: u32, func_id: u32, call_id: u64, token: u64, ptr_app: usize, ptr_backend: usize) -> Box<WorkRequestBridge>;
     }
@@ -69,7 +69,7 @@ pub struct WorkRequestBridge {
 
 #[cxx::bridge]
 mod alloc {
-    pub struct AllocShmCompletion {
+    pub struct AllocShmCompletionBridge {
         success: bool,
         remote_addr: usize,
         file_off: i64,
@@ -77,11 +77,11 @@ mod alloc {
     }
 
     extern "Rust" {
-        fn allocate_shm(len: usize, align: usize) -> AllocShmCompletion;
+        fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge;
     }
 }
 
-fn allocate_shm(len: usize, align: usize) -> AllocShmCompletion{
+fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
     let req = SallocCommand::AllocShm(len, align);
 
     SA_CTX.with(|ctx| {
@@ -91,7 +91,7 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletion{
         };
 
         if res == 0 {
-            return AllocShmCompletion {
+            return AllocShmCompletionBridge {
                 success: false,
                 remote_addr: 0,
                 file_off: 0,
@@ -110,16 +110,16 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletion{
 
         match ctx.service.recv_comp().unwrap().0 {
             Ok(SallocCompletion::AllocShm(remote_addr, file_off)) => {
-                AllocShmCompletion {
+                AllocShmCompletionBridge {
                     success: true,
                     remote_addr,
                     file_off,
-                    fd: 0, // todo: do fd verification
+                    fd: -1, // todo: do fd verification
                 }
             }
             Err(e) => {
                 println!("{}", e);
-                AllocShmCompletion { success: false, remote_addr: 0, file_off: 0, fd: 0 }
+                AllocShmCompletionBridge { success: false, remote_addr: 0, file_off: 0, fd: 0 }
             },
             otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
         }
@@ -158,7 +158,7 @@ fn send_cmd_connect(addr: &CxxString) -> bool {
     })
 }
 
-fn recv_comp_connect() -> CompletionConnect {
+fn recv_comp_connect() -> CompletionConnectBridge {
     MRPC_CTX.with(|ctx| {
         match ctx.service.recv_comp() {
             Ok(comp) => {
@@ -169,7 +169,7 @@ fn recv_comp_connect() -> CompletionConnect {
                         for region in conn_resp.read_regions.iter() {
                             regions.push(read_heap_region_bridge(region));
                         }
-                        CompletionConnect {
+                        CompletionConnectBridge {
                             success: true,
                             conn_handle: HandleBridge {
                                 id: conn_resp.conn_handle.0,
@@ -195,8 +195,8 @@ fn read_heap_region_bridge(region: &ReadHeapRegion) -> ReadHeapRegionBridge {
     }
 }
 
-fn construct_on_error() -> CompletionConnect {
-    CompletionConnect{
+fn construct_on_error() -> CompletionConnectBridge {
+    CompletionConnectBridge {
         success: false,
         conn_handle: HandleBridge {
             id: 0,
@@ -221,17 +221,17 @@ fn send_cmd_mapped_addrs(conn_handle: ipc_bridge::HandleBridge, regions: Vec<Rea
     }) 
 }
 
-fn recv_comp_mapped_addrs() -> CompletionMappedAddrs{
+fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge {
     MRPC_CTX.with(|ctx| {
         match ctx.service.recv_comp() {
             Ok(comp) => {
                 match &comp.0 {
-                    Ok(CompletionKind::NewMappedAddrs) => CompletionMappedAddrs {success: true},
-                    Err(_) => CompletionMappedAddrs {success: false},
-                    _other => CompletionMappedAddrs {success: false},
+                    Ok(CompletionKind::NewMappedAddrs) => CompletionMappedAddrsBridge {success: true},
+                    Err(_) => CompletionMappedAddrsBridge {success: false},
+                    _other => CompletionMappedAddrsBridge {success: false},
                 }
             } 
-            Err(_) => CompletionMappedAddrs {success: false},
+            Err(_) => CompletionMappedAddrsBridge {success: false},
         } 
     }) 
 }

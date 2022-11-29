@@ -13,7 +13,7 @@ int main() {
   std::cout << "fds from recv_fds" << std::endl;
   std::cout << fds.front().fd << std::endl;
 
-  CompletionConnect conn_resp = recv_comp_connect();
+  CompletionConnectBridge conn_resp = recv_comp_connect();
   std::cout << "conn_resp success, regions size, first region handle, conn_handle " << std::endl;
   std::cout << conn_resp.success << std::endl;
   std::cout << conn_resp.regions.size() << std::endl;
@@ -22,11 +22,12 @@ int main() {
 
   send_cmd_mapped_addrs(conn_resp.conn_handle, conn_resp.regions);
  
-  CompletionMappedAddrs comp = recv_comp_mapped_addrs();
+  CompletionMappedAddrsBridge comp = recv_comp_mapped_addrs();
+  std::cout << "mappedaddrs comp success: " << std::endl;
   std::cout << comp.success << std::endl;
 
   // fd field is invalid
-  AllocShmCompletion alloc_comp = allocate_shm(100, 8);
+  AllocShmCompletionBridge alloc_comp = allocate_shm(100, 8);
   std::cout << "allocate success: " << std::endl;
   std::cout << alloc_comp.success << std::endl;
 }
