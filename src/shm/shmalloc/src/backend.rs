@@ -15,7 +15,7 @@ thread_local! {
 }
 
 pub struct SAContext {
-    pub(crate) service:
+    pub service:
         ShmService<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>,
 }
 
