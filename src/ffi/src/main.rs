@@ -29,9 +29,24 @@ mod ipc_bridge {
         id: u64,
     }
 
+    pub struct CallIDBridge {
+        id: u64,
+    }
+
+    pub enum RpcMsgTypeBridge {
+        Request,
+        Response,
+    }
+
     pub struct VaddrBridge {
         handle: HandleBridge,
         ptr: usize,
+    }
+
+    // Stand in for a Result<(), Error)>, might need to expose mrpc::Error
+    // or find better way to communicate this to the c++
+    pub struct ResultBridge {
+        success: bool,
     }
 
     pub struct ReadHeapRegionBridge {
@@ -51,20 +66,68 @@ mod ipc_bridge {
         success: bool,
     }
 
-    extern "Rust" {
-        type WorkRequestBridge;
+    pub struct MessageMetaBridge {
+        pub conn_id: HandleBridge,
+        pub service_id: u32,
+        pub func_id: u32,
+        pub call_id: CallIDBridge,
+        pub token: u64,
+        pub msg_type: RpcMsgTypeBridge,
+    }
 
+    pub struct MessageBridge {  // for messageErased
+        pub meta: MessageMetaBridge,
+        pub shm_addr_app: usize,
+        pub shm_addr_backend: usize,
+    }
+
+    pub enum WorkRequestType {
+        Call,
+        Response,
+        ReclaimRecvBuf,
+    }
+
+    pub struct WorkRequestBridge {  // TODO(nikolabo): support ReclaimRecvBuf wr
+        pub wr_type: WorkRequestType,
+        pub message: MessageBridge,
+    }
+
+    extern "Rust" {
         fn send_cmd_connect(addr: &CxxString) -> bool;
         fn recv_comp_connect() -> CompletionConnectBridge;
         fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<ReadHeapRegionBridge>) -> bool;
         fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge;
-        fn enqueue_wr(wr: Box<WorkRequestBridge>) -> bool;
-        fn create_call_wr_bridge(conn_id: u64, service_id: u32, func_id: u32, call_id: u64, token: u64, ptr_app: usize, ptr_backend: usize) -> Box<WorkRequestBridge>;
+        fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge;
     }
 }
 
-pub struct WorkRequestBridge {
-    req: WorkRequest,
+impl WorkRequestBridge {
+    fn to_wr(&self) -> WorkRequest {
+        let meta = MessageMeta {
+            conn_id: interface::Handle(self.message.meta.conn_id.id),
+            service_id: self.message.meta.service_id,
+            func_id: self.message.meta.func_id,
+            call_id: interface::rpc::CallId(self.message.meta.call_id.id),
+            token: self.message.meta.token,
+            msg_type: self.message.meta.msg_type.to_rmt(),
+        };
+        let erased = MessageErased {
+            meta,
+            shm_addr_app: self.message.shm_addr_app,
+            shm_addr_backend: self.message.shm_addr_backend,
+        };
+        dp::WorkRequest::Call(erased)
+    }
+}
+
+impl RpcMsgTypeBridge {
+    fn to_rmt(self: RpcMsgTypeBridge) -> RpcMsgType {
+        match self {
+            RpcMsgTypeBridge::Request => RpcMsgType::Request,
+            RpcMsgTypeBridge::Response => RpcMsgType::Response,
+            _ => panic!("Unexpected invalid RpcMsgTypeBridge"),
+        }
+    }
 }
 
 #[cxx::bridge]
@@ -236,40 +299,19 @@ fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge {
     }) 
 }
 
-// In place of returning a result, returns true for Ok(()) or false for Err()
-// May be worth wrapping this in a struct like CompletionMappedAddrs, maybe a generic ResultBridge struct
-fn enqueue_wr(wr: Box<WorkRequestBridge>) -> bool {
+fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
         while !sent {
-            let res = ctx.service.enqueue_wr_with(|ptr, _count| unsafe {
-                ptr.cast::<dp::WorkRequest>().write((*wr).req);
+            let c = |ptr: *mut [u8; 64], _count: usize| unsafe {
+                ptr.cast::<dp::WorkRequest>().write(wr.to_wr());
                 sent = true;
                 1
-            });
-            return match res {
-                Ok(()) => true,
-                Err(_) => false
             };
+            if let Err(_) = ctx.service.enqueue_wr_with(c) {
+                return ResultBridge {success: false};
+            }
         }
-        true
+        ResultBridge {success: true}
     })
-}
-
-fn create_call_wr_bridge(conn_id: u64, service_id: u32, func_id: u32, call_id: u64, token: u64, ptr_app: usize, ptr_backend: usize) -> Box<WorkRequestBridge> {
-    let meta = MessageMeta {
-        conn_id: interface::Handle(conn_id),
-        service_id,
-        func_id,
-        call_id: interface::rpc::CallId(call_id),
-        token,
-        msg_type: RpcMsgType::Request,
-    };
-    let erased = MessageErased {
-        meta,
-        shm_addr_app: ptr_app,
-        shm_addr_backend: ptr_backend,
-    };
-    let wr_bridge = WorkRequestBridge {req: dp::WorkRequest::Call(erased)};
-    Box::new(wr_bridge)
 }
