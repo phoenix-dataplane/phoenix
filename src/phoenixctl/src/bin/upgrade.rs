@@ -1,8 +1,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+use clap::Parser;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 use uuid::Uuid;
 
 use ipc::control::Request;
@@ -29,11 +29,11 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Koala plugin upgrade utility")]
+#[derive(Debug, Clone, Parser)]
+#[command(name = "Koala plugin upgrade utility")]
 struct Opts {
     /// Koala config path
-    #[structopt(short, long)]
+    #[arg(short, long)]
     config: PathBuf,
 }
 
@@ -56,7 +56,7 @@ impl Config {
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     let config = Config::from_path(opts.config);
 
     let uuid = Uuid::new_v4();

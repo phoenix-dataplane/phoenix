@@ -5,7 +5,7 @@ use std::sync::Arc;
 use nix::sys::signal;
 
 use anyhow::Result;
-use structopt::StructOpt;
+use clap::Parser;
 
 use phoenix::config::Config;
 use phoenix::control::Control;
@@ -13,13 +13,13 @@ use phoenix::engine::manager::RuntimeManager;
 
 pub mod logging;
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Phoenix Service")]
+#[derive(Debug, Clone, Parser)]
+#[command(name = "Phoenix Service")]
 struct Opts {
     /// Phoenix config path
-    #[structopt(short, long, default_value = "phoenix.toml")]
+    #[arg(short, long, default_value = "phoenix.toml")]
     config: PathBuf,
-    #[structopt(long)]
+    #[arg(long)]
     no_ansi: bool,
 }
 
@@ -32,7 +32,7 @@ extern "C" fn handle_sigint(sig: i32) {
 
 fn main() -> Result<()> {
     // load config
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     let config = Config::from_path(opts.config)?;
 
     // init log setting from "PHOENIX_LOG", print messages with level lower than specified to stdout

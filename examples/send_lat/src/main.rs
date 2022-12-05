@@ -1,33 +1,33 @@
 use std::time;
 
-use structopt::StructOpt;
+use clap::Parser;
 
 use libphoenix::cm;
 use libphoenix::verbs::{MemoryRegion, QpCapability, QpInitAttr, QpType, SendFlags, WcStatus};
 
 const SERVER_PORT: &str = "5000";
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(about = "Koala send/recv latency.")]
+#[derive(Parser, Debug, Clone)]
+#[command(about = "Koala send/recv latency.")]
 pub struct Opts {
     /// The address to connect, can be an IP address or domain name.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub connect: Option<String>,
 
     /// The port number to use.
-    #[structopt(short, long, default_value = SERVER_PORT)]
+    #[arg(short, long, default_value = SERVER_PORT)]
     pub port: u16,
 
     /// Total number of iterations.
-    #[structopt(short, long, default_value = "1000")]
+    #[arg(short, long, default_value = "1000")]
     pub total_iters: usize,
 
     /// Number of warmup iterations.
-    #[structopt(short, long, default_value = "100")]
+    #[arg(short, long, default_value = "100")]
     pub warm_iters: usize,
 
     /// Message size.
-    #[structopt(short, long, default_value = "8")]
+    #[arg(short, long, default_value = "8")]
     pub msg_size: usize,
 }
 
@@ -215,7 +215,7 @@ fn run_client(opts: &Opts) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     // scheduler::set_self_affinity(scheduler::CpuSet::single(20)).unwrap();
     if opts.connect.is_some() {

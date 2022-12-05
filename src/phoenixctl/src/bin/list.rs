@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 #[macro_use]
 extern crate prettytable;
+use clap::Parser;
 use prettytable::Table;
-use structopt::StructOpt;
 use uuid::Uuid;
 
 use ipc::control::{Request, Response, ResponseKind};
@@ -33,15 +33,15 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Koala service subscription viewer")]
+#[derive(Debug, Clone, Parser)]
+#[command(name = "Koala service subscription viewer")]
 struct Opts {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     dump: Option<PathBuf>,
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     let uuid = Uuid::new_v4();
     let arg0 = env::args().next().unwrap();

@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 libphoenix.workspace = true
-structopt.workspace = true
+clap = { workspace = true, features = ["derive"] }
 anyhow.workspace = true
+arg_enum_proc_macro = "0.3.2"

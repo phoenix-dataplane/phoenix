@@ -1,5 +1,5 @@
+use clap::Parser;
 use libphoenix::Error;
-use structopt::StructOpt;
 
 use bench::util::{Context, Opts, Test, Verb};
 
@@ -7,48 +7,48 @@ use bench::read_bw;
 use bench::send_bw;
 use bench::write_bw;
 
-#[derive(StructOpt, Debug)]
-#[structopt(about = "Phoenix send/read/write bandwidth.")]
+#[derive(Parser, Debug)]
+#[command(about = "Phoenix send/read/write bandwidth.")]
 pub struct Args {
     /// Allowed verbs: send, read, write
-    #[structopt(name = "verb", parse(from_str), default_value = "send")]
+    #[arg(name = "verb", default_value = "send")]
     pub verb: Verb,
 
     /// The address to connect, can be an IP address or domain name.
-    #[structopt(short = "c", long = "connect", default_value = "0.0.0.0")]
+    #[arg(short = 'c', long = "connect", default_value = "0.0.0.0")]
     pub ip: String,
 
     /// The port number to use.
-    #[structopt(short, long, default_value = "5000")]
+    #[arg(short, long, default_value = "5000")]
     pub port: u16,
 
     /// Total number of iterations.
-    #[structopt(short, long, default_value = "5000")]
+    #[arg(short, long, default_value = "5000")]
     pub num: usize,
 
     /// Number of warmup iterations.
-    #[structopt(short, long, default_value = "100")]
+    #[arg(short, long, default_value = "100")]
     pub warmup: usize,
 
     /// Message size.
-    #[structopt(short, long, default_value = "65536")]
+    #[arg(short, long, default_value = "65536")]
     pub size: usize,
 
     /// Number of QPs in each thread.
-    #[structopt(long, default_value = "1")]
+    #[arg(long, default_value = "1")]
     pub num_qp: usize,
 
     /// Number of client threads. Map num_client_threads to num_server_threads
-    #[structopt(long, default_value = "1")]
+    #[arg(long, default_value = "1")]
     pub num_client_threads: usize,
 
     /// Number of server threads.
-    #[structopt(long, default_value = "1")]
+    #[arg(long, default_value = "1")]
     pub num_server_threads: usize,
 }
 
 fn main() -> Result<(), Error> {
-    let args = Args::from_args();
+    let args = Args::parse();
 
     assert!(args.num_client_threads % args.num_server_threads == 0);
 

@@ -1,5 +1,5 @@
+use clap::Parser;
 use std::time::{Duration, Instant};
-use structopt::StructOpt;
 
 use libphoenix::verbs::{RemoteKey, SendFlags, WcStatus};
 use libphoenix::Error;
@@ -7,7 +7,7 @@ use libphoenix::{cm, verbs};
 
 pub const CTX_POLL_BATCH: usize = 16;
 
-#[derive(StructOpt, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Parser, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     Send,
     Read,

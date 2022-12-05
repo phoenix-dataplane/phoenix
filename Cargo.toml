@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "src/experimental",
+  # "src/experimental",
   "src/uapi",
   "src/uapi/salloc",
   "src/uapi/transport",
@@ -29,8 +29,8 @@ members = [
   "examples/send_lat",
   "examples/bench",
   "examples/alltoall",
-  # 3rdparty (mostly dynamic shim crates)
-  "src/3rdparty/*",
+  # 3rdparty crates
+  # "crates/*",
 ]
 exclude = [
   "experimental/mrpc"
@@ -49,13 +49,10 @@ shmalloc = { path = "src/shm/shmalloc" }
 phoenix = { path = "src/phoenix" }
 
 bitflags = "1.3.2"
-# bitflags = { path = "src/3rdparty/bitflags-dynamic", package = "bitflags-dynamic" }
 libc = "0.2.103"
-# libc = { path = "src/3rdparty/libc-dynamic", package = "libc-dynamic" }
 thiserror = "1.0.29"
 static_assertions = "1.1.0"
 nix = "0.25.0"
-# nix = { path = "src/3rdparty/nix-dynamic", package = "nix-dynamic" }
 lazy_static = "1.4.0"
 smol = "1.2.5"
 memfd = "0.4.1"
@@ -64,6 +61,7 @@ spin = "0.9.3"
 tracing = "0.1"
 log = "0.4.14"
 bincode = "1.3.3"
+clap = "4.0.29"
 
 ipc-channel = "0.15.0"
 serde = "1.0.130"
@@ -90,7 +88,7 @@ tracing-chrome = "0.6"
 anyhow = "1.0.58"
 num_cpus = "1.13.0"
 fnv = "1.0.7"
-structopt = "0.3.26"
+# structopt = "0.3.26"
 toml = "0.5.8"
 version = "3.0.0"
 scheduler = "0.1.3"

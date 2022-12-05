@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use structopt::StructOpt;
+use clap::Parser;
 use uuid::Uuid;
 
 use ipc::control::Request;
@@ -28,19 +28,19 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Koala rate limit policy control")]
+#[derive(Debug, Clone, Parser)]
+#[command(name = "Koala rate limit policy control")]
 struct Opts {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     eid: u64,
-    #[structopt(short, long)]
+    #[arg(short, long)]
     request_per_sec: u64,
-    #[structopt(short, long)]
+    #[arg(short, long)]
     bucket_size: u64,
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     let uuid = Uuid::new_v4();
     let arg0 = env::args().next().unwrap();

@@ -33,7 +33,7 @@ bincode.workspace = true
 fnv.workspace = true
 lazy_static.workspace = true
 spin.workspace = true
-structopt.workspace = true
+clap = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["preserve_order"] }
 version.workspace = true
 scheduler.workspace = true

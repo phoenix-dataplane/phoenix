@@ -1,9 +1,9 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use structopt::StructOpt;
 use uuid::Uuid;
 
+use clap::Parser;
 use ipc::control::Request;
 use ipc::unix::DomainSocket;
 use uapi_rpc_adapter::control_plane::Request as RpcAdapterRequest;
@@ -28,15 +28,15 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Koala RpcAdapter connection viewer")]
+#[derive(Debug, Clone, Parser)]
+#[command(name = "Koala RpcAdapter connection viewer")]
 struct Opts {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     eid: u64,
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     let uuid = Uuid::new_v4();
     let arg0 = env::args().next().unwrap();

@@ -6,55 +6,53 @@ use std::path::PathBuf;
 use std::thread;
 use std::time;
 
-use structopt::clap::arg_enum;
-use structopt::StructOpt;
+use arg_enum_proc_macro::ArgEnum;
+use clap::Parser;
 
 use libphoenix::cm;
 use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
 
-arg_enum! {
-    #[derive(Debug, Clone, Copy)]
-    pub enum Mode {
-        // single-thread
-        St,
-        // multiple-thread
-        Mt,
-        // user-level thread
-        Ult,
-    }
+#[derive(ArgEnum, Debug, Clone, Copy)]
+pub enum Mode {
+    // single-thread
+    St,
+    // multiple-thread
+    Mt,
+    // user-level thread
+    Ult,
 }
 
 const DEFAULT_PORT: &str = "5000";
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(about = "All-to-all benchmark.")]
+#[derive(Parser, Debug, Clone)]
+#[command(about = "All-to-all benchmark.")]
 pub struct Opts {
     /// The addresses of the workers, seperated by ','. Each can be an IP address or domain name.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub hosts: Option<String>,
 
     /// The addresses of the workers. Each can be an IP address or domain name.
-    #[structopt(short = "f", long)]
+    #[arg(short = 'f', long)]
     pub hostfile: Option<PathBuf>,
 
     /// The port number to use if not given.
-    #[structopt(short, long, default_value = DEFAULT_PORT)]
+    #[arg(short, long, default_value = DEFAULT_PORT)]
     pub port: u16,
 
     /// Total number of iterations.
-    #[structopt(short, long, default_value = "1000")]
+    #[arg(short, long, default_value = "1000")]
     pub total_iters: usize,
 
     /// Number of warmup iterations.
-    #[structopt(short, long, default_value = "100")]
+    #[arg(short, long, default_value = "100")]
     pub warm_iters: usize,
 
     /// Message size.
-    #[structopt(short, long, default_value = "65536")]
+    #[arg(short, long, default_value = "65536")]
     pub msg_size: usize,
 
     /// The mode to use.
-    #[structopt(possible_values = &Mode::variants(), case_insensitive = true)]
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(Mode::variants()))]
     pub mode: Mode,
 }
 
@@ -296,7 +294,7 @@ fn run_user_level_thread(_opts: &Opts, _comm: Communicator) -> anyhow::Result<()
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     let comm = Communicator::new(&opts).expect("Create communicator failed");
 
     match opts.mode {

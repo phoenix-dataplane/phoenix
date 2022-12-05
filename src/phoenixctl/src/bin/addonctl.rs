@@ -1,8 +1,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+use clap::Parser;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 use uapi::engine::SchedulingMode;
 use uuid::Uuid;
 
@@ -30,14 +30,14 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "Koala addon manager")]
+#[derive(Debug, Clone, clap::Parser)]
+#[command(name = "Koala addon manager")]
 struct Opts {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     config: PathBuf,
-    #[structopt(long)]
+    #[arg(long)]
     pid: pid_t,
-    #[structopt(long)]
+    #[arg(long)]
     sid: u64,
 }
 
@@ -72,7 +72,7 @@ impl Config {
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     let config = Config::from_path(opts.config);
 
     let uuid = Uuid::new_v4();

@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 libphoenix.workspace = true
 
-structopt.workspace = true
+clap = { workspace = true, features = ["derive"] }
 scheduler.workspace = true
 libnuma.workspace = true
  
