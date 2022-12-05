@@ -12,6 +12,7 @@ use salloc::backend::SA_CTX;
 use ipc_bridge::*;
 use mrpc::{MRPC_CTX, MessageErased};
 use ipc::mrpc::cmd::ReadHeapRegion;
+use mmap::MmapFixed;
 
 #[cxx::bridge]
 mod memfds {
@@ -174,6 +175,10 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
 
         match ctx.service.recv_comp().unwrap().0 {
             Ok(SallocCompletion::AllocShm(remote_addr, file_off)) => {
+                match MmapFixed::new(remote_addr, len, file_off as i64, memfd.as_file()) {
+                    Ok(_) => println!("valid mmap in rust"),
+                    Err(_) => println!("failed mmap in rust"),
+                }
                 AllocShmCompletionBridge {
                     success: true,
                     remote_addr,

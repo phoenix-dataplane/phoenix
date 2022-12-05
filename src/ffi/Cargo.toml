@@ -9,11 +9,13 @@ edition = "2021"
 cxx = "1.0"
 interface = { path = "../interface" }
 ipc = { path = "../ipc", features = ["mrpc"] }
+mmap = { path = "../mmap" }
 salloc = { path = "../shm/salloc" }
 mrpc = { path = "../mrpc" }
 memfd = "0.4.1"
 libc = "0.2"
 raw-parts = "1.1.2"
+
 
 [build-dependencies]
 cxx-build = "1.0"

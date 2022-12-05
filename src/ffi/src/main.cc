@@ -37,15 +37,19 @@ int main() {
   std::cout << (size_t) alloc_comp.fd << std::endl;
   size_t* val = (size_t*) alloc_comp.remote_addr;
 
-  void* region = mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
-                                                      | MAP_NORESERVE 
-                                                      | MAP_POPULATE 
-                                                      | MAP_FIXED_NOREPLACE, (size_t) alloc_comp.fd, (off_t) alloc_comp.file_off);
-  std::cout << std::strerror(errno) << std::endl;
+  // void* region = mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
+  //                                                     | MAP_NORESERVE 
+  //                                                     | MAP_POPULATE 
+  //                                                     | MAP_FIXED_NOREPLACE, (size_t) alloc_comp.fd, (off_t) alloc_comp.file_off);
+  // std::cout << std::strerror(errno) << std::endl;
 
-  if (fcntl(alloc_comp.fd, F_GETFD) == -1) {
-    std::cout << std::strerror(errno) << std::endl;
-  }
+  // if (fcntl(alloc_comp.fd, F_GETFD) == -1) {
+  //   std::cout << std::strerror(errno) << std::endl;
+  // }
+
+  std::cout << val << std::endl;
+  *val = 10;
+  
 
 
 }
