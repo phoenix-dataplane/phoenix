@@ -1,5 +1,5 @@
 #![no_main]
-use std::net::SocketAddr;
+use std::{net::SocketAddr, os::fd::AsRawFd};
 use memfd::Memfd;
 use std::io;
 use alloc::AllocShmCompletionBridge;
@@ -163,13 +163,14 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
         }
 
         // todo: aman - figure out why recv_fds is blocking indefinitely here 
-        // let fds = ctx.service.recv_fd().unwrap();
+        let fds = ctx.service.recv_fd().unwrap();
 
-        // assert_eq!(fds.len(), 1);
+        assert_eq!(fds.len(), 1);
 
-        // let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error()).unwrap();
-        // let file_len = memfd.as_file().metadata().unwrap().len() as usize;
-        // assert!(file_len >= len);
+        let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error()).unwrap();
+        let file_len = memfd.as_file().metadata().unwrap().len() as usize;
+        assert!(file_len >= len);
+        println!("{}", fds[0]);
 
         match ctx.service.recv_comp().unwrap().0 {
             Ok(SallocCompletion::AllocShm(remote_addr, file_off)) => {
@@ -177,7 +178,7 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
                     success: true,
                     remote_addr,
                     file_off,
-                    fd: -1, // todo: do fd verification
+                    fd: memfd.as_file().as_raw_fd(), 
                 }
             }
             Err(e) => {

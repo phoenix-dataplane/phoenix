@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <sys/mman.h>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 
 int main() {
   // first send connect commaned
@@ -30,4 +34,18 @@ int main() {
   AllocShmCompletionBridge alloc_comp = allocate_shm(100, 8);
   std::cout << "allocate success: " << std::endl;
   std::cout << alloc_comp.success << std::endl;
+  std::cout << (size_t) alloc_comp.fd << std::endl;
+  size_t* val = (size_t*) alloc_comp.remote_addr;
+
+  void* region = mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
+                                                      | MAP_NORESERVE 
+                                                      | MAP_POPULATE 
+                                                      | MAP_FIXED_NOREPLACE, (size_t) alloc_comp.fd, (off_t) alloc_comp.file_off);
+  std::cout << std::strerror(errno) << std::endl;
+
+  if (fcntl(alloc_comp.fd, F_GETFD) == -1) {
+    std::cout << std::strerror(errno) << std::endl;
+  }
+
+
 }
