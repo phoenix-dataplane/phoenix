@@ -145,6 +145,7 @@ mod alloc {
     }
 }
 
+// TODO: aman - add functionality to drop the memfd var
 fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
     let req = SallocCommand::AllocShm(len, align);
 
@@ -171,19 +172,16 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
         let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error()).unwrap();
         let file_len = memfd.as_file().metadata().unwrap().len() as usize;
         assert!(file_len >= len);
-        println!("{}", fds[0]);
 
         match ctx.service.recv_comp().unwrap().0 {
             Ok(SallocCompletion::AllocShm(remote_addr, file_off)) => {
-                match MmapFixed::new(remote_addr, len, file_off as i64, memfd.as_file()) {
-                    Ok(_) => println!("valid mmap in rust"),
-                    Err(_) => println!("failed mmap in rust"),
-                }
+                let fd = memfd.as_file().as_raw_fd();
+                std::mem::forget(memfd);
                 AllocShmCompletionBridge {
                     success: true,
                     remote_addr,
                     file_off,
-                    fd: memfd.as_file().as_raw_fd(), 
+                    fd,
                 }
             }
             Err(e) => {
