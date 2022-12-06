@@ -54,8 +54,6 @@ impl MmapFixed {
             )
         };
 
-        println!("ptr {:?}", ptr);
-
         if ptr == libc::MAP_FAILED {
             Err(io::Error::last_os_error())
         } else {

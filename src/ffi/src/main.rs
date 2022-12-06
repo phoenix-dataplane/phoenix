@@ -12,7 +12,6 @@ use salloc::backend::SA_CTX;
 use ipc_bridge::*;
 use mrpc::{MRPC_CTX, MessageErased};
 use ipc::mrpc::cmd::ReadHeapRegion;
-use mmap::MmapFixed;
 
 #[cxx::bridge]
 mod memfds {
@@ -98,6 +97,7 @@ mod ipc_bridge {
         fn recv_comp_connect() -> CompletionConnectBridge;
         fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<ReadHeapRegionBridge>) -> bool;
         fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge;
+        fn update_protos() -> bool;
         fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge;
     }
 }
@@ -301,6 +301,14 @@ fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge {
             Err(_) => CompletionMappedAddrsBridge {success: false},
         } 
     }) 
+}
+
+fn update_protos() -> bool {
+    let srcs = [include_str!(
+        "../../phoenix_examples/proto/rpc_int/rpc_int.proto"
+    )];
+    ::mrpc::stub::update_protos(srcs.as_slice());
+    true
 }
 
 fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
