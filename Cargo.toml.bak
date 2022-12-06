@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "src/experimental",
+  # "src/experimental",
   "src/uapi",
   "src/uapi/salloc",
   "src/uapi/transport",
@@ -29,6 +29,8 @@ members = [
   "examples/send_lat",
   "examples/bench",
   "examples/alltoall",
+  # 3rdparty crates
+  # "crates/*",
 ]
 exclude = [
   "experimental/mrpc"
