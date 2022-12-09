@@ -65,8 +65,8 @@ int main() {
 
   MessageMetaBridge meta;
   meta.conn_id = conn_resp.conn_handle;
-  meta.service_id = 2762047998;
-  meta.func_id = 3933748028; 
+  meta.service_id = 2056765301;
+  meta.func_id = 3784353755; 
   meta.call_id = callid;
   meta.token = 1;
   meta.msg_type = RpcMsgTypeBridge::Request;;
@@ -86,5 +86,5 @@ int main() {
 
   // receive reply
   MessageBridge ret = block_on_reply();
-  std::cout << "response: HelloReply { val: " << *((size_t*) ret.shm_addr_app) << " }" << std::endl;
+  std::cout << "response: ValueResponse { val: " << *((size_t*) ret.shm_addr_app) << " }" << std::endl;
 }
