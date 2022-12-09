@@ -34,6 +34,8 @@ pub mod storage;
 
 pub(crate) mod dependency;
 
+pub(crate) mod linker;
+
 #[allow(unused)]
 pub mod timer;
 
