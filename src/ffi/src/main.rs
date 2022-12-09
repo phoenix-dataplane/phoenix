@@ -166,7 +166,6 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
             };
         }
 
-        // todo: aman - figure out why recv_fds is blocking indefinitely here 
         let fds = ctx.service.recv_fd().unwrap();
 
         assert_eq!(fds.len(), 1);
