@@ -99,6 +99,8 @@ mod ipc_bridge {
         fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge;
         fn update_protos() -> bool;
         fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge;
+        fn dequeue_wc() -> MessageBridge;
+        fn block_on_reply() -> MessageBridge;
     }
 }
 
@@ -326,4 +328,71 @@ fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
         }
         ResultBridge {success: true}
     })
+}
+
+// TODO: (amanm4) - fix interface to allow different types of wc
+fn dequeue_wc() -> MessageBridge {
+    MRPC_CTX.with(|ctx| {
+        let mut comp: MessageBridge = construct_dummy_msg();
+            match ctx.service
+                .dequeue_wc_with(|ptr, count| unsafe {
+                    for i in 0..count {
+                        let c = ptr.add(i).cast::<dp::Completion>().read();
+                        match c {
+                            dp::Completion::Incoming(msg) => {
+                                comp = from_msg_to_bridge(msg);
+                            },
+                            dp::Completion::Outgoing(_, _) => continue,
+                            dp::Completion::RecvError(_, _) => continue,
+                        };
+                    }
+                    count
+                })
+                {
+                    Ok(_) => comp,
+                    Err(_) => construct_dummy_msg(), // something went wrong
+                }
+    })
+}
+
+fn block_on_reply() -> MessageBridge {
+    loop {
+        let msg= dequeue_wc();
+        if msg.meta.msg_type != RpcMsgTypeBridge::Request { // if reply this was constructed as dummy
+           return msg;
+        }
+    }
+}
+
+fn from_msg_to_bridge (msg: MessageErased) -> MessageBridge {
+    MessageBridge { 
+        meta: MessageMetaBridge { 
+            conn_id: HandleBridge { id: msg.meta.conn_id.0, }, 
+            service_id: msg.meta.service_id, 
+            func_id: msg.meta.func_id, 
+            call_id: CallIDBridge { id: msg.meta.call_id.0 }, 
+            token: msg.meta.token, 
+            msg_type: match msg.meta.msg_type {
+                RpcMsgType::Request => RpcMsgTypeBridge::Request,
+                RpcMsgType::Response => RpcMsgTypeBridge::Response,
+            }
+        }, 
+        shm_addr_app: msg.shm_addr_app, 
+        shm_addr_backend: msg.shm_addr_backend, 
+    }
+}
+
+fn construct_dummy_msg () -> MessageBridge {
+    MessageBridge { 
+        meta: MessageMetaBridge { 
+            conn_id: HandleBridge { id: 0, }, 
+            service_id: 0, 
+            func_id: 0, 
+            call_id: CallIDBridge { id: 0 }, 
+            token: 0, 
+            msg_type: RpcMsgTypeBridge::Request,
+        }, 
+        shm_addr_app: 0, 
+        shm_addr_backend: 0, 
+    }
 }
