@@ -12,6 +12,7 @@ crate-type = ["rlib"]
 uapi = { workspace = true, features = ["mrpc"] } # Should be removed
 ipc.workspace = true
 rdma = { workspace = true, features = ["phoenix"] }
+mmap.workspace = true
 
 uapi-mrpc = { path = "../../experimental/mrpc/uapi/mrpc" }
 
@@ -59,8 +60,7 @@ sharded-slab.workspace = true
 libnuma.workspace = true
 libnuma-sys.workspace = true
 serde_json.workspace = true
-
-mmap.workspace = true
+page_size.workspace = true
 
 # linker
 object = { workspace = true, features = ["write"] }

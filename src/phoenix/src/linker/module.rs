@@ -1,10 +1,13 @@
 use std::fs;
 use std::path::Path;
+use std::os::unix::io::AsRawFd;
 
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfFile;
 use object::Object;
+
+use mmap::{Mmap, MmapOptions};
 
 use super::initfini::InitFini;
 use super::section::Section;
@@ -30,13 +33,20 @@ impl LoadableModule {
         // meaning of each section and load needed sections into memory.
         let object = fs::File::open(path)?;
 
-        todo!();
         // Map anan with RWE
-        let object_bin = fs::read(path)?;
-        let image_addr = object_bin.as_ptr();
+        let image = MmapOptions::new()
+            .set_fd(object.as_raw_fd())
+            .anon(true)
+            .private(true)
+            .read(true)
+            .write(true)
+            .exec(true)
+            .mmap()?;
+
+        let image_addr = image.as_ptr();
 
         // The step to verify ELF is included in `parse`.
-        let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*object_bin)?;
+        let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*image)?;
 
         // Init sections
         let mut sections: Vec<_> = elf.sections().map(|s| Section::new(&s)).collect();

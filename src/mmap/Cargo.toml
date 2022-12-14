@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 libc.workspace = true
 nix.workspace = true
+page_size.workspace = true

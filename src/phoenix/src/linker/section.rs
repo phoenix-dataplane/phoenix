@@ -1,12 +1,10 @@
-use std::alloc::Layout;
-
 use object::elf;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfSection;
 use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind};
 
-use mmap::MmapAligned;
+use mmap::{Mmap, MmapOptions};
 
 use super::Error;
 
@@ -23,7 +21,7 @@ pub(crate) struct Section {
     pub(crate) flags: SectionFlags,
     pub(crate) relocations: Vec<(u64, Relocation)>,
     /// For .bss sections, we need to allocate extra spaces.
-    pub(crate) mmap: Option<MmapAligned>,
+    pub(crate) mmap: Option<Mmap>,
 }
 
 impl Section {
@@ -66,19 +64,22 @@ impl Section {
     pub(crate) fn update_runtime_addr(&mut self, image_addr: *const u8) -> Result<(), Error> {
         if self.kind.is_bss() && self.size > 0 {
             // Allocate memory for .bss section.
-            let layout = Layout::from_size_align(self.size as usize, self.align as usize)?
-                .align_to(page_size())?;
-            todo!("update the permission");
-            let mmap = MmapAligned::map_anon(layout)?;
-            self.address = mmap.0.as_ptr().addr() as u64;
+            assert!(self.align as usize <= page_size::get());
+            // round up to page
+            let rounded_size = self.size.next_multiple_of(page_size::get() as u64) as usize;
+            let mmap = MmapOptions::new()
+                .len(rounded_size)
+                .anon(true)
+                .private(true)
+                .read(true)
+                .write(true)
+                .mmap()?;
+            // update the address
+            self.address = mmap.as_ptr().addr() as u64;
         } else if self.need_load() {
             let file_off = self.file_range.expect("impossible").0;
             self.address = unsafe { image_addr.offset(file_off as isize) }.addr() as u64;
         }
         Ok(())
     }
-}
-
-fn page_size() -> usize {
-    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
 }
