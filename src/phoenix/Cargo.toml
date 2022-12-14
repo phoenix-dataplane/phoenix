@@ -60,6 +60,8 @@ libnuma.workspace = true
 libnuma-sys.workspace = true
 serde_json.workspace = true
 
+mmap.workspace = true
+
 # linker
 object = { workspace = true, features = ["write"] }
 rustc-demangle.workspace = true

@@ -16,30 +16,33 @@
 //! To make sure the linker working, it makes several assumptions. These assumptions
 //! may not hold under some special circumstances which requires the user to be
 //! extreme careful. Specifically, the linker assumes
+//! - all objects are compiled with -fPIC.
 //! - there is no LTO for the rlibs (double check whether this condition is necessary)
 //! - the compiler toolchain of phoenix itself and the plugins are compatible (the same)
 //! - the platform is Linux 64-bit little endian. (This assumption can be removed by
 //!   improving the code a little).
-use std::collections::HashMap;
+use std::alloc::LayoutError;
 use std::fs;
 use std::io;
-use std::marker::PhantomData;
 use std::path::Path;
 
-use object::elf;
-use object::elf::{FileHeader64, SectionHeader64};
+use object::elf::FileHeader64;
 use object::endian::LittleEndian;
-use object::read::elf::{ElfFile, ElfSymbol, FileHeader, SectionHeader};
-use object::read::SymbolSection;
-use object::Relocation;
-use object::SectionFlags;
-use object::SectionIndex;
-use object::SectionKind;
-use object::{
-    Object, ObjectSection, ObjectSymbol, SymbolFlags, SymbolIndex, SymbolKind, SymbolScope,
-};
+use object::read::elf::ElfFile;
+use object::{Object, ObjectSymbol};
 use rustc_demangle::demangle;
 use thiserror::Error;
+
+pub(crate) mod symbol;
+use symbol::{load_symbol_table, SymbolTable};
+
+pub(crate) mod section;
+use section::Section;
+
+pub(crate) mod initfini;
+
+pub(crate) mod module;
+use module::LoadableModule;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -47,56 +50,17 @@ pub enum Error {
     Io(#[from] io::Error),
     #[error("Object error: {0}")]
     Object(#[from] object::Error),
-}
-
-#[derive(Debug, Clone)]
-struct Symbol {
-    index: SymbolIndex,
-    name: Option<String>,
-    address: u64,
-    kind: SymbolKind,
-    section: SymbolSection,
-    is_undefined: bool,
-    is_definition: bool,
-    is_common: bool,
-    is_weak: bool,
-    is_global: bool,
-    scope: SymbolScope,
-    flags: SymbolFlags<SectionIndex>,
-}
-
-#[derive(Debug)]
-struct Section {
-    index: SectionIndex,
-    address: u64,
-    size: u64,
-    align: u64,
-    file_range: Option<(u64, u64)>,
-    name: Option<String>,
-    segment_name: Option<String>,
-    kind: SectionKind,
-    flags: SectionFlags,
-    relocations: Vec<(u64, Relocation)>,
-}
-
-type SymbolTable = HashMap<String, Symbol>;
-
-struct InitFini<'bin> {
-    entry: fn(),
-    _marker: PhantomData<&'bin ()>,
-}
-
-struct Module<'b> {
-    sections: Vec<Section>,
-    // Initializers of the ObjectCode
-    init: Vec<InitFini<'b>>,
-    fini: Vec<InitFini<'b>>,
+    #[error("Layout error: {0}")]
+    Layout(#[from] LayoutError),
 }
 
 pub(crate) struct Linker {
+    /// The binary for phoenix itself.
     binary: Vec<u8>,
-    // elf: ElfFile<'data, FileHeader64<LittleEndian>>,
+    /// The global symbol table.
     sym_table: SymbolTable,
+    /// The set of loadable module that are current in memory.
+    loaded_modules: Vec<LoadableModule>,
 }
 
 impl Linker {
@@ -113,57 +77,14 @@ impl Linker {
         Ok(Linker {
             binary: self_binary,
             sym_table,
+            loaded_modules: Vec::new(),
         })
     }
 
-    /// Load a given
+    /// Load a given object file into memory.
     pub(crate) fn load_object<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
-        // Relocatable object does not have segments, so we have to understand the
-        // meaning of each section and load them into memory if necessary.
-        let object_bin = fs::read(path)?;
-
-        let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*object_bin)?;
-
-        // The logic is from ghc/rts/linker/Elf.c
-        for section in elf.sections() {
-            // Identify initializer and finalizer lists
-            match section.kind() {
-                SectionKind::Text | SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => {
-                    let Ok(name) = section.name() else {
-                        log::warn!("name parse error, skip");
-                        continue;
-                    };
-                    // .init -> .ctors.\d+ -> .ctors -> .init_array.\d+ -> .init_array
-                    match name {
-                        ".init" => {}
-                        ".fini" => {}
-                        _ if name.starts_with(".ctors") => {}
-                        _ if name.starts_with(".dtors") => {}
-                        _ if name.starts_with(".init_array") => {}
-                        _ if name.starts_with(".fini_array") => {}
-                        _ => {
-                            continue;
-                        }
-                    }
-                }
-                SectionKind::Elf(elf::SHT_INIT_ARRAY) => {}
-                SectionKind::Elf(elf::SHT_FINI_ARRAY) => {}
-                _ => todo!("handle it"),
-            }
-
-            // Load sections
-            if section.kind().is_bss() && section.size() > 0 {
-            } else if section.kind() != SectionKind::Common && section.size() > 0 {
-            }
-        }
-
-        // Copy stuff into this module's object symbol table
-        todo!("what is SHN_COMMON?");
-        // Traverse the symbol table
-        for sym in elf.symbols() {
-            // Update the symbol to point to the address we allocated for each section
-        }
-
+        let module = LoadableModule::load_and_link(path, &mut self.sym_table);
+        todo!("Run initializers");
         Ok(())
     }
 }
@@ -191,33 +112,4 @@ fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<is
     }
 
     relocation_offset
-}
-
-fn load_symbol_table(elf: &ElfFile<FileHeader64<LittleEndian>>) -> SymbolTable {
-    let mut sym_table = HashMap::new();
-    for sym in elf.symbols() {
-        match sym.name() {
-            Ok(name) => {
-                let symbol = Symbol {
-                    index: sym.index(),
-                    name: sym.name().ok().map(|x| x.to_owned()),
-                    address: sym.address(),
-                    kind: sym.kind(),
-                    section: sym.section(),
-                    is_undefined: sym.is_undefined(),
-                    is_definition: sym.is_definition(),
-                    is_common: sym.is_common(),
-                    is_weak: sym.is_weak(),
-                    is_global: sym.is_global(),
-                    scope: sym.scope(),
-                    flags: sym.flags(),
-                };
-                sym_table
-                    .insert(name.to_owned(), symbol)
-                    .unwrap_or_else(|| panic!("duplicated symbols: {}", name));
-            }
-            Err(e) => todo!("The symbol does not have a name, handle the error: {}", e),
-        }
-    }
-    sym_table
 }

@@ -3,7 +3,7 @@ use std::alloc::Layout;
 use std::fs;
 use std::io;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::ptr;
 use std::slice;
 
@@ -22,15 +22,9 @@ impl Drop for MmapAligned {
 }
 
 impl MmapAligned {
-    // Returns a MmapAligned object and the extra length at the beginning of the memfile.
-    //
-    // On some platforms, we have no control of the virtual address the mmap returns. To get an
-    // aligned address in this case, we allocate a slightly larger buffer, and cut off its extra
-    // head and tail to get the aligned middle part.
-    pub fn map_aligned(memfile: &fs::File, layout: Layout) -> io::Result<(Self, usize)> {
+    fn map_inner(fd: RawFd, layout: Layout, flags: MapFlags) -> io::Result<(Self, usize)> {
         let len = layout.size();
         let align = layout.align();
-        // let len = memfile.metadata()?.len() as usize;
         assert_ne!(len, 0);
         // let align = len
         //     .checked_next_power_of_two()
@@ -38,14 +32,13 @@ impl MmapAligned {
         assert!(len % align == 0, "len {} vs align {}", len, align);
 
         let mapped_len = align + len;
-        memfile.set_len(mapped_len as u64)?;
         let ptr = unsafe {
             mmap(
                 ptr::null_mut(),
                 mapped_len,
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED | MapFlags::MAP_NORESERVE,
-                memfile.as_raw_fd(),
+                flags | MapFlags::MAP_NORESERVE,
+                fd,
                 0,
             )?
         };
@@ -90,6 +83,26 @@ impl MmapAligned {
             },
             head_len,
         ))
+    }
+
+    pub fn map_anon(layout: Layout) -> io::Result<(Self, usize)> {
+        Self::map_inner(-1, layout, MapFlags::MAP_PRIVATE)
+    }
+
+    /// Returns a MmapAligned object and the extra length at the beginning of the memfile.
+    ///
+    /// On some platforms, we have no control of the virtual address the mmap returns. To get an
+    /// aligned address in this case, we allocate a slightly larger buffer, and cut off its extra
+    /// head and tail to get the aligned middle part.
+    pub fn map_aligned(memfile: &fs::File, layout: Layout) -> io::Result<(Self, usize)> {
+        let len = layout.size();
+        let align = layout.align();
+        // let len = memfile.metadata()?.len() as usize;
+
+        let mapped_len = align + len;
+        memfile.set_len(mapped_len as u64)?;
+
+        Self::map_inner(memfile.as_raw_fd(), layout, MapFlags::MAP_SHARED)
     }
 
     #[inline]

@@ -1908,6 +1908,7 @@ dependencies = [
  "memmap2 0.5.8",
  "minstant",
  "mio 0.7.14",
+ "mmap",
  "nix 0.25.1",
  "num_cpus",
  "object",
