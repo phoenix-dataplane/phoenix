@@ -34,7 +34,7 @@ use rustc_demangle::demangle;
 use thiserror::Error;
 
 pub(crate) mod symbol;
-use symbol::{load_symbol_table, SymbolTable};
+use symbol::SymbolTable;
 
 pub(crate) mod section;
 use section::Section;
@@ -52,6 +52,8 @@ pub enum Error {
     Object(#[from] object::Error),
     #[error("Layout error: {0}")]
     Layout(#[from] LayoutError),
+    #[error("Fail to identify relocation offset")]
+    RelocationOffset,
 }
 
 pub(crate) struct Linker {
@@ -70,10 +72,19 @@ impl Linker {
         let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*self_binary)?;
         println!("entry: {:0x}", elf.entry());
 
-        let relocation_offset = get_relocation_offset(&elf);
-        println!("relocation_offset: {:0x}", relocation_offset.unwrap());
+        let Some(runtime_offset) = get_runtime_offset(&elf) else {
+            return Err(Error::RelocationOffset);
+        };
+        println!("runtime_offset: {:0x}", runtime_offset);
 
-        let sym_table = load_symbol_table(&elf);
+        // Update symbols' addresses to their runtime addresses
+        let mut sym_table = SymbolTable::new(&elf);
+        for sym in sym_table.table.values_mut() {
+            if sym.is_global && sym.is_definition {
+                sym.address = (sym.address as isize + runtime_offset) as u64;
+            }
+        }
+
         Ok(Linker {
             binary: self_binary,
             sym_table,
@@ -89,20 +100,20 @@ impl Linker {
     }
 }
 
-fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
-    let runtime_addr = (get_relocation_offset as *const ()).expose_addr();
-    println!("addr of main: {:?}", get_relocation_offset as *const ());
+fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
+    let runtime_addr = (get_runtime_offset as *const ()).expose_addr();
+    println!("addr of main: {:?}", get_runtime_offset as *const ());
 
-    let target_sym = format!("{}::get_relocation_offset", module_path!());
+    let target_sym = format!("{}::get_runtime_offset", module_path!());
 
     let mut num_matches = 0;
-    let mut relocation_offset = None;
+    let mut runtime_offset = None;
 
     for sym in elf.symbols() {
         let demangled_sym = format!("{:#?}", demangle(sym.name().unwrap()));
         if demangled_sym == target_sym {
             let addr = sym.address();
-            relocation_offset = Some(runtime_addr as isize - addr as isize);
+            runtime_offset = Some(runtime_addr as isize - addr as isize);
             num_matches += 1;
         }
     }
@@ -111,5 +122,5 @@ fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<is
         panic!("FIXME, found {} matches for {}", num_matches, target_sym);
     }
 
-    relocation_offset
+    runtime_offset
 }

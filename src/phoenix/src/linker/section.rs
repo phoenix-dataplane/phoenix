@@ -6,6 +6,7 @@ use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind}
 
 use mmap::{Mmap, MmapOptions};
 
+use super::symbol::{Symbol, SymbolTable};
 use super::Error;
 
 #[derive(Debug)]
@@ -81,5 +82,37 @@ impl Section {
             self.address = unsafe { image_addr.offset(file_off as isize) }.addr() as u64;
         }
         Ok(())
+    }
+}
+
+// Common symbols are a feature that allow a programmer to 'define' several
+// variables of the same name in different source files.
+// This is indeed 'common' in ELF relocatable object files.
+pub(crate) struct CommonSection {
+    mmap: Mmap,
+    used: isize,
+}
+
+impl CommonSection {
+    pub(crate) fn new(sym_table: &SymbolTable) -> Result<Self, Error> {
+        let size: u64 = sym_table
+            .table
+            .values()
+            .filter_map(|sym| if sym.is_common { Some(sym.size) } else { None })
+            .sum();
+        let mmap = MmapOptions::new()
+            .len(size as usize)
+            .anon(true)
+            .private(true)
+            .read(true)
+            .write(true)
+            .mmap()?;
+        Ok(Self { mmap, used: 0 })
+    }
+
+    pub(crate) fn alloc_entry_for_symbol(&mut self, sym: &Symbol) -> *const u8 {
+        let ret = unsafe { self.mmap.as_ptr().offset(self.used) };
+        self.used += sym.size as isize;
+        ret
     }
 }

@@ -1,25 +1,29 @@
 use std::fs;
-use std::path::Path;
 use std::os::unix::io::AsRawFd;
+use std::path::Path;
 
+use anyhow::Context;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfFile;
 use object::Object;
 
-use mmap::{Mmap, MmapOptions};
+use mmap::MmapOptions;
 
 use super::initfini::InitFini;
-use super::section::Section;
+use super::section::{CommonSection, Section};
 use super::symbol::SymbolTable;
 use crate::PhoenixResult;
 
 pub(crate) struct LoadableModule {
+    /// Sections of the module
     sections: Vec<Section>,
-    // Initializers of the ObjectCode
+    /// Initializers of the ObjectCode
     init: Vec<InitFini>,
     fini: Vec<InitFini>,
-    // The File must be the last to drop.
+    /// Memory section for COMMON symbols
+    common_section: CommonSection,
+    /// The File must be the last to drop.
     object: fs::File,
 }
 
@@ -55,16 +59,34 @@ impl LoadableModule {
         let init = Vec::new();
         let fini = Vec::new();
 
-        // Allocate space for sections
+        // Update runtime address and allocate space for bss
         for sec in &mut sections {
             sec.update_runtime_addr(image_addr)?;
         }
 
         // Allocate space for SHN_COMMON. See ELF Spec 1-19
-        // Copy stuff into this module's object symbol table
-        // Traverse the symbol table
-        for sym in elf.symbols() {
+        let mut obj_sym_table = SymbolTable::new(&elf);
+        let mut common_section = CommonSection::new(&obj_sym_table)?;
+
+        // Insert symbol definition for global symbols from this module into global symbol table
+        for (sym_name, sym) in &mut obj_sym_table.table {
             // Update the symbol to point to the address we allocated for each section
+            let sym_addr = if sym.is_common {
+                Some(common_section.alloc_entry_for_symbol(&sym).addr() as u64)
+            } else if sym.is_definition {
+                let secno = sym.section_index.expect("You catch an outlier");
+                let section = sections.get(secno.0).context("Invalid ELF section index")?;
+                Some(section.address + sym.address) // base + offset
+            } else {
+                None
+            };
+
+            if let Some(sym_addr) = sym_addr {
+                sym.address = sym_addr;
+                if sym.is_global {
+                    sym_table.insert(sym_name.clone(), sym.clone());
+                }
+            }
         }
 
         // Resolve symbols
@@ -74,6 +96,7 @@ impl LoadableModule {
             sections,
             init,
             fini,
+            common_section,
             object,
         })
     }
