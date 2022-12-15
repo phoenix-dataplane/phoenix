@@ -2,18 +2,17 @@ use std::fs;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
-use anyhow::Context;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfFile;
-use object::Object;
+use object::{Object, SymbolKind};
 
 use mmap::MmapOptions;
 
+use super::Error;
 use super::initfini::InitFini;
-use super::section::{CommonSection, Section};
-use super::symbol::SymbolTable;
-use crate::PhoenixResult;
+use super::section::{do_relocation, CommonSection, Section};
+use super::symbol::{SymbolLookupTable, SymbolTable};
 
 pub(crate) struct LoadableModule {
     /// Sections of the module
@@ -31,13 +30,13 @@ impl LoadableModule {
     /// Load a given object file into memory and resolve undefined symbols.
     pub(crate) fn load_and_link<P: AsRef<Path>>(
         path: P,
-        sym_table: &mut SymbolTable,
-    ) -> PhoenixResult<Self> {
+        sym_lookup_table: &mut SymbolLookupTable,
+    ) -> Result<Self, Error> {
         // Relocatable object does not have segments, so we have to understand the
         // meaning of each section and load needed sections into memory.
         let object = fs::File::open(path)?;
 
-        // Map anan with RWE
+        // Map anonymous with RWE
         let image = MmapOptions::new()
             .set_fd(object.as_raw_fd())
             .anon(true)
@@ -65,17 +64,17 @@ impl LoadableModule {
         }
 
         // Allocate space for SHN_COMMON. See ELF Spec 1-19
-        let mut obj_sym_table = SymbolTable::new(&elf);
-        let mut common_section = CommonSection::new(&obj_sym_table)?;
+        let mut symtab = SymbolTable::new(&elf);
+        let mut common_section = CommonSection::new(&symtab)?;
 
         // Insert symbol definition for global symbols from this module into global symbol table
-        for (sym_name, sym) in &mut obj_sym_table.table {
+        for sym in &mut symtab.symbols {
             // Update the symbol to point to the address we allocated for each section
             let sym_addr = if sym.is_common {
                 Some(common_section.alloc_entry_for_symbol(&sym).addr() as u64)
             } else if sym.is_definition {
                 let secno = sym.section_index.expect("You catch an outlier");
-                let section = sections.get(secno.0).context("Invalid ELF section index")?;
+                let section = sections.get(secno.0).expect("Invalid ELF section index");
                 Some(section.address + sym.address) // base + offset
             } else {
                 None
@@ -84,13 +83,28 @@ impl LoadableModule {
             if let Some(sym_addr) = sym_addr {
                 sym.address = sym_addr;
                 if sym.is_global {
-                    sym_table.insert(sym_name.clone(), sym.clone());
+                    sym_lookup_table.insert(sym.name.clone(), sym.clone());
                 }
             }
         }
 
         // Resolve symbols
-        todo!();
+
+        // First we resolve section symbols
+        // these are special symbols that point to sections, and have no name.
+        // Usually there should be one symbol for each text and data section.
+        //
+        // We need to resolve (assign addresses) to them, to be able to use them
+        // during relocation.
+        for sym in symtab.symbols.iter_mut() {
+            if sym.kind == SymbolKind::Section {
+                let secno = sym.section_index.expect("This seems to be an exception");
+                sym.address = sections[secno.0].address;
+            }
+        }
+
+        // Then we process the reloation sections.
+        do_relocation(&sections, &symtab, &sym_lookup_table);
 
         Ok(Self {
             sections,
@@ -102,6 +116,6 @@ impl LoadableModule {
     }
 
     pub(crate) fn run_init(&mut self) {
-        todo!();
+        eprintln!("TODO: Run initializers");
     }
 }

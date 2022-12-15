@@ -58,6 +58,7 @@ fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<is
 
 fn main() -> anyhow::Result<()> {
     let bin_data = fs::read("/proc/self/exe")?;
+    // let bin_data = fs::read("/tmp/tmp/libmmap.o")?;
     let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*bin_data)?;
     println!("entry: {:0x}", elf.entry());
 

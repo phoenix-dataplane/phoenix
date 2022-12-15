@@ -2,11 +2,13 @@ use object::elf;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfSection;
+use object::read::SymbolSection;
 use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind};
+use object::{RelocationKind, RelocationTarget};
 
 use mmap::{Mmap, MmapOptions};
 
-use super::symbol::{Symbol, SymbolTable};
+use super::symbol::{Symbol, SymbolLookupTable, SymbolTable};
 use super::Error;
 
 #[derive(Debug)]
@@ -96,8 +98,8 @@ pub(crate) struct CommonSection {
 impl CommonSection {
     pub(crate) fn new(sym_table: &SymbolTable) -> Result<Self, Error> {
         let size: u64 = sym_table
-            .table
-            .values()
+            .symbols
+            .iter()
             .filter_map(|sym| if sym.is_common { Some(sym.size) } else { None })
             .sum();
         let mmap = MmapOptions::new()
@@ -113,6 +115,107 @@ impl CommonSection {
     pub(crate) fn alloc_entry_for_symbol(&mut self, sym: &Symbol) -> *const u8 {
         let ret = unsafe { self.mmap.as_ptr().offset(self.used) };
         self.used += sym.size as isize;
+        assert!(self.used as usize <= self.mmap.len());
         ret
     }
+}
+
+#[allow(non_snake_case)]
+pub(crate) fn do_relocation(
+    sections: &Vec<Section>,
+    local_sym_table: &SymbolTable,
+    global_sym_table: &SymbolLookupTable,
+) {
+    for sec in sections {
+        if !sec.need_load() {
+            continue;
+        }
+
+        for (off, rela) in &sec.relocations {
+            let P = sec.address + off;
+            let A = rela.addend();
+            let S = match rela.target() {
+                RelocationTarget::Symbol(sym_index) => {
+                    let sym = local_sym_table.symbol_by_index(sym_index).unwrap();
+                    if sym.is_global {
+                        // for global symbols, get its name first
+                        // then query the symbol in the global symbol lookup table
+                        let def = global_sym_table
+                            .get(&sym.name)
+                            .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
+                        def.address
+                    } else {
+                        // for local symbols, just read its symbol address
+                        let SymbolSection::Section(section_index) = sym.section else {
+                            panic!("no such section: {:?}", sym.section);
+                        };
+                        let section = &sections[section_index.0];
+                        section.address + sym.address
+                    }
+                }
+                RelocationTarget::Section(_sec_index) => todo!("Got a section to relocate"),
+                RelocationTarget::Absolute => 0,
+                _ => panic!("rela: {:?}", rela),
+            };
+
+            let (P, A, S) = (P as i64, A as i64, S as i64);
+            let Image = 0;
+            let Section = 0;
+            let value = match rela.kind() {
+                RelocationKind::Absolute => S + A,
+                RelocationKind::Relative => S + A - P,
+                RelocationKind::Got => {
+                    let GotBase = get_got_base();
+                    let G = make_got();
+                    G + A - GotBase
+                }
+                RelocationKind::GotRelative => {
+                    let G = make_got();
+                    G + A - P
+                }
+                RelocationKind::GotBaseRelative => {
+                    let GotBase = get_got_base();
+                    GotBase + A - P
+                }
+                RelocationKind::GotBaseOffset => {
+                    let GotBase = get_got_base();
+                    S + A - GotBase
+                }
+                RelocationKind::PltRelative => {
+                    let L = make_plt();
+                    L + A - P
+                }
+                RelocationKind::ImageOffset => S + A - Image,
+                RelocationKind::SectionOffset => S + A - Section,
+                _ => panic!("rela: {:?}", rela),
+            };
+
+            if rela.size() == 0 {
+            } else {
+                // SAFETY: P must be a valid
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        &value as *const i64 as *const u8,
+                        P as *mut u8,
+                        (rela.size() / 8) as usize,
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[inline]
+fn get_got_base() -> i64 {
+    todo!("get_got_base")
+}
+
+#[inline]
+fn make_got() -> i64 {
+    todo!("make_got")
+}
+
+#[inline]
+fn make_plt() -> i64 {
+    todo!("make_plt")
 }

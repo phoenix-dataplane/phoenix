@@ -34,10 +34,9 @@ use rustc_demangle::demangle;
 use thiserror::Error;
 
 pub(crate) mod symbol;
-use symbol::SymbolTable;
+use symbol::{SymbolLookupTable, SymbolTable};
 
 pub(crate) mod section;
-use section::Section;
 
 pub(crate) mod initfini;
 
@@ -59,8 +58,8 @@ pub enum Error {
 pub(crate) struct Linker {
     /// The binary for phoenix itself.
     binary: Vec<u8>,
-    /// The global symbol table.
-    sym_table: SymbolTable,
+    /// The global symbol lookup table.
+    global_sym_table: SymbolLookupTable,
     /// The set of loadable module that are current in memory.
     loaded_modules: Vec<LoadableModule>,
 }
@@ -78,8 +77,8 @@ impl Linker {
         println!("runtime_offset: {:0x}", runtime_offset);
 
         // Update symbols' addresses to their runtime addresses
-        let mut sym_table = SymbolTable::new(&elf);
-        for sym in sym_table.table.values_mut() {
+        let mut global_sym_table = SymbolLookupTable::new(&elf);
+        for sym in global_sym_table.table.values_mut() {
             if sym.is_global && sym.is_definition {
                 sym.address = (sym.address as isize + runtime_offset) as u64;
             }
@@ -87,15 +86,15 @@ impl Linker {
 
         Ok(Linker {
             binary: self_binary,
-            sym_table,
+            global_sym_table,
             loaded_modules: Vec::new(),
         })
     }
 
     /// Load a given object file into memory.
     pub(crate) fn load_object<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
-        let module = LoadableModule::load_and_link(path, &mut self.sym_table);
-        todo!("Run initializers");
+        let mut module = LoadableModule::load_and_link(path, &mut self.global_sym_table)?;
+        module.run_init();
         Ok(())
     }
 }
