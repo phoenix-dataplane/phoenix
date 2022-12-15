@@ -39,7 +39,6 @@ impl LoadableModule {
         // Map anonymous with RWE
         let image = MmapOptions::new()
             .set_fd(object.as_raw_fd())
-            .anon(true)
             .private(true)
             .read(true)
             .write(true)

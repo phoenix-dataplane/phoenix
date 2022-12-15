@@ -91,7 +91,7 @@ impl Section {
 // variables of the same name in different source files.
 // This is indeed 'common' in ELF relocatable object files.
 pub(crate) struct CommonSection {
-    mmap: Mmap,
+    mmap: Option<Mmap>,
     used: isize,
 }
 
@@ -102,20 +102,30 @@ impl CommonSection {
             .iter()
             .filter_map(|sym| if sym.is_common { Some(sym.size) } else { None })
             .sum();
-        let mmap = MmapOptions::new()
-            .len(size as usize)
-            .anon(true)
-            .private(true)
-            .read(true)
-            .write(true)
-            .mmap()?;
+        let mmap = if size > 0 {
+            Some(
+                MmapOptions::new()
+                    .len(size as usize)
+                    .anon(true)
+                    .private(true)
+                    .read(true)
+                    .write(true)
+                    .mmap()?,
+            )
+        } else {
+            None
+        };
         Ok(Self { mmap, used: 0 })
     }
 
     pub(crate) fn alloc_entry_for_symbol(&mut self, sym: &Symbol) -> *const u8 {
-        let ret = unsafe { self.mmap.as_ptr().offset(self.used) };
+        let mmap = self
+            .mmap
+            .as_ref()
+            .expect("Something is wrong with calculating common size");
+        let ret = unsafe { mmap.as_ptr().offset(self.used) };
         self.used += sym.size as isize;
-        assert!(self.used as usize <= self.mmap.len());
+        assert!(self.used as usize <= mmap.len());
         ret
     }
 }

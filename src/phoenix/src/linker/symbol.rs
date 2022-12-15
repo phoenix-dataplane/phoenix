@@ -80,12 +80,21 @@ impl SymbolLookupTable {
     pub(crate) fn new(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Self {
         let mut sym_table = HashMap::new();
         for sym in elf.symbols() {
+            if !sym.is_definition() || sym.is_local() {
+                continue;
+            }
+            if sym.kind() == SymbolKind::Unknown {
+                continue;
+            }
             match sym.name() {
                 Ok(name) => {
                     let symbol = Symbol::new(sym);
-                    sym_table
-                        .insert(name.to_owned(), symbol)
-                        .unwrap_or_else(|| panic!("duplicated symbols: {}", name));
+                    println!("name: '{}'", name);
+                    let ret = sym_table
+                        .insert(name.to_owned(), symbol);
+                    if ret.is_some() {
+                        panic!("duplicate symbol: {:?}", Symbol::new(sym));
+                    }
                 }
                 Err(e) => todo!("The symbol does not have a name, handle the error: {}", e),
             }

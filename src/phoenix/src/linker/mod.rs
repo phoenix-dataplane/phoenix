@@ -123,3 +123,13 @@ fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize
 
     runtime_offset
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_linker() {
+        let mut linker = Linker::new().unwrap();
+        linker.load_object("/tmp/tmp/core/libcore.o").unwrap();
+    }
+}
