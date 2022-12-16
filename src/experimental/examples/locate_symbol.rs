@@ -31,8 +31,23 @@ fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<is
         );
     }
 
-    for sym in elf.symbols() {
+    // for sym in elf.symbols() {
+    for sym in elf.dynamic_symbols() {
         let demangled_sym = format!("{:#?}", demangle(sym.name().unwrap()));
+        dbg!(
+            sym.index(),
+            sym.name().unwrap_or(""),
+            sym.address(),
+            sym.kind(),
+            sym.section(),
+            sym.is_undefined(),
+            sym.is_definition(),
+            sym.is_common(),
+            sym.is_weak(),
+            sym.scope(),
+            sym.is_global(),
+            sym.flags(),
+        );
         if demangled_sym == sym_main {
             dbg!(
                 sym.index(),
@@ -53,17 +68,32 @@ fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<is
         }
     }
 
+    dbg!("before dynamic_relocations!");
+    if let Some(dynamic_relocations) = elf.dynamic_relocations() {
+        dbg!("dynamic_relocations!");
+        for (off, relocation) in dynamic_relocations {
+            dbg!(off, relocation);
+        }
+    }
     None
 }
 
 fn main() -> anyhow::Result<()> {
+    // no normal relocations (because it's binary/dylib, linker already relocates)
+    // some dynamic symbols (and are undefined),
+    // many dynamic relocations
     let bin_data = fs::read("/proc/self/exe")?;
-    // let bin_data = fs::read("/tmp/tmp/libmmap.o")?;
+
+    // many normal relocations (mostly debug sections),
+    // no dynamic symbols,
+    // no dynamic relocations
+    // let bin_data = fs::read("/tmp/tmp/core/libcore.o")?;
+
     let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*bin_data)?;
     println!("entry: {:0x}", elf.entry());
 
     let relocation_offset = get_relocation_offset(&elf);
-    println!("relocation_offset: {:0x}", relocation_offset.unwrap());
+    // println!("relocation_offset: {:0x}", relocation_offset.unwrap());
 
     Ok(())
 }

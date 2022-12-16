@@ -89,7 +89,7 @@ impl SymbolLookupTable {
             match sym.name() {
                 Ok(name) => {
                     let symbol = Symbol::new(sym);
-                    println!("name: '{}'", name);
+                    // eprintln!("name: '{}'", name);
                     let ret = sym_table
                         .insert(name.to_owned(), symbol);
                     if ret.is_some() {
@@ -107,8 +107,22 @@ impl SymbolLookupTable {
         self.table.insert(name, sym);
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<&Symbol> {
-        self.table.get(name)
+    pub(crate) fn lookup_symbol_addr(&self, name: &str) -> Option<usize> {
+        if let Some(sym) = self.table.get(name) {
+            Some(sym.address as usize)
+        } else {
+            // In case we did not find the symbol in the global defined symbols,
+            // we try to look up the symbol using dlsym.
+            let cstr = std::ffi::CString::new(name).expect("Invalid name for CString");
+            let addr = unsafe { libc::dlsym(libc::RTLD_DEFAULT, cstr.as_c_str().as_ptr()) };
+            // TODO(cjr): look up in opened shared libraries.
+            if addr.is_null() {
+                eprintln!("{:?}", unsafe { std::ffi::CStr::from_ptr(libc::dlerror()) });
+                None
+            } else {
+                Some(addr.addr())
+            }
+        }
     }
 }
 

@@ -1,3 +1,5 @@
+use std::ptr;
+
 use object::elf;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
@@ -181,7 +183,24 @@ impl ExtraSymbolSection {
             addr: sym_addr,
             trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
         };
-        entry.addr
+        ptr::addr_of!(entry.addr).addr()
+    }
+
+    #[inline]
+    pub(crate) fn make_plt_entry(&self, sym_addr: usize, sym_index: SymbolIndex) -> usize {
+        let start = self
+            .mmap
+            .as_ref()
+            .unwrap()
+            .as_ptr()
+            .cast::<ExtraSymbol>()
+            .cast_mut();
+        let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
+        *entry = ExtraSymbol {
+            addr: sym_addr,
+            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        };
+        ptr::addr_of!(entry.addr).addr()
     }
 }
 
@@ -209,10 +228,11 @@ pub(crate) fn do_relocation(
                     if sym.is_global {
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
-                        let def = global_sym_table
-                            .get(&sym.name)
+                        // eprintln!("name: {}, rela.kind: {:?}", sym.name, rela.kind());
+                        let addr = global_sym_table
+                            .lookup_symbol_addr(&sym.name)
                             .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
-                        def.address
+                        addr as u64
                     } else {
                         // for local symbols, just read its symbol address
                         let SymbolSection::Section(section_index) = sym.section else {
@@ -249,7 +269,9 @@ pub(crate) fn do_relocation(
                 RelocationKind::GotBaseRelative => GotBase + A - P,
                 RelocationKind::GotBaseOffset => S + A - GotBase,
                 RelocationKind::PltRelative => {
-                    let L = make_plt();
+                    let L = extra_symbols
+                        .make_plt_entry(S as usize, cur_sym_index.expect("sth wrong"))
+                        as i64;
                     L + A - P
                 }
                 RelocationKind::ImageOffset => S + A - Image,
@@ -257,11 +279,10 @@ pub(crate) fn do_relocation(
                 _ => panic!("rela: {:?}", rela),
             };
 
-            if rela.size() == 0 {
-            } else {
+            if rela.size() > 0 {
                 // SAFETY: P must be pointing to a valid address
                 unsafe {
-                    std::ptr::copy_nonoverlapping(
+                    ptr::copy_nonoverlapping(
                         &value as *const i64 as *const u8,
                         P as *mut u8,
                         (rela.size() / 8) as usize,
@@ -270,9 +291,4 @@ pub(crate) fn do_relocation(
             }
         }
     }
-}
-
-#[inline]
-fn make_plt() -> i64 {
-    todo!("make_plt")
 }
