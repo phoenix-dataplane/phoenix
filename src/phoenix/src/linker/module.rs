@@ -7,7 +7,7 @@ use object::endian::LittleEndian;
 use object::read::elf::ElfFile;
 use object::{Object, SymbolKind};
 
-use mmap::MmapOptions;
+use mmap::{Mmap, MmapOptions};
 
 use super::initfini::InitFini;
 use super::section::{do_relocation, CommonSection, ExtraSymbolSection, Section};
@@ -24,6 +24,8 @@ pub(crate) struct LoadableModule {
     common_section: CommonSection,
     /// Section to store extra symbols (e.g., for GOT)
     extra_symbols: ExtraSymbolSection,
+    /// The memory map needs to be retained.
+    image: Mmap,
     /// The File must be the last to drop.
     object: fs::File,
 }
@@ -58,6 +60,9 @@ impl LoadableModule {
         // Identify initializer and finalizer list
         let init = Vec::new();
         let fini = Vec::new();
+        for sec in &sections {
+            let _f = InitFini::new(sec);
+        }
 
         // Update runtime address and allocate space for bss
         for sec in &mut sections {
@@ -122,6 +127,7 @@ impl LoadableModule {
             fini,
             common_section,
             extra_symbols,
+            image,
             object,
         })
     }

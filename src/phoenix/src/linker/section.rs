@@ -84,9 +84,18 @@ impl Section {
                 .mmap()?;
             // update the address
             self.address = mmap.as_ptr().addr() as u64;
+            self.mmap = Some(mmap);
         } else if self.need_load() {
             let file_off = self.file_range.expect("impossible").0;
             self.address = unsafe { image_addr.offset(file_off as isize) }.addr() as u64;
+            eprintln!(
+                "section: {}, {:0x}, image_addr: {:0x}, file_off: {:0x}",
+                self.name,
+                self.address,
+                image_addr.addr(),
+                file_off
+            );
+            eprintln!("code: {:?}", unsafe { std::slice::from_raw_parts(self.address as *const u8, 32) });
         }
         Ok(())
     }
@@ -129,9 +138,9 @@ impl CommonSection {
             .mmap
             .as_ref()
             .expect("Something is wrong with calculating common size");
+        assert!((self.used as usize) < mmap.len());
         let ret = unsafe { mmap.as_ptr().offset(self.used) };
         self.used += sym.size as isize;
-        assert!(self.used as usize <= mmap.len());
         ret
     }
 }
@@ -178,12 +187,22 @@ impl ExtraSymbolSection {
             .as_ptr()
             .cast::<ExtraSymbol>()
             .cast_mut();
-        let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
-        *entry = ExtraSymbol {
-            addr: sym_addr,
-            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-        };
-        ptr::addr_of!(entry.addr).addr()
+        unsafe {
+            let entry = start.offset(sym_index.0 as isize);
+            entry.write(ExtraSymbol {
+                addr: sym_addr,
+                trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+            });
+            entry.addr()
+        }
+        // let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
+        // *entry = ExtraSymbol {
+        //     addr: sym_addr,
+        //     trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        // };
+        // ptr::addr_of!(entry.addr).addr()
+        // (entry as *const ExtraSymbol).addr()
+        // unsafe { start.offset(sym_index.0 as isize).addr() }
     }
 
     #[inline]
@@ -195,12 +214,20 @@ impl ExtraSymbolSection {
             .as_ptr()
             .cast::<ExtraSymbol>()
             .cast_mut();
-        let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
-        *entry = ExtraSymbol {
-            addr: sym_addr,
-            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-        };
-        ptr::addr_of!(entry.addr).addr()
+        // let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
+        // *entry = ExtraSymbol {
+        //     addr: sym_addr,
+        //     trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        // };
+        // ptr::addr_of!(entry.trampoline).addr()
+        unsafe {
+            let entry = start.offset(sym_index.0 as isize);
+            entry.write(ExtraSymbol {
+                addr: sym_addr,
+                trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+            });
+            entry.addr() + 8
+        }
     }
 }
 
@@ -228,7 +255,7 @@ pub(crate) fn do_relocation(
                     if sym.is_global {
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
-                        eprintln!("name: {}, rela.kind: {:?}", sym.name, rela.kind());
+                        eprintln!("name: {}, rela.kind: {:?}, A: {}, rela.size: {}", sym.name, rela.kind(), A, rela.size());
                         let addr = global_sym_table
                             .lookup_symbol_addr(&sym.name)
                             .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
@@ -239,7 +266,8 @@ pub(crate) fn do_relocation(
                             panic!("no such section: {:?}", sym.section);
                         };
                         let section = &sections[section_index.0];
-                        section.address + sym.address
+                        // section.address + sym.address
+                        sym.address
                     }
                 }
                 RelocationTarget::Section(_sec_index) => todo!("Got a section to relocate"),
@@ -261,9 +289,14 @@ pub(crate) fn do_relocation(
                     G + A - GotBase
                 }
                 RelocationKind::GotRelative => {
+                    // Pay attention to this kind
                     let G = extra_symbols
                         .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
                         as i64;
+                    eprintln!("{:0x} + {} - {:0x} = {:0x}", G, A, P, G + A - P);
+                    unsafe {
+                        eprintln!("G_content: {:0x?}", std::slice::from_raw_parts(G as *const u8, 16));
+                    }
                     G + A - P
                 }
                 RelocationKind::GotBaseRelative => GotBase + A - P,
@@ -279,16 +312,27 @@ pub(crate) fn do_relocation(
                 _ => panic!("rela: {:?}", rela),
             };
 
-            if rela.size() > 0 {
+            unsafe {
                 // SAFETY: P must be pointing to a valid address
-                unsafe {
-                    ptr::copy_nonoverlapping(
-                        &value as *const i64 as *const u8,
-                        P as *mut u8,
-                        (rela.size() / 8) as usize,
-                    );
+                match rela.size() {
+                    64 => (P as *mut u64).write(value as u64),
+                    32 => (P as *mut u32).write(value as u32),
+                    16 => (P as *mut u16).write(value as u16),
+                    8 => (P as *mut u8).write(value as u8),
+                    0 => {}
+                    _ => panic!("impossible"),
                 }
             }
+
+            // if rela.size() > 0 {
+            //     unsafe {
+            //         ptr::copy_nonoverlapping(
+            //             &value as *const i64 as *const u8,
+            //             P as *mut u8,
+            //             (rela.size() / 8) as usize,
+            //         );
+            //     }
+            // }
         }
     }
 }

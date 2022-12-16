@@ -22,7 +22,7 @@ pub(crate) struct InitFini {
 }
 
 impl InitFini {
-    pub(crate) fn new(section: &Section) -> Self {
+    pub(crate) fn new(section: &Section) -> Option<Self> {
         // See Note [Initializers and finalizers (ELF)].
         match section.kind {
             SectionKind::Text | SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => {
@@ -34,14 +34,12 @@ impl InitFini {
                     n if n.starts_with(".dtors") => todo!("{}", n),
                     n if n.starts_with(".init_array") => todo!("{}", n),
                     n if n.starts_with(".fini_array") => todo!("{}", n),
-                    _ => {}
+                    _ => { return None }
                 }
             }
-            SectionKind::Elf(elf::SHT_INIT_ARRAY) => {}
-            SectionKind::Elf(elf::SHT_FINI_ARRAY) => {}
-            _ => todo!("handle it"),
+            SectionKind::Elf(elf::SHT_INIT_ARRAY) => todo!("{:?}", section.kind),
+            SectionKind::Elf(elf::SHT_FINI_ARRAY) => todo!("{:?}", section.kind),
+            _ => return None,
         }
-
-        todo!()
     }
 }

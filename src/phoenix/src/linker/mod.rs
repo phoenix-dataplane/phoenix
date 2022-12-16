@@ -59,7 +59,7 @@ pub(crate) struct Linker {
     /// The binary for phoenix itself.
     binary: Vec<u8>,
     /// The global symbol lookup table.
-    global_sym_table: SymbolLookupTable,
+    pub(crate) global_sym_table: SymbolLookupTable,
     /// The set of loadable module that are current in memory.
     loaded_modules: Vec<LoadableModule>,
 }
@@ -95,13 +95,17 @@ impl Linker {
     pub(crate) fn load_object<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
         let mut module = LoadableModule::load_and_link(path, &mut self.global_sym_table)?;
         module.run_init();
+        self.loaded_modules.push(module);
         Ok(())
     }
 }
 
 fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
     let runtime_addr = (get_runtime_offset as *const ()).expose_addr();
-    println!("addr of main: {:?}", get_runtime_offset as *const ());
+    println!(
+        "addr of get_runtime_offset: {:?}",
+        get_runtime_offset as *const ()
+    );
 
     let target_sym = format!("{}::get_runtime_offset", module_path!());
 
@@ -132,8 +136,33 @@ mod tests {
         let mut linker = Linker::new().unwrap();
         linker.load_object("/tmp/tmp/core/libcore.o").unwrap();
         linker.load_object("/tmp/tmp/libc/liblibc.o").unwrap();
-        linker.load_object("/tmp/tmp/compiler_builtins/libcompiler_builtins-5b83a1df856cf582.o").unwrap();
+        linker
+            .load_object("/tmp/tmp/compiler_builtins/libcompiler_builtins-5b83a1df856cf582.o")
+            .unwrap();
         linker.load_object("/tmp/tmp/nix/libnix.o").unwrap();
-        linker.load_object("/tmp/tmp/libmmap.o").unwrap();
+        // linker.load_object("/tmp/tmp/libmmap.o").unwrap();
+        linker
+            .load_object("/tmp/tmp/mmap2/libmmap-57d84190f6026dbf.o")
+            .unwrap();
+        let f_eprint = linker
+            .global_sym_table
+            .lookup_symbol_addr("_ZN3std2io5stdio7_eprint17h5f2ebd38f95a420bE")
+            .unwrap();
+        println!("f_eprint: {:0x?}", f_eprint);
+        println!("f_eprint: {:0x?}", unsafe {
+            std::slice::from_raw_parts(f_eprint as *const u8, 128)
+        });
+        let f_addr = linker
+            .global_sym_table
+            // .lookup_symbol_addr("_ZN4mmap16test_load_module17h8f26bf5d2a7b7653E")
+            .lookup_symbol_addr("test_load_module")
+            .unwrap();
+        println!("{:0x?}", f_addr);
+        println!("{:0x?}", unsafe {
+            std::slice::from_raw_parts(f_addr as *const u8, 128)
+        });
+        // std::thread::sleep(std::time::Duration::from_secs(10000));
+        let c = unsafe { (std::mem::transmute::<usize, fn(i32, i32) -> i32>(f_addr))(42, 1) };
+        println!("c = {}", c);
     }
 }
