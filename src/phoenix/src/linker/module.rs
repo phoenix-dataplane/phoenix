@@ -9,10 +9,10 @@ use object::{Object, SymbolKind};
 
 use mmap::MmapOptions;
 
-use super::Error;
 use super::initfini::InitFini;
-use super::section::{do_relocation, CommonSection, Section};
+use super::section::{do_relocation, CommonSection, ExtraSymbolSection, Section};
 use super::symbol::{SymbolLookupTable, SymbolTable};
+use super::Error;
 
 pub(crate) struct LoadableModule {
     /// Sections of the module
@@ -22,6 +22,8 @@ pub(crate) struct LoadableModule {
     fini: Vec<InitFini>,
     /// Memory section for COMMON symbols
     common_section: CommonSection,
+    /// Section to store extra symbols (e.g., for GOT)
+    extra_symbols: ExtraSymbolSection,
     /// The File must be the last to drop.
     object: fs::File,
 }
@@ -66,6 +68,9 @@ impl LoadableModule {
         let mut symtab = SymbolTable::new(&elf);
         let mut common_section = CommonSection::new(&symtab)?;
 
+        // Allocate space for GOT/PLT sections
+        let mut extra_symbols = ExtraSymbolSection::new(&symtab)?;
+
         // Insert symbol definition for global symbols from this module into global symbol table
         for sym in &mut symtab.symbols {
             // Update the symbol to point to the address we allocated for each section
@@ -103,13 +108,20 @@ impl LoadableModule {
         }
 
         // Then we process the reloation sections.
-        do_relocation(&sections, &symtab, &sym_lookup_table);
+        do_relocation(
+            image_addr.addr(),
+            &sections,
+            &symtab,
+            &mut extra_symbols,
+            &sym_lookup_table,
+        );
 
         Ok(Self {
             sections,
             init,
             fini,
             common_section,
+            extra_symbols,
             object,
         })
     }

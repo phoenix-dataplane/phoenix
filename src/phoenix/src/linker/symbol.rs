@@ -111,3 +111,11 @@ impl SymbolLookupTable {
         self.table.get(name)
     }
 }
+
+#[cfg(target_arch = "x86_64")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExtraSymbol {
+    pub(crate) addr: usize,
+    pub(crate) trampoline: [u8; 8],
+}

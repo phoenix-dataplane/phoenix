@@ -2,13 +2,13 @@ use object::elf;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfSection;
-use object::read::SymbolSection;
+use object::read::{SymbolIndex, SymbolSection};
 use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind};
 use object::{RelocationKind, RelocationTarget};
 
 use mmap::{Mmap, MmapOptions};
 
-use super::symbol::{Symbol, SymbolLookupTable, SymbolTable};
+use super::symbol::{ExtraSymbol, Symbol, SymbolLookupTable, SymbolTable};
 use super::Error;
 
 #[derive(Debug)]
@@ -69,7 +69,10 @@ impl Section {
             // Allocate memory for .bss section.
             assert!(self.align as usize <= page_size::get());
             // round up to page
-            let rounded_size = self.size.next_multiple_of(page_size::get() as u64) as usize;
+            let rounded_size = self
+                .size
+                .next_multiple_of(self.align)
+                .next_multiple_of(page_size::get() as u64) as usize;
             let mmap = MmapOptions::new()
                 .len(rounded_size)
                 .anon(true)
@@ -102,10 +105,11 @@ impl CommonSection {
             .iter()
             .filter_map(|sym| if sym.is_common { Some(sym.size) } else { None })
             .sum();
+        let size = (size as usize).next_multiple_of(page_size::get());
         let mmap = if size > 0 {
             Some(
                 MmapOptions::new()
-                    .len(size as usize)
+                    .len(size)
                     .anon(true)
                     .private(true)
                     .read(true)
@@ -130,10 +134,63 @@ impl CommonSection {
     }
 }
 
+pub(crate) struct ExtraSymbolSection {
+    mmap: Option<Mmap>,
+    used: isize,
+}
+
+impl ExtraSymbolSection {
+    pub(crate) fn new(sym_table: &SymbolTable) -> Result<Self, Error> {
+        let num_symbols = sym_table.symbols.len();
+        let size = num_symbols * std::mem::size_of::<ExtraSymbol>();
+        let size = size.next_multiple_of(page_size::get());
+        let mmap = if size > 0 {
+            let mut mmap = MmapOptions::new()
+                .len(size)
+                .anon(true)
+                .private(true)
+                .read(true)
+                .write(true)
+                .exec(true) /* we have trampoline code in this section */
+                .mmap()?;
+            // zero-fill
+            mmap.fill(0);
+            Some(mmap)
+        } else {
+            None
+        };
+        Ok(Self { mmap, used: 0 })
+    }
+
+    #[inline]
+    pub(crate) fn get_base_address(&self) -> usize {
+        self.mmap.as_ref().unwrap().as_ptr().addr()
+    }
+
+    #[inline]
+    pub(crate) fn make_got_entry(&self, sym_addr: usize, sym_index: SymbolIndex) -> usize {
+        let start = self
+            .mmap
+            .as_ref()
+            .unwrap()
+            .as_ptr()
+            .cast::<ExtraSymbol>()
+            .cast_mut();
+        let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
+        *entry = ExtraSymbol {
+            addr: sym_addr,
+            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        };
+        entry.addr
+    }
+}
+
 #[allow(non_snake_case)]
 pub(crate) fn do_relocation(
+    image_addr: usize,
     sections: &Vec<Section>,
     local_sym_table: &SymbolTable,
+    extra_symbols: &mut ExtraSymbolSection,
     global_sym_table: &SymbolLookupTable,
 ) {
     for sec in sections {
@@ -142,10 +199,12 @@ pub(crate) fn do_relocation(
         }
 
         for (off, rela) in &sec.relocations {
+            let mut cur_sym_index = None;
             let P = sec.address + off;
             let A = rela.addend();
             let S = match rela.target() {
                 RelocationTarget::Symbol(sym_index) => {
+                    cur_sym_index = Some(sym_index);
                     let sym = local_sym_table.symbol_by_index(sym_index).unwrap();
                     if sym.is_global {
                         // for global symbols, get its name first
@@ -169,28 +228,26 @@ pub(crate) fn do_relocation(
             };
 
             let (P, A, S) = (P as i64, A as i64, S as i64);
-            let Image = 0;
-            let Section = 0;
+            let Image = image_addr as i64;
+            let Section = sec.address as i64;
+            let GotBase = extra_symbols.get_base_address() as i64;
             let value = match rela.kind() {
                 RelocationKind::Absolute => S + A,
                 RelocationKind::Relative => S + A - P,
                 RelocationKind::Got => {
-                    let GotBase = get_got_base();
-                    let G = make_got();
+                    let G = extra_symbols
+                        .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
+                        as i64;
                     G + A - GotBase
                 }
                 RelocationKind::GotRelative => {
-                    let G = make_got();
+                    let G = extra_symbols
+                        .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
+                        as i64;
                     G + A - P
                 }
-                RelocationKind::GotBaseRelative => {
-                    let GotBase = get_got_base();
-                    GotBase + A - P
-                }
-                RelocationKind::GotBaseOffset => {
-                    let GotBase = get_got_base();
-                    S + A - GotBase
-                }
+                RelocationKind::GotBaseRelative => GotBase + A - P,
+                RelocationKind::GotBaseOffset => S + A - GotBase,
                 RelocationKind::PltRelative => {
                     let L = make_plt();
                     L + A - P
@@ -202,7 +259,7 @@ pub(crate) fn do_relocation(
 
             if rela.size() == 0 {
             } else {
-                // SAFETY: P must be a valid
+                // SAFETY: P must be pointing to a valid address
                 unsafe {
                     std::ptr::copy_nonoverlapping(
                         &value as *const i64 as *const u8,
@@ -213,16 +270,6 @@ pub(crate) fn do_relocation(
             }
         }
     }
-}
-
-#[inline]
-fn get_got_base() -> i64 {
-    todo!("get_got_base")
-}
-
-#[inline]
-fn make_got() -> i64 {
-    todo!("make_got")
 }
 
 #[inline]
