@@ -228,7 +228,7 @@ pub(crate) fn do_relocation(
                     if sym.is_global {
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
-                        // eprintln!("name: {}, rela.kind: {:?}", sym.name, rela.kind());
+                        eprintln!("name: {}, rela.kind: {:?}", sym.name, rela.kind());
                         let addr = global_sym_table
                             .lookup_symbol_addr(&sym.name)
                             .unwrap_or_else(|| panic!("missing symbol {}", sym.name));

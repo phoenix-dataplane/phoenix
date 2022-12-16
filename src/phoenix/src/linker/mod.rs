@@ -130,7 +130,10 @@ mod tests {
     #[test]
     fn test_linker() {
         let mut linker = Linker::new().unwrap();
-        // linker.load_object("/tmp/tmp/core/libcore.o").unwrap();
+        linker.load_object("/tmp/tmp/core/libcore.o").unwrap();
+        linker.load_object("/tmp/tmp/libc/liblibc.o").unwrap();
+        linker.load_object("/tmp/tmp/compiler_builtins/libcompiler_builtins-5b83a1df856cf582.o").unwrap();
+        linker.load_object("/tmp/tmp/nix/libnix.o").unwrap();
         linker.load_object("/tmp/tmp/libmmap.o").unwrap();
     }
 }
