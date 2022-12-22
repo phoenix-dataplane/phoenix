@@ -262,10 +262,10 @@ pub(crate) fn do_relocation(
                         addr as u64
                     } else {
                         // for local symbols, just read its symbol address
-                        let SymbolSection::Section(section_index) = sym.section else {
-                            panic!("no such section: {:?}", sym.section);
-                        };
-                        let section = &sections[section_index.0];
+                        // let SymbolSection::Section(section_index) = sym.section else {
+                        //     panic!("no such section: {:?}", sym.section);
+                        // };
+                        // let section = &sections[section_index.0];
                         // section.address + sym.address
                         sym.address
                     }
@@ -323,16 +323,6 @@ pub(crate) fn do_relocation(
                     _ => panic!("impossible"),
                 }
             }
-
-            // if rela.size() > 0 {
-            //     unsafe {
-            //         ptr::copy_nonoverlapping(
-            //             &value as *const i64 as *const u8,
-            //             P as *mut u8,
-            //             (rela.size() / 8) as usize,
-            //         );
-            //     }
-            // }
         }
     }
 }

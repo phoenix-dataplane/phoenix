@@ -51,8 +51,8 @@ pub enum Error {
     Object(#[from] object::Error),
     #[error("Layout error: {0}")]
     Layout(#[from] LayoutError),
-    #[error("Fail to identify relocation offset")]
-    RelocationOffset,
+    #[error("Fail to identify runtime offset")]
+    RuntimeOffset,
 }
 
 pub(crate) struct Linker {
@@ -62,17 +62,19 @@ pub(crate) struct Linker {
     pub(crate) global_sym_table: SymbolLookupTable,
     /// The set of loadable module that are current in memory.
     loaded_modules: Vec<LoadableModule>,
+    // /// The set of loadable module that are only
+    // loaded_roots: Vec<LoadableModule>,
 }
 
 impl Linker {
-    /// Load the binary of the phoenix itself. Parse the binary headers.
+    /// Load the binary of the phoenix itself.
     pub(crate) fn new() -> Result<Self, Error> {
         let self_binary = fs::read("/proc/self/exe")?;
         let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*self_binary)?;
         println!("entry: {:0x}", elf.entry());
 
         let Some(runtime_offset) = get_runtime_offset(&elf) else {
-            return Err(Error::RelocationOffset);
+            return Err(Error::RuntimeOffset);
         };
         println!("runtime_offset: {:0x}", runtime_offset);
 
@@ -96,6 +98,20 @@ impl Linker {
         let mut module = LoadableModule::load_and_link(path, &mut self.global_sym_table)?;
         module.run_init();
         self.loaded_modules.push(module);
+        Ok(())
+    }
+
+    /// Load a given `rlib` file into memory.
+    pub(crate) fn load_archive<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        // Extract rmeta and objects from the archive
+        //
+        // Parse dependencies
+        //
+        // Recursively load_archive for dependencies
+        //
+        // ld -r to merge all objects into one
+        //
+        // load_object
         Ok(())
     }
 }
@@ -161,7 +177,7 @@ mod tests {
         println!("{:0x?}", unsafe {
             std::slice::from_raw_parts(f_addr as *const u8, 128)
         });
-        // std::thread::sleep(std::time::Duration::from_secs(10000));
+        std::thread::sleep(std::time::Duration::from_secs(10000));
         let c = unsafe { (std::mem::transmute::<usize, fn(i32, i32) -> i32>(f_addr))(42, 1) };
         println!("c = {}", c);
     }
