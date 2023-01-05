@@ -13,7 +13,7 @@ IncrementerClient* IncrementerClient::connect(const char* addr) {
 
   // assumption: number of fds is the same as number of readregions
   for (size_t i = 0; i < conn_resp.regions.size(); i++) {
-    void* read_region = mmap((void*) conn_resp.regions[i].remote_addr, 
+    mmap((void*) conn_resp.regions[i].remote_addr, 
                               conn_resp.regions[i].nbytes, 
                               PROT_READ | PROT_WRITE, 
                               MAP_SHARED 
@@ -41,12 +41,12 @@ ValueReply IncrementerClient::increment(ValueRequest req) {
   AllocShmCompletionBridge alloc_comp = allocate_shm(100, 8);
   size_t* val = (size_t*) alloc_comp.remote_addr;
 
-  void* region = mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
-                                                      | MAP_NORESERVE 
-                                                      | MAP_POPULATE 
-                                                      | MAP_FIXED_NOREPLACE, 
-                                                      (size_t) alloc_comp.fd, 
-                                                      (off_t) alloc_comp.file_off);
+  mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
+                                       | MAP_NORESERVE 
+                                       | MAP_POPULATE 
+                                       | MAP_FIXED_NOREPLACE, 
+                                       (size_t) alloc_comp.fd, 
+                                       (off_t) alloc_comp.file_off);
 
   if (fcntl(alloc_comp.fd, F_GETFD) == -1) {
     std::cout << std::strerror(errno) << std::endl;

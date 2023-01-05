@@ -330,6 +330,7 @@ fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
 }
 
 // TODO: (amanm4) - fix interface to allow different types of wc
+// TODO: what happens when there are multiple RPCs being called? how do we decide who certain completions are dispatched to?
 fn dequeue_wc() -> MessageBridge {
     MRPC_CTX.with(|ctx| {
         let mut comp: MessageBridge = construct_dummy_msg();
