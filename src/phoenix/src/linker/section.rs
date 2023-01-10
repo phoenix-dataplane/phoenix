@@ -4,13 +4,12 @@ use object::elf;
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfSection;
-use object::read::{SymbolIndex, SymbolSection};
+use object::read::SymbolIndex;
 use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind};
-use object::{RelocationKind, RelocationTarget};
 
 use mmap::{Mmap, MmapOptions};
 
-use super::symbol::{ExtraSymbol, Symbol, SymbolLookupTable, SymbolTable};
+use super::symbol::{ExtraSymbol, Symbol, SymbolTable};
 use super::Error;
 
 #[derive(Debug)]
@@ -25,7 +24,7 @@ pub(crate) struct Section {
     pub(crate) kind: SectionKind,
     pub(crate) flags: SectionFlags,
     pub(crate) relocations: Vec<(u64, Relocation)>,
-    /// For .bss sections, we need to allocate extra spaces.
+    /// For .bss/.tbss sections, we need to allocate extra spaces.
     pub(crate) mmap: Option<Mmap>,
 }
 
@@ -43,7 +42,7 @@ impl Section {
             kind: section.kind(),
             flags: section.flags(),
             relocations: section.relocations().collect::<Vec<(u64, Relocation)>>(),
-            // For .bss sections, we need to allocate extra spaces. We'll fill this later.
+            // For .bss/.tbss sections, we need to allocate extra spaces. We'll fill this later.
             mmap: None,
         }
     }
@@ -59,16 +58,17 @@ impl Section {
             | SectionKind::Data
             | SectionKind::ReadOnlyData
             | SectionKind::Elf(elf::SHT_INIT_ARRAY)
-            | SectionKind::Elf(elf::SHT_FINI_ARRAY) => true,
+            | SectionKind::Elf(elf::SHT_FINI_ARRAY)
+            | SectionKind::Tls => true,
             _ => false,
         }
     }
 
     /// Update runtime address for sections needed to load. Allocate memory for .bss sections
     /// if encountered.
-    pub(crate) fn update_runtime_addr(&mut self, image_addr: *const u8) -> Result<(), Error> {
+    pub(crate) fn update_runtime_addr(&mut self, image_start: *const u8) -> Result<(), Error> {
         if self.kind.is_bss() && self.size > 0 {
-            // Allocate memory for .bss section.
+            // Allocate memory for .bss/.tbss section.
             assert!(self.align as usize <= page_size::get());
             // round up to page
             let rounded_size = self
@@ -87,15 +87,23 @@ impl Section {
             self.mmap = Some(mmap);
         } else if self.need_load() {
             let file_off = self.file_range.expect("impossible").0;
-            self.address = unsafe { image_addr.offset(file_off as isize) }.addr() as u64;
+            self.address = unsafe { image_start.offset(file_off as isize) }.addr() as u64;
             eprintln!(
                 "section: {}, {:0x}, image_addr: {:0x}, file_off: {:0x}",
                 self.name,
                 self.address,
-                image_addr.addr(),
+                image_start.addr(),
                 file_off
             );
-            eprintln!("code: {:?}", unsafe { std::slice::from_raw_parts(self.address as *const u8, 32) });
+            eprintln!("code: {:?}", unsafe {
+                std::slice::from_raw_parts(self.address as *const u8, 32)
+            });
+
+            // Initialize tls_begin, tp_addr, and dtp_addr
+            if self.kind == SectionKind::Tls {
+                // On x86, TP (%gs on i386, %fs on x86-64) refers past the end of all TLVs
+                // for historical reasons. TLVs are accessed with negative offsets from TP.
+            }
         }
         Ok(())
     }
@@ -151,8 +159,7 @@ pub(crate) struct ExtraSymbolSection {
 }
 
 impl ExtraSymbolSection {
-    pub(crate) fn new(sym_table: &SymbolTable) -> Result<Self, Error> {
-        let num_symbols = sym_table.symbols.len();
+    pub(crate) fn new(num_symbols: usize) -> Result<Self, Error> {
         let size = num_symbols * std::mem::size_of::<ExtraSymbol>();
         let size = size.next_multiple_of(page_size::get());
         let mmap = if size > 0 {
@@ -175,154 +182,41 @@ impl ExtraSymbolSection {
 
     #[inline]
     pub(crate) fn get_base_address(&self) -> usize {
-        self.mmap.as_ref().unwrap().as_ptr().addr()
+        self.section_start().addr()
     }
 
+    #[inline]
+    pub(crate) fn section_start(&self) -> *mut ExtraSymbol {
+        self.mmap
+            .as_ref()
+            .unwrap()
+            .as_ptr()
+            .cast::<ExtraSymbol>()
+            .cast_mut()
+    }
+
+    /// Allocates an GOT entry in the section and returns the address of the entry.
     #[inline]
     pub(crate) fn make_got_entry(&self, sym_addr: usize, sym_index: SymbolIndex) -> usize {
-        let start = self
-            .mmap
-            .as_ref()
-            .unwrap()
-            .as_ptr()
-            .cast::<ExtraSymbol>()
-            .cast_mut();
-        unsafe {
-            let entry = start.offset(sym_index.0 as isize);
-            entry.write(ExtraSymbol {
-                addr: sym_addr,
-                trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-            });
-            entry.addr()
-        }
-        // let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
-        // *entry = ExtraSymbol {
-        //     addr: sym_addr,
-        //     trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-        // };
-        // ptr::addr_of!(entry.addr).addr()
-        // (entry as *const ExtraSymbol).addr()
-        // unsafe { start.offset(sym_index.0 as isize).addr() }
+        let start = self.section_start();
+        let entry = unsafe { &mut *start.offset(sym_index.0 as isize) };
+        *entry = ExtraSymbol {
+            addr: sym_addr,
+            /* ff 25 f2 ff ff ff    	jmp    *-0xe(%rip)  # where 0xe = 8 + 6 */
+            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        };
+        ptr::addr_of!(entry.addr).addr()
     }
 
+    /// Allocates an GOT entry in the section and returns the address of the trampoline code.
     #[inline]
     pub(crate) fn make_plt_entry(&self, sym_addr: usize, sym_index: SymbolIndex) -> usize {
-        let start = self
-            .mmap
-            .as_ref()
-            .unwrap()
-            .as_ptr()
-            .cast::<ExtraSymbol>()
-            .cast_mut();
-        // let entry = &mut unsafe { *start.offset(sym_index.0 as isize) };
-        // *entry = ExtraSymbol {
-        //     addr: sym_addr,
-        //     trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-        // };
-        // ptr::addr_of!(entry.trampoline).addr()
-        unsafe {
-            let entry = start.offset(sym_index.0 as isize);
-            entry.write(ExtraSymbol {
-                addr: sym_addr,
-                trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
-            });
-            entry.addr() + 8
-        }
-    }
-}
-
-#[allow(non_snake_case)]
-pub(crate) fn do_relocation(
-    image_addr: usize,
-    sections: &Vec<Section>,
-    local_sym_table: &SymbolTable,
-    extra_symbols: &mut ExtraSymbolSection,
-    global_sym_table: &SymbolLookupTable,
-) {
-    for sec in sections {
-        if !sec.need_load() {
-            continue;
-        }
-
-        for (off, rela) in &sec.relocations {
-            let mut cur_sym_index = None;
-            let P = sec.address + off;
-            let A = rela.addend();
-            let S = match rela.target() {
-                RelocationTarget::Symbol(sym_index) => {
-                    cur_sym_index = Some(sym_index);
-                    let sym = local_sym_table.symbol_by_index(sym_index).unwrap();
-                    if sym.is_global {
-                        // for global symbols, get its name first
-                        // then query the symbol in the global symbol lookup table
-                        eprintln!("name: {}, rela.kind: {:?}, A: {}, rela.size: {}", sym.name, rela.kind(), A, rela.size());
-                        let addr = global_sym_table
-                            .lookup_symbol_addr(&sym.name)
-                            .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
-                        addr as u64
-                    } else {
-                        // for local symbols, just read its symbol address
-                        // let SymbolSection::Section(section_index) = sym.section else {
-                        //     panic!("no such section: {:?}", sym.section);
-                        // };
-                        // let section = &sections[section_index.0];
-                        // section.address + sym.address
-                        sym.address
-                    }
-                }
-                RelocationTarget::Section(_sec_index) => todo!("Got a section to relocate"),
-                RelocationTarget::Absolute => 0,
-                _ => panic!("rela: {:?}", rela),
-            };
-
-            let (P, A, S) = (P as i64, A as i64, S as i64);
-            let Image = image_addr as i64;
-            let Section = sec.address as i64;
-            let GotBase = extra_symbols.get_base_address() as i64;
-            let value = match rela.kind() {
-                RelocationKind::Absolute => S + A,
-                RelocationKind::Relative => S + A - P,
-                RelocationKind::Got => {
-                    let G = extra_symbols
-                        .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
-                        as i64;
-                    G + A - GotBase
-                }
-                RelocationKind::GotRelative => {
-                    // Pay attention to this kind
-                    let G = extra_symbols
-                        .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
-                        as i64;
-                    eprintln!("{:0x} + {} - {:0x} = {:0x}", G, A, P, G + A - P);
-                    unsafe {
-                        eprintln!("G_content: {:0x?}", std::slice::from_raw_parts(G as *const u8, 16));
-                    }
-                    G + A - P
-                }
-                RelocationKind::GotBaseRelative => GotBase + A - P,
-                RelocationKind::GotBaseOffset => S + A - GotBase,
-                RelocationKind::PltRelative => {
-                    let L = extra_symbols
-                        .make_plt_entry(S as usize, cur_sym_index.expect("sth wrong"))
-                        as i64;
-                    L + A - P
-                }
-                RelocationKind::ImageOffset => S + A - Image,
-                RelocationKind::SectionOffset => S + A - Section,
-                _ => panic!("rela: {:?}", rela),
-            };
-
-            unsafe {
-                // SAFETY: P must be pointing to a valid address
-                match rela.size() {
-                    64 => (P as *mut u64).write(value as u64),
-                    32 => (P as *mut u32).write(value as u32),
-                    16 => (P as *mut u16).write(value as u16),
-                    8 => (P as *mut u8).write(value as u8),
-                    0 => {}
-                    _ => panic!("impossible"),
-                }
-            }
-        }
+        let start = self.section_start();
+        let entry = unsafe { &mut *start.offset(sym_index.0 as isize) };
+        *entry = ExtraSymbol {
+            addr: sym_addr,
+            trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
+        };
+        ptr::addr_of!(entry.trampoline).addr()
     }
 }

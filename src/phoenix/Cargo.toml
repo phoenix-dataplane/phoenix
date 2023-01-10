@@ -52,6 +52,7 @@ libloading.workspace = true
 petgraph.workspace = true
 semver.workspace = true
 mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
+utils.workspace = true
 
 crc32fast.workspace = true
 socket2.workspace = true

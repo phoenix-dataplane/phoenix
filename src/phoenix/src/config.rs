@@ -15,6 +15,19 @@ pub struct Control {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct LinkerConfig {
+    #[serde(default = "LinkerConfig::default_workdir")]
+    pub workdir: PathBuf,
+}
+
+impl LinkerConfig {
+    fn default_workdir() -> PathBuf {
+        "linker".into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TracingConfig {
     pub enable: bool,
     pub min_event_level: String,
@@ -50,6 +63,7 @@ pub struct Config {
     pub tracing: TracingConfig,
     pub profiling: ProfilingConfig,
     pub control: Control,
+    pub linker: LinkerConfig,
     #[serde(default)]
     pub modules: Vec<PluginDescriptor>,
     #[serde(default)]
