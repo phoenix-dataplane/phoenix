@@ -57,13 +57,8 @@ mod ipc_bridge {
     }
 
     pub struct CompletionConnectBridge {
-        success: bool,
         conn_handle: HandleBridge,
         regions: Vec<ReadHeapRegionBridge>,
-    }
-
-    pub struct CompletionMappedAddrsBridge {
-        success: bool,
     }
 
     pub struct MessageMetaBridge {
@@ -93,13 +88,13 @@ mod ipc_bridge {
     }
 
     extern "Rust" {
-        fn send_cmd_connect(addr: &CxxString) -> bool;
-        fn recv_comp_connect() -> CompletionConnectBridge;
-        fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<ReadHeapRegionBridge>) -> bool;
-        fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge;
-        fn update_protos() -> bool;
-        fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge;
-        fn dequeue_wc() -> MessageBridge;
+        fn send_cmd_connect(addr: &CxxString) -> Result<()>;
+        fn recv_comp_connect() -> Result<CompletionConnectBridge>;
+        fn send_cmd_mapped_addrs(conn_handle: HandleBridge, vaddrs: Vec<ReadHeapRegionBridge>) -> Result<()>;
+        fn recv_comp_mapped_addrs() -> Result<()>;
+        fn update_protos() -> Result<()>;
+        fn enqueue_wr(wr: WorkRequestBridge) -> Result<()>;
+        fn dequeue_wc() -> Result<MessageBridge>;
         fn block_on_reply() -> MessageBridge;
     }
 }
@@ -205,28 +200,28 @@ fn recv_fds() -> Vec<memfds::RawFd> {
     })
 }
 
-fn send_cmd_connect(addr: &CxxString) -> bool {
+fn send_cmd_connect(addr: &CxxString) -> Result<(), Box<dyn std::error::Error>> {
     let addr_as_str = match addr.to_str() {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(e) => return Err(Box::new(e)),
     };
     
     let server: SocketAddr = match addr_as_str.parse() {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(e) => return Err(Box::new(e)),
     };
 
     let req = Command::Connect(server);
 
     MRPC_CTX.with(|ctx| {
         match ctx.service.send_cmd(req) {
-            Ok(_) => true,
-            Err(_) => false,
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
         }
     })
 }
 
-fn recv_comp_connect() -> CompletionConnectBridge {
+fn recv_comp_connect() -> Result<CompletionConnectBridge, Box<dyn std::error::Error>> {
     MRPC_CTX.with(|ctx| {
         match ctx.service.recv_comp() {
             Ok(comp) => {
@@ -237,19 +232,18 @@ fn recv_comp_connect() -> CompletionConnectBridge {
                         for region in conn_resp.read_regions.iter() {
                             regions.push(read_heap_region_bridge(region));
                         }
-                        CompletionConnectBridge {
-                            success: true,
+                        Ok(CompletionConnectBridge {
                             conn_handle: HandleBridge {
                                 id: conn_resp.conn_handle.0,
                             },
                             regions: regions,
-                        }
+                        })
                     },
-                    Err(_) => construct_on_error(),
-                    _other => construct_on_error(),
+                    Err(e) => Err(Box::new(e.clone()) as Box<dyn std::error::Error>),
+                    otherwise => panic!("Expect Connect, found {:?}", otherwise),
                 }
             } 
-            Err(_) => construct_on_error(),
+            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
         } 
     })
 }
@@ -263,17 +257,7 @@ fn read_heap_region_bridge(region: &ReadHeapRegion) -> ReadHeapRegionBridge {
     }
 }
 
-fn construct_on_error() -> CompletionConnectBridge {
-    CompletionConnectBridge {
-        success: false,
-        conn_handle: HandleBridge {
-            id: 0,
-        },
-        regions: Vec::new(),
-    }
-}
-
-fn send_cmd_mapped_addrs(conn_handle: ipc_bridge::HandleBridge, regions: Vec<ReadHeapRegionBridge>) -> bool {
+fn send_cmd_mapped_addrs(conn_handle: ipc_bridge::HandleBridge, regions: Vec<ReadHeapRegionBridge>) -> Result<(), Box<dyn std::error::Error>> {
     let mut vaddrs: Vec<(Handle, usize)> = Vec::new();
     for region in regions {
         vaddrs.push((Handle {0: region.handle.id}, region.remote_addr))
@@ -283,36 +267,35 @@ fn send_cmd_mapped_addrs(conn_handle: ipc_bridge::HandleBridge, regions: Vec<Rea
 
     MRPC_CTX.with(|ctx| {
         match ctx.service.send_cmd(req) {
-            Ok(_) => true,
-            Err(_) => false,
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
         }
     }) 
 }
 
-fn recv_comp_mapped_addrs() -> CompletionMappedAddrsBridge {
+fn recv_comp_mapped_addrs() -> Result<(), Box<dyn std::error::Error>> {
     MRPC_CTX.with(|ctx| {
         match ctx.service.recv_comp() {
             Ok(comp) => {
                 match &comp.0 {
-                    Ok(CompletionKind::NewMappedAddrs) => CompletionMappedAddrsBridge {success: true},
-                    Err(_) => CompletionMappedAddrsBridge {success: false},
-                    _other => CompletionMappedAddrsBridge {success: false},
+                    Ok(CompletionKind::NewMappedAddrs) => Ok(()),
+                    Err(e) => Err(Box::new(e.clone()) as Box<dyn std::error::Error>),
+                    otherwise => panic!("Expect NewMappedAddrs, found {:?}", otherwise),
                 }
-            } 
-            Err(_) => CompletionMappedAddrsBridge {success: false},
+            }
+            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
         } 
     }) 
 }
 
-fn update_protos() -> bool {
+fn update_protos() -> Result<(), ::mrpc::Error> {
     let srcs = [include_str!(
         "../../phoenix_examples/proto/rpc_int/rpc_int.proto"
     )];
-    ::mrpc::stub::update_protos(srcs.as_slice());
-    true
+    ::mrpc::stub::update_protos(srcs.as_slice())
 }
 
-fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
+fn enqueue_wr(wr: WorkRequestBridge) -> Result<(), ipc::Error> {
     MRPC_CTX.with(|ctx| {
         let mut sent = false;
         while !sent {
@@ -321,45 +304,47 @@ fn enqueue_wr(wr: WorkRequestBridge) -> ResultBridge {
                 sent = true;
                 1
             };
-            if let Err(_) = ctx.service.enqueue_wr_with(c) {
-                return ResultBridge {success: false};
+            if let Err(e) = ctx.service.enqueue_wr_with(c) {
+                return Err(e);
             }
         }
-        ResultBridge {success: true}
+        Ok(())
     })
 }
 
 // TODO: (amanm4) - fix interface to allow different types of wc
 // TODO: what happens when there are multiple RPCs being called? how do we decide who certain completions are dispatched to?
-fn dequeue_wc() -> MessageBridge {
+fn dequeue_wc() -> Result<MessageBridge, ipc::Error> {
     MRPC_CTX.with(|ctx| {
         let mut comp: MessageBridge = construct_dummy_msg();
-            match ctx.service
-                .dequeue_wc_with(|ptr, count| unsafe {
-                    for i in 0..count {
-                        let c = ptr.add(i).cast::<dp::Completion>().read();
-                        match c {
-                            dp::Completion::Incoming(msg) => {
-                                comp = from_msg_to_bridge(msg);
-                            },
-                            dp::Completion::Outgoing(_, _) => continue,
-                            dp::Completion::RecvError(_, _) => continue,
-                        };
-                    }
-                    count
-                })
-                {
-                    Ok(_) => comp,
-                    Err(_) => construct_dummy_msg(), // something went wrong
+        match ctx.service
+            .dequeue_wc_with(|ptr, count| unsafe {
+                for i in 0..count {
+                    let c = ptr.add(i).cast::<dp::Completion>().read();
+                    match c {
+                        dp::Completion::Incoming(msg) => {
+                            comp = from_msg_to_bridge(msg);
+                        },
+                        dp::Completion::Outgoing(_, _) => continue,
+                        dp::Completion::RecvError(_, _) => continue,
+                    };
                 }
+                count
+            })
+        {
+            Ok(_) => Ok(comp),
+            Err(e) => Err(e), // something went wrong
+        }
     })
 }
 
 fn block_on_reply() -> MessageBridge {
     loop {
-        let msg= dequeue_wc();
-        if msg.meta.msg_type != RpcMsgTypeBridge::Request { // if reply this was constructed as dummy
-           return msg;
+        // let msg_res= dequeue_wc();
+        if let Ok(msg) = dequeue_wc() {
+            if msg.meta.msg_type != RpcMsgTypeBridge::Request { // if reply this was constructed as dummy and never changed
+                return msg;
+            }
         }
     }
 }

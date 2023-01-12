@@ -28,10 +28,9 @@ IncrementerClient* IncrementerClient::connect(const char* addr) {
   }
 
   send_cmd_mapped_addrs(conn_resp.conn_handle, conn_resp.regions);
-  CompletionMappedAddrsBridge comp = recv_comp_mapped_addrs();
+  recv_comp_mapped_addrs();
 
   update_protos();
-  // TODO: (amanm4) - error propogation
 
   return new IncrementerClient(conn_resp);
 }
@@ -76,7 +75,7 @@ ValueReply IncrementerClient::increment(ValueRequest req) {
   wr.message = msg;
  
   // enqueue message
-  ResultBridge resp = enqueue_wr(wr);
+  enqueue_wr(wr);
 
   // receive reply
   MessageBridge ret = block_on_reply();
