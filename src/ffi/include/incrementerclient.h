@@ -10,14 +10,6 @@
 #include <cstring>
 #include <fcntl.h>
 
-struct ValueRequest {
-  int val;
-};
-
-struct ValueReply {
-  int val;
-};
-
 class IncrementerClient {
  public:
   static IncrementerClient* connect(const char* addr);

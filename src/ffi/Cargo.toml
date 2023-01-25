@@ -15,7 +15,7 @@ mrpc = { path = "../mrpc" }
 memfd = "0.4.1"
 libc = "0.2"
 raw-parts = "1.1.2"
-
+smol = "1.2.5"
 
 [build-dependencies]
 cxx-build = "1.0"
