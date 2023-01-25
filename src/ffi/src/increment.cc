@@ -2,6 +2,6 @@
 
 ValueReply incrementServer(ValueRequest req) {
     ValueReply rep;
-    rep.val = req.val + 1;
+    rep.val = req.val + 50;
     return rep;
 }
