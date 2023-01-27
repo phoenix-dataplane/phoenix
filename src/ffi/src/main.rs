@@ -1,4 +1,5 @@
 #![no_main]
+#![allow(warnings)]
 use std::{net::SocketAddr, os::fd::AsRawFd, error::Error};
 use memfd::Memfd;
 use std::io;
@@ -518,11 +519,9 @@ impl Incrementer for MyIncrementer {
         request: RRef<ValueRequest>,
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
         eprintln!("request: {:?}", request);
-        // rpc_int::ValueRequest
 
         let reply = rpc_handler_lib::incrementServer(rpc_int::ValueRequest{val: request.val});
 
-        // rpc_int::ValueReply
         Ok(WRef::new(ValueReply{
            val: reply.val,
         }))

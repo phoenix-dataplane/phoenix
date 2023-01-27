@@ -1,26 +1,22 @@
-static CLIENT_SERVER: &str = "client";
+use std::env::var;
 
 fn main() {
-    if CLIENT_SERVER == "client" {
+    let result= match var("CLIENT_SERVER") {
+        Ok(v) => v,
+        Err(_) => todo!(),
+    };
+    if result == "client" {
         cxx_build::bridge("src/main.rs") // returns a cc::Build
             .file("src/client.cc")
             .file("src/incrementerclient.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_client");
-    } else if CLIENT_SERVER  == "server" {
+    } else if result  == "server" {
         cxx_build::bridge("src/main.rs") // returns a cc::Build
             .file("src/server.cc")
-            .file("src/increment.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_server");
     } else {
-        println!("warning={}", CLIENT_SERVER);
+        println!("warning={}", result);
     } 
-
-
-    println!("cargo:rerun-if-changed=src/main.rs");
-    println!("cargo:rerun-if-changed=src/server.cc");
-    println!("cargo:rerun-if-changed=src/incrementerclient.cc");
-    println!("cargo:rerun-if-changed=src/client.cc");
-    println!("cargo:rerun-if-changed=include/incrementerclient.h");
 }

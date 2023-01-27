@@ -427,8 +427,12 @@ dependencies = [
  "interface",
  "ipc",
  "libc",
+ "memfd",
+ "mmap",
  "mrpc",
  "raw-parts",
+ "salloc",
+ "smol",
 ]
 
 [[package]]
