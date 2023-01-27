@@ -6,13 +6,13 @@ fn main() {
         Err(_) => todo!(),
     };
     if result == "client" {
-        cxx_build::bridge("src/main.rs") // returns a cc::Build
+        cxx_build::bridge("src/client.rs") // returns a cc::Build
             .file("src/client.cc")
             .file("src/incrementerclient.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_client");
     } else if result  == "server" {
-        cxx_build::bridge("src/main.rs") // returns a cc::Build
+        cxx_build::bridge("src/server.rs") // returns a cc::Build
             .file("src/server.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_server");

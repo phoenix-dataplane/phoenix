@@ -8,6 +8,15 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
+[[bin]]
+name = "rpc_int_client"
+path = "src/client.rs"
+
+[[bin]]
+name = "rpc_int_server"
+path = "src/server.rs"
+
 [dependencies]
 cxx = "1.0"
 interface = { path = "../interface" }
