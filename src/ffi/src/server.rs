@@ -25,24 +25,32 @@ unsafe impl ExternType for rpc_int::ValueReply {
     type Kind = cxx::kind::Trivial;
 }
 
+unsafe impl Send for rpc_handler_lib::CPPIncrementer{}
+unsafe impl Sync for rpc_handler_lib::CPPIncrementer{}
+
 #[cxx::bridge]
 mod rpc_handler_lib {
     unsafe extern "C++" {
+        type CPPIncrementer;
+
         include!("ffi/include/increment.h");
         type ValueRequest = crate::rpc_int::ValueRequest;
         type ValueReply = crate::rpc_int::ValueReply;
-        fn incrementServer(req: ValueRequest) -> ValueReply;
+        fn incrementServer(self: &CPPIncrementer, req: ValueRequest) -> ValueReply;
+    }
+
+    extern "Rust" {
+        fn run(addr: &CxxString, service: &CPPIncrementer) -> Result<()>;
     }
 }
 
 #[cxx::bridge]
 mod server_entry {
-    extern "Rust" {
-        fn run(addr: &CxxString) -> Result<()>;
-    }
+    
 }
 
-fn run(addr: &CxxString) -> Result<(), Box<dyn Error>> {
+use rpc_handler_lib::CPPIncrementer;
+fn run(addr: &CxxString, service: &CPPIncrementer) -> Result<(), Box<dyn Error>> {
     let addr_as_str = match addr.to_str() {
         Ok(s) => s,
         Err(e) => return Err(Box::new(e)),
@@ -52,9 +60,11 @@ fn run(addr: &CxxString) -> Result<(), Box<dyn Error>> {
         Err(e) => return Err(Box::new(e)),
     };
     smol::block_on(async {
-        let mut server = mrpc::stub::LocalServer::bind(server)?;
+    let mut server = mrpc::stub::LocalServer::bind(server)?;
         server
-            .add_service(IncrementerServer::new(MyIncrementer::default()))
+            .add_service(IncrementerServer::new(MyIncrementer {
+                service: service,
+            }))
             .serve()
             .await?;
         Ok(())
@@ -137,8 +147,13 @@ pub mod proto {
 }
 use rpc_int::{ValueRequest, ValueReply};
 
-#[derive(Debug, Default)]
-struct MyIncrementer;
+struct MyIncrementer {
+    pub service: &CPPIncrementer,
+}
+
+impl Default for MyIncrementer {
+    fn default() -> Self { todo!() }
+}
 
 #[mrpc::async_trait]
 impl Incrementer for MyIncrementer {
@@ -148,7 +163,7 @@ impl Incrementer for MyIncrementer {
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
         eprintln!("request: {:?}", request);
 
-        let reply = rpc_handler_lib::incrementServer(rpc_int::ValueRequest{val: request.val});
+        let reply = self.service.incrementServer(rpc_int::ValueRequest{val: request.val});
 
         Ok(WRef::new(ValueReply{
            val: reply.val,

@@ -8,4 +8,8 @@ struct ValueReply {
   int val;
 };
 
-ValueReply incrementServer(ValueRequest req);
+class CPPIncrementer {
+    public:
+    int highestReqSeen;
+    ValueReply incrementServer(ValueRequest req);
+};
