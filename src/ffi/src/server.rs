@@ -25,22 +25,23 @@ unsafe impl ExternType for rpc_int::ValueReply {
     type Kind = cxx::kind::Trivial;
 }
 
-unsafe impl Send for rpc_handler_lib::CPPIncrementer{}
-unsafe impl Sync for rpc_handler_lib::CPPIncrementer{}
+
+unsafe impl<'a> Send for rpc_handler_lib::CPPIncrementer<'a>{}
+unsafe impl<'a> Sync for rpc_handler_lib::CPPIncrementer<'a>{}
 
 #[cxx::bridge]
 mod rpc_handler_lib {
     unsafe extern "C++" {
-        type CPPIncrementer;
+        type CPPIncrementer<'a>;
 
         include!("ffi/include/increment.h");
         type ValueRequest = crate::rpc_int::ValueRequest;
         type ValueReply = crate::rpc_int::ValueReply;
-        fn incrementServer(self: &CPPIncrementer, req: ValueRequest) -> ValueReply;
+        fn incrementServer<'a>(self: Pin<&'a mut CPPIncrementer<'a>>, req: ValueRequest) -> ValueReply;
     }
 
     extern "Rust" {
-        fn run(addr: &CxxString, service: &CPPIncrementer) -> Result<()>;
+        unsafe fn run<'a>(addr: &CxxString, service: Pin<&'static mut CPPIncrementer<'a>>) -> Result<()>;
     }
 }
 
@@ -50,7 +51,7 @@ mod server_entry {
 }
 
 use rpc_handler_lib::CPPIncrementer;
-fn run(addr: &CxxString, service: &CPPIncrementer) -> Result<(), Box<dyn Error>> {
+fn run(addr: &CxxString, service: Pin<&'static mut CPPIncrementer>) -> Result<(), Box<dyn Error>> {
     let addr_as_str = match addr.to_str() {
         Ok(s) => s,
         Err(e) => return Err(Box::new(e)),
@@ -146,23 +147,25 @@ pub mod proto {
     ];
 }
 use rpc_int::{ValueRequest, ValueReply};
+use std::pin::Pin;
 
 struct MyIncrementer<'a> {
-    pub service: &'a CPPIncrementer,
+    pub service: Pin<&'a mut CPPIncrementer<'a>>,
 }
 
-impl Default for MyIncrementer<'_> {
+impl<'a> Default for MyIncrementer<'a> {
     fn default() -> Self { todo!() }
 }
 
 #[mrpc::async_trait]
-impl Incrementer for MyIncrementer<'_> {
+impl Incrementer for MyIncrementer<'static> {
     async fn increment(
         &self,
         request: RRef<ValueRequest>,
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
         eprintln!("request: {:?}", request);
 
+        // unsafe pointer 
         let reply = self.service.incrementServer(rpc_int::ValueRequest{val: request.val});
 
         Ok(WRef::new(ValueReply{
