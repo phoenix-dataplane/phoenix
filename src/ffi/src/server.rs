@@ -147,16 +147,16 @@ pub mod proto {
 }
 use rpc_int::{ValueRequest, ValueReply};
 
-struct MyIncrementer {
-    pub service: &CPPIncrementer,
+struct MyIncrementer<'a> {
+    pub service: &'a CPPIncrementer,
 }
 
-impl Default for MyIncrementer {
+impl Default for MyIncrementer<'_> {
     fn default() -> Self { todo!() }
 }
 
 #[mrpc::async_trait]
-impl Incrementer for MyIncrementer {
+impl Incrementer for MyIncrementer<'_> {
     async fn increment(
         &self,
         request: RRef<ValueRequest>,

@@ -10,6 +10,8 @@ ValueReply incrementServer(ValueRequest req) {
 int main() {
     CPPIncrementer incr;
     incr.highestReqSeen = 0;
+
+    // register a service to a socket.
     run("0.0.0.0:5000", incr);
 }
 

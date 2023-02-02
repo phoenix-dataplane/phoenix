@@ -10,6 +10,8 @@ struct ValueReply {
 
 class CPPIncrementer {
     public:
+    // state about current connection
     int highestReqSeen;
+
     ValueReply incrementServer(ValueRequest req);
 };

@@ -2370,6 +2370,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "rayon"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2392,6 +2393,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 3a3f4f3 (trying with liftetimes)
 name = "rdma"
 version = "0.1.0"
 dependencies = [
