@@ -1972,13 +1972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-salloc-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-salloc",
-]
-
-[[package]]
 name = "phoenix-transport-rdma"
 version = "0.1.0"
 dependencies = [

@@ -1,7 +1,8 @@
-use object::{RelocationKind, RelocationTarget};
+use object::{RelocationKind, RelocationTarget, SymbolKind};
 
-use super::section::{Section, ExtraSymbolSection};
+use super::section::{ExtraSymbolSection, Section};
 use super::symbol::{SymbolLookupTable, SymbolTable};
+use super::tls::{TlsIndex, PhoenixModId};
 
 #[allow(non_snake_case)]
 pub(crate) fn do_relocation(
@@ -18,6 +19,7 @@ pub(crate) fn do_relocation(
 
         for (off, rela) in &sec.relocations {
             let mut cur_sym_index = None;
+            let mut sym_mod_id = 0;
             let P = sec.address + off;
             let A = rela.addend();
             let S = match rela.target() {
@@ -34,10 +36,26 @@ pub(crate) fn do_relocation(
                             A,
                             rela.size()
                         );
-                        let addr = global_sym_table
-                            .lookup_symbol_addr(&sym.name)
-                            .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
-                        addr as u64
+                        if sym.kind == SymbolKind::Tls {
+                            // sym could be undefined
+                            eprintln!(
+                                "name: {}, sec_name: {}, P's off in sec: {:0x}, rela.kind: {:?}, rela.size: {}",
+                                sym.name,
+                                sec.name,
+                                off,
+                                rela.kind(),
+                                rela.size(),
+                            );
+                            let ti = global_sym_table.lookup_tls_symbol(&sym.name)
+                                .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
+                            sym_mod_id = ti.mod_id.0;
+                            ti.offset as u64
+                        } else {
+                            let addr = global_sym_table
+                                .lookup_symbol_addr(&sym.name)
+                                .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
+                            addr as u64
+                        }
                     } else {
                         eprintln!(
                             "name: {}, rela.kind: {:?}, A: {}, rela.size: {}",
@@ -98,6 +116,43 @@ pub(crate) fn do_relocation(
                 }
                 RelocationKind::ImageOffset => S + A - Image,
                 RelocationKind::SectionOffset => S + A - Section,
+                RelocationKind::Elf(object::elf::R_X86_64_TLSGD) => {
+                    // 19
+                    let ti = TlsIndex {
+                        mod_id: PhoenixModId(sym_mod_id),
+                        offset: S as usize,
+                    };
+                    let G = extra_symbol_sec
+                        .make_got_entry_for_tls_index(ti, cur_sym_index.expect("sth wrong"))
+                        as i64;
+                    eprintln!("{:0x} + {} - {:0x} = {:0x}", G, A, P, G + A - P);
+                    unsafe {
+                        eprintln!(
+                            "G_content: {:0x?}",
+                            std::slice::from_raw_parts(G as *const u8, 16)
+                        );
+                    }
+                    G + A - P
+                }
+                RelocationKind::Elf(object::elf::R_X86_64_TLSLD) => {
+                    // 20
+                    let ti = TlsIndex {
+                        mod_id: PhoenixModId(sym_mod_id),
+                        offset: 0,
+                    };
+                    let G = extra_symbol_sec
+                        .make_got_entry_for_tls_index(ti, cur_sym_index.expect("sth wrong"))
+                        as i64;
+                    G + A - P
+                }
+                RelocationKind::Elf(object::elf::R_X86_64_DTPOFF32) => {
+                    // 21
+                    S + A - P
+                }
+                RelocationKind::Elf(object::elf::R_X86_64_DTPOFF64) => {
+                    // 17
+                    S + A - P
+                }
                 _ => panic!("rela: {:?}", rela),
             };
 

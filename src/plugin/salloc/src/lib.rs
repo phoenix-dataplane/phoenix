@@ -6,8 +6,8 @@ use std::alloc::LayoutError;
 
 use thiserror::Error;
 
-pub use phoenix::module::PhoenixModule;
-pub use phoenix::plugin::InitFnResult;
+use phoenix::module::PhoenixModule;
+use phoenix::plugin::InitFnResult;
 use phoenix::resource::Error as ResourceError;
 
 pub mod config;
@@ -45,4 +45,21 @@ impl<T> From<SendError<T>> for ControlPathError {
     fn from(_other: SendError<T>) -> Self {
         Self::SendCommand
     }
+}
+
+use crate::config::SallocConfig;
+use crate::module::SallocModule;
+
+#[no_mangle]
+pub fn init_module_salloc(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let config = SallocConfig::new(config_string)?;
+    let module = SallocModule::new(config);
+    Ok(Box::new(module))
+}
+
+#[no_mangle]
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let config = SallocConfig::new(config_string)?;
+    let module = SallocModule::new(config);
+    Ok(Box::new(module))
 }

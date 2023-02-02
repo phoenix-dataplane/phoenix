@@ -13,7 +13,7 @@ members = [
   "src/shm/shmalloc",
   # plugins
   "src/plugin/salloc",
-  "src/plugin/salloc/plugin",
+  # "src/plugin/salloc/plugin",
   "src/plugin/transport-rdma",
   "src/plugin/transport-rdma/plugin",
   "src/plugin/transport-tcp",

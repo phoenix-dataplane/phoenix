@@ -1,4 +1,5 @@
 use std::ptr;
+use std::mem;
 
 use object::elf;
 use object::elf::FileHeader64;
@@ -10,6 +11,7 @@ use object::{ObjectSection, Relocation, SectionFlags, SectionIndex, SectionKind}
 use mmap::{Mmap, MmapOptions};
 
 use super::symbol::{ExtraSymbol, Symbol, SymbolTable};
+use super::tls::TlsIndex;
 use super::Error;
 
 #[derive(Debug)]
@@ -26,6 +28,9 @@ pub(crate) struct Section {
     pub(crate) relocations: Vec<(u64, Relocation)>,
     /// For .bss/.tbss sections, we need to allocate extra spaces.
     pub(crate) mmap: Option<Mmap>,
+
+    // Not a mandatory field, used by tbss and tdata section to allocate slot for TLVs
+    pub(crate) used: u64,
 }
 
 impl Section {
@@ -44,6 +49,7 @@ impl Section {
             relocations: section.relocations().collect::<Vec<(u64, Relocation)>>(),
             // For .bss/.tbss sections, we need to allocate extra spaces. We'll fill this later.
             mmap: None,
+            used: 0,
         }
     }
 
@@ -69,6 +75,7 @@ impl Section {
     pub(crate) fn update_runtime_addr(&mut self, image_start: *const u8) -> Result<(), Error> {
         if self.kind.is_bss() && self.size > 0 {
             // Allocate memory for .bss/.tbss section.
+            // Strictly, there's no need to allocate for .tbss here.
             assert!(self.align as usize <= page_size::get());
             // round up to page
             let rounded_size = self
@@ -99,15 +106,25 @@ impl Section {
                 std::slice::from_raw_parts(self.address as *const u8, 32)
             });
 
-            // Initialize tls_begin, tp_addr, and dtp_addr
-            if self.kind == SectionKind::Tls {
-                // On x86, TP (%gs on i386, %fs on x86-64) refers past the end of all TLVs
-                // for historical reasons. TLVs are accessed with negative offsets from TP.
-            }
+            // // Initialize tls_begin, tp_addr, and dtp_addr
+            // if self.kind == SectionKind::Tls {
+            //     // On x86, TP (%gs on i386, %fs on x86-64) refers past the end of all TLVs
+            //     // for historical reasons. TLVs are accessed with negative offsets from TP.
+            // }
         }
         Ok(())
     }
+
+    // Allocate an offset for thread local variable
+    pub(crate) fn alloc_tlv(&mut self, sym: &Symbol) -> u64 {
+        assert!(self.used + sym.size <= self.size);
+        let ret = self.address + sym.size;
+        self.used += sym.size;
+        ret
+    }
 }
+
+// All below are special sections (sections other than .rodata, .data, .text. .bss)
 
 // Common symbols are a feature that allow a programmer to 'define' several
 // variables of the same name in different source files.
@@ -146,21 +163,22 @@ impl CommonSection {
             .mmap
             .as_ref()
             .expect("Something is wrong with calculating common size");
-        assert!((self.used as usize) < mmap.len());
+        assert!(((self.used + sym.size as isize) as usize) < mmap.len());
         let ret = unsafe { mmap.as_ptr().offset(self.used) };
         self.used += sym.size as isize;
         ret
     }
 }
 
+// A combination of GOT and PLT. The layout is not exactly the same as the tradition
+// but it is simpler to implement.
 pub(crate) struct ExtraSymbolSection {
     mmap: Option<Mmap>,
-    used: isize,
 }
 
 impl ExtraSymbolSection {
     pub(crate) fn new(num_symbols: usize) -> Result<Self, Error> {
-        let size = num_symbols * std::mem::size_of::<ExtraSymbol>();
+        let size = num_symbols * mem::size_of::<ExtraSymbol>();
         let size = size.next_multiple_of(page_size::get());
         let mmap = if size > 0 {
             let mut mmap = MmapOptions::new()
@@ -177,7 +195,7 @@ impl ExtraSymbolSection {
         } else {
             None
         };
-        Ok(Self { mmap, used: 0 })
+        Ok(Self { mmap })
     }
 
     #[inline]
@@ -218,5 +236,25 @@ impl ExtraSymbolSection {
             trampoline: [0xFF, 0x25, 0xF2, 0xFF, 0xFF, 0xFF, 0x00, 0x00],
         };
         ptr::addr_of!(entry.trampoline).addr()
+    }
+
+    /// Allocates an GOT entry in the section and returns the address of the entry.
+    /// Rather than `addr` and `trampoline`, the content becomes `mod_id` and `offset`,
+    /// which happen to be also 16 bytes.
+    #[inline]
+    pub(crate) fn make_got_entry_for_tls_index(
+        &self,
+        ti: TlsIndex,
+        sym_index: SymbolIndex,
+    ) -> usize {
+        let start = self.section_start();
+        assert!(sym_index.0 as usize * mem::size_of::<ExtraSymbol>() < self.mmap.as_ref().unwrap().len());
+        let entry = unsafe { &mut *start.offset(sym_index.0 as isize) };
+        *entry = ExtraSymbol {
+            addr: ti.mod_id.0,
+            trampoline: ti.offset.to_be_bytes(),
+        };
+        // *entry = unsafe { mem::transmute::<TlsIndex, ExtraSymbol>(ti) };
+        ptr::addr_of!(entry.addr).addr()
     }
 }

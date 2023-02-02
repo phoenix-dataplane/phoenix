@@ -27,11 +27,12 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
 use object::read::elf::ElfFile;
-use object::{Object, ObjectSymbol};
+use object::{Object, ObjectSymbol, SymbolKind};
 use rustc_demangle::demangle;
 use thiserror::Error;
 
@@ -46,6 +47,9 @@ pub(crate) mod module;
 use module::{LinkedModule, LoadableModule};
 
 pub(crate) mod relocation;
+
+pub(crate) mod tls;
+use tls::PHOENIX_MOD_INIT_EXEC;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -69,13 +73,55 @@ pub enum Error {
     PartialLinking(PathBuf),
 }
 
+/// The set of loadable module that are current in memory.
+pub(crate) struct LoadedModules(Mutex<Vec<LinkedModule>>);
+
+pub(crate) static LOADED_MODULES: LoadedModules = LoadedModules::new();
+
+impl Default for LoadedModules {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LoadedModules {
+    const fn new() -> Self {
+        LoadedModules(Mutex::new(Vec::new()))
+    }
+
+    fn add(&self, linked: LinkedModule) {
+        let mut inner = self.0.lock().unwrap();
+        inner.push(linked);
+    }
+
+    pub(crate) fn clone_tls_initimage(&self, mod_id: usize) -> Option<Box<[u8]>> {
+        let inner = self.0.lock().unwrap();
+        for linked in inner.iter() {
+            if linked.mod_id() == mod_id {
+                // found it
+                return Some(linked.tls_initimage().as_slice().into());
+            }
+        }
+
+        None
+    }
+
+    pub(crate) fn contains(&self, path: &str) -> bool {
+        let inner = self.0.lock().unwrap();
+        let path = PathBuf::from(path);
+        inner
+            .iter()
+            .map(|x| x.path())
+            .find(|x| x == &&path)
+            .is_some()
+    }
+}
+
 pub(crate) struct Linker {
     /// The binary for phoenix itself.
     binary: Vec<u8>,
     /// The global symbol lookup table.
     pub(crate) global_sym_table: SymbolLookupTable,
-    /// The set of loadable module that are current in memory.
-    loaded_modules: Vec<LinkedModule>,
     // /// The set of loadable module that are only
     // loaded_roots: Vec<LinkedModule>,
     /// Working directory
@@ -91,7 +137,10 @@ impl Linker {
         let mut dep_path = fs::read_link("/proc/self/exe")?;
         dep_path.set_extension("d");
         let phoenix_deps = Self::load_deps(dep_path)?;
-        let crates_to_skip = phoenix_deps.into_iter().collect();
+        let crates_to_skip = phoenix_deps
+            .into_iter()
+            .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
+            .collect();
 
         // Validate the parse the ELF binary of phoenix
         let self_binary = fs::read("/proc/self/exe")?;
@@ -106,8 +155,19 @@ impl Linker {
         // Update symbols' addresses to their runtime addresses
         let mut global_sym_table = SymbolLookupTable::new(&elf);
         for sym in global_sym_table.table.values_mut() {
+            // normal symbol definitions
             if sym.is_global && sym.is_definition {
                 sym.address = (sym.address as isize + runtime_offset) as u64;
+            }
+            // if sym.name == "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h32461f6f947bc20aE" {
+            //     panic!("found: {:?}", sym);
+            // }
+            // TLS symbol definitions
+            if sym.is_global && sym.kind == SymbolKind::Tls && !sym.is_undefined {
+                // the mod_id should be 1
+                sym.mod_id = PHOENIX_MOD_INIT_EXEC;
+                // the sym.address here is the offset into the TLS initialization image,
+                // so no need to touch it.
             }
         }
 
@@ -119,7 +179,6 @@ impl Linker {
         Ok(Linker {
             binary: self_binary,
             global_sym_table,
-            loaded_modules: Vec::new(),
             workdir,
             crates_to_skip,
         })
@@ -164,11 +223,11 @@ impl Linker {
         loaded.update_global_symbol_table(&mut self.global_sym_table);
         let mut linked = loaded.link(&self.global_sym_table)?;
         linked.run_init();
-        self.loaded_modules.push(linked);
+        LOADED_MODULES.add(linked);
         Ok(())
     }
 
-    /// Load a group of object file into memory.
+    /// Loads a group of object file into memory.
     pub(crate) fn load_objects<P: AsRef<Path>>(&mut self, objects: Vec<P>) -> Result<(), Error> {
         // 1. Load all objects into memory
         let mut loaded_modules = Vec::new();
@@ -186,18 +245,38 @@ impl Linker {
             println!("object: {}", object.as_ref().display());
             let mut linked = loaded.link(&self.global_sym_table)?;
             linked.run_init();
-            self.loaded_modules.push(linked);
+            LOADED_MODULES.add(linked);
         }
         Ok(())
     }
 
-    /// Load a given `rlib` file into memory.
+    /// Loads a given `rlib` file into memory and loads its dependencies parsed from the dep file.
     pub(crate) fn load_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
         &mut self,
         archive_path: P1,
         dep_path: P2,
     ) -> Result<(), Error> {
         self.load_archive_inner(archive_path.as_ref(), dep_path.as_ref())
+    }
+
+    /// Loads a single `rlib`.
+    ///
+    /// # Safety
+    ///
+    /// The user must ensure its dependencies has been properly loaded into
+    /// memory and initialized.
+    pub(crate) unsafe fn load_single_archive<P: AsRef<Path>>(
+        &mut self,
+        archive_path: P,
+    ) -> Result<(), Error> {
+        if archive_path.as_ref().extension() != Some(OsStr::new("rlib")) {
+            return Err(Error::NotAnRlib);
+        }
+        let objects =
+            self.extract_and_partial_link(&[archive_path.as_ref().display().to_string()])?;
+
+        self.load_objects(objects);
+        Ok(())
     }
 
     fn load_archive_inner(&mut self, archive_path: &Path, dep_path: &Path) -> Result<(), Error> {
@@ -224,7 +303,7 @@ impl Linker {
         let mut objects = Vec::new();
         for dep in all_deps {
             // skip if already loaded
-            if self.crates_to_skip.contains(dep) {
+            if self.crates_to_skip.contains(dep) || LOADED_MODULES.contains(&dep) {
                 log::debug!("{} is already loaded, skipping...", dep);
                 eprintln!("todo, also check loaded modules");
                 continue;
@@ -309,51 +388,72 @@ fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn test_linker() {
-        let workdir = "/tmp/tmp";
-        let mut linker = Linker::new(workdir.into()).unwrap();
-        println!("{:?}", std::env::current_dir());
-        let target_deps_dir = format!("{}/../../target/debug/deps", env!("CARGO_MANIFEST_DIR"));
-        linker
-            .load_archive(
-                format!("{}/libmmap-3047187639e30dd2.rlib", target_deps_dir),
-                format!("{}/mmap-3047187639e30dd2.d", target_deps_dir),
-            )
-            .unwrap();
-        let f_eprint = linker
-            .global_sym_table
-            .lookup_symbol_addr("_ZN3std2io5stdio7_eprint17h5f2ebd38f95a420bE")
-            .unwrap();
-        println!("f_eprint: {:0x?}", f_eprint);
-        println!("f_eprint: {:0x?}", unsafe {
-            std::slice::from_raw_parts(f_eprint as *const u8, 128)
-        });
-        let f_addr = linker
-            .global_sym_table
-            // .lookup_symbol_addr("_ZN4mmap16test_load_module17h8f26bf5d2a7b7653E")
-            .lookup_symbol_addr("test_load_module")
-            .unwrap();
-        println!("{:0x?}", f_addr);
-        println!("{:0x?}", unsafe {
-            std::slice::from_raw_parts(f_addr as *const u8, 128)
-        });
-        // std::thread::sleep(std::time::Duration::from_secs(10000));
-        let c = unsafe { (std::mem::transmute::<usize, fn(i32, i32) -> i32>(f_addr))(42, 1) };
-        println!("c = {}", c);
-        // let _f2_addr = mmap::test_load_module as usize;
-    }
+    // #[test]
+    // fn test_linker() {
+    //     let workdir = "/tmp/tmp";
+    //     let mut linker = Linker::new(workdir.into()).unwrap();
+    //     println!("{:?}", std::env::current_dir());
+    //     let target_deps_dir = format!("{}/../../target/debug", env!("CARGO_MANIFEST_DIR"));
+    //     linker
+    //         .load_archive(
+    //             format!("{}/libmmap.rlib", target_deps_dir),
+    //             format!("{}/libmmap.d", target_deps_dir),
+    //         )
+    //         .unwrap();
+    //     let f_eprint = linker
+    //         .global_sym_table
+    //         .lookup_symbol_addr("_ZN3std2io5stdio7_eprint17h5f2ebd38f95a420bE")
+    //         .unwrap();
+    //     println!("f_eprint: {:0x?}", f_eprint);
+    //     println!("f_eprint: {:0x?}", unsafe {
+    //         std::slice::from_raw_parts(f_eprint as *const u8, 128)
+    //     });
+    //     let f_addr = linker
+    //         .global_sym_table
+    //         // .lookup_symbol_addr("_ZN4mmap16test_load_module17h8f26bf5d2a7b7653E")
+    //         .lookup_symbol_addr("test_load_module")
+    //         .unwrap();
+    //     println!("{:0x?}", f_addr);
+    //     println!("{:0x?}", unsafe {
+    //         std::slice::from_raw_parts(f_addr as *const u8, 128)
+    //     });
+    //     // std::thread::sleep(std::time::Duration::from_secs(10000));
+    //     let c = unsafe { (std::mem::transmute::<usize, fn(i32, i32) -> i32>(f_addr))(42, 1) };
+    //     println!("c = {}", c);
+    //     // let _f2_addr = mmap::test_load_module as usize;
+    // }
     #[test]
     fn test_linker2() {
         let workdir = "/tmp/tmp";
         let mut linker = Linker::new(workdir.into()).unwrap();
-        println!("{:?}", std::env::current_dir());
-        let target_deps_dir = format!("{}/../../target/debug/deps", env!("CARGO_MANIFEST_DIR"));
+        let target_deps_dir = format!("{}/../../target/debug", env!("CARGO_MANIFEST_DIR"));
         linker
             .load_archive(
-                format!("{}/libmmap-3047187639e30dd2.rlib", target_deps_dir),
-                format!("{}/mmap-3047187639e30dd2.d", target_deps_dir),
+                format!("{}/libphoenix_salloc.rlib", target_deps_dir),
+                format!("{}/libphoenix_salloc.d", target_deps_dir),
             )
             .unwrap();
+        let f_addr = linker
+            .global_sym_table
+            .lookup_symbol_addr("init_module_salloc")
+            .unwrap();
+        let c = unsafe {
+            std::mem::transmute::<
+                usize,
+                fn(
+                    Option<&str>,
+                )
+                    -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
+            >(f_addr)(None)
+        };
+        // println!("c: {:?}", c);
     }
+
+    // #[test]
+    // fn test_linker3() {
+    //     let workdir = "/tmp/tmp";
+    //     let mut linker = Linker::new(workdir.into()).unwrap();
+    //     let libproc_macro = "/home/cjr/.rustup/toolchains/nightly-2022-10-01-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-30c46076cab796fe.rlib";
+    //     unsafe { linker.load_single_archive(libproc_macro).unwrap() };
+    // }
 }

@@ -8,6 +8,8 @@
 #![feature(maybe_uninit_array_assume_init)]
 #![feature(core_intrinsics)]
 #![feature(drain_filter)]
+#![feature(thread_id_value)]
+#![feature(local_key_cell_methods)]
 
 pub extern crate tracing;
 // alias
