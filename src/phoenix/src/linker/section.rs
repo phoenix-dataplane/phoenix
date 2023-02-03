@@ -248,11 +248,11 @@ impl ExtraSymbolSection {
         sym_index: SymbolIndex,
     ) -> usize {
         let start = self.section_start();
-        assert!(sym_index.0 as usize * mem::size_of::<ExtraSymbol>() < self.mmap.as_ref().unwrap().len());
+        debug_assert!(sym_index.0 as usize * mem::size_of::<ExtraSymbol>() < self.mmap.as_ref().unwrap().len());
         let entry = unsafe { &mut *start.offset(sym_index.0 as isize) };
         *entry = ExtraSymbol {
             addr: ti.mod_id.0,
-            trampoline: ti.offset.to_be_bytes(),
+            trampoline: ti.offset.to_le_bytes(),
         };
         // *entry = unsafe { mem::transmute::<TlsIndex, ExtraSymbol>(ti) };
         ptr::addr_of!(entry.addr).addr()

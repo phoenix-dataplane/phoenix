@@ -211,6 +211,9 @@ impl SymbolLookupTable {
                     // if name == "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h32461f6f947bc20aE" {
                     //     panic!("here, sym.address: {:0x}", sym.address);
                     // }
+                    if name == "init_module_salloc" {
+                        eprintln!("here, sym.address: {:0x}", sym.address);
+                    }
                     Some(sym.address as usize)
                 }
                 None => None,

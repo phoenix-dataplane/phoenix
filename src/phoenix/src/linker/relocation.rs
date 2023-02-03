@@ -2,7 +2,7 @@ use object::{RelocationKind, RelocationTarget, SymbolKind};
 
 use super::section::{ExtraSymbolSection, Section};
 use super::symbol::{SymbolLookupTable, SymbolTable};
-use super::tls::{TlsIndex, PhoenixModId};
+use super::tls::{PhoenixModId, TlsIndex};
 
 #[allow(non_snake_case)]
 pub(crate) fn do_relocation(
@@ -22,10 +22,14 @@ pub(crate) fn do_relocation(
             let mut sym_mod_id = 0;
             let P = sec.address + off;
             let A = rela.addend();
+            let mut rela_size = rela.size();
             let S = match rela.target() {
                 RelocationTarget::Symbol(sym_index) => {
                     cur_sym_index = Some(sym_index);
                     let sym = local_sym_table.symbol_by_index(sym_index).unwrap();
+                    if sym.name == "_ZN14phoenix_salloc6my_tls7__getit5__KEY17h90de767b6b53086eE" {
+                        eprintln!("sym: {:?}", sym);
+                    }
                     if sym.is_global {
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
@@ -46,8 +50,10 @@ pub(crate) fn do_relocation(
                                 rela.kind(),
                                 rela.size(),
                             );
-                            let ti = global_sym_table.lookup_tls_symbol(&sym.name)
+                            let ti = global_sym_table
+                                .lookup_tls_symbol(&sym.name)
                                 .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
+                            rela_size = 32;
                             sym_mod_id = ti.mod_id.0;
                             ti.offset as u64
                         } else {
@@ -64,12 +70,6 @@ pub(crate) fn do_relocation(
                             A,
                             rela.size()
                         );
-                        // for local symbols, just read its symbol address
-                        // let SymbolSection::Section(section_index) = sym.section else {
-                        //     panic!("no such section: {:?}", sym.section);
-                        // };
-                        // let section = &sections[section_index.0];
-                        // section.address + sym.address
                         sym.address
                     }
                 }
@@ -147,11 +147,13 @@ pub(crate) fn do_relocation(
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_DTPOFF32) => {
                     // 21
-                    S + A - P
+                    assert!(rela_size == 32);
+                    S + A
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_DTPOFF64) => {
                     // 17
-                    S + A - P
+                    assert!(rela_size == 64);
+                    S + A
                 }
                 _ => panic!("rela: {:?}", rela),
             };
@@ -159,13 +161,12 @@ pub(crate) fn do_relocation(
             unsafe {
                 // SAFETY: P must be pointing to a valid and properly aligned address. This is
                 // guaranteed if the relocation logic has no issues.
-                match rela.size() {
+                match rela_size {
                     64 => (P as *mut u64).write(value as u64),
                     32 => (P as *mut u32).write(value as u32),
                     16 => (P as *mut u16).write(value as u16),
                     8 => (P as *mut u8).write(value as u8),
-                    0 => {}
-                    _ => panic!("impossible"),
+                    _ => panic!("impossible, rela_size: {}", rela_size),
                 }
             }
         }

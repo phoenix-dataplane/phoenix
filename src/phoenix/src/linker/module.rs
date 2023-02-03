@@ -19,6 +19,10 @@ use super::Error;
 
 static MODULE_COUNTER: AtomicUsize = AtomicUsize::new(PHOENIX_MOD_BASE);
 
+lazy_static::lazy_static! {
+    static ref FILE: std::sync::Mutex<std::fs::File> = std::sync::Mutex::new(std::fs::File::create("/tmp/symbols.txt").unwrap());
+}
+
 pub(crate) struct LoadableModule {
     /// mod_id
     mod_id: usize,
@@ -86,6 +90,8 @@ impl LoadableModule {
 
         let mod_id = MODULE_COUNTER.fetch_add(1, Ordering::AcqRel);
 
+        let mut file = FILE.lock().unwrap();
+
         // Update the symbol to point to the address we allocated for each section
         for sym in &mut symtab.symbols {
             let sym_addr = if sym.is_common {
@@ -109,6 +115,13 @@ impl LoadableModule {
             if let Some(sym_addr) = sym_addr {
                 sym.address = sym_addr;
             }
+
+            use std::io::Write;
+            writeln!(file, "{}: 0x{:0x}", sym.name, sym.address).unwrap();
+
+            // if sym.name == "_ZN14phoenix_salloc7my_tls27__getit5__KEY17h0a62b7d86b328016E" {
+            //     panic!("sym: {:?}, tls_initimage: {:?}", sym, tls_initimage);
+            // }
         }
 
         Ok(Self {

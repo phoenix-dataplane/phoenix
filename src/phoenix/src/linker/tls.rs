@@ -130,11 +130,11 @@ impl TlsInitImage {
                     mmap[tdata_off..tdata_off + size].copy_from_slice(unsafe {
                         std::slice::from_raw_parts(sec.address as *const u8, sec.size as usize)
                     });
-                    sec.address = filesz as u64;
+                    sec.address = tdata_off as u64;
                     tdata_off += size;
                 }
                 SectionKind::UninitializedTls => {
-                    sec.address = memsz as u64;
+                    sec.address = tbss_off as u64;
                     tbss_off += size;
                 }
                 _ => {}
@@ -178,21 +178,22 @@ struct Dtv(Vec<TlsBlock>);
 impl Dtv {
     fn get_or_create(&mut self, ti: TlsIndex) -> &mut TlsBlock {
         println!("ti.mod_id: {:?}", ti.mod_id);
-        if ti.mod_id.0 >= self.0.len() {
-            self.0.resize_with(ti.mod_id.0 + 1, || None);
+        let mod_id = ti.mod_id.0 - PHOENIX_MOD_BASE;
+        if mod_id >= self.0.len() {
+            self.0.resize_with(mod_id + 1, || None);
         }
 
-        if self.0[ti.mod_id.0].is_none() {
+        if self.0[mod_id].is_none() {
             // Locate the matching mod_id from all loaded modules
             // Allocate and copy the TLS initialization image of module to the TLS block.
             let data = LOADED_MODULES
                 .clone_tls_initimage(ti.mod_id.0)
                 .unwrap_or_else(|| panic!("No such mod_id: {} found", ti.mod_id.0));
 
-            self.0[ti.mod_id.0] = Some(TlsBlockInner { data });
+            self.0[mod_id] = Some(TlsBlockInner { data });
         }
 
-        &mut self.0[ti.mod_id.0]
+        &mut self.0[mod_id]
     }
 }
 
@@ -228,28 +229,43 @@ thread_local! {
 
 /// A replacement implemention for libc's `__tls_get_addr` for plugins.
 /// This function will be called from multiple threads concurrently.
-pub(crate) fn phoenix_tls_get_addr(tls_index: &TlsIndex) -> *mut () {
+/// __tls_get_addr does not use the default x86 calling convention of
+/// passing arguments on the stack. Therefore, phoenix_tls_get_addr has to use the
+/// same calling convention as __tls_get_addr.
+#[no_mangle]
+pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut () {
+    use std::arch::asm;
+    let tls_index_addr: usize;
+    unsafe {
+        asm!("mov {}, rdi", out(reg) tls_index_addr);
+    }
     DTV.with_borrow_mut(|dtv| {
-        if (tls_index.mod_id.0 & 0xffffffff) == 0xe8486666 {
-            eprintln!(
-                "addr: {:0x}, {:?}",
-                (tls_index as *const TlsIndex).addr(),
-                *tls_index
-            );
-        }
+        let tls_index: &TlsIndex = unsafe { &*(tls_index_addr as *const TlsIndex) };
+        eprintln!(
+            "addr: {:0x}, {:?}, content: {:?}",
+            (tls_index as *const TlsIndex).addr(),
+            *tls_index,
+            unsafe { std::slice::from_raw_parts(tls_index_addr as *const u8, 32) },
+        );
         if tls_index.mod_id.is_phoenix_plugin() {
             let tls_block = dtv.get_or_create(*tls_index);
 
             // SAFETY: should be fine to unwrap because dtv.get_or_create should just created the block
-            tls_block
+            let ret = tls_block
                 .as_mut()
                 .unwrap()
                 .as_mut_ptr()
-                .map_addr(|addr| addr + tls_index.offset)
+                .map_addr(|addr| addr + tls_index.offset);
+            println!("ret: {:0x}, value: {:0x}", ret as usize, unsafe { ret.cast::<u64>().read() });
+            ret
         } else if tls_index.mod_id.is_dynamic_library() || tls_index.mod_id.is_init_exec() {
+            unsafe {
+                asm!("mov rdi, {}", in(reg) tls_index_addr);
+            }
             let ret = unsafe {
                 __tls_get_addr(tls_index as *const TlsIndex as *mut TlsIndex as *mut libc::size_t)
             };
+            println!("ret: {:0x}", ret as usize);
             ret as _
         } else {
             panic!("invalid tls_index: {:?}", tls_index);

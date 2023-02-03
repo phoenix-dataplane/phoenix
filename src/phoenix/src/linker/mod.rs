@@ -46,6 +46,7 @@ pub(crate) mod initfini;
 pub(crate) mod module;
 use module::{LinkedModule, LoadableModule};
 
+#[cfg(target_arch = "x86_64")]
 pub(crate) mod relocation;
 
 pub(crate) mod tls;
@@ -435,18 +436,32 @@ mod tests {
             .unwrap();
         let f_addr = linker
             .global_sym_table
-            .lookup_symbol_addr("init_module_salloc")
+            .lookup_symbol_addr("init_module_salloc2")
             .unwrap();
         let c = unsafe {
             std::mem::transmute::<
                 usize,
                 fn(
-                    Option<&str>,
+                    // Option<&str>,
+                    i32, i32
                 )
-                    -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
-            >(f_addr)(None)
+                    // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
+                    -> i32,
+            >(f_addr)(4, 6)
         };
-        // println!("c: {:?}", c);
+        println!("c: {:?}", c);
+        let c = unsafe {
+            std::mem::transmute::<
+                usize,
+                fn(
+                    // Option<&str>,
+                    i32, i32
+                )
+                    // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
+                    -> i32,
+            >(f_addr)(40, 60)
+        };
+        println!("c: {:?}", c);
     }
 
     // #[test]
