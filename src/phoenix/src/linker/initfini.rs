@@ -34,7 +34,7 @@ impl InitFini {
                     n if n.starts_with(".dtors") => todo!("{}", n),
                     n if n.starts_with(".init_array") => todo!("{}", n),
                     n if n.starts_with(".fini_array") => todo!("{}", n),
-                    _ => { return None }
+                    _ => return None,
                 }
             }
             SectionKind::Elf(elf::SHT_INIT_ARRAY) => todo!("{:?}", section.kind),

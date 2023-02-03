@@ -8,4 +8,3 @@ pub fn get_command_str(cmd: &Command) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
-

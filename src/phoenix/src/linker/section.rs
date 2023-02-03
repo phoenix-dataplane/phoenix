@@ -1,5 +1,5 @@
-use std::ptr;
 use std::mem;
+use std::ptr;
 
 use object::elf;
 use object::elf::FileHeader64;
@@ -242,7 +242,10 @@ impl ExtraSymbolSection {
         sym_index: SymbolIndex,
     ) -> usize {
         let start = self.section_start();
-        debug_assert!(sym_index.0 as usize * mem::size_of::<ExtraSymbol>() < self.mmap.as_ref().unwrap().len());
+        debug_assert!(
+            sym_index.0 as usize * mem::size_of::<ExtraSymbol>()
+                < self.mmap.as_ref().unwrap().len()
+        );
         let entry = unsafe { &mut *start.offset(sym_index.0 as isize) };
         *entry = ExtraSymbol {
             addr: ti.mod_id.0,
