@@ -95,22 +95,16 @@ impl Section {
         } else if self.need_load() {
             let file_off = self.file_range.expect("impossible").0;
             self.address = unsafe { image_start.offset(file_off as isize) }.addr() as u64;
-            eprintln!(
-                "section: {}, {:0x}, image_addr: {:0x}, file_off: {:0x}",
-                self.name,
-                self.address,
-                image_start.addr(),
-                file_off
-            );
-            eprintln!("code: {:?}", unsafe {
-                std::slice::from_raw_parts(self.address as *const u8, 32)
-            });
-
-            // // Initialize tls_begin, tp_addr, and dtp_addr
-            // if self.kind == SectionKind::Tls {
-            //     // On x86, TP (%gs on i386, %fs on x86-64) refers past the end of all TLVs
-            //     // for historical reasons. TLVs are accessed with negative offsets from TP.
-            // }
+            // eprintln!(
+            //     "section: {}, {:0x}, image_addr: {:0x}, file_off: {:0x}",
+            //     self.name,
+            //     self.address,
+            //     image_start.addr(),
+            //     file_off
+            // );
+            // eprintln!("code: {:?}", unsafe {
+            //     std::slice::from_raw_parts(self.address as *const u8, 32)
+            // });
         }
         Ok(())
     }

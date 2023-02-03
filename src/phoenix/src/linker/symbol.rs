@@ -142,8 +142,9 @@ impl SymbolLookupTable {
                 //   }
                 // }
                 assert!(
-                    size >= 32,
-                    "info does not contain extension fields (dlpi_tls_modid and dlpi_tls_data)"
+                    size >= 64,
+                    "dl_phdr_info does not contain enough extension fields \
+                    (dlpi_tls_modid and dlpi_tls_data), please check your libc version"
                 );
                 let input_output: &mut [usize; 4] = unsafe { &mut *(data as *mut [usize; 4]) };
                 let addr = input_output[0];
@@ -191,31 +192,16 @@ impl SymbolLookupTable {
 
     pub(crate) fn lookup_symbol_addr(&self, name: &str) -> Option<usize> {
         match name {
-            "__tls_get_addr" => {
-                return Some((phoenix_tls_get_addr as *const ()).addr());
-            }
-            "__rust_probestack" => {
-                return Some((__rust_probestack as *const ()).addr());
-            }
+            "__tls_get_addr" => return Some((phoenix_tls_get_addr as *const ()).addr()),
+            "__rust_probestack" => return Some((__rust_probestack as *const ()).addr()),
             _ => {}
         }
 
         if let Some(addr) = Self::lookup_symbol_dlsym(name) {
-            // if name == "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h32461f6f947bc20aE" {
-            //     panic!("here, sym.address: {:0x}", addr);
-            // }
             Some(addr)
         } else {
             match self.table.get(name) {
-                Some(sym) => {
-                    // if name == "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h32461f6f947bc20aE" {
-                    //     panic!("here, sym.address: {:0x}", sym.address);
-                    // }
-                    if name == "init_module_salloc" {
-                        eprintln!("here, sym.address: {:0x}", sym.address);
-                    }
-                    Some(sym.address as usize)
-                }
+                Some(sym) => Some(sym.address as usize),
                 None => None,
             }
         }
@@ -226,9 +212,8 @@ impl SymbolLookupTable {
         // we try to look up the symbol using dlsym.
         let cstr = std::ffi::CString::new(name).expect("Invalid name for CString");
         let addr = unsafe { libc::dlsym(libc::RTLD_DEFAULT, cstr.as_c_str().as_ptr()) };
-        // TODO(cjr): look up in opened shared libraries.
         if addr.is_null() {
-            // eprintln!("{:?}", unsafe { std::ffi::CStr::from_ptr(libc::dlerror()) });
+            log::error!("{:?}", unsafe { std::ffi::CStr::from_ptr(libc::dlerror()) });
             None
         } else {
             Some(addr.addr())

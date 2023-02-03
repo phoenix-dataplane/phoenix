@@ -243,7 +243,7 @@ impl Linker {
         }
         // 3. Perform relocations for every object
         for (loaded, object) in loaded_modules.into_iter().zip(objects) {
-            println!("object: {}", object.as_ref().display());
+            log::debug!("object path: {}", object.as_ref().display());
             let mut linked = loaded.link(&self.global_sym_table)?;
             linked.run_init();
             LOADED_MODULES.add(linked);
@@ -276,7 +276,7 @@ impl Linker {
         let objects =
             self.extract_and_partial_link(&[archive_path.as_ref().display().to_string()])?;
 
-        self.load_objects(objects);
+        self.load_objects(objects)?;
         Ok(())
     }
 
@@ -306,12 +306,11 @@ impl Linker {
             // skip if already loaded
             if self.crates_to_skip.contains(dep) || LOADED_MODULES.contains(&dep) {
                 log::debug!("{} is already loaded, skipping...", dep);
-                eprintln!("todo, also check loaded modules");
                 continue;
             }
 
             let lib_path = Path::new(dep);
-            eprintln!("lib_path: {}", lib_path.display());
+            log::debug!("partial linking for lib: {}", lib_path.display());
             let dir_name = lib_path.file_stem().ok_or(Error::InvalidDepPath)?;
             let dir_path = self.workdir.join(dir_name);
             let output_obj = dir_path.join(lib_path.with_extension("o").file_name().unwrap());
@@ -360,8 +359,8 @@ impl Linker {
 
 fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
     let runtime_addr = (get_runtime_offset as *const ()).expose_addr();
-    println!(
-        "addr of get_runtime_offset: {:?}",
+    log::info!(
+        "Addr of get_runtime_offset: {:?}",
         get_runtime_offset as *const ()
     );
 
@@ -436,32 +435,30 @@ mod tests {
             .unwrap();
         let f_addr = linker
             .global_sym_table
-            .lookup_symbol_addr("init_module_salloc2")
+            .lookup_symbol_addr("init_module_salloc")
             .unwrap();
         let c = unsafe {
             std::mem::transmute::<
                 usize,
                 fn(
-                    // Option<&str>,
-                    i32, i32
+                    Option<&str>,
                 )
-                    // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
-                    -> i32,
-            >(f_addr)(4, 6)
+                    -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
+            >(f_addr)(None)
         };
-        println!("c: {:?}", c);
-        let c = unsafe {
-            std::mem::transmute::<
-                usize,
-                fn(
-                    // Option<&str>,
-                    i32, i32
-                )
-                    // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
-                    -> i32,
-            >(f_addr)(40, 60)
-        };
-        println!("c: {:?}", c);
+        // println!("c: {:?}", c);
+        // let c = unsafe {
+        //     std::mem::transmute::<
+        //         usize,
+        //         fn(
+        //             // Option<&str>,
+        //             i32, i32
+        //         )
+        //             // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
+        //             -> i32,
+        //     >(f_addr)(40, 60)
+        // };
+        // println!("c: {:?}", c);
     }
 
     // #[test]

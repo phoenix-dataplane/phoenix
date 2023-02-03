@@ -27,29 +27,19 @@ pub(crate) fn do_relocation(
                 RelocationTarget::Symbol(sym_index) => {
                     cur_sym_index = Some(sym_index);
                     let sym = local_sym_table.symbol_by_index(sym_index).unwrap();
-                    if sym.name == "_ZN14phoenix_salloc6my_tls7__getit5__KEY17h90de767b6b53086eE" {
-                        eprintln!("sym: {:?}", sym);
-                    }
                     if sym.is_global {
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
-                        eprintln!(
-                            "name: {}, rela.kind: {:?}, A: {}, rela.size: {}",
+                        log::trace!(
+                            "name: {}, sec_name: {}, P's off in sec: {:0x}, rela.kind: {:?}, rela.size: {}",
                             sym.name,
+                            sec.name,
+                            off,
                             rela.kind(),
-                            A,
-                            rela.size()
+                            rela.size(),
                         );
                         if sym.kind == SymbolKind::Tls {
                             // sym could be undefined
-                            eprintln!(
-                                "name: {}, sec_name: {}, P's off in sec: {:0x}, rela.kind: {:?}, rela.size: {}",
-                                sym.name,
-                                sec.name,
-                                off,
-                                rela.kind(),
-                                rela.size(),
-                            );
                             let ti = global_sym_table
                                 .lookup_tls_symbol(&sym.name)
                                 .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
@@ -63,7 +53,7 @@ pub(crate) fn do_relocation(
                             addr as u64
                         }
                     } else {
-                        eprintln!(
+                        log::trace!(
                             "name: {}, rela.kind: {:?}, A: {}, rela.size: {}",
                             sym.name,
                             rela.kind(),
@@ -125,13 +115,13 @@ pub(crate) fn do_relocation(
                     let G = extra_symbol_sec
                         .make_got_entry_for_tls_index(ti, cur_sym_index.expect("sth wrong"))
                         as i64;
-                    eprintln!("{:0x} + {} - {:0x} = {:0x}", G, A, P, G + A - P);
-                    unsafe {
-                        eprintln!(
-                            "G_content: {:0x?}",
-                            std::slice::from_raw_parts(G as *const u8, 16)
-                        );
-                    }
+                    // eprintln!("{:0x} + {} - {:0x} = {:0x}", G, A, P, G + A - P);
+                    // unsafe {
+                    //     eprintln!(
+                    //         "G_content: {:0x?}",
+                    //         std::slice::from_raw_parts(G as *const u8, 16)
+                    //     );
+                    // }
                     G + A - P
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_TLSLD) => {
@@ -147,12 +137,12 @@ pub(crate) fn do_relocation(
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_DTPOFF32) => {
                     // 21
-                    assert!(rela_size == 32);
+                    debug_assert_eq!(rela_size, 32);
                     S + A
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_DTPOFF64) => {
                     // 17
-                    assert!(rela_size == 64);
+                    debug_assert_eq!(rela_size, 64);
                     S + A
                 }
                 _ => panic!("rela: {:?}", rela),

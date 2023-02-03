@@ -177,7 +177,6 @@ struct Dtv(Vec<TlsBlock>);
 
 impl Dtv {
     fn get_or_create(&mut self, ti: TlsIndex) -> &mut TlsBlock {
-        println!("ti.mod_id: {:?}", ti.mod_id);
         let mod_id = ti.mod_id.0 - PHOENIX_MOD_BASE;
         if mod_id >= self.0.len() {
             self.0.resize_with(mod_id + 1, || None);
@@ -241,12 +240,6 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
     }
     DTV.with_borrow_mut(|dtv| {
         let tls_index: &TlsIndex = unsafe { &*(tls_index_addr as *const TlsIndex) };
-        eprintln!(
-            "addr: {:0x}, {:?}, content: {:?}",
-            (tls_index as *const TlsIndex).addr(),
-            *tls_index,
-            unsafe { std::slice::from_raw_parts(tls_index_addr as *const u8, 32) },
-        );
         if tls_index.mod_id.is_phoenix_plugin() {
             let tls_block = dtv.get_or_create(*tls_index);
 
@@ -256,7 +249,7 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
                 .unwrap()
                 .as_mut_ptr()
                 .map_addr(|addr| addr + tls_index.offset);
-            println!("ret: {:0x}, value: {:0x}", ret as usize, unsafe { ret.cast::<u64>().read() });
+            // println!("ret: {:0x}, value: {:0x}", ret as usize, unsafe { ret.cast::<u64>().read() });
             ret
         } else if tls_index.mod_id.is_dynamic_library() || tls_index.mod_id.is_init_exec() {
             unsafe {
@@ -265,7 +258,7 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
             let ret = unsafe {
                 __tls_get_addr(tls_index as *const TlsIndex as *mut TlsIndex as *mut libc::size_t)
             };
-            println!("ret: {:0x}", ret as usize);
+            // println!("ret: {:0x}", ret as usize);
             ret as _
         } else {
             panic!("invalid tls_index: {:?}", tls_index);
