@@ -2,6 +2,7 @@ use std::fs;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
@@ -39,7 +40,7 @@ pub(crate) struct LoadableModule {
     tls_initimage: TlsInitImage,
     /// The memory map needs to be retained.
     image: Mmap,
-    /// Path to the binary
+    /// Path to the rlib
     path: PathBuf,
     /// The File must be the last to drop.
     object: fs::File,
@@ -47,10 +48,11 @@ pub(crate) struct LoadableModule {
 
 impl LoadableModule {
     /// Load a given object file into memory and resolve undefined symbols.
-    pub(crate) fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub(crate) fn load(path: (PathBuf, PathBuf)) -> Result<Self, Error> {
         // Relocatable object does not have segments, so we have to understand the
         // meaning of each section and load needed sections into memory.
-        let object = fs::File::open(&path)?;
+        let (path_rlib, path_o) = path;
+        let object = fs::File::open(&path_o)?;
 
         // Map anonymous with RWE
         let image = MmapOptions::new()
@@ -93,7 +95,7 @@ impl LoadableModule {
         let mut file = FILE.lock().unwrap();
 
         // Update the symbol to point to the address we allocated for each section
-        for sym in &mut symtab.symbols {
+        for (_, sym) in symtab.iter_mut() {
             let sym_addr = if sym.is_common {
                 assert_ne!(sym.kind, SymbolKind::Tls);
                 Some(common_section.alloc_entry_for_symbol(&sym).addr() as u64)
@@ -133,14 +135,14 @@ impl LoadableModule {
             common_section,
             tls_initimage,
             image,
-            path: path.as_ref().to_path_buf(),
+            path: path_rlib,
             object,
         })
     }
 
     /// Insert symbol definition for global symbols from this module into global symbol table
     pub(crate) fn update_global_symbol_table(&self, sym_lookup_table: &mut SymbolLookupTable) {
-        for sym in &self.symtab.symbols {
+        for (_, sym) in self.symtab.iter() {
             if sym.is_global
                 && (sym.is_definition
                     || sym.is_common
@@ -164,7 +166,7 @@ impl LoadableModule {
         //
         // We need to resolve (assign addresses to) them in advance, so that they can be used
         // during the later relocation.
-        for sym in self.symtab.symbols.iter_mut() {
+        for (_, sym) in self.symtab.iter_mut() {
             if sym.kind == SymbolKind::Section {
                 let secno = sym.section_index.expect("This seems to be an exception");
                 sym.address = self.sections[secno.0].address;
@@ -172,7 +174,7 @@ impl LoadableModule {
         }
 
         // Allocate space for GOT/PLT sections
-        let mut extra_symbol_section = ExtraSymbolSection::new(self.symtab.symbols.len())?;
+        let mut extra_symbol_section = ExtraSymbolSection::new(self.symtab.len())?;
 
         // Then we process the reloation sections.
         do_relocation(
@@ -183,22 +185,25 @@ impl LoadableModule {
             &sym_lookup_table,
         );
 
-        Ok(LinkedModule {
+        Ok(Arc::new(LinkedModuleInner {
             mod_id: self.mod_id,
             sections: self.sections,
             init: self.init,
             fini: self.fini,
+            symtab: self.symtab,
             common_section: self.common_section,
             extra_symbol_section,
             tls_initimage: self.tls_initimage,
             image: self.image,
             path: self.path,
             object: self.object,
-        })
+        }))
     }
 }
 
-pub(crate) struct LinkedModule {
+pub(crate) type LinkedModule = Arc<LinkedModuleInner>;
+
+pub(crate) struct LinkedModuleInner {
     /// mod_id
     mod_id: usize,
     /// Sections of the module
@@ -206,6 +211,8 @@ pub(crate) struct LinkedModule {
     /// Initializers of the ObjectCode
     init: Vec<InitFini>,
     fini: Vec<InitFini>,
+    /// Table for symbols within this module
+    symtab: SymbolTable,
     /// Memory section for COMMON symbols
     common_section: CommonSection,
     /// Section to store extra symbols (e.g., for GOT)
@@ -220,13 +227,17 @@ pub(crate) struct LinkedModule {
     object: fs::File,
 }
 
-impl LinkedModule {
+impl LinkedModuleInner {
     pub(crate) fn run_init(&mut self) {
         eprintln!("TODO: Run initializers");
     }
 
     pub(crate) fn run_fini(&mut self) {
         eprintln!("TODO: Run finitializers");
+    }
+
+    pub(crate) fn lookup_symbol_addr(&self, name: &str) -> Option<usize> {
+        self.symtab.symbol_by_name(name).map(|s| s.address as _)
     }
 
     #[inline]
@@ -243,10 +254,4 @@ impl LinkedModule {
     pub(crate) fn path(&self) -> &PathBuf {
         &self.path
     }
-
-    // pub(crate) fn name(&self) -> &str {
-    // }
-
-    // pub(crate) fn path(&self) -> &str {
-    // }
 }

@@ -123,3 +123,12 @@ impl DatapathError {
         }
     }
 }
+
+use crate::config::RdmaTransportConfig;
+use crate::module::RdmaTransportModule;
+#[no_mangle]
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let config = RdmaTransportConfig::new(config_string)?;
+    let module = RdmaTransportModule::new(config);
+    Ok(Box::new(module))
+}

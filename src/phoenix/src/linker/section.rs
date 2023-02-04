@@ -131,9 +131,8 @@ pub(crate) struct CommonSection {
 impl CommonSection {
     pub(crate) fn new(sym_table: &SymbolTable) -> Result<Self, Error> {
         let size: u64 = sym_table
-            .symbols
             .iter()
-            .filter_map(|sym| if sym.is_common { Some(sym.size) } else { None })
+            .filter_map(|(_, sym)| if sym.is_common { Some(sym.size) } else { None })
             .sum();
         let size = (size as usize).next_multiple_of(page_size::get());
         let mmap = if size > 0 {

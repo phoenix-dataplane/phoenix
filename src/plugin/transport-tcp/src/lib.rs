@@ -102,3 +102,12 @@ impl TransportError {
         }
     }
 }
+
+use crate::config::TcpTransportConfig;
+use crate::module::TcpTransportModule;
+#[no_mangle]
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let config = TcpTransportConfig::new(config_string)?;
+    let module = TcpTransportModule::new(config);
+    Ok(Box::new(module))
+}

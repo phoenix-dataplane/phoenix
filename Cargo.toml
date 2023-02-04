@@ -15,9 +15,9 @@ members = [
   "src/plugin/salloc",
   # "src/plugin/salloc/plugin",
   "src/plugin/transport-rdma",
-  "src/plugin/transport-rdma/plugin",
+  #"src/plugin/transport-rdma/plugin",
   "src/plugin/transport-tcp",
-  "src/plugin/transport-tcp/plugin",
+  # "src/plugin/transport-tcp/plugin",
   # the products
   "src/phoenix",
   "src/phoenixctl",

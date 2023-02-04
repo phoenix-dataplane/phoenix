@@ -27,7 +27,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
@@ -95,6 +95,21 @@ impl LoadedModules {
         inner.push(linked);
     }
 
+    pub(crate) fn find_module_by_name<P: AsRef<Path>>(&self, name: P) -> Option<LinkedModule> {
+        let inner = self.0.lock().unwrap();
+        let canonicalized_path = name
+            .as_ref()
+            .canonicalize()
+            .expect("failed to canonicalize");
+        for linked in inner.iter() {
+            if linked.path().as_path() == canonicalized_path {
+                // found it
+                return Some(Arc::clone(&linked));
+            }
+        }
+        None
+    }
+
     pub(crate) fn clone_tls_initimage(&self, mod_id: usize) -> Option<Box<[u8]>> {
         let inner = self.0.lock().unwrap();
         for linked in inner.iter() {
@@ -103,7 +118,6 @@ impl LoadedModules {
                 return Some(linked.tls_initimage().as_slice().into());
             }
         }
-
         None
     }
 
@@ -146,7 +160,6 @@ impl Linker {
         // Validate the parse the ELF binary of phoenix
         let self_binary = fs::read("/proc/self/exe")?;
         let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*self_binary)?;
-        log::info!("entry: {:0x}", elf.entry());
 
         let Some(runtime_offset) = get_runtime_offset(&elf) else {
             return Err(Error::RuntimeOffset);
@@ -160,9 +173,6 @@ impl Linker {
             if sym.is_global && sym.is_definition {
                 sym.address = (sym.address as isize + runtime_offset) as u64;
             }
-            // if sym.name == "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h32461f6f947bc20aE" {
-            //     panic!("found: {:?}", sym);
-            // }
             // TLS symbol definitions
             if sym.is_global && sym.kind == SymbolKind::Tls && !sym.is_undefined {
                 // the mod_id should be 1
@@ -218,22 +228,34 @@ impl Linker {
     }
 
     /// Load a given object file into memory.
-    pub(crate) fn load_object<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+    pub(crate) fn load_object<P1: AsRef<Path>, P2: AsRef<Path>>(
+        &mut self,
+        path: (P1, P2),
+    ) -> Result<(), Error> {
         // TODO(cjr): redirect this to `load_objects(vec![path])`;
-        let loaded = LoadableModule::load(path)?;
+        let loaded =
+            LoadableModule::load((path.0.as_ref().to_path_buf(), path.1.as_ref().to_path_buf()))?;
         loaded.update_global_symbol_table(&mut self.global_sym_table);
         let mut linked = loaded.link(&self.global_sym_table)?;
-        linked.run_init();
+        Arc::get_mut(&mut linked)
+            .expect("shouldn't have other outstanding references")
+            .run_init();
         LOADED_MODULES.add(linked);
         Ok(())
     }
 
     /// Loads a group of object file into memory.
-    pub(crate) fn load_objects<P: AsRef<Path>>(&mut self, objects: Vec<P>) -> Result<(), Error> {
+    pub(crate) fn load_objects<P1: AsRef<Path>, P2: AsRef<Path>>(
+        &mut self,
+        objects: Vec<(P1, P2)>,
+    ) -> Result<(), Error> {
         // 1. Load all objects into memory
         let mut loaded_modules = Vec::new();
         for path in &objects {
-            let loaded = LoadableModule::load(path)?;
+            let loaded = LoadableModule::load((
+                path.0.as_ref().to_path_buf(),
+                path.1.as_ref().to_path_buf(),
+            ))?;
             loaded_modules.push(loaded);
         }
 
@@ -241,11 +263,14 @@ impl Linker {
         for loaded in &loaded_modules {
             loaded.update_global_symbol_table(&mut self.global_sym_table);
         }
+
         // 3. Perform relocations for every object
         for (loaded, object) in loaded_modules.into_iter().zip(objects) {
-            log::debug!("object path: {}", object.as_ref().display());
+            log::debug!("object path: {}", object.1.as_ref().display());
             let mut linked = loaded.link(&self.global_sym_table)?;
-            linked.run_init();
+            Arc::get_mut(&mut linked)
+                .expect("shouldn't have other outstanding references")
+                .run_init();
             LOADED_MODULES.add(linked);
         }
         Ok(())
@@ -256,7 +281,7 @@ impl Linker {
         &mut self,
         archive_path: P1,
         dep_path: P2,
-    ) -> Result<(), Error> {
+    ) -> Result<LinkedModule, Error> {
         self.load_archive_inner(archive_path.as_ref(), dep_path.as_ref())
     }
 
@@ -266,10 +291,10 @@ impl Linker {
     ///
     /// The user must ensure its dependencies has been properly loaded into
     /// memory and initialized.
-    pub(crate) unsafe fn load_single_archive<P: AsRef<Path>>(
+    pub(crate) unsafe fn load_archive_no_dep<P: AsRef<Path>>(
         &mut self,
         archive_path: P,
-    ) -> Result<(), Error> {
+    ) -> Result<LinkedModule, Error> {
         if archive_path.as_ref().extension() != Some(OsStr::new("rlib")) {
             return Err(Error::NotAnRlib);
         }
@@ -277,10 +302,15 @@ impl Linker {
             self.extract_and_partial_link(&[archive_path.as_ref().display().to_string()])?;
 
         self.load_objects(objects)?;
-        Ok(())
+        // SAFETY: the name should be found in loaded modules
+        Ok(LOADED_MODULES.find_module_by_name(archive_path).unwrap())
     }
 
-    fn load_archive_inner(&mut self, archive_path: &Path, dep_path: &Path) -> Result<(), Error> {
+    fn load_archive_inner(
+        &mut self,
+        archive_path: &Path,
+        dep_path: &Path,
+    ) -> Result<LinkedModule, Error> {
         if archive_path.extension() != Some(OsStr::new("rlib")) {
             return Err(Error::NotAnRlib);
         }
@@ -296,10 +326,15 @@ impl Linker {
         // Load all dependencies into memory, add symbols to global symbol table, and perform
         // relocation for the group of objects
         self.load_objects(objects)?;
-        Ok(())
+
+        // SAFETY: the name should be found in loaded modules
+        Ok(LOADED_MODULES.find_module_by_name(archive_path).unwrap())
     }
 
-    fn extract_and_partial_link(&mut self, all_deps: &[String]) -> Result<Vec<PathBuf>, Error> {
+    fn extract_and_partial_link(
+        &mut self,
+        all_deps: &[String],
+    ) -> Result<Vec<(PathBuf, PathBuf)>, Error> {
         use std::process::Command;
         let mut objects = Vec::new();
         for dep in all_deps {
@@ -351,7 +386,7 @@ impl Linker {
             if !status.success() {
                 return Err(Error::PartialLinking(lib_path.to_path_buf()));
             }
-            objects.push(output_obj);
+            objects.push((lib_path.canonicalize().unwrap(), output_obj));
         }
         Ok(objects)
     }
@@ -427,45 +462,18 @@ mod tests {
         let workdir = "/tmp/tmp";
         let mut linker = Linker::new(workdir.into()).unwrap();
         let target_deps_dir = format!("{}/../../target/debug", env!("CARGO_MANIFEST_DIR"));
-        linker
+        let linked = linker
             .load_archive(
-                format!("{}/libphoenix_salloc.rlib", target_deps_dir),
-                format!("{}/libphoenix_salloc.d", target_deps_dir),
+                format!("{}/libphoenix_transport_rdma.rlib", target_deps_dir),
+                format!("{}/libphoenix_transport_rdma.d", target_deps_dir),
             )
             .unwrap();
-        let f_addr = linker
-            .global_sym_table
-            .lookup_symbol_addr("init_module_salloc")
-            .unwrap();
-        let c = unsafe {
-            std::mem::transmute::<
-                usize,
-                fn(
-                    Option<&str>,
-                )
-                    -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
-            >(f_addr)(None)
-        };
-        // println!("c: {:?}", c);
-        // let c = unsafe {
-        //     std::mem::transmute::<
-        //         usize,
-        //         fn(
-        //             // Option<&str>,
-        //             i32, i32
-        //         )
-        //             // -> crate::plugin::InitFnResult<Box<dyn crate::module::PhoenixModule>>,
-        //             -> i32,
-        //     >(f_addr)(40, 60)
-        // };
+        // let f_addr = linker
+        //     .global_sym_table
+        //     .lookup_symbol_addr("init_module_salloc")
+        //     .unwrap();
+        let f_addr = linked.lookup_symbol_addr("init_module").unwrap();
+        let c = unsafe { std::mem::transmute::<usize, crate::plugin::InitModuleFn>(f_addr)(None) };
         // println!("c: {:?}", c);
     }
-
-    // #[test]
-    // fn test_linker3() {
-    //     let workdir = "/tmp/tmp";
-    //     let mut linker = Linker::new(workdir.into()).unwrap();
-    //     let libproc_macro = "/home/cjr/.rustup/toolchains/nightly-2022-10-01-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-30c46076cab796fe.rlib";
-    //     unsafe { linker.load_single_archive(libproc_macro).unwrap() };
-    // }
 }

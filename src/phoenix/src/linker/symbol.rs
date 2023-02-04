@@ -56,22 +56,54 @@ impl Symbol {
 /// An owned clone of the original symbol table. Supporting getting symbol by index.
 #[derive(Debug, Clone)]
 pub(crate) struct SymbolTable {
-    pub(crate) symbols: Vec<Symbol>,
+    symbols: Vec<Symbol>,
+    table: HashMap<String, SymbolIndex>,
 }
 
 impl SymbolTable {
     pub(crate) fn new(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Self {
         let symbols = if let Some(symtab) = elf.symbol_table() {
-            // NOTE(cjr): This assumes symbols() iterator returns items in order.
+            // NOTE(cjr): symbols() iterator must return items in order.
             symtab.symbols().map(|s| Symbol::new(s)).collect()
         } else {
             Vec::new()
         };
-        Self { symbols }
+        let table = symbols
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.name.clone(), SymbolIndex(i)))
+            .collect();
+        Self { symbols, table }
     }
 
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.symbols.len()
+    }
+
+    #[inline]
     pub(crate) fn symbol_by_index(&self, sym_index: SymbolIndex) -> Option<&Symbol> {
         self.symbols.get(sym_index.0)
+    }
+
+    pub(crate) fn symbol_by_name(&self, name: &str) -> Option<&Symbol> {
+        self.table
+            .get(name)
+            .and_then(|&idx| self.symbol_by_index(idx))
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (SymbolIndex, &Symbol)> {
+        self.symbols
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (SymbolIndex(i), s))
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (SymbolIndex, &mut Symbol)> {
+        self.symbols
+            .iter_mut()
+            .enumerate()
+            .map(|(i, s)| (SymbolIndex(i), s))
     }
 }
 

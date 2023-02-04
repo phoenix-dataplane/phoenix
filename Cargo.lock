@@ -1996,13 +1996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-transport-rdma-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-transport-rdma",
-]
-
-[[package]]
 name = "phoenix-transport-tcp"
 version = "0.1.0"
 dependencies = [
@@ -2023,13 +2016,6 @@ dependencies = [
  "toml",
  "uapi",
  "uuid",
-]
-
-[[package]]
-name = "phoenix-transport-tcp-plugin"
-version = "0.1.0"
-dependencies = [
- "phoenix-transport-tcp",
 ]
 
 [[package]]
