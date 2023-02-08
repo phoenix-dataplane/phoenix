@@ -8,21 +8,21 @@ pub mod transport;
 // Re-exports
 pub use transport::{cm, verbs, Error};
 
-const DEFAULT_KOALA_PREFIX: &str = "/tmp/phoenix";
-const DEFAULT_KOALA_CONTROL: &str = "control.sock";
+const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
+const DEFAULT_PHOENIX_CONTROL: &str = "control.sock";
 
 lazy_static::lazy_static! {
-    pub static ref KOALA_PREFIX: PathBuf = {
-        env::var("KOALA_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+    pub static ref PHOENIX_PREFIX: PathBuf = {
+        env::var("PHOENIX_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_PREFIX), |p| {
             let path = PathBuf::from(p);
             assert!(path.is_dir(), "{path:?} is not a directly");
             path
         })
     };
 
-    pub static ref KOALA_CONTROL_SOCK: PathBuf = {
-        env::var("KOALA_CONTROL")
-            .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
+    pub static ref PHOENIX_CONTROL_SOCK: PathBuf = {
+        env::var("PHOENIX_CONTROL")
+            .map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_CONTROL), PathBuf::from)
     };
 }
 

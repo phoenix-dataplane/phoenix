@@ -6,7 +6,7 @@ use ipc::service::ShmService;
 use uapi::engine::SchedulingHint;
 use uapi::salloc::{cmd, dp};
 
-use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
 thread_local! {
     /// Initialization is dynamically performed on the first call to with within a thread.
@@ -22,8 +22,8 @@ pub struct SAContext {
 impl SAContext {
     fn register() -> Result<SAContext, Error> {
         let service = ShmService::register(
-            &*KOALA_PREFIX,
-            &*KOALA_CONTROL_SOCK,
+            &*PHOENIX_PREFIX,
+            &*PHOENIX_CONTROL_SOCK,
             "Salloc".to_string(),
             SchedulingHint::default(),
             None,

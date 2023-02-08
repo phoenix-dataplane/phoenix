@@ -10,7 +10,7 @@ pub use uapi::engine::SchedulingHint;
 use uapi::transport::rdma::control_plane::Setting;
 use uapi::transport::rdma::{cmd, dp};
 
-use crate::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use crate::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
 pub mod cm;
 mod fp;
@@ -49,8 +49,8 @@ impl Context {
     fn register(setting: &Setting) -> Result<Context, Error> {
         let setting_str = serde_json::to_string(setting)?;
         let service = ShmService::register(
-            &*KOALA_PREFIX,
-            &*KOALA_CONTROL_SOCK,
+            &*PHOENIX_PREFIX,
+            &*PHOENIX_CONTROL_SOCK,
             "RdmaTransport".to_string(),
             SCHEDULING_HINT.with_borrow(|h| *h),
             Some(&setting_str),

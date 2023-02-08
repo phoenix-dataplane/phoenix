@@ -10,21 +10,21 @@ use uapi_policy_qos::control_plane::Request as QosRequest;
 
 const MAX_MSG_LEN: usize = 65536;
 
-const DEFAULT_KOALA_PREFIX: &str = "/tmp/phoenix";
-const DEFAULT_KOALA_CONTROL: &str = "control.sock";
+const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
+const DEFAULT_PHOENIX_CONTROL: &str = "control.sock";
 
 lazy_static::lazy_static! {
-    static ref KOALA_PREFIX: PathBuf = {
-        env::var("KOALA_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_KOALA_PREFIX), |p| {
+    static ref PHOENIX_PREFIX: PathBuf = {
+        env::var("PHOENIX_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_PREFIX), |p| {
             let path = PathBuf::from(p);
             assert!(path.is_dir(), "{path:?} is not a directly");
             path
         })
     };
 
-    static ref KOALA_CONTROL_SOCK: PathBuf = {
-        env::var("KOALA_CONTROL")
-            .map_or_else(|_| PathBuf::from(DEFAULT_KOALA_CONTROL), PathBuf::from)
+    static ref PHOENIX_CONTROL_SOCK: PathBuf = {
+        env::var("PHOENIX_CONTROL")
+            .map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_CONTROL), PathBuf::from)
     };
 }
 
@@ -44,7 +44,7 @@ fn main() {
     let arg0 = env::args().next().unwrap();
     let appname = Path::new(&arg0).file_name().unwrap().to_string_lossy();
 
-    let sock_path = KOALA_PREFIX.join(format!("phoenix-client-{}_{}.sock", appname, uuid));
+    let sock_path = PHOENIX_PREFIX.join(format!("phoenix-client-{}_{}.sock", appname, uuid));
 
     if sock_path.exists() {
         std::fs::remove_file(&sock_path).expect("remove_file");
@@ -57,6 +57,6 @@ fn main() {
     let buf = bincode::serialize(&req).unwrap();
     assert!(buf.len() < MAX_MSG_LEN);
 
-    let service_path = KOALA_PREFIX.join(KOALA_CONTROL_SOCK.as_path());
+    let service_path = PHOENIX_PREFIX.join(PHOENIX_CONTROL_SOCK.as_path());
     sock.send_to(&buf, &service_path).unwrap();
 }

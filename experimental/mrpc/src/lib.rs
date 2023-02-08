@@ -18,7 +18,7 @@ use thiserror::Error;
 
 use ipc::service::ShmService;
 use libphoenix::_rx_recv_impl as rx_recv_impl;
-use libphoenix::{KOALA_CONTROL_SOCK, KOALA_PREFIX};
+use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 pub use uapi::engine::SchedulingHint;
 use uapi::Handle;
 use uapi_mrpc::control_plane::Setting;
@@ -69,8 +69,8 @@ impl Context {
         let protos = RefCell::new(BTreeSet::new());
         let setting_str = serde_json::to_string(setting)?;
         let service = ShmService::register(
-            &*KOALA_PREFIX,
-            &*KOALA_CONTROL_SOCK,
+            &*PHOENIX_PREFIX,
+            &*PHOENIX_CONTROL_SOCK,
             "Mrpc".to_string(),
             SCHEDULING_HINT.with_borrow(|h| *h),
             Some(&setting_str),
