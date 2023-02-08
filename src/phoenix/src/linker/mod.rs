@@ -44,7 +44,8 @@ pub(crate) mod section;
 pub(crate) mod initfini;
 
 pub(crate) mod module;
-use module::{LinkedModule, LoadableModule};
+pub(crate) use module::LinkedModule;
+use module::LoadableModule;
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod relocation;
@@ -133,8 +134,9 @@ impl LoadedModules {
 }
 
 pub(crate) struct Linker {
+    // TODO(cjr): remove this field
     /// The binary for phoenix itself.
-    binary: Vec<u8>,
+    _binary: Vec<u8>,
     /// The global symbol lookup table.
     pub(crate) global_sym_table: SymbolLookupTable,
     // /// The set of loadable module that are only
@@ -154,7 +156,13 @@ impl Linker {
         let phoenix_deps = Self::load_deps(dep_path)?;
         let crates_to_skip = phoenix_deps
             .into_iter()
-            .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
+            // .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
+            .filter(|x| {
+                x.contains("libstd")
+                    || x.contains("libcore")
+                    || x.contains("libcompiler_builtins")
+                    || !x.ends_with("rlib")
+            })
             .collect();
 
         // Validate the parse the ELF binary of phoenix
@@ -188,7 +196,7 @@ impl Linker {
         // }
 
         Ok(Linker {
-            binary: self_binary,
+            _binary: self_binary,
             global_sym_table,
             workdir,
             crates_to_skip,
@@ -228,6 +236,7 @@ impl Linker {
     }
 
     /// Load a given object file into memory.
+    #[allow(unused)]
     pub(crate) fn load_object<P1: AsRef<Path>, P2: AsRef<Path>>(
         &mut self,
         path: (P1, P2),
@@ -266,7 +275,7 @@ impl Linker {
 
         // 3. Perform relocations for every object
         for (loaded, object) in loaded_modules.into_iter().zip(objects) {
-            log::debug!("object path: {}", object.1.as_ref().display());
+            log::debug!("loading object: {}", object.1.as_ref().display());
             let mut linked = loaded.link(&self.global_sym_table)?;
             Arc::get_mut(&mut linked)
                 .expect("shouldn't have other outstanding references")
@@ -291,6 +300,7 @@ impl Linker {
     ///
     /// The user must ensure its dependencies has been properly loaded into
     /// memory and initialized.
+    #[allow(unused)]
     pub(crate) unsafe fn load_archive_no_dep<P: AsRef<Path>>(
         &mut self,
         archive_path: P,
@@ -461,19 +471,33 @@ mod tests {
     fn test_linker2() {
         let workdir = "/tmp/tmp";
         let mut linker = Linker::new(workdir.into()).unwrap();
-        let target_deps_dir = format!("{}/../../target/debug", env!("CARGO_MANIFEST_DIR"));
-        let linked = linker
+        let target_deps_dir = format!("{}/../../target/release", env!("CARGO_MANIFEST_DIR"));
+        let transport_rdma_module = linker
             .load_archive(
                 format!("{}/libphoenix_transport_rdma.rlib", target_deps_dir),
                 format!("{}/libphoenix_transport_rdma.d", target_deps_dir),
+            )
+            .unwrap();
+        let salloc_module = linker
+            .load_archive(
+                format!("{}/libphoenix_salloc.rlib", target_deps_dir),
+                format!("{}/libphoenix_salloc.d", target_deps_dir),
             )
             .unwrap();
         // let f_addr = linker
         //     .global_sym_table
         //     .lookup_symbol_addr("init_module_salloc")
         //     .unwrap();
-        let f_addr = linked.lookup_symbol_addr("init_module").unwrap();
-        let c = unsafe { std::mem::transmute::<usize, crate::plugin::InitModuleFn>(f_addr)(None) };
+        let init_module_func = transport_rdma_module
+            .lookup_symbol_addr("init_module")
+            .unwrap();
+        let _c = unsafe {
+            std::mem::transmute::<usize, crate::plugin::InitModuleFn>(init_module_func)(None)
+        };
+        let init_module_func = salloc_module.lookup_symbol_addr("init_module").unwrap();
+        let _c = unsafe {
+            std::mem::transmute::<usize, crate::plugin::InitModuleFn>(init_module_func)(None)
+        };
         // println!("c: {:?}", c);
     }
 }

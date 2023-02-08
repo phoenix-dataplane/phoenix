@@ -17,12 +17,13 @@ use super::manager::{EngineId, EngineInfo, RuntimeId, RuntimeManager, Subscripti
 use super::runtime::SuspendResult;
 use super::{EngineContainer, EngineType};
 use crate::engine::group::GroupId;
-use crate::plugin::{Plugin, PluginCollection};
+use crate::plugin::PluginName;
+use crate::plugin_mgr::PluginManager;
 use crate::storage::{ResourceCollection, SharedStorage};
 
 pub(crate) struct EngineUpgrader {
     runtime_manager: Arc<RuntimeManager>,
-    plugins: Arc<PluginCollection>,
+    plugins: Arc<PluginManager>,
     executor: ThreadPool,
     upgrade_indicator: Arc<DashSet<Pid>>,
 }
@@ -41,7 +42,7 @@ struct EngineDumped {
 #[allow(clippy::too_many_arguments)]
 async fn attach_addon<I>(
     rm: Arc<RuntimeManager>,
-    plugins: Arc<PluginCollection>,
+    plugins: Arc<PluginManager>,
     pid: Pid,
     sid: SubscriptionId,
     addon: EngineType,
@@ -168,12 +169,12 @@ async fn attach_addon<I>(
     // get the addon from the engine_registry
     let mut plugin = match plugins.engine_registry.get_mut(&addon) {
         Some(plugin) => match &plugin.value().0 {
-            Plugin::Module(_) => {
+            PluginName::Module(_) => {
                 log::error!("Engine type {:?} is not an addon", addon);
                 rm.global_resource_mgr.register_subscription_shutdown(pid);
                 return;
             }
-            Plugin::Addon(addon_name) => plugins.addons.get_mut(addon_name).unwrap(),
+            PluginName::Addon(addon_name) => plugins.addons.get_mut(addon_name).unwrap(),
         },
         None => {
             log::error!("Addon for engine type {:?} not found", addon);
@@ -402,7 +403,8 @@ async fn detach_addon<I>(
     );
     if let Err(err) = result {
         log::error!(
-            "Failed to refactor data path channels in uninstall addon {:?} for subscription (pid={:?}, sid={:?}), error: {:?}", 
+            "Failed to refactor data path channels in uninstall addon {:?} \
+            for subscription (pid={:?}, sid={:?}), error: {:?}",
             addon,
             pid,
             sid,
@@ -453,7 +455,7 @@ async fn detach_addon<I>(
 /// Otherwise, they will submit to the original subscription
 async fn upgrade_client(
     rm: Arc<RuntimeManager>,
-    plugins: Arc<PluginCollection>,
+    plugins: Arc<PluginManager>,
     pid: Pid,
     mut to_upgrade: Vec<(EngineId, EngineInfo)>,
     mut to_suspend: Vec<(EngineId, EngineInfo)>,
@@ -645,7 +647,7 @@ async fn upgrade_client(
                     // to point to &'static str in the new shared library
                     // otherwise, these `EngineType` become invalid after old library is unloaded
                     let engine_ty_relocated = *plugin.key();
-                    if let Plugin::Addon(_) = &plugin.value().0 {
+                    if let PluginName::Addon(_) = &plugin.value().0 {
                         // `EngineType` in `ServiceRegistry` should already been relocated
                         // but not for the addons in `ServiceSubscription`
                         *subscribed_engine_ty = engine_ty_relocated;
@@ -700,7 +702,7 @@ async fn upgrade_client(
                     }
 
                     let (engine, new_version) = match &plugin.value().0 {
-                        Plugin::Module(module_name) => {
+                        PluginName::Module(module_name) => {
                             let mut module = plugins.modules.get_mut(module_name).unwrap();
                             let new_version = module.version();
                             // resotre engine
@@ -715,7 +717,7 @@ async fn upgrade_client(
                             );
                             (engine, new_version)
                         }
-                        Plugin::Addon(addon_name) => {
+                        PluginName::Addon(addon_name) => {
                             let mut addon = plugins.addons.get_mut(addon_name).unwrap();
                             let new_version = addon.version();
                             let engine = addon.restore_engine(
@@ -789,7 +791,7 @@ async fn upgrade_client(
 }
 
 impl EngineUpgrader {
-    pub(crate) fn new(rm: Arc<RuntimeManager>, plugins: Arc<PluginCollection>) -> Self {
+    pub(crate) fn new(rm: Arc<RuntimeManager>, plugins: Arc<PluginManager>) -> Self {
         let pool = ThreadPoolBuilder::new().pool_size(1).create().unwrap();
         EngineUpgrader {
             runtime_manager: rm,

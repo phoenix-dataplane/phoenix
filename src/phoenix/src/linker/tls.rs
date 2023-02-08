@@ -65,9 +65,9 @@ impl TlsIndex {
 #[derive(Debug)]
 pub(crate) struct TlsInitImage {
     // sizeof .tbss + filesz
-    memsz: usize,
+    _memsz: usize,
     // sizeof .tdata
-    filesz: usize,
+    _filesz: usize,
     // the memory for the tls init image. None if memsz is zero.
     mmap: Option<Mmap>,
 }
@@ -100,8 +100,8 @@ impl TlsInitImage {
         // no tls variables
         if memsz == 0 {
             return Ok(TlsInitImage {
-                memsz,
-                filesz,
+                _memsz: 0,
+                _filesz: 0,
                 mmap: None,
             });
         }
@@ -144,8 +144,8 @@ impl TlsInitImage {
         mmap[..tbss_off].fill(0);
 
         Ok(Self {
-            memsz,
-            filesz,
+            _memsz: memsz,
+            _filesz: filesz,
             mmap: Some(mmap),
         })
     }
@@ -240,6 +240,11 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
     }
     DTV.with_borrow_mut(|dtv| {
         let tls_index: &TlsIndex = unsafe { &*(tls_index_addr as *const TlsIndex) };
+        assert!(
+            tls_index.mod_id.is_valid(),
+            "Invalid mod_id: {PHOENIX_MOD_INVALID}"
+        );
+
         if tls_index.mod_id.is_phoenix_plugin() {
             let tls_block = dtv.get_or_create(*tls_index);
 

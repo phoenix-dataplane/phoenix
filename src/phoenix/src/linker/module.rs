@@ -1,6 +1,6 @@
 use std::fs;
 use std::os::unix::io::AsRawFd;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -74,8 +74,8 @@ impl LoadableModule {
         // Identify initializer and finalizer list
         let init = Vec::new();
         let fini = Vec::new();
-        for sec in &sections {
-            // let _f = InitFini::new(sec);
+        for _sec in &sections {
+            // let _f = InitFini::new(_sec);
         }
 
         // Update runtime address and allocate space for bss
@@ -177,6 +177,7 @@ impl LoadableModule {
         let mut extra_symbol_section = ExtraSymbolSection::new(self.symtab.len())?;
 
         // Then we process the reloation sections.
+        eprintln!("linking: {}", self.path.display());
         do_relocation(
             self.image.as_ptr().addr(),
             &self.sections,
@@ -194,9 +195,9 @@ impl LoadableModule {
             common_section: self.common_section,
             extra_symbol_section,
             tls_initimage: self.tls_initimage,
-            image: self.image,
+            _image: self.image,
             path: self.path,
-            object: self.object,
+            _object: self.object,
         }))
     }
 }
@@ -207,24 +208,29 @@ pub(crate) struct LinkedModuleInner {
     /// mod_id
     mod_id: usize,
     /// Sections of the module
+    #[allow(unused)]
     sections: Vec<Section>,
     /// Initializers of the ObjectCode
+    #[allow(unused)]
     init: Vec<InitFini>,
+    #[allow(unused)]
     fini: Vec<InitFini>,
     /// Table for symbols within this module
     symtab: SymbolTable,
     /// Memory section for COMMON symbols
+    #[allow(unused)]
     common_section: CommonSection,
     /// Section to store extra symbols (e.g., for GOT)
+    #[allow(unused)]
     extra_symbol_section: ExtraSymbolSection,
     /// TLS initialization image
     tls_initimage: TlsInitImage,
-    /// The memory map needs to be retained.
-    image: Mmap,
+    /// The memory map needs to be retained. Retained for RAII.
+    _image: Mmap,
     /// Path to the binary
     path: PathBuf,
-    /// The File must be the last to drop.
-    object: fs::File,
+    /// The File must be the last to drop. Retained for RAII.
+    _object: fs::File,
 }
 
 impl LinkedModuleInner {

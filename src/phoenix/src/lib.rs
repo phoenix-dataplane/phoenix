@@ -27,6 +27,7 @@ pub mod local_resource;
 pub mod module;
 pub mod page_padded;
 pub mod plugin;
+pub mod plugin_mgr;
 pub mod resource;
 pub mod state_mgr;
 pub mod storage;

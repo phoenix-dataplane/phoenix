@@ -7,40 +7,42 @@ fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     println!("You need to have librdmacm and libibverbs installed in your system.");
-    println!("cargo:rustc-link-lib=ibverbs");
-    println!("cargo:rustc-link-lib=rdmacm");
     println!("cargo:rerun-if-changed=src/rdma_verbs_wrapper.c");
 
-    let mut cc_command = cc::Build::new()
+    // let mut cc_command = cc::Build::new()
+    //     .warnings(true)
+    //     .opt_level(3)
+    //     .cargo_metadata(false)
+    //     .pic(true)
+    //     .use_plt(false)
+    //     .shared_flag(true)
+    //     .static_flag(true)
+    //     .get_compiler()
+    //     .to_command();
+
+    // // Compile dynamic library manually as cc-rs is not intended to create dynamic library.
+    // cc_command.args([
+    //     "src/rdma_verbs_wrapper.c",
+    //     "-o",
+    //     &out_path.join("librdma_verbs_wrapper.so").to_string_lossy(),
+    // ]);
+
+    // // COMMENT(cjr): Remove this comment to see the compiler command.
+    // // println!("cargo:warning=compiler command: {:?}", cc_command);
+    // cc_command
+    //     .spawn()
+    //     .expect("Failed to build the shared library");
+
+    cc::Build::new()
         .warnings(true)
         .opt_level(3)
         .cargo_metadata(false)
         .pic(true)
         .use_plt(false)
         .shared_flag(true)
-        .get_compiler()
-        .to_command();
-
-    // Compile dynamic library manually as cc-rs is not intended to create dynamic library.
-    cc_command.args([
-        "src/rdma_verbs_wrapper.c",
-        "-o",
-        &out_path.join("librdma_verbs_wrapper.so").to_string_lossy(),
-    ]);
-
-    println!("cargo:rustc-link-search=native={}", out_path.display());
-    println!("cargo:rustc-link-lib=dylib=rdma_verbs_wrapper");
-    println!("cargo:rustc-link-arg=-Wl,-rpath={}", out_path.display());
-    println!(
-        "cargo:rustc-cdylib-link-arg=-Wl,-rpath={}",
-        out_path.display()
-    );
-
-    // COMMENT(cjr): Remove this comment to see the compiler command.
-    // println!("cargo:warning=compiler command: {:?}", cc_command);
-    cc_command
-        .spawn()
-        .expect("Failed to build the shared library");
+        .static_flag(true)
+        .file("src/rdma_verbs_wrapper.c")
+        .compile("rdma_verbs_wrapper");
 
     let bindings = bindgen::Builder::default()
         .header("src/rdma_verbs_wrapper.h")
@@ -69,4 +71,16 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+
+    println!("cargo:rustc-link-search=native={}", out_path.display());
+    println!("cargo:rustc-link-lib=static=rdma_verbs_wrapper");
+    // println!("cargo:rustc-link-lib=dylib=rdma_verbs_wrapper");
+    // println!("cargo:rustc-link-arg=-Wl,-rpath={}", out_path.display());
+    // println!(
+    //     "cargo:rustc-cdylib-link-arg=-Wl,-rpath={}",
+    //     out_path.display()
+    // );
+
+    println!("cargo:rustc-link-lib=ibverbs");
+    println!("cargo:rustc-link-lib=rdmacm");
 }

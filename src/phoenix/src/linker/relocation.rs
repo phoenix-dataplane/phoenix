@@ -145,6 +145,15 @@ pub(crate) fn do_relocation(
                     debug_assert_eq!(rela_size, 64);
                     S + A
                 }
+                RelocationKind::Elf(object::elf::R_X86_64_GOTPCRELX) => {
+                    // 41
+                    let G = extra_symbol_sec
+                        .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
+                        as i64;
+                    eprintln!("rela: {:?}, rela_size: {}", rela, rela_size);
+                    rela_size = 32;
+                    G + A - P
+                }
                 _ => panic!("rela: {:?}", rela),
             };
 

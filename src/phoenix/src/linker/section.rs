@@ -16,14 +16,17 @@ use super::Error;
 
 #[derive(Debug)]
 pub(crate) struct Section {
+    #[allow(unused)]
     pub(crate) index: SectionIndex,
     pub(crate) address: u64,
     pub(crate) size: u64,
     pub(crate) align: u64,
     pub(crate) file_range: Option<(u64, u64)>,
     pub(crate) name: String,
+    #[allow(unused)]
     pub(crate) segment_name: Option<String>,
     pub(crate) kind: SectionKind,
+    #[allow(unused)]
     pub(crate) flags: SectionFlags,
     pub(crate) relocations: Vec<(u64, Relocation)>,
     /// For .bss/.tbss sections, we need to allocate extra spaces.

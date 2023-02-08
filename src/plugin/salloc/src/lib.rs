@@ -52,13 +52,6 @@ use crate::config::SallocConfig;
 use crate::module::SallocModule;
 
 #[no_mangle]
-pub fn init_module_salloc(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
-    let config = SallocConfig::new(config_string)?;
-    let module = SallocModule::new(config);
-    Ok(Box::new(module))
-}
-
-#[no_mangle]
 pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
     let config = SallocConfig::new(config_string)?;
     let module = SallocModule::new(config);

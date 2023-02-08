@@ -8,16 +8,31 @@ use uapi::engine::{SchedulingHint, SchedulingMode};
 type IResult<T> = Result<T, uapi::Error>;
 
 /// Description for loading/upgrading a plugin.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub struct PluginDescriptor {
-    /// Name of the plugin. It must match one of the valid EngineType defined in plugin's module.rs.
+    /// Name of the plugin. It must match one of the valid EngineTypes defined in plugin's module.rs.
     pub name: String,
     /// The path of the plugin.
     pub lib_path: PathBuf,
+    /// The path to the plugin's dep file. Default to the .d file located in the same directory
+    /// as `lib_path`.
+    pub dep_path: Option<PathBuf>,
     /// The path of the configuration file of this plugin. Should be a toml file.
     pub config_path: Option<PathBuf>,
     /// The configuration string.
     pub config_string: Option<String>,
+}
+
+impl std::hash::Hash for PluginDescriptor {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl PartialEq for PluginDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 /// Request for upgrading plugins.

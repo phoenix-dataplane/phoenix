@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ffi::CString;
 
 use object::elf::FileHeader64;
 use object::endian::LittleEndian;
@@ -13,18 +14,23 @@ use super::tls::{phoenix_tls_get_addr, TlsIndex, PHOENIX_MOD_INVALID};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Symbol {
+    #[allow(unused)]
     pub(crate) index: SymbolIndex,
     pub(crate) name: String,
     pub(crate) address: u64,
     pub(crate) size: u64,
     pub(crate) kind: SymbolKind,
+    #[allow(unused)]
     pub(crate) section: SymbolSection,
     pub(crate) is_undefined: bool,
     pub(crate) is_definition: bool,
     pub(crate) is_common: bool,
+    #[allow(unused)]
     pub(crate) is_weak: bool,
     pub(crate) is_global: bool,
+    #[allow(unused)]
     pub(crate) scope: SymbolScope,
+    #[allow(unused)]
     pub(crate) flags: SymbolFlags<SectionIndex>,
     pub(crate) section_index: Option<SectionIndex>,
     // Only valid for TLVs, refering to the module defines this TLS variable.
@@ -114,7 +120,27 @@ pub(crate) struct SymbolLookupTable {
 }
 
 impl SymbolLookupTable {
+    fn hack() {
+        // void* handle = nullptr;
+        // int mode = RTLD_LAZY | RTLD_GLOBAL;
+        // if (!dlopen("libibverbs.so", mode | RTLD_NOLOAD)) {
+        //   handle = dlopen("libibverbs.so", mode);
+        // }
+        // void* addr = dlsym(RTLD_DEFAULT, "ibv_dereg_mr");
+        let libs = ["libibverbs.so", "librdmacm.so"];
+        let mode = libc::RTLD_LAZY | libc::RTLD_GLOBAL;
+        for lib in libs {
+            let cstr = CString::new(lib).expect("Invalid name for CString");
+            unsafe {
+                if libc::dlopen(cstr.as_c_str().as_ptr(), mode | libc::RTLD_NOLOAD).is_null() {
+                    libc::dlopen(cstr.as_c_str().as_ptr(), mode);
+                }
+            }
+        }
+    }
+
     pub(crate) fn new(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Self {
+        Self::hack();
         let mut sym_table = HashMap::new();
         for sym in elf.symbols() {
             if sym.is_undefined() || sym.is_local() {
@@ -223,9 +249,11 @@ impl SymbolLookupTable {
     }
 
     pub(crate) fn lookup_symbol_addr(&self, name: &str) -> Option<usize> {
+        // A set of special cases that cannot be located due to unknown reasons...
         match name {
             "__tls_get_addr" => return Some((phoenix_tls_get_addr as *const ()).addr()),
             "__rust_probestack" => return Some((__rust_probestack as *const ()).addr()),
+            "pthread_atfork" => return Some((libc::pthread_atfork as *const ()).addr()),
             _ => {}
         }
 
@@ -242,10 +270,10 @@ impl SymbolLookupTable {
     pub(crate) fn lookup_symbol_dlsym(name: &str) -> Option<usize> {
         // In case we did not find the symbol in the global defined symbols,
         // we try to look up the symbol using dlsym.
-        let cstr = std::ffi::CString::new(name).expect("Invalid name for CString");
+        let cstr = CString::new(name).expect("Invalid name for CString");
         let addr = unsafe { libc::dlsym(libc::RTLD_DEFAULT, cstr.as_c_str().as_ptr()) };
         if addr.is_null() {
-            log::error!("{:?}", unsafe { std::ffi::CStr::from_ptr(libc::dlerror()) });
+            // log::error!("{:?}", unsafe { std::ffi::CStr::from_ptr(libc::dlerror()) });
             None
         } else {
             Some(addr.addr())

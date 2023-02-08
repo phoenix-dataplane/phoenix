@@ -27,13 +27,14 @@ use crate::engine::manager::{EngineId, RuntimeManager, ServiceSubscription, Subs
 use crate::engine::upgrade::EngineUpgrader;
 use crate::engine::EngineType;
 use crate::module::{NewEngineRequest, Service};
-use crate::plugin::{Plugin, PluginCollection};
+use crate::plugin::{Plugin, PluginName};
+use crate::plugin_mgr::PluginManager;
 use crate::storage::{ResourceCollection, SharedStorage, PHOENIX_PREFIX_KEY};
 
 pub struct Control {
     sock: DomainSocket,
     runtime_manager: Arc<RuntimeManager>,
-    plugins: Arc<PluginCollection>,
+    plugins: Arc<PluginManager>,
     upgrader: EngineUpgrader,
     scheduling_override: HashMap<String, SchedulingMode>,
     config: Config,
@@ -131,8 +132,10 @@ impl Control {
         for aux_engine_type in service_registry.engines.split_last().unwrap().1 {
             let plugin = self.plugins.engine_registry.get(aux_engine_type).unwrap();
             let (module_name, specified_mode) = match plugin.value() {
-                (Plugin::Module(module), mode) => (module, *mode),
-                (Plugin::Addon(_), _) => panic!("service engine {:?} is an addon", aux_engine_type),
+                (PluginName::Module(module), mode) => (module, *mode),
+                (PluginName::Addon(_), _) => {
+                    panic!("service engine {:?} is an addon", aux_engine_type)
+                }
             };
 
             let mut module = self.plugins.modules.get_mut(module_name).unwrap();
@@ -186,8 +189,10 @@ impl Control {
             .get(service_engine_type)
             .unwrap();
         let (module_name, specified_mode) = match plugin.value() {
-            (Plugin::Module(module), mode) => (module, *mode),
-            (Plugin::Addon(_), _) => panic!("service engine {:?} is an addon", service_engine_type),
+            (PluginName::Module(module), mode) => (module, *mode),
+            (PluginName::Addon(_), _) => {
+                panic!("service engine {:?} is an addon", service_engine_type)
+            }
         };
         let mut module = self.plugins.modules.get_mut(module_name).unwrap();
         let specified_mode = specified_mode.unwrap_or(service_mode);
@@ -298,7 +303,10 @@ impl Control {
             .expect("set_write_timeout");
 
         // load all preset static modules and addons
-        let plugins = Arc::new(PluginCollection::new(phoenix_prefix));
+        let plugins = Arc::new(
+            PluginManager::new(phoenix_prefix, &config.linker)
+                .expect("failed to create PluginManager"),
+        );
         plugins
             .load_or_upgrade_modules(&config.modules)
             .expect("failed to load preset modules");
@@ -494,7 +502,7 @@ impl Control {
                 let pid = Pid::from_raw(request.pid);
                 let gid = SubscriptionId(request.sid);
                 let config_string =
-                    PluginCollection::load_config(request.config_path, request.config_string)?;
+                    Plugin::load_config(request.config_path, request.config_string)?;
                 self.upgrader.attach_addon(
                     pid,
                     gid,
