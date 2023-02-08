@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ffi/src/main.rs"
+#include "ffi/src/client.rs"
+#include "increment.h"
 #include "rust/cxx.h"
 #include <string>
 #include <vector>

@@ -37,7 +37,7 @@ mod rpc_handler_lib {
         include!("ffi/include/increment.h");
         type ValueRequest = crate::rpc_int::ValueRequest;
         type ValueReply = crate::rpc_int::ValueReply;
-        fn incrementServer<'a>(self: Pin<&'a mut CPPIncrementer<'a>>, req: ValueRequest) -> ValueReply;
+        fn incrementServer<'a>(self: Pin<&mut CPPIncrementer<'a>>, req: ValueRequest) -> ValueReply;
     }
 
     extern "Rust" {
@@ -149,24 +149,30 @@ pub mod proto {
 use rpc_int::{ValueRequest, ValueReply};
 use std::pin::Pin;
 
-struct MyIncrementer<'a> {
-    pub service: Pin<&'a mut CPPIncrementer<'a>>,
+struct MyIncrementer {
+    pub service: Pin<&'static mut CPPIncrementer<'static>>,
 }
 
-impl<'a> Default for MyIncrementer<'a> {
+impl Default for MyIncrementer {
     fn default() -> Self { todo!() }
 }
 
+
 #[mrpc::async_trait]
-impl Incrementer for MyIncrementer<'static> {
+impl Incrementer for MyIncrementer{
     async fn increment(
         &self,
         request: RRef<ValueRequest>,
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
         eprintln!("request: {:?}", request);
 
+
+        let field_addr = &self.service as *const _ as *const usize;
+        let incrmenter_addr = unsafe { *field_addr };
+        let incrementer_mut: &mut CPPIncrementer = unsafe { &mut *(incrmenter_addr as *mut CPPIncrementer) };
+
         // unsafe pointer 
-        let reply = self.service.incrementServer(rpc_int::ValueRequest{val: request.val});
+        let reply = unsafe {Pin::new_unchecked(incrementer_mut).incrementServer(rpc_int::ValueRequest{val: request.val})};
 
         Ok(WRef::new(ValueReply{
            val: reply.val,

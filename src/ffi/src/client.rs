@@ -160,8 +160,8 @@ fn allocate_shm(len: usize, align: usize) -> AllocShmCompletionBridge {
             };
         }
 
+        // blocking after 2 calls 
         let fds = ctx.service.recv_fd().unwrap();
-
         assert_eq!(fds.len(), 1);
 
         let memfd = Memfd::try_from_fd(fds[0]).map_err(|_| io::Error::last_os_error()).unwrap();

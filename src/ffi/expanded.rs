@@ -56,142 +56,11 @@ unsafe impl<'a> Sync for rpc_handler_lib::CPPIncrementer<'a> {}
 #[deny(improper_ctypes, improper_ctypes_definitions)]
 #[allow(clippy::unknown_clippy_lints)]
 #[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
-mod rpc_handler_lib {
-    #[repr(C)]
-    pub struct CPPIncrementer<'a> {
-        _private: ::cxx::private::Opaque,
-        _lifetime_a: ::cxx::core::marker::PhantomData<&'a ()>,
-    }
-    unsafe impl<'a> ::cxx::ExternType for CPPIncrementer<'a> {
-        #[allow(unused_attributes)]
-        #[doc(hidden)]
-        type Id = (
-            ::cxx::C,
-            ::cxx::P,
-            ::cxx::P,
-            ::cxx::I,
-            ::cxx::n,
-            ::cxx::c,
-            ::cxx::r,
-            ::cxx::e,
-            ::cxx::m,
-            ::cxx::e,
-            ::cxx::n,
-            ::cxx::t,
-            ::cxx::e,
-            ::cxx::r,
-        );
-        type Kind = ::cxx::kind::Opaque;
-    }
-    pub type ValueRequest = crate::rpc_int::ValueRequest;
-    pub type ValueReply = crate::rpc_int::ValueReply;
-    impl<'a> CPPIncrementer<'a> {
-        pub fn incrementServer(
-            self: ::cxx::core::pin::Pin<&'a mut Self>,
-            req: ValueRequest,
-        ) -> ValueReply {
-            extern "C" {
-                #[link_name = "cxxbridge1$CPPIncrementer$incrementServer"]
-                fn __incrementServer<'a>(
-                    _: ::cxx::core::pin::Pin<&'a mut CPPIncrementer<'a>>,
-                    req: *mut ValueRequest,
-                    __return: *mut ValueReply,
-                );
-            }
-            unsafe {
-                let mut req = ::cxx::core::mem::MaybeUninit::new(req);
-                let mut __return = ::cxx::core::mem::MaybeUninit::<ValueReply>::uninit();
-                __incrementServer(self, req.as_mut_ptr(), __return.as_mut_ptr());
-                __return.assume_init()
-            }
-        }
-    }
-    #[doc(hidden)]
-    const _: () = {
-        let _: fn() = {
-            trait __AmbiguousIfImpl<A> {
-                fn infer() {}
-            }
-            impl<T> __AmbiguousIfImpl<()> for T
-            where
-                T: ?::cxx::core::marker::Sized,
-            {}
-            #[allow(dead_code)]
-            struct __Invalid;
-            impl<T> __AmbiguousIfImpl<__Invalid> for T
-            where
-                T: ?::cxx::core::marker::Sized + ::cxx::core::marker::Unpin,
-            {}
-            <CPPIncrementer<'_> as __AmbiguousIfImpl<_>>::infer
-        };
-        const _: fn() = ::cxx::private::verify_extern_type::<
-            ValueRequest,
-            (
-                ::cxx::V,
-                ::cxx::a,
-                ::cxx::l,
-                ::cxx::u,
-                ::cxx::e,
-                ::cxx::R,
-                ::cxx::e,
-                ::cxx::q,
-                ::cxx::u,
-                ::cxx::e,
-                ::cxx::s,
-                ::cxx::t,
-            ),
-        >;
-        const _: fn() = ::cxx::private::verify_extern_kind::<
-            ValueRequest,
-            ::cxx::kind::Trivial,
-        >;
-        const _: fn() = ::cxx::private::verify_extern_type::<
-            ValueReply,
-            (
-                ::cxx::V,
-                ::cxx::a,
-                ::cxx::l,
-                ::cxx::u,
-                ::cxx::e,
-                ::cxx::R,
-                ::cxx::e,
-                ::cxx::p,
-                ::cxx::l,
-                ::cxx::y,
-            ),
-        >;
-        const _: fn() = ::cxx::private::verify_extern_kind::<
-            ValueReply,
-            ::cxx::kind::Trivial,
-        >;
-        #[doc(hidden)]
-        #[export_name = "cxxbridge1$run"]
-        unsafe extern "C" fn __run<'a>(
-            addr: &::cxx::CxxString,
-            service: ::cxx::core::pin::Pin<&'a mut CPPIncrementer<'a>>,
-        ) -> ::cxx::private::Result {
-            let __fn = "rpc_int_server::rpc_handler_lib::run";
-            unsafe fn __run<'a>(
-                addr: &::cxx::CxxString,
-                service: ::cxx::core::pin::Pin<&'a mut CPPIncrementer<'a>>,
-            ) -> ::cxx::core::result::Result<(), impl ::cxx::core::fmt::Display> {
-                super::run(addr, service)
-            }
-            ::cxx::private::prevent_unwind(
-                __fn,
-                move || ::cxx::private::r#try(&mut (), __run(addr, service)),
-            )
-        }
-    };
-}
-#[deny(improper_ctypes, improper_ctypes_definitions)]
-#[allow(clippy::unknown_clippy_lints)]
-#[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
 mod server_entry {}
 use rpc_handler_lib::CPPIncrementer;
 fn run(
     addr: &CxxString,
-    service: Pin<&mut CPPIncrementer>,
+    service: Pin<&'static mut CPPIncrementer>,
 ) -> Result<(), Box<dyn Error>> {
     let addr_as_str = match addr.to_str() {
         Ok(s) => s,
@@ -386,14 +255,14 @@ pub mod proto {
 use rpc_int::{ValueRequest, ValueReply};
 use std::pin::Pin;
 struct MyIncrementer<'a> {
-    pub service: Pin<&'a mut CPPIncrementer>,
+    pub service: Pin<&'a mut CPPIncrementer<'a>>,
 }
 impl<'a> Default for MyIncrementer<'a> {
     fn default() -> Self {
         ::core::panicking::panic("not yet implemented")
     }
 }
-impl Incrementer for MyIncrementer {
+impl Incrementer for MyIncrementer<'static> {
     #[allow(
         clippy::let_unit_value,
         clippy::no_effect_underscore_binding,
