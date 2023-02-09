@@ -38,7 +38,6 @@ IncrementerClient* IncrementerClient::connect(const char* addr) {
 ValueReply IncrementerClient::increment(ValueRequest req) {
    // allocate write region
   AllocShmCompletionBridge alloc_comp = allocate_shm(100, 8);
-  std::cout << "after alloc" << std::endl;
   size_t* val = (size_t*) alloc_comp.remote_addr;
 
   mmap(val, 100, PROT_READ | PROT_WRITE, MAP_SHARED 
@@ -77,7 +76,6 @@ ValueReply IncrementerClient::increment(ValueRequest req) {
  
   // enqueue message
   enqueue_wr(wr);
-  std::cout << "after enqueue" << std::endl;
 
   // receive reply
   MessageBridge ret = block_on_reply();
