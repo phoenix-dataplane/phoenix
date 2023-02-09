@@ -76,3 +76,13 @@ pub(crate) enum DatapathError {
     #[error("Tx queue send error: {0}")]
     Tx(#[from] phoenix::engine::datapath::SendError<EngineTxMessage>),
 }
+
+use crate::config::RpcAdapterConfig;
+use crate::module::RpcAdapterModule;
+
+#[no_mangle]
+pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let config = RpcAdapterConfig::new(config_string)?;
+    let module = RpcAdapterModule::new(config);
+    Ok(Box::new(module))
+}

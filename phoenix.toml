@@ -61,28 +61,28 @@ prefix = "/tmp/phoenix"
 engine_basename = "salloc"
 '''
 
-# [[modules]]
-# name = "Mrpc"
-# lib_path = "plugins/libphoenix_mrpc_plugin.so"
-# config_string = '''
-# prefix = "/tmp/phoenix"
-# engine_basename = "mrpc-engine"
-# build_cache = "/tmp/phoenix/build-cache"
-# transport = "Rdma"
-# nic_index = 0
-# '''
-# 
-# [[modules]]
-# name = "RpcAdapter"
-# lib_path = "plugins/libphoenix_rpc_adapter_plugin.so"
-# config_string = '''
-# enable_scheduler = false
-# '''
+[[modules]]
+name = "Mrpc"
+lib_path = "plugins/libphoenix_mrpc.rlib"
+config_string = '''
+prefix = "/tmp/phoenix"
+engine_basename = "mrpc-engine"
+build_cache = "/tmp/phoenix/build-cache"
+transport = "Rdma"
+nic_index = 0
+'''
+
+[[modules]]
+name = "RpcAdapter"
+lib_path = "plugins/libphoenix_rpc_adapter.rlib"
+config_string = '''
+enable_scheduler = false
+'''
 
 
-# [[modules]]
-# name = "TcpRpcAdapter"
-# lib_path = "plugins/libphoenix_tcp_rpc_adapter_plugin.so"
+[[modules]]
+name = "TcpRpcAdapter"
+lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
 #
 #
 # # Addons being here

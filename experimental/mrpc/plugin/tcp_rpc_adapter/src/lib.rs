@@ -77,3 +77,11 @@ pub(crate) enum DatapathError {
     #[error("TCP transport error: {0}")]
     TransportError(#[from] TransportError),
 }
+
+use crate::module::TcpRpcAdapterModule;
+
+#[no_mangle]
+pub fn init_module(_config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
+    let module = TcpRpcAdapterModule::new();
+    Ok(Box::new(module))
+}

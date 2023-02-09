@@ -354,6 +354,11 @@ impl Linker {
                 continue;
             }
 
+            if !dep.ends_with(".rlib") {
+                log::error!("unexpected dep: {}", dep);
+                continue;
+            }
+
             let lib_path = Path::new(dep);
             log::debug!("partial linking for lib: {}", lib_path.display());
             let dir_name = lib_path.file_stem().ok_or(Error::InvalidDepPath)?;

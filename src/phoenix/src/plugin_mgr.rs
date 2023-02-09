@@ -159,6 +159,11 @@ impl PluginManager {
         for descriptor in descriptors.iter() {
             // Get the library path and its dep file path
             let (lib_path, dep_path) = self.get_plugin_path(&descriptor);
+            log::debug!(
+                "loading plugin from path: lib_path: {}, dep_path: {}",
+                lib_path.display(),
+                dep_path.display()
+            );
 
             // RT linker load the rlib and its all transitive dependencies
             let linked = {

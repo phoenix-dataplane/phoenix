@@ -42,7 +42,7 @@ pub(crate) fn do_relocation(
                             // sym could be undefined
                             let ti = global_sym_table
                                 .lookup_tls_symbol(&sym.name)
-                                .unwrap_or_else(|| panic!("missing symbol {}", sym.name));
+                                .unwrap_or_else(|| panic!("missing TLS symbol {}", sym.name));
                             rela_size = 32;
                             sym_mod_id = ti.mod_id.0;
                             ti.offset as u64

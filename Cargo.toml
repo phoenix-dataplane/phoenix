@@ -31,7 +31,8 @@ members = [
   "examples/alltoall",
 ]
 exclude = [
-  "experimental/mrpc"
+  "experimental/mrpc",
+  "src/phoenixd",
 ]
 
 [workspace.dependencies]
