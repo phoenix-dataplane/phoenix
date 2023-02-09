@@ -9,7 +9,7 @@ void *StartServer(void *args) {
     pthread_exit(NULL);
 }
 
-pthread_t run_server_async(Args* thread_args) {
+pthread_t run_async(Args* thread_args) {
     pthread_t ptid;
     pthread_create(&ptid, NULL, &StartServer, thread_args);
     return ptid;

@@ -26,4 +26,4 @@ typedef struct Args {
 
 void *StartServer(void *args);
 
-pthread_t run_server_async(Args* thread_args);
+pthread_t run_async(Args* thread_args);
