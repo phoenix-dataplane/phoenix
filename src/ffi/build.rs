@@ -14,7 +14,7 @@ fn main() {
     } else if result  == "server" {
         cxx_build::bridge("src/server.rs") // returns a cc::Build
             .file("src/server.cc")
-            .file("src/increment_async.cc")
+            .file("src/incrementasync.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_server");
     } else {

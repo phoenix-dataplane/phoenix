@@ -11,13 +11,21 @@ struct ValueReply {
   int val;
 };
 
-class CPPIncrementer {
-    public:
-    // state about current connection
-    int highestReqSeen;
+class RPCService {};
 
-    ValueReply incrementServer(ValueRequest req);
-};
+class CPPIncrementer : public RPCService {
+  public:
+    int highestReqSeen;
+    ValueReply incrementServer(ValueRequest req) {
+      // lock
+      this->highestReqSeen = std::max(this->highestReqSeen, req.val);
+      std::cout << "highest request seen: " << this->highestReqSeen << std::endl;
+      ValueReply rep;
+      rep.val = req.val + 1;
+      // release
+      return rep;
+    }
+}; 
 
 typedef struct Args {
     std::string IP;

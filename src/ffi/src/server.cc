@@ -1,16 +1,6 @@
 #include "../include/increment.h"
 #include "ffi/src/server.rs"
 
-ValueReply CPPIncrementer::incrementServer(ValueRequest req) {
-    // lock
-    this->highestReqSeen = std::max(this->highestReqSeen, req.val);
-    std::cout << "highest request seen: " << this->highestReqSeen << std::endl;
-    ValueReply rep;
-    rep.val = req.val + 1;
-    // release
-    return rep;
-}
-
 int main() {
     CPPIncrementer incr;
     Args thread_args_1;
