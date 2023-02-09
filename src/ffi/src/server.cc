@@ -27,6 +27,5 @@ int main() {
 
     pthread_join(p1, NULL);
     pthread_join(p2, NULL);
-
     return 0;
 }
