@@ -14,8 +14,8 @@ use uapi::net;
 use uapi::net::returned;
 use uapi::{AsHandle, Handle};
 
-use phoenix::engine::future;
-use phoenix::log;
+use phoenix_common::engine::future;
+use phoenix_common::log;
 
 use super::state::{EventChannel, Resource, State};
 use super::{ApiError, DatapathError};

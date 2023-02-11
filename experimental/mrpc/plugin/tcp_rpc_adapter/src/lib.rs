@@ -10,9 +10,8 @@ use phoenix_salloc::ControlPathError as SallocError;
 use thiserror::Error;
 use transport_tcp::{ops, ApiError, TransportError};
 
-pub use phoenix::module::PhoenixModule;
-pub use phoenix::plugin::InitFnResult;
-use phoenix::resource::Error as ResourceError;
+use phoenix_common::resource::Error as ResourceError;
+pub use phoenix_common::{InitFnResult, PhoenixModule};
 
 pub mod module;
 pub mod state;

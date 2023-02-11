@@ -9,7 +9,7 @@ use uapi::{AsHandle, Handle};
 
 use phoenix_salloc::region::{AddressMediator, SharedRegion};
 
-use phoenix::resource::Error as ResourceError;
+use phoenix_common::resource::Error as ResourceError;
 
 use super::ControlPathError;
 

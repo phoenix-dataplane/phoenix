@@ -2,27 +2,19 @@ use std::path::Path;
 
 use anyhow::{bail, Context};
 
-use crate::addon::PhoenixAddon;
-use crate::module::PhoenixModule;
+use phoenix_common::{InitAddonFn, InitFnResult, InitModuleFn, PhoenixAddon, PhoenixModule};
 
 use crate::linker::LinkedModule;
 
-// Re-export for plugin dynamic library's use
-pub type InitFnResult<T> = anyhow::Result<T>;
-
-// Takes an optional configuration string.
-pub type InitModuleFn = fn(Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>>;
-pub type InitAddonFn = fn(Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>>;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PluginName {
+pub(crate) enum PluginName {
     /// Regular phoenix plugin (service)
     Module(String),
     /// Phoenix addons
     Addon(String),
 }
 
-pub struct Plugin {
+pub(crate) struct Plugin {
     linked: LinkedModule,
     _old: Option<LinkedModule>,
 }

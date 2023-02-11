@@ -36,6 +36,8 @@ use object::{Object, ObjectSymbol, SymbolKind};
 use rustc_demangle::demangle;
 use thiserror::Error;
 
+use crate::log;
+
 pub(crate) mod symbol;
 use symbol::SymbolLookupTable;
 
@@ -496,13 +498,10 @@ mod tests {
         let init_module_func = transport_rdma_module
             .lookup_symbol_addr("init_module")
             .unwrap();
-        let _c = unsafe {
-            std::mem::transmute::<usize, crate::plugin::InitModuleFn>(init_module_func)(None)
-        };
+        use phoenix_common::InitModuleFn;
+        let _c = unsafe { std::mem::transmute::<usize, InitModuleFn>(init_module_func)(None) };
         let init_module_func = salloc_module.lookup_symbol_addr("init_module").unwrap();
-        let _c = unsafe {
-            std::mem::transmute::<usize, crate::plugin::InitModuleFn>(init_module_func)(None)
-        };
+        let _c = unsafe { std::mem::transmute::<usize, InitModuleFn>(init_module_func)(None) };
         // println!("c: {:?}", c);
     }
 }

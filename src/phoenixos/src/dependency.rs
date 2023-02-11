@@ -6,7 +6,9 @@ use petgraph::visit::{DfsPostOrder, Walker};
 use petgraph::Graph;
 use thiserror::Error;
 
-use crate::engine::{EnginePair, EngineType};
+use phoenix_common::engine::{EnginePair, EngineType};
+
+use crate::log;
 
 #[derive(Debug, Error)]
 pub enum Error {

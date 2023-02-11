@@ -7,9 +7,8 @@ use std::alloc::LayoutError;
 
 use thiserror::Error;
 
-use phoenix::module::PhoenixModule;
-use phoenix::plugin::InitFnResult;
-use phoenix::resource::Error as ResourceError;
+use phoenix_common::resource::Error as ResourceError;
+use phoenix_common::{InitFnResult, PhoenixModule};
 
 pub mod config;
 pub(crate) mod engine;

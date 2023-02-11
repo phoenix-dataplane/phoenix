@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 [dependencies]
 uapi.workspace = true
 ipc.workspace = true
-phoenix.workspace = true
+phoenix_common.workspace = true
 
 tokio = { workspace = true, features = ["sync"] }
 anyhow.workspace = true

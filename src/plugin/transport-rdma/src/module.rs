@@ -12,14 +12,14 @@ use ipc::unix::DomainSocket;
 use uapi::engine::SchedulingMode;
 use uapi::transport::rdma::{cmd, dp};
 
-use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{Engine, EnginePair, EngineType};
-use phoenix::module::{
+use phoenix_common::engine::datapath::DataPathNode;
+use phoenix_common::engine::{Engine, EnginePair, EngineType};
+use phoenix_common::module::{
     ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, Service, ServiceInfo,
     Version,
 };
-use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
+use phoenix_common::state_mgr::SharedStateManager;
+use phoenix_common::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use crate::cm::engine::CmEngine;
 use crate::config::RdmaTransportConfig;

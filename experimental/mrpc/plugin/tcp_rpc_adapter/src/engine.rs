@@ -25,18 +25,18 @@ use uapi::{AsHandle, Handle};
 use uapi_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use uapi_tcp_rpc_adapter::control_plane;
 
-use phoenix::engine::datapath::message::{
+use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
-use phoenix::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
-use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
-use phoenix::envelop::ResourceDowncast;
-use phoenix::impl_vertex_for_engine;
-use phoenix::module::{ModuleCollection, Version};
-use phoenix::resource::Error as ResourceError;
-use phoenix::storage::{ResourceCollection, SharedStorage};
-use phoenix::{log, tracing};
+use phoenix_common::engine::datapath::meta_pool::{MetaBuffer, MetaBufferPtr};
+use phoenix_common::engine::datapath::DataPathNode;
+use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
+use phoenix_common::envelop::ResourceDowncast;
+use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::module::{ModuleCollection, Version};
+use phoenix_common::resource::Error as ResourceError;
+use phoenix_common::storage::{ResourceCollection, SharedStorage};
+use phoenix_common::{log, tracing};
 
 use super::get_ops;
 use super::pool::BufferSlab;
@@ -459,7 +459,7 @@ impl TcpRpcAdapterEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use phoenix::engine::datapath::TryRecvError;
+        use phoenix_common::engine::datapath::TryRecvError;
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => match msg {

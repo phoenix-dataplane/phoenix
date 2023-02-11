@@ -157,7 +157,7 @@ pub struct SharedStorage {
 }
 
 impl SharedStorage {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         SharedStorage {
             command_path: CommandPathBroker::new(),
             resources: ResourceCollection::new(),

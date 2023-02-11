@@ -38,7 +38,6 @@ petgraph = "0.6.0"
 linked-hash-map = "0.5.4"
 zerocopy = "0.3.0"
 tokio = { version = "1.18.2", features = ["sync"] }
-phoenix = { path = "../phoenix" }
 fastrand = "1.7.0"
 cht = "0.5.0"
 sharded = { version = "0.2.1", features = ["parking_lot", "ahash"] }

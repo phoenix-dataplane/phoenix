@@ -872,7 +872,6 @@ dependencies = [
  "num_cpus",
  "object",
  "petgraph",
- "phoenix",
  "rand 0.8.5",
  "ringbuf",
  "rustc-demangle",
@@ -1894,64 +1893,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "anyhow",
- "bincode",
- "chrono",
- "clap 4.0.29",
- "crc32fast",
- "crossbeam",
- "dashmap",
- "fnv",
- "futures",
- "ipc",
- "itertools",
- "json",
- "lazy_static",
- "libc",
- "libloading",
- "libnuma",
- "libnuma-sys",
- "memfd",
- "memmap2 0.5.8",
- "minstant",
- "mio 0.7.14",
- "mmap",
- "nix 0.25.1",
- "num_cpus",
- "object",
- "page_size",
- "petgraph",
- "rdma",
- "rustc-demangle",
- "scheduler",
- "semver 1.0.14",
- "serde",
- "serde_json",
- "sharded-slab",
- "smallvec 1.10.0",
- "socket2",
- "spin",
- "static_assertions",
- "thiserror",
- "tokio",
- "toml",
- "tracing",
- "tracing-appender",
- "tracing-chrome",
- "tracing-subscriber",
- "uapi",
- "uapi-mrpc",
- "unique",
- "utils",
- "uuid",
- "version",
-]
-
-[[package]]
 name = "phoenix-salloc"
 version = "0.1.0"
 dependencies = [
@@ -1962,7 +1903,7 @@ dependencies = [
  "memfd",
  "mmap",
  "nix 0.25.1",
- "phoenix",
+ "phoenix_common",
  "serde",
  "spin",
  "thiserror",
@@ -1983,7 +1924,7 @@ dependencies = [
  "memoffset 0.6.5",
  "mio 0.7.14",
  "nix 0.25.1",
- "phoenix",
+ "phoenix_common",
  "rdma",
  "serde",
  "serde_json",
@@ -2007,7 +1948,7 @@ dependencies = [
  "memoffset 0.6.5",
  "mio 0.8.5",
  "nix 0.25.1",
- "phoenix",
+ "phoenix_common",
  "serde",
  "socket2",
  "spin",
@@ -2016,6 +1957,31 @@ dependencies = [
  "toml",
  "uapi",
  "uuid",
+]
+
+[[package]]
+name = "phoenix_common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "dashmap",
+ "fnv",
+ "futures",
+ "ipc",
+ "libnuma",
+ "libnuma-sys",
+ "minstant",
+ "nix 0.25.1",
+ "semver 1.0.14",
+ "sharded-slab",
+ "smallvec 1.10.0",
+ "static_assertions",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uapi",
+ "uapi-mrpc",
 ]
 
 [[package]]
@@ -2035,6 +2001,46 @@ dependencies = [
  "uapi-policy-ratelimit",
  "uapi-rpc-adapter",
  "uuid",
+]
+
+[[package]]
+name = "phoenixos"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "anyhow",
+ "bincode",
+ "chrono",
+ "clap 4.0.29",
+ "crc32fast",
+ "dashmap",
+ "futures",
+ "ipc",
+ "itertools",
+ "lazy_static",
+ "libc",
+ "libnuma",
+ "libnuma-sys",
+ "minstant",
+ "mmap",
+ "nix 0.25.1",
+ "num_cpus",
+ "object",
+ "page_size",
+ "petgraph",
+ "phoenix_common",
+ "rustc-demangle",
+ "semver 1.0.14",
+ "serde",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "toml",
+ "tracing-appender",
+ "tracing-chrome",
+ "tracing-subscriber",
+ "uapi",
+ "uapi-mrpc",
 ]
 
 [[package]]
@@ -3100,12 +3106,6 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
-
-[[package]]
-name = "version"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a449064fee414fcc201356a3e6c1510f6c8829ed28bb06b91c54ebe208ce065"
 
 [[package]]
 name = "version_check"

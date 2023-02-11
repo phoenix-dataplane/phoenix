@@ -15,9 +15,9 @@ use rdma::rdmacm::CmId;
 use uapi::net;
 use uapi::{AsHandle, Handle};
 
-use phoenix::resource::{ResourceSlab, ResourceTable};
-use phoenix::state_mgr::ProcessShared;
-use phoenix::tracing;
+use phoenix_common::resource::{ResourceSlab, ResourceTable};
+use phoenix_common::state_mgr::ProcessShared;
+use phoenix_common::tracing;
 
 use super::cm::CmEventManager;
 use super::ApiError;

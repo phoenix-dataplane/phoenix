@@ -1,3 +1,9 @@
+#![feature(peer_credentials_unix_socket)]
+#![feature(drain_filter)]
+#![feature(strict_provenance)]
+#![feature(int_roundings)]
+#![feature(local_key_cell_methods)]
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -7,11 +13,22 @@ use nix::sys::signal;
 use anyhow::Result;
 use clap::Parser;
 
-use phoenix::config::Config;
-use phoenix::control::Control;
-use phoenix::engine::manager::RuntimeManager;
+pub use phoenix_common::tracing;
+pub use phoenix_common::tracing as log;
 
-pub mod logging;
+pub(crate) mod config;
+pub(crate) mod control;
+pub(crate) mod linker;
+pub(crate) mod logging;
+pub(crate) mod plugin;
+pub(crate) mod plugin_mgr;
+pub(crate) mod runtime;
+
+pub(crate) mod dependency;
+
+use config::Config;
+use control::Control;
+use runtime::manager::RuntimeManager;
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "Phoenix Service")]

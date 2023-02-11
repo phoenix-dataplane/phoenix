@@ -8,8 +8,8 @@ use std::time::Duration;
 use rdma::rdmacm;
 use uapi::Handle;
 
-use phoenix::log;
-use phoenix::resource::{Error as ResourceError, ResourceTable};
+use phoenix_common::log;
+use phoenix_common::resource::{Error as ResourceError, ResourceTable};
 
 use super::state::EventChannel;
 use crate::ApiError;

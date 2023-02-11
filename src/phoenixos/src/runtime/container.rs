@@ -5,7 +5,7 @@ use std::pin::Pin;
 use futures::future::BoxFuture;
 use semver::Version;
 
-use super::{Engine, EngineResult, EngineType};
+use phoenix_common::engine::{Engine, EngineResult, EngineType};
 
 /// A container that bundles a `Box<dyn Engine>` and its `Future` object so that the caller of this
 /// type can use both the methods provided by the `Engine` trait and poll the future.

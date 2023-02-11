@@ -5,29 +5,13 @@ use futures::future::BoxFuture;
 
 pub use crate::PhoenixResult;
 
-pub(crate) mod container;
-pub(crate) use container::EngineContainer;
-
 pub mod future;
-pub mod manager;
 
 pub mod datapath;
-pub use datapath::graph::Vertex;
+pub use datapath::node::Vertex;
 
 pub mod decompose;
 pub use decompose::{Decompose, DecomposeResult};
-
-pub(crate) mod group;
-pub(crate) use group::SchedulingGroup;
-
-pub(crate) mod runtime;
-pub use runtime::Indicator;
-
-pub(crate) mod upgrade;
-
-pub(crate) mod affinity;
-
-pub(crate) mod lb;
 
 pub type EngineResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -75,5 +59,50 @@ pub trait Engine: Decompose + Send + Vertex + Unpin + 'static {
     fn pre_detach(&mut self) -> PhoenixResult<()> {
         // empty default impl
         Ok(())
+    }
+}
+
+/// This indicates the runtime of an engine's status.
+#[derive(Debug)]
+pub struct Indicator(pub(crate) usize);
+
+impl Default for Indicator {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+#[allow(unused)]
+impl Indicator {
+    pub const BUSY: usize = usize::MAX;
+
+    #[inline]
+    pub(crate) fn new(x: usize) -> Self {
+        Indicator(x)
+    }
+
+    #[inline]
+    pub fn set_busy(&mut self) {
+        self.0 = Self::BUSY;
+    }
+
+    #[inline]
+    pub fn nwork(&self) -> usize {
+        self.0
+    }
+
+    #[inline]
+    pub fn set_nwork(&mut self, nwork: usize) {
+        self.0 = nwork;
+    }
+
+    #[inline]
+    pub(crate) fn is_busy(&self) -> bool {
+        self.0 == Self::BUSY
+    }
+
+    #[inline]
+    pub(crate) fn is_spinning(&self) -> bool {
+        self.0 == 0
     }
 }

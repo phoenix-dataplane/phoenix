@@ -9,17 +9,17 @@ use uapi::engine::SchedulingMode;
 use uapi::rpc::{MessageErased, RpcId};
 use uapi_mrpc::{cmd, control_plane, dp};
 
-use phoenix::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
-use phoenix::engine::datapath::meta_pool::MetaBufferPool;
-use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{
+use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
+use phoenix_common::engine::datapath::DataPathNode;
+use phoenix_common::engine::{
     future, Decompose, DecomposeResult, Engine, EngineResult, Indicator, Vertex,
 };
-use phoenix::envelop::ResourceDowncast;
-use phoenix::impl_vertex_for_engine;
-use phoenix::module::{ModuleCollection, Version};
-use phoenix::storage::{ResourceCollection, SharedStorage};
-use phoenix::tracing;
+use phoenix_common::envelop::ResourceDowncast;
+use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::module::{ModuleCollection, Version};
+use phoenix_common::storage::{ResourceCollection, SharedStorage};
+use phoenix_common::tracing;
 
 use super::builder::build_serializer_lib;
 use super::module::CustomerType;
@@ -253,7 +253,7 @@ impl MrpcEngine {
     // (whether successful or not), to release message meta pool and shutdown mRPC engine.
     // However, we cannot indefinitely wait for it in case of wc errors.
     async fn wait_outstanding_complete(&mut self) -> Result<(), DatapathError> {
-        use phoenix::engine::datapath::TryRecvError;
+        use phoenix_common::engine::datapath::TryRecvError;
         while !self.meta_buf_pool.is_full() {
             match self.rx_inputs()[0].try_recv() {
                 Ok(msg) => match msg {
@@ -460,7 +460,7 @@ impl MrpcEngine {
     }
 
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use phoenix::engine::datapath::TryRecvError;
+        use phoenix_common::engine::datapath::TryRecvError;
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {

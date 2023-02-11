@@ -2,7 +2,7 @@ use std::any::Any;
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use phoenix::log;
+use phoenix_common::log;
 use rdma::rdmacm;
 use uapi::net;
 use uapi::{AsHandle, Handle};

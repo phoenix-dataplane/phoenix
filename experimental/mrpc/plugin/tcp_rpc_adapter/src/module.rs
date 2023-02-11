@@ -13,13 +13,13 @@ use phoenix_salloc::state::{Shared as SallocShared, State as SallocState};
 use transport_tcp::module::TcpTransportModule;
 use transport_tcp::ops::Ops;
 
-use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{Engine, EnginePair, EngineType};
-use phoenix::module::{
+use phoenix_common::engine::datapath::DataPathNode;
+use phoenix_common::engine::{Engine, EnginePair, EngineType};
+use phoenix_common::module::{
     ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, ServiceInfo, Version,
 };
-use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix_common::state_mgr::SharedStateManager;
+use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use crate::engine::{TcpRpcAdapterEngine, TlStorage};
 use crate::state::{Shared, State};

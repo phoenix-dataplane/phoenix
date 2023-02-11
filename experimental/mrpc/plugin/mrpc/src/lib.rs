@@ -3,9 +3,8 @@
 
 use thiserror::Error;
 
-pub use phoenix::module::PhoenixModule;
-pub use phoenix::plugin::InitFnResult;
-use phoenix::resource::Error as ResourceError;
+use phoenix_common::resource::Error as ResourceError;
+pub use phoenix_common::{InitFnResult, PhoenixModule};
 
 pub mod builder;
 pub mod config;
@@ -61,7 +60,7 @@ impl From<ipc::Error> for DatapathError {
     }
 }
 
-use phoenix::engine::datapath::SendError;
+use phoenix_common::engine::datapath::SendError;
 impl<T> From<SendError<T>> for DatapathError {
     fn from(_other: SendError<T>) -> Self {
         DatapathError::InternalQueueSend

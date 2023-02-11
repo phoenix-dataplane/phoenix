@@ -13,16 +13,18 @@ use uapi::engine::SchedulingMode;
 
 use ipc::control::PluginDescriptor;
 
-use crate::addon::PhoenixAddon;
+use phoenix_common::addon::PhoenixAddon;
+use phoenix_common::engine::datapath::node::ChannelDescriptor;
+use phoenix_common::engine::EngineType;
+use phoenix_common::module::PhoenixModule;
+use phoenix_common::module::Service;
+
 use crate::config::LinkerConfig;
 use crate::dependency::EngineGraph;
-use crate::engine::datapath::graph::ChannelDescriptor;
-use crate::engine::group::GroupUnionFind;
-use crate::engine::EngineType;
 use crate::linker::Linker;
-use crate::module::PhoenixModule;
-use crate::module::Service;
 use crate::plugin::{Plugin, PluginName};
+use crate::runtime::group::GroupUnionFind;
+use crate::{log, tracing};
 
 pub(crate) struct ServiceRegistry {
     pub(crate) engines: Vec<EngineType>,

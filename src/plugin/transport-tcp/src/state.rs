@@ -8,7 +8,7 @@ use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Poll};
 use nix::unistd::Pid;
 
-use phoenix::state_mgr::ProcessShared;
+use phoenix_common::state_mgr::ProcessShared;
 use uapi::net::MappedAddrStatus;
 use uapi::Handle;
 

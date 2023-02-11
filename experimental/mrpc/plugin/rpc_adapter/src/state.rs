@@ -13,9 +13,9 @@ use uapi::AsHandle;
 
 use phoenix_salloc::region::AddressMediator;
 
-use phoenix::local_resource::{LocalResourceTable, LocalResourceTableGeneric};
-use phoenix::resource::{Error as ResourceError, ResourceTable};
-use phoenix::state_mgr::ProcessShared;
+use phoenix_common::local_resource::{LocalResourceTable, LocalResourceTableGeneric};
+use phoenix_common::resource::{Error as ResourceError, ResourceTable};
+use phoenix_common::state_mgr::ProcessShared;
 
 use super::pool::{BufferPool, RecvBuffer};
 use super::serialization::AddressMap;

@@ -9,7 +9,7 @@ use nix::unistd::Pid;
 use phoenix_salloc::region::AddressMediator;
 use uapi::Handle;
 
-use phoenix::state_mgr::ProcessShared;
+use phoenix_common::state_mgr::ProcessShared;
 
 use super::pool::{BufferPool, RecvBuffer};
 use super::serialization::AddressMap;

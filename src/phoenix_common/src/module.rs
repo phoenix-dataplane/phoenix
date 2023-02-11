@@ -7,8 +7,7 @@ use nix::unistd::Pid;
 pub use semver::Version;
 use uapi::engine::SchedulingMode;
 
-use crate::engine::datapath::graph::ChannelDescriptor;
-use crate::engine::datapath::node::DataPathNode;
+use crate::engine::datapath::node::{ChannelDescriptor, DataPathNode};
 use crate::engine::{Engine, EnginePair, EngineType};
 use crate::envelop::TypeTagged;
 use crate::storage::{ResourceCollection, SharedStorage};

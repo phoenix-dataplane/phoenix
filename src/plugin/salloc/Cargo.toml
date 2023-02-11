@@ -11,8 +11,8 @@ crate-type = ["rlib"]
 [dependencies]
 uapi = { workspace = true, features = ["salloc"] }
 ipc.workspace = true
-phoenix.workspace = true
 mmap.workspace = true
+phoenix_common.workspace = true
 
 anyhow.workspace = true
 nix.workspace = true

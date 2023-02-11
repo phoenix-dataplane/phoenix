@@ -14,7 +14,7 @@ mrpc-marshal.workspace = true
 
 uapi = { workspace = true, features = ["mrpc"] }
 ipc.workspace = true
-phoenix.workspace = true
+phoenix_common.workspace = true
 prost-build = { workspace = true, features = ["mrpc-backend"] }
 
 tokio = { workspace = true, features = ["sync"] }

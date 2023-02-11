@@ -5,9 +5,10 @@ use std::fmt;
 
 use petgraph::unionfind::UnionFind;
 
+use phoenix_common::engine::EngineType;
+
 use super::container::EngineContainer;
 use super::manager::EngineId;
-use super::EngineType;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

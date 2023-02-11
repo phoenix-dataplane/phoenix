@@ -13,18 +13,19 @@ use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
 use nix::unistd::Pid;
 
+use phoenix_common::engine::EngineType;
+use phoenix_common::module::Service;
+use phoenix_common::storage::ResourceCollection;
+use uapi::engine::{SchedulingHint, SchedulingMode};
+
 use super::affinity::CoreMask;
 use super::container::EngineContainer;
-use super::datapath::graph::DataPathGraph;
+use super::executor::{self, Runtime, RuntimeMode};
+use super::graph::DataPathGraph;
 use super::group::GroupId;
-use super::runtime::RuntimeMode;
-use super::runtime::{self, Runtime};
-use super::EngineType;
 use super::SchedulingGroup;
 use crate::config::Config;
-use crate::module::Service;
-use crate::storage::ResourceCollection;
-use uapi::engine::{SchedulingHint, SchedulingMode};
+use crate::{log, tracing};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,7 +109,7 @@ pub struct Inner {
     // the number of runtimes are at most u64::MAX
     runtime_counter: u64,
     pub(crate) runtimes: HashMap<RuntimeId, Arc<Runtime>>,
-    handles: HashMap<RuntimeId, JoinHandle<Result<(), runtime::Error>>>,
+    handles: HashMap<RuntimeId, JoinHandle<Result<(), executor::Error>>>,
 }
 
 impl Inner {

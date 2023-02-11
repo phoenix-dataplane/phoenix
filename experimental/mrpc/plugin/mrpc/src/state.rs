@@ -1,7 +1,7 @@
 use std::io;
 use std::sync::Arc;
 
-use phoenix::state_mgr::{Pid, ProcessShared};
+use phoenix_common::state_mgr::{Pid, ProcessShared};
 
 pub(crate) struct State {
     pub(crate) _shared: Arc<Shared>,

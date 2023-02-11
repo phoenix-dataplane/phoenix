@@ -7,7 +7,7 @@ use nix::unistd::Pid;
 use crate::region::AddressMediator;
 
 use super::region::SharedRegion;
-use phoenix::state_mgr::ProcessShared;
+use phoenix_common::state_mgr::ProcessShared;
 
 pub struct State {
     pub(crate) shared: Arc<Shared>,

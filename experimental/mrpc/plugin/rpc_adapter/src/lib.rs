@@ -11,9 +11,8 @@ use thiserror::Error;
 use phoenix_salloc::region;
 
 // Re-export PhoenixModule
-pub use phoenix::module::PhoenixModule;
-pub use phoenix::plugin::InitFnResult;
-use phoenix::resource::Error as ResourceError;
+use phoenix_common::resource::Error as ResourceError;
+pub use phoenix_common::{InitFnResult, PhoenixModule};
 
 pub mod module;
 pub mod state;
@@ -58,7 +57,7 @@ impl From<ControlPathError> for uapi::Error {
 }
 
 // use crate::engine::graph::SendError;
-use phoenix::engine::datapath::EngineTxMessage;
+use phoenix_common::engine::datapath::EngineTxMessage;
 use tokio::sync::mpsc::error::SendError;
 
 impl<T> From<SendError<T>> for ControlPathError {
@@ -74,7 +73,7 @@ pub(crate) enum DatapathError {
     #[error("Ulib error {0}")]
     Ulib(#[from] ulib::Error),
     #[error("Tx queue send error: {0}")]
-    Tx(#[from] phoenix::engine::datapath::SendError<EngineTxMessage>),
+    Tx(#[from] phoenix_common::engine::datapath::SendError<EngineTxMessage>),
 }
 
 use crate::config::RpcAdapterConfig;

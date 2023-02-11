@@ -13,55 +13,13 @@ use minstant::Instant;
 use spin::Mutex;
 use thiserror::Error;
 
+use phoenix_common::engine::EngineResult;
+
 use super::affinity::CoreMask;
 use super::group::GroupId;
 use super::manager::{EngineId, RuntimeId, RuntimeManager};
-use super::{EngineContainer, EngineResult, SchedulingGroup};
-
-/// This indicates the runtime of an engine's status.
-#[derive(Debug)]
-pub struct Indicator(pub(crate) usize);
-
-impl Default for Indicator {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
-
-#[allow(unused)]
-impl Indicator {
-    pub const BUSY: usize = usize::MAX;
-
-    #[inline]
-    pub(crate) fn new(x: usize) -> Self {
-        Indicator(x)
-    }
-
-    #[inline]
-    pub fn set_busy(&mut self) {
-        self.0 = Self::BUSY;
-    }
-
-    #[inline]
-    pub fn nwork(&self) -> usize {
-        self.0
-    }
-
-    #[inline]
-    pub fn set_nwork(&mut self, nwork: usize) {
-        self.0 = nwork;
-    }
-
-    #[inline]
-    pub(crate) fn is_busy(&self) -> bool {
-        self.0 == Self::BUSY
-    }
-
-    #[inline]
-    pub(crate) fn is_spinning(&self) -> bool {
-        self.0 == 0
-    }
-}
+use super::{EngineContainer, SchedulingGroup};
+use crate::{log, tracing};
 
 #[derive(Debug, Error)]
 pub enum Error {

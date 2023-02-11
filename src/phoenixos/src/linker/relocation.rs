@@ -4,6 +4,8 @@ use super::section::{ExtraSymbolSection, Section};
 use super::symbol::{SymbolLookupTable, SymbolTable};
 use super::tls::{PhoenixModId, TlsIndex};
 
+use crate::log;
+
 #[allow(non_snake_case)]
 pub(crate) fn do_relocation(
     image_addr: usize,

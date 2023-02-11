@@ -3,18 +3,20 @@ use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
-use phoenix::engine::datapath::node::DataPathNode;
 use uuid::Uuid;
 
 use ipc::customer::ShmCustomer;
 use uapi::engine::SchedulingMode;
 use uapi::salloc::{cmd, dp};
 
-use phoenix::engine::{EnginePair, EngineType};
-use phoenix::module::{ModuleCollection, NewEngineRequest, Service, Version};
-use phoenix::module::{ModuleDowncast, PhoenixModule, ServiceInfo};
-use phoenix::state_mgr::SharedStateManager;
-use phoenix::storage::{get_default_prefix, ResourceCollection, SharedStorage};
+use phoenix_common::engine::datapath::node::DataPathNode;
+use phoenix_common::engine::{Engine, EnginePair, EngineType};
+use phoenix_common::module::{
+    ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, Service, ServiceInfo,
+    Version,
+};
+use phoenix_common::state_mgr::SharedStateManager;
+use phoenix_common::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 
 use super::engine::SallocEngine;
 use super::state::{Shared, State};
@@ -147,7 +149,7 @@ impl PhoenixModule for SallocModule {
         global: &mut ResourceCollection,
         node: DataPathNode,
         _plugged: &ModuleCollection,
-    ) -> Result<Option<Box<dyn phoenix::engine::Engine>>> {
+    ) -> Result<Option<Box<dyn Engine>>> {
         if ty != SallocModule::SALLOC_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
@@ -204,7 +206,7 @@ impl PhoenixModule for SallocModule {
         node: DataPathNode,
         plugged: &ModuleCollection,
         prev_version: Version,
-    ) -> Result<Box<dyn phoenix::engine::Engine>> {
+    ) -> Result<Box<dyn Engine>> {
         if ty != SallocModule::SALLOC_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }

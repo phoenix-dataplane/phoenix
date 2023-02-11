@@ -1,13 +1,14 @@
 use std::fmt;
 
 use ansi_term::Colour;
-use phoenix::tracing::{self, Event, Level, Subscriber};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::{self, FormatEvent, FormatFields};
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::registry::LookupSpan;
 
-use phoenix::config::Config;
+use phoenix_common::tracing::{self, Event, Level, Subscriber};
+
+use crate::config::Config;
 
 // The code is adapted from tokio-rs/tracing/tracing-subscriber
 struct FmtLevel<'a> {

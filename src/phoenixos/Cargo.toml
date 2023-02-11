@@ -1,63 +1,44 @@
 [package]
-name = "phoenix"
+name = "phoenixos"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-crate-type = ["rlib"]
-
 [dependencies]
 uapi = { workspace = true, features = ["mrpc"] } # Should be removed
 ipc.workspace = true
-rdma = { workspace = true, features = ["phoenix"] }
+phoenix_common.workspace = true
 mmap.workspace = true
 
+# TODO(remove the deps)
 uapi-mrpc = { path = "../../experimental/mrpc/uapi/mrpc" }
 
 chrono.workspace = true
 ansi_term.workspace = true
-tracing.workspace = true
+# tracing.workspace = true
 tracing-subscriber = { workspace = true, default-features = false, features = ["env-filter", "ansi", "smallvec"] }
 tracing-appender.workspace = true
 tracing-chrome.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
-crossbeam.workspace = true
-uuid.workspace = true
 num_cpus.workspace = true
 nix = { workspace = true, default-features = false, features = ["signal", "process"] }
 libc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 bincode.workspace = true
-fnv.workspace = true
 lazy_static.workspace = true
 spin.workspace = true
 clap = { workspace = true, features = ["derive"] }
 toml = { workspace = true, features = ["preserve_order"] }
-version.workspace = true
-scheduler.workspace = true
-memfd.workspace = true
-memmap2.workspace = true
 futures = { workspace = true, features = ["executor", "thread-pool"] }
-tokio = { workspace = true, features = ["sync"] }
 dashmap.workspace = true
-smallvec.workspace = true
-json.workspace = true
 minstant.workspace = true
-static_assertions.workspace = true
 itertools.workspace = true
-libloading.workspace = true
 petgraph.workspace = true
 semver.workspace = true
-mio = { version = "0.7.13", features = ["os-poll", "os-ext"] }
-utils.workspace = true
 
 crc32fast.workspace = true
-socket2.workspace = true
-unique.workspace = true
-sharded-slab.workspace = true
 libnuma.workspace = true
 libnuma-sys.workspace = true
 serde_json.workspace = true

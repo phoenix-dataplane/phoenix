@@ -5,7 +5,7 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
 
-use phoenix::log;
+use phoenix_common::log;
 use rdma::mr::OdpMemoryRegion;
 use rdma::rdmacm;
 use uapi::net;
