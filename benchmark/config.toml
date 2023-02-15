@@ -1,4 +1,4 @@
-workdir = "~/nfs/Developing/koala"
+workdir = "~/nfs/Developing/phoenix"
 
 [env]
 RUST_BACKTRACE = "1"

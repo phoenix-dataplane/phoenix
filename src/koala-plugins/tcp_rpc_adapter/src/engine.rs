@@ -406,24 +406,108 @@ impl TcpRpcAdapterEngine {
             let msg_buf = unsafe { msg_buf_ptr.0.as_mut() };
             msg_buf.meta = *meta_ref;
 
+            let start = minstant::Instant::now();
             match meta_ref.msg_type {
                 RpcMsgType::Request => match meta_ref.func_id {
                     3687134534u32 => {
+                        // encode grpc http headers
+                        // https://chromium.googlesource.com/external/github.com/grpc/grpc/+/HEAD/doc/PROTOCOL-HTTP2.md
+                        let headers = vec![
+                            (b":method".to_vec(), b"POST".to_vec()),
+                            (b":scheme".to_vec(), b"http".to_vec()),
+                            (b":path".to_vec(), b"/rpc_hello/SayHello".to_vec()),
+                            (b":authority".to_vec(), b"danyang-06:5000".to_vec()),
+                            (b"te".to_vec(), b"trailers".to_vec()),
+                            (b"grpc-timeout".to_vec(), b"1S".to_vec()),
+                            (
+                                b"content-type".to_vec(),
+                                b"application/mrpc+http+proto".to_vec(),
+                            ),
+                            (b"grpc-encoding".to_vec(), b"identity".to_vec()), // try gzip?
+                            (b"grpc-accept-encoding".to_vec(), b"identity".to_vec()),
+                            (b"user-agent".to_vec(), b"mrpc-http-proto".to_vec()),
+                            (
+                                b"grpc-message-type".to_vec(),
+                                b"rpc_hello.HelloRequest".to_vec(),
+                            ),
+                        ];
+
+                        let mut encoder = hpack::Encoder::new();
+                        let header_buf =
+                            encoder.encode(headers.iter().map(|h| (&h.0[..], &h.1[..])));
+
+                        // write the header length
+                        unsafe {
+                            msg_buf
+                                .encoded
+                                .as_mut_ptr()
+                                .cast::<u32>()
+                                .write(header_buf.len() as u32);
+                        }
+                        // copy the header to the buffer
+                        msg_buf.encoded[std::mem::size_of::<u32>()
+                            ..std::mem::size_of::<u32>() + header_buf.len()]
+                            .copy_from_slice(&header_buf);
+                        // encode the body with protobuf
                         let msg_ref = unsafe { &*(msg.addr_backend as *mut HelloRequest) };
-                        msg_buf.encoded_len = msg_ref.encoded_len();
-                        msg_ref.encode(&mut msg_buf.encoded.as_mut_slice()).unwrap();
+                        msg_buf.encoded_len =
+                            std::mem::size_of::<u32>() + header_buf.len() + msg_ref.encoded_len();
+                        msg_ref
+                            .encode(
+                                &mut &mut msg_buf.encoded[std::mem::size_of::<u32>()
+                                    + header_buf.len()
+                                    ..msg_buf.encoded_len],
+                            )
+                            .unwrap();
                     }
                     _ => panic!("unknown func_id: {}, meta {:?}", meta_ref.func_id, meta_ref),
                 },
                 RpcMsgType::Response => match meta_ref.func_id {
                     3687134534u32 => {
+                        // let msg_ref = unsafe { &*(msg.addr_backend as *mut HelloReply) };
+                        // msg_buf.encoded_len = msg_ref.encoded_len();
+                        // msg_ref.encode(&mut msg_buf.encoded.as_mut_slice()).unwrap();
+
+                        let headers = vec![
+                            (b":status".to_vec(), b"200".to_vec()),
+                            (b"grpc-status".to_vec(), b"0".to_vec()),
+                            (b"grpc-message".to_vec(), b"%1".to_vec()),
+                            (b"user-agent".to_vec(), b"mrpc-http-proto".to_vec()),
+                        ];
+
+                        let mut encoder = hpack::Encoder::new();
+                        let header_buf =
+                            encoder.encode(headers.iter().map(|h| (&h.0[..], &h.1[..])));
+
+                        // write the header length
+                        unsafe {
+                            msg_buf
+                                .encoded
+                                .as_mut_ptr()
+                                .cast::<u32>()
+                                .write(header_buf.len() as u32);
+                        }
+                        // copy the header to the buffer
+                        msg_buf.encoded[std::mem::size_of::<u32>()
+                            ..std::mem::size_of::<u32>() + header_buf.len()]
+                            .copy_from_slice(&header_buf);
+                        // encode the body with protobuf
                         let msg_ref = unsafe { &*(msg.addr_backend as *mut HelloReply) };
-                        msg_buf.encoded_len = msg_ref.encoded_len();
-                        msg_ref.encode(&mut msg_buf.encoded.as_mut_slice()).unwrap();
+                        msg_buf.encoded_len =
+                            std::mem::size_of::<u32>() + header_buf.len() + msg_ref.encoded_len();
+                        msg_ref
+                            .encode(
+                                &mut &mut msg_buf.encoded[std::mem::size_of::<u32>()
+                                    + header_buf.len()
+                                    ..msg_buf.encoded_len],
+                            )
+                            .unwrap();
                     }
                     _ => panic!("unknown func_id: {}, meta {:?}", meta_ref.func_id, meta_ref),
                 },
             }
+
+            // println!("encoding time: {:?}", start.elapsed());
 
             let status = self.send_encoded(conn_ctx, msg_buf_ptr)?;
 
@@ -463,9 +547,20 @@ impl TcpRpcAdapterEngine {
 
         let recv_id = RpcId(meta.conn_id, meta.call_id);
 
+        let start = minstant::Instant::now();
+
         let offset = sgl.0[1].ptr;
         let len = sgl.0[1].len;
         let encoded = unsafe { std::slice::from_raw_parts(offset as *const u8, len) };
+        let header_len = unsafe { encoded.as_ptr().cast::<u32>().read() };
+
+        let header_buf =
+            &encoded[std::mem::size_of::<u32>()..std::mem::size_of::<u32>() + header_len as usize];
+        let mut decoder = hpack::Decoder::new();
+        let _header_list = decoder.decode(header_buf).unwrap();
+
+        let encoded_body = &encoded[std::mem::size_of::<u32>() + header_len as usize..len];
+
         let decoded = self
             .state
             .recv_buffer_table
@@ -478,18 +573,20 @@ impl TcpRpcAdapterEngine {
             RpcMsgType::Request => match meta.func_id {
                 3687134534u32 => {
                     let decoded = unsafe { &mut *(decoded as *mut HelloRequest) };
-                    decoded.merge(encoded).unwrap();
+                    decoded.merge(encoded_body).unwrap();
                 }
                 _ => panic!("unknown func_id: {}, meta {:?}", meta.func_id, meta),
             },
             RpcMsgType::Response => match meta.func_id {
                 3687134534u32 => {
                     let decoded = unsafe { &mut *(decoded as *mut HelloReply) };
-                    decoded.merge(encoded).unwrap();
+                    decoded.merge(encoded_body).unwrap();
                 }
                 _ => panic!("unknown func_id: {}, meta {:?}", meta.func_id, meta),
             },
         }
+
+        // println!("decoding time: {:?}", start.elapsed());
 
         let addr_backend = decoded;
         let addr_app = self
