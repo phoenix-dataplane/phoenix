@@ -1,4 +1,8 @@
 #![no_main]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use std::{net::SocketAddr, os::fd::AsRawFd, error::Error};
 use memfd::Memfd;
 use std::io;

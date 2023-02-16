@@ -1,19 +1,21 @@
 #include "../include/incrementerclient.h"
 
-int main() {
-  IncrementerClient* client = IncrementerClient::connect("127.0.0.1:5002");
+void sendRequest(IncrementerClient* client, ValueRequest req) {
+  std::cout << "request: ValueRequest { val: " << req.val << " }" << std::endl;
+  ValueReply reply = client->increment(req);
+  std::cout << "response: ValueReply { val: " << reply.val << " }" << std::endl;
+}
 
+int main() {
+  IncrementerClient* client_1 = IncrementerClient::connect("127.0.0.1:5000");
+  IncrementerClient* client_2 = IncrementerClient::connect("127.0.0.1:5002");
   ValueRequest req1;
-  req1.val = 42;
-  std::cout << "request: ValueRequest 1 { val: " << req1.val << " }" << std::endl;
-  ValueReply reply1 = client->increment(req1);
-  std::cout << "response: ValueReply 1 { val: " << reply1.val << " }" << std::endl;
+  req1.val = 1;
 
   ValueRequest req2;
-  req2.val = 1;
-  std::cout << "request: ValueRequest 2 { val: " << req2.val << " }" << std::endl;
-  ValueReply reply2 = client->increment(req2);
-  std::cout << "response: ValueReply 2 { val: " << reply2.val << " }" << std::endl;
+  req2.val = 50;
 
+  sendRequest(client_1, req1);
+  sendRequest(client_2, req2);
   return 0;
 }
