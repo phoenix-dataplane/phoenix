@@ -50,6 +50,7 @@ members = [
   "src/phoenix_examples/send_lat",
   "src/phoenix_examples/bench",
   "src/phoenix_examples/alltoall",
+  "src/phoenix_examples/allgather",
   "src/phoenix_examples/rpc_hello",
   "src/phoenix_examples/rpc_bench",
   "src/phoenix_examples/rpc_bench_plus",

@@ -29,6 +29,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "allgather"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libphoenix",
+ "structopt",
+]
+
+[[package]]
 name = "alltoall"
 version = "0.1.0"
 dependencies = [
