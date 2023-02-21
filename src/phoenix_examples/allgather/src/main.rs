@@ -1,14 +1,12 @@
-use std::io::Read;
+use core::num;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::path::PathBuf;
 use std::thread;
 use std::time;
 
-use structopt::clap::arg_enum;
 use structopt::StructOpt;
 
 use libphoenix::cm;
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
+use libphoenix::verbs::{MemoryRegion, WcStatus, SendFlags};
 
 const DEFAULT_PORT: &str = "6000";
 
@@ -32,7 +30,7 @@ pub struct Opts {
     pub warm_iters: usize,
 
     /// Message size.
-    #[structopt(short, long, default_value = "65536")]
+    #[structopt(short, long, default_value = "10")]
     pub msg_size: usize,
 }
 
@@ -69,7 +67,8 @@ struct Communicator {
     send_id: cm::CmId,
     recv_id: cm::CmId,
     send_mr: MemoryRegion<u8>,
-    recv_mr: MemoryRegion<u8>,
+    recv_mrs: Vec<MemoryRegion<u8>>,
+    rank: usize,
 }
 
 impl Communicator {
@@ -83,15 +82,15 @@ impl Communicator {
             .expect("This host is not included in the host list");
 
         let left_peer_addr = &hosts[(rank + hosts.len() - 1) % hosts.len()];
-        let (send_id, recv_id, recv_mr) = {
+        let (send_id, recv_id, recv_mrs) = {
             if rank == hosts.len() - 1 {
-                let (recv_id, recv_mr) = Communicator::connect(left_peer_addr, opts.msg_size)?;
+                let (recv_id, recv_mrs) = Communicator::connect(left_peer_addr, opts.msg_size, hosts.len() - 1)?;
                 let send_id = Communicator::accept(listen_addr, opts.msg_size)?;
-                (send_id,recv_id,recv_mr)
+                (send_id,recv_id,recv_mrs)
             } else{
                 let send_id = Communicator::accept(listen_addr, opts.msg_size)?;
-                let (recv_id, recv_mr) = Communicator::connect(left_peer_addr, opts.msg_size)?;
-                (send_id,recv_id,recv_mr)
+                let (recv_id, recv_mrs) = Communicator::connect(left_peer_addr, opts.msg_size, hosts.len() - 1)?;
+                (send_id,recv_id,recv_mrs)
             }
         };
 
@@ -99,7 +98,7 @@ impl Communicator {
         //send_mr for node with rank + 1
         let send_mr = {
             let mut mr = send_id.alloc_msgs(opts.msg_size)?;
-            mr.fill(42u8);
+            mr.fill((rank + 1) as u8);
             mr
         };
 
@@ -107,11 +106,12 @@ impl Communicator {
             send_id,
             recv_id,
             send_mr,
-            recv_mr,
+            recv_mrs,
+            rank
         })
     }
 
-    fn accept (listen_addr:&SocketAddr, msg_size:usize) -> Result<cm::CmId, libphoenix::Error>{
+    fn accept (listen_addr:&SocketAddr, msg_size:usize) ->  Result<cm::CmId, libphoenix::Error>{
         // create a listener
         let listener = cm::CmIdListener::bind(listen_addr)?;
 
@@ -120,11 +120,12 @@ impl Communicator {
         let mut builder = listener.get_request()?;
         let pre_id = builder.set_max_send_wr(2).set_max_recv_wr(2).build()?;
 
-        // allocate messages before accepting
-        let mut recv_mr_temp: MemoryRegion<u8> = pre_id.alloc_msgs(msg_size)?;
+        // allocate messages before accepting            
+        // allocate messages before connecting
+        let mut recv_mr: MemoryRegion<u8> = pre_id.alloc_msgs(msg_size)?;
         for _ in 0..2 {
             unsafe {
-                pre_id.post_recv(&mut recv_mr_temp, .., 0)?;
+                pre_id.post_recv(&mut recv_mr, .., 0)?;
             }
         }
         //socket accepts connections
@@ -132,30 +133,33 @@ impl Communicator {
         pre_id.accept(None)
     }
 
-    fn connect(peer_addr:&SocketAddr, msg_size:usize)->Result<(cm::CmId,MemoryRegion<u8>), libphoenix::Error> {
+    fn connect(peer_addr:&SocketAddr, msg_size:usize, num_peers:usize)->Result<(cm::CmId,Vec<MemoryRegion<u8>>), libphoenix::Error> {
         //connect to node with rank - 1
         let mut retry = 0;
         println!("Attempting connection to {:?}",peer_addr);
-        let (recv_id, recv_mr) = loop {
+        let (recv_id,recv_mrs) = loop {
             let builder = cm::CmIdBuilder::new()
                 .set_max_recv_wr(2)
                 .set_max_recv_wr(2)
                 .resolve_route(peer_addr)?;
-
             let pre_id = builder.build()?;
-
+            let mut recv_mrs = Vec::with_capacity(num_peers);
             // allocate messages before connecting
-            let mut recv_mr: MemoryRegion<u8> = pre_id.alloc_msgs(msg_size)?;
-            for _ in 0..2 {
-                unsafe {
-                    pre_id.post_recv(&mut recv_mr, .., 0)?;
+            for _ in 0..num_peers{
+                let mut recv_mr: MemoryRegion<u8> = pre_id.alloc_msgs(msg_size)?;
+                for _ in 0..2 {
+                    unsafe {
+                        pre_id.post_recv(&mut recv_mr, .., 0)?;
+                    }
                 }
+                recv_mrs.push(recv_mr);
             }
+            
 
             match pre_id.connect(None) {
                 Ok(id) => {
                     println!("Successful connection");
-                    break (id, recv_mr)
+                    break (id,recv_mrs)
                 }
                 Err(libphoenix::Error::Connect(e)) => {
                     println!("connect error: {}, connect retrying...", e);
@@ -168,14 +172,59 @@ impl Communicator {
                 Err(e) => panic!("connect: {}", e),
             }
         };
-        Ok((recv_id, recv_mr))
+        Ok((recv_id,recv_mrs))
     }
+}
+
+fn run_single_thread (opts: &Opts, mut comm: Communicator) -> anyhow::Result<()> {
+    let num_hosts = get_host_list(opts).len();
+    
+    for i in 0..(num_hosts - 1){
+        let recv_rank = (comm.rank + num_hosts - 1) % num_hosts;
+
+        println!("{}",i);
+
+        let send_mr = if i == 0 {
+                let mut mr = comm.send_id.alloc_msgs(opts.msg_size)?;
+                mr.copy_from_slice(comm.send_mr.as_slice());
+                mr
+            }
+            else {
+            let mut mr = comm.send_id.alloc_msgs(opts.msg_size)?;
+            mr.copy_from_slice(comm.recv_mrs[i-1].as_slice());
+            mr
+        };
+        println!("send data:  {:?}", send_mr.as_slice());
+        println!("send mr made");
+        unsafe{
+            comm.send_id.post_send(&send_mr, .., i as u64, SendFlags::SIGNALED)?;
+        }
+        println!("post send");
+
+        println!("get send comp");
+        let wc = comm.send_id.get_send_comp()?;
+        assert_eq!(wc.status, WcStatus::Success, "wc: {:?}", wc);
+        println!("get recv comp");
+        let wc = comm.recv_id.get_recv_comp()?;
+        assert_eq!(wc.status, WcStatus::Success, "wc: {:?}", wc);
+
+        println!("push new data");
+        unsafe {
+            comm.recv_id.post_recv(&mut comm.recv_mrs[i], .., i as u64)?;
+        }
+        println!("recv mr: {:?}",comm.recv_mrs[i].as_slice());
+        // debug_assert_eq!(
+        //     comm.recv_mrs[i].as_slice(),
+        //     &vec![(recv_rank + 1) as u8; opts.msg_size],
+        // );
+        }
+
+    Ok(())
 }
 
 
 fn main() {
     let opts = Opts::from_args();
     let comm = Communicator::new(&opts).expect("Create communicator failed");
-    println!("{:?}",comm);
+    run_single_thread(&opts,comm);
 }
-
