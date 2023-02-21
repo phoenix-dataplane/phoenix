@@ -8,7 +8,6 @@ fn main() {
     if result == "client" {
         cxx_build::bridge("src/client.rs") // returns a cc::Build
             .file("src/client.cc")
-            .file("src/incrementerclient.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_client");
     } else if result  == "server" {

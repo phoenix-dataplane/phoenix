@@ -4,7 +4,7 @@
 void *StartServer(void *args) {
     pthread_detach(pthread_self());
     Args* thread_args = (Args*) args;
-    std::cout << "thread started and detatched for ip: " << thread_args->IP << std::endl;
+    std::cout << "thread started and detached for ip: " << thread_args->IP << std::endl;
     run(thread_args->IP, *(thread_args->incr));
     pthread_exit(NULL);
 }
