@@ -11,7 +11,6 @@ use std::thread;
 
 use anyhow::{bail, Context};
 use clap::Parser;
-use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -19,10 +18,13 @@ use walkdir::WalkDir;
     based on a previous build of phoenix."
 )]
 struct Opts {
-    /// The sysroot for the rustup toolchains that contains the latest build of phoenix_common
-    /// and its dependencies.
+    /// The dep file that specifies the dependencies of a latest build of phoenix_common.
     #[arg(long)]
-    sysroot: PathBuf,
+    phoenix_dep: PathBuf,
+
+    /// The directory that contains the prebuilt crates for phoenix_common.
+    #[arg(long)]
+    prebuilt_dir: PathBuf,
 
     /// Cargo subcommand
     #[arg(raw = true, allow_hyphen_values = true)]
@@ -39,25 +41,35 @@ fn is_build_command(cargo_subcommand: &[String]) -> bool {
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
 
-    let sysroot_dir_path = fs::canonicalize(&opts.sysroot)
-        .with_context(|| format!("--input arg '{}' was invalid path.", opts.sysroot.display()))?;
+    let prebuilt_dir = fs::canonicalize(&opts.prebuilt_dir).with_context(|| {
+        format!(
+            "--input arg '{}' was invalid path.",
+            opts.prebuilt_dir.display()
+        )
+    })?;
+    let phoenix_dep_path = fs::canonicalize(&opts.phoenix_dep).with_context(|| {
+        format!(
+            "--input arg '{}' was invalid path.",
+            opts.phoenix_dep.display()
+        )
+    })?;
 
-    let prebuilt_crates_set = if sysroot_dir_path.is_dir() {
-        populate_crates_from_dir(&sysroot_dir_path)
-            .context("Error parsing --input arg as directory.")?
+    let prebuilt_crates_set = if phoenix_dep_path.is_file() {
+        populate_crates_from_dep_file(&phoenix_dep_path)
+            .context("Error parsing --input arg as a dep file.")?
     } else {
         bail!(
-            "Couldn't access --input argument '{}' as a directory",
-            sysroot_dir_path.display()
+            "Couldn't access --input argument '{}' as a file",
+            phoenix_dep_path.display()
         )
     };
+    dbg!(&prebuilt_crates_set);
 
     let verbose_count = count_verbose_arg(&opts.cargo_subcommand);
 
     // dbg!(&opts.cargo_subcommand);
 
-    let stderr_captured =
-        run_initial_cargo(&opts.cargo_subcommand, &sysroot_dir_path, verbose_count)?;
+    let stderr_captured = run_initial_cargo(&opts.cargo_subcommand, verbose_count)?;
 
     if !is_build_command(&opts.cargo_subcommand) {
         println!("Exiting after completing non-'build' cargo command.");
@@ -130,12 +142,12 @@ fn main() -> anyhow::Result<()> {
         if prebuilt_crates_set.contains_key(crate_name) {
             // remove the redundant file
             println!("### Removing redundant crate file {}", path.display());
-            fs::remove_file(&path).with_context(|| {
-                format!(
-                    "Failed to remove redundant crate file in out_dir: {}",
-                    path.display(),
-                )
-            })?;
+            // fs::remove_file(&path).with_context(|| {
+            //     format!(
+            //         "Failed to remove redundant crate file in out_dir: {}",
+            //         path.display(),
+            //     )
+            // })?;
         } else {
             // Here, do nothing. We must keep the non-redundant files,
             // as they represent new dependencies that were not part of
@@ -167,7 +179,7 @@ fn main() -> anyhow::Result<()> {
     // re-execute the rustc commands that we captured from the original cargo verbose output.
     for original_cmd in &stderr_captured {
         // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
-        run_rustc_command(original_cmd, &prebuilt_crates_set, &sysroot_dir_path)?;
+        run_rustc_command(original_cmd, &prebuilt_crates_set, &prebuilt_dir)?;
     }
 
     Ok(())
@@ -185,9 +197,9 @@ fn is_first_party_crate(crate_name: &str, _crate_source_file: &str) -> bool {
         "ipc",
         // "libphoenix",
         "mmap",
-        "phoenix-salloc",
-        "phoenix-transport-rdma",
-        "phoenix-transport-tcp",
+        "phoenix_salloc",
+        "phoenix_transport_rdma",
+        "phoenix_transport_tcp",
         // "phoenix_cargo",
         "phoenix_common",
         // "phoenixctl",
@@ -199,14 +211,38 @@ fn is_first_party_crate(crate_name: &str, _crate_source_file: &str) -> bool {
         // "shmalloc",
         // "slabmalloc",
         "uapi",
-        "uapi-core",
-        "uapi-mrpc",
-        "uapi-policy-qos",
-        "uapi-policy-ratelimit",
-        "uapi-rpc-adapter",
-        "uapi-salloc",
-        "uapi-transport",
+        "uapi_core",
+        "uapi_mrpc",
+        "uapi_policy_qos",
+        "uapi_policy_ratelimit",
+        "uapi_rpc_adapter",
+        "uapi_salloc",
+        "uapi_transport",
         "utils",
+        "mmap",
+        // "mrpc",
+        // "mrpc_build",
+        // "mrpc_derive",
+        // "mrpc_marshal",
+        "phoenix_mrpc",
+        "phoenix_rpc_adapter",
+        "phoenix_salloc",
+        "phoenix_tcp_rpc_adapter",
+        "phoenix_transport_rdma",
+        "phoenix_transport_tcp",
+        "phoenix_common",
+        "rdma",
+        "uapi",
+        "uapi_core",
+        "uapi_mrpc",
+        "uapi_policy_hotel_acl",
+        "uapi_policy_null",
+        "uapi_policy_qos",
+        "uapi_policy_ratelimit",
+        "uapi_rpc_adapter",
+        "uapi_salloc",
+        "uapi_tcp_rpc_adapter",
+        "uapi_transport",
     ]
     .contains(&crate_name)
 }
@@ -227,13 +263,7 @@ const PREFIX_END: usize = RMETA_RLIB_FILE_PREFIX.len();
 /// Runs the actual cargo build command.
 ///
 /// Returns the captured content of content written to `stderr` by the cargo command, as a list of lines.
-fn run_initial_cargo<P: AsRef<Path>>(
-    full_args: &[String],
-    sysroot_dir_path: P,
-    verbose_level: usize,
-) -> anyhow::Result<Vec<String>> {
-    let sysroot_dir_path = sysroot_dir_path.as_ref();
-
+fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Result<Vec<String>> {
     let subcommand = full_args
         .first()
         .context("Missing subcommand argument to `phoenix_cargo` (e.g., `build`)")?;
@@ -270,7 +300,8 @@ fn run_initial_cargo<P: AsRef<Path>>(
     // cmd.env("RUST_TARGET_PATH");
 
     // Add the sysroot argument to our rustflags so cargo will use our pre-built phoenix dependencies.
-    let mut rustflags = format!("--sysroot {}", sysroot_dir_path.display());
+    // let mut rustflags = format!("--sysroot {}", sysroot_dir_path.display());
+    let mut rustflags = String::new();
 
     // -Zbinary-dep-depinfo allows us to track dependencies of each rlib
     rustflags.push_str(" -Zunstable-options -Zbinary-dep-depinfo");
@@ -526,10 +557,10 @@ fn run_rustc_command<P: AsRef<Path>>(
     }
     recreated_cmd.arg(crate_source_file);
 
-    if !is_first_party_crate(crate_name, crate_source_file) {
-        println!("\n### Skipping third-party crate {:?}", crate_name);
-        return Ok(false);
-    }
+    // if !is_first_party_crate(crate_name, crate_source_file) {
+    //     println!("\n### Skipping third-party crate {:?}", crate_name);
+    //     return Ok(false);
+    // }
 
     let mut args_changed = false;
 
@@ -630,7 +661,7 @@ fn run_rustc_command<P: AsRef<Path>>(
     }
 
     // If any args actually changed, we need to run the re-created command.
-    if args_changed {
+    if args_changed || true {
         // Add our directory of prebuilt crates as a library search path, for dependency resolution.
         // This is okay because we removed all of the potentially conflicting crates from the local target/ directory,
         // which ensures that adding in the directory of prebuilt crate .rmeta/.rlib files won't cause rustc to complain
@@ -725,6 +756,79 @@ fn populate_crates_from_dir<P: AsRef<Path>>(dir_path: P) -> io::Result<HashMap<S
                     io::ErrorKind::Other,
                     format!(
                         "File {:?} is an .rmeta file that does not begin with 'lib' as expected.",
+                        path
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(crates)
+}
+
+fn populate_crates_from_dep_file<P: AsRef<Path>>(
+    dep_path: P,
+) -> io::Result<HashMap<String, String>> {
+    // Parse dependency closure
+    let content = fs::read_to_string(dep_path)?;
+    let mut all_deps = Vec::new();
+    for line in content.lines() {
+        // name:[ dep]*
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((name, _deps)) = line.split_once(':') else {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Dep file does not have a valid format",
+            ));
+        };
+        dbg!(&name);
+        let path = PathBuf::from(name);
+        let filestem = path
+            .file_stem()
+            .expect("no valid file stem")
+            .to_string_lossy();
+        if filestem.starts_with(RMETA_RLIB_FILE_PREFIX) {
+            all_deps.push(name.to_owned());
+        }
+        // let v: Vec<String> = deps.split(' ').map(|s| s.to_owned()).collect();
+        // all_deps.extend(v);
+    }
+    // deduplicate
+    all_deps.sort();
+    all_deps.dedup();
+    // filter out .rs, .d, keep .rlib, .so and transform .rmeta to .rlib
+    let mut all_deps: Vec<String> = all_deps
+        .into_iter()
+        .map(|x| {
+            x.strip_suffix(".rmeta")
+                .map_or(x.clone(), |y| y.to_owned() + ".rlib")
+        })
+        .collect();
+    all_deps.retain(|x| x.ends_with(".rlib") || x.ends_with(".so"));
+
+    let mut crates = HashMap::default();
+    for dep in all_deps {
+        let path = PathBuf::from(dep);
+        if path.extension().and_then(|p| p.to_str()) == Some(RLIB_FILE_EXTENSION) {
+            let filestem = path
+                .file_stem()
+                .expect("no valid file stem")
+                .to_string_lossy();
+            if filestem.starts_with("lib") {
+                let crate_name_with_hash = &filestem[PREFIX_END..];
+                let crate_name_without_hash = crate_name_with_hash.split('-').next().unwrap();
+                crates.insert(
+                    crate_name_without_hash.to_string(),
+                    crate_name_with_hash.to_string(),
+                );
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "File {:?} is an .rlib file that does not begin with 'lib' as expected.",
                         path
                     ),
                 ));

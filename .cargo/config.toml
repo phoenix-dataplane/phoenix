@@ -17,8 +17,9 @@ rustflags = [
   "-C", "link-dead-code",
 
   # -Zbinary-dep-depinfo allows us to track dependencies of each rlib
-  "-Zunstable-options", "-Zbinary-dep-depinfo"
+  "-Zunstable-options", "-Zbinary-dep-depinfo",
 ]
 
 [unstable]
+# mtime-on-use = true
 binary-dep-depinfo = true
