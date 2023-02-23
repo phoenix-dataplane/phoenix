@@ -10,6 +10,8 @@ use object::{
     SymbolScope,
 };
 
+use phoenix_common::log;
+
 use super::tls::{phoenix_tls_get_addr, TlsIndex, PHOENIX_MOD_INVALID};
 
 #[derive(Debug, Clone)]
@@ -166,7 +168,18 @@ impl SymbolLookupTable {
 
     pub(crate) fn insert(&mut self, name: String, sym: Symbol) {
         // TODO(cjr): Do more check for duplicated symbols.
-        self.table.insert(name, sym);
+        use std::collections::hash_map::Entry;
+        match self.table.entry(name) {
+            Entry::Vacant(v) => {
+                v.insert(sym);
+            }
+            Entry::Occupied(o) => {
+                log::trace!(
+                    "found duplicated definition of symbol: {:?} vs {:?}, use the first one",
+                    o.get(), sym,
+                );
+            }
+        }
     }
 
     pub(crate) fn lookup_tls_symbol(&self, name: &str) -> Option<TlsIndex> {

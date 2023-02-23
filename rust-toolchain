@@ -1,4 +1,10 @@
 [toolchain]
 channel = "nightly-2022-10-01"
-components = [ "cargo", "clippy", "rust-docs", "rust-std", "rustc", "rustfmt", "rust-analyzer", "rustc-dev" ]
+components = [
+	# development
+	"cargo", "clippy", "rust-docs", "rust-std", "rustc", "rustfmt", "rust-analyzer",
+
+	# for rust-analyzer to browser the code for rustc
+	"rustc-dev",
+]
 profile = "minimal"

@@ -45,7 +45,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arg_enum_proc_macro",
- "clap 4.0.29",
+ "clap 4.1.6",
  "libphoenix",
 ]
 
@@ -248,7 +248,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 name = "bench"
 version = "0.1.0"
 dependencies = [
- "clap 4.0.29",
+ "clap 4.1.6",
  "libnuma",
  "libphoenix",
  "scheduler",
@@ -457,9 +457,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.0.29"
+version = "4.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d63b9e9c07271b9957ad22c173bae2a4d9a81127680962039296abcd2f8251d"
+checksum = "ec0b0588d44d4d63a87dbd75c136c166bbfd9a86a31cb89e09906521c7d3f5e3"
 dependencies = [
  "bitflags 1.3.2",
  "clap_derive",
@@ -472,9 +472,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.0.21"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0177313f9f02afc995627906bbd8967e2be069f5261954222dac78290c2b9014"
+checksum = "684a277d672e91966334af371f1a7b5833f9aa00b07c84e92fbce95e00208ce8"
 dependencies = [
  "heck 0.4.0",
  "proc-macro-error",
@@ -1073,6 +1073,15 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "getopts"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14dbbfd5c71d70241ecf9e6f13737f7b5ce823821063188d7e46c41d371eebd5"
+dependencies = [
+ "unicode-width",
 ]
 
 [[package]]
@@ -1960,6 +1969,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix_cargo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 4.1.6",
+ "getopts",
+ "regex",
+ "serde",
+ "shlex",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
 name = "phoenix_common"
 version = "0.1.0"
 dependencies = [
@@ -1989,7 +2012,7 @@ name = "phoenixctl"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "clap 4.0.29",
+ "clap 4.1.6",
  "ipc",
  "lazy_static",
  "prettytable-rs",
@@ -2011,7 +2034,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "chrono",
- "clap 4.0.29",
+ "clap 4.1.6",
  "crc32fast",
  "dashmap",
  "futures",
@@ -2302,9 +2325,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.7.0"
+version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e076559ef8e241f2ae3479e36f97bd5741c0330689e217ad51ce2c76808b868a"
+checksum = "48aaa5748ba571fb95cd2c85c09f629215d3a6ece942baa100950af03a34f733"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2460,7 +2483,7 @@ dependencies = [
 name = "send_bw"
 version = "0.1.0"
 dependencies = [
- "clap 4.0.29",
+ "clap 4.1.6",
  "libphoenix",
 ]
 
@@ -2468,7 +2491,7 @@ dependencies = [
 name = "send_lat"
 version = "0.1.0"
 dependencies = [
- "clap 4.0.29",
+ "clap 4.1.6",
  "libphoenix",
 ]
 

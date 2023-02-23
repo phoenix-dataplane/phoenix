@@ -32,6 +32,8 @@ members = [
   "examples/send_lat",
   "examples/bench",
   "examples/alltoall",
+  # tools
+  "tools/phoenix_cargo",
 ]
 exclude = [
   "experimental/mrpc",

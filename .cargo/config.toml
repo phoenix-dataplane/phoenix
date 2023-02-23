@@ -11,6 +11,8 @@ rustflags = [
   # link libphoenix and all engine plugins as dynamic library
   # "-C", "prefer-dynamic", "-C", "rpath",
 
+  # "-C", "codegen-units=1",
+
   # link all symbols in dependent crates even if they are not actually used (moved to phoenix/build.rs)
   "-C", "link-dead-code",
 

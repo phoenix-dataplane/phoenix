@@ -410,10 +410,10 @@ impl MrpcEngine {
                 // let mut timer = crate::timer::Timer::new();
 
                 // 1300ns, even if the tracing level is filtered shit!!!!!!
-                tracing::trace!(
-                    "mRPC engine got a message from App, call_id: {}",
-                    erased.meta.call_id
-                );
+                // tracing::debug!(
+                //     "mRPC engine got a message from App, call_id: {}",
+                //     erased.meta.call_id
+                // );
 
                 // timer.tick();
 

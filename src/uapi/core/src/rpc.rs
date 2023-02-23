@@ -40,7 +40,7 @@ impl From<usize> for CallId {
 
 impl fmt::Display for CallId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "CallId({})", self.0)
+        write!(f, "CallId({})", self.0)
     }
 }
 

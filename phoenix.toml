@@ -13,7 +13,7 @@ max_event_level = "trace"
 # overwrite with env PHOENIX_TRACING_SPAN
 span_level = "info"
 # overwrite with env PHOENIX_TRACING_DIR
-output_dir = "/tmp/phoenix-trace"
+output_dir = "/tmp/phoenix-cjr-trace"
 
 [profiling]
 # overwrite with env PHOENIX_PROFILING_ENABLE_ON_NEW_CLIENT
@@ -26,7 +26,7 @@ duration_ms = 1000
 
 [control]
 # overwrite with PHOENIX_PREFIX
-prefix = "/tmp/phoenix"
+prefix = "/tmp/phoenix-cjr"
 # overwrite with PHOENIX_CONTROL
 path = "control.sock"
 
@@ -38,7 +38,7 @@ workdir = "linker"
 name = "RdmaTransport"
 lib_path = "plugins/libphoenix_transport_rdma.rlib"
 config_string = '''
-prefix = "/tmp/phoenix"
+prefix = "/tmp/phoenix-cjr"
 engine_basename = "transport-engine-rdma"
 datapath_wq_depth = 32
 datapath_cq_depth = 32
@@ -49,7 +49,7 @@ command_max_interval_ms = 1000
 name = "TcpTransport"
 lib_path = "plugins/libphoenix_transport_tcp.rlib"
 config_string = '''
-prefix = "/tmp/phoenix"
+prefix = "/tmp/phoenix-cjr"
 engine_basename = "transport-engine-tcp"
 '''
 
@@ -57,17 +57,28 @@ engine_basename = "transport-engine-tcp"
 name = "Salloc"
 lib_path = "plugins/libphoenix_salloc.rlib"
 config_string = '''
-prefix = "/tmp/phoenix"
+prefix = "/tmp/phoenix-cjr"
 engine_basename = "salloc"
 '''
 
 [[modules]]
 name = "Mrpc"
+lib_path = "plugins/libphoenix_mrpc-9ee6f973defe4e82.rlib"
+config_string = '''
+prefix = "/tmp/phoenix-cjr"
+engine_basename = "mrpc-engine"
+build_cache = "/tmp/phoenix-cjr/build-cache"
+transport = "Rdma"
+nic_index = 0
+'''
+
+[[modules]]
+name = "Mrpc2"
 lib_path = "plugins/libphoenix_mrpc.rlib"
 config_string = '''
-prefix = "/tmp/phoenix"
+prefix = "/tmp/phoenix-cjr"
 engine_basename = "mrpc-engine"
-build_cache = "/tmp/phoenix/build-cache"
+build_cache = "/tmp/phoenix-cjr/build-cache"
 transport = "Rdma"
 nic_index = 0
 '''
