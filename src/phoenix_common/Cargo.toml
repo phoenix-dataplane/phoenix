@@ -10,18 +10,22 @@ crate-type = ["rlib"]
 
 [dependencies]
 uapi = { workspace = true, features = ["mrpc"] } # Should be removed
-ipc.workspace = true
+# hack: all for including "default" feature of tracing_core
+ipc = { workspace = true, features = ["all"] }
 
 # TODO(remove the deps)
 uapi-mrpc = { path = "../../experimental/mrpc/uapi/mrpc" }
 
 tracing.workspace = true
+tracing-core = { workspace = true, features = ["default"] }
 anyhow.workspace = true
 thiserror.workspace = true
 crossbeam.workspace = true
 nix = { workspace = true, default-features = false, features = ["signal", "process"] }
 fnv.workspace = true
 futures = { workspace = true, features = ["executor", "thread-pool"] }
+# hack: enable "default" feature of futures_core
+futures-core = { workspace = true, features = ["default"] }
 tokio = { workspace = true, features = ["sync"] }
 dashmap.workspace = true
 smallvec.workspace = true

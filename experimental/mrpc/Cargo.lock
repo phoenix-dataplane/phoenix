@@ -1719,6 +1719,7 @@ dependencies = [
  "dashmap",
  "fnv",
  "futures",
+ "futures-core",
  "ipc",
  "libnuma",
  "libnuma-sys",
@@ -1731,6 +1732,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-core",
  "uapi",
  "uapi-mrpc",
 ]

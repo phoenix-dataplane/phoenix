@@ -1,6 +1,6 @@
 // Inspired by Theseus cargo.
 // https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -11,6 +11,129 @@ use std::thread;
 
 use anyhow::{bail, Context};
 use clap::Parser;
+use filetime::{set_file_mtime, FileTime};
+use semver::{Version, VersionReq};
+
+#[derive(Debug, Clone)]
+struct Crate {
+    name: String,
+    metadata: String,
+    pkg_version: Version,
+    features: Vec<String>,
+    path: PathBuf,
+}
+
+impl Crate {
+    fn crate_name_with_hash(&self) -> String {
+        format!("{}-{}", self.name, self.metadata)
+    }
+}
+
+/// It maps a crate-name to a list of candidate crates.
+#[derive(Debug, Clone)]
+struct PrebuiltCrates(HashMap<String, Vec<Crate>>);
+
+impl PrebuiltCrates {
+    fn new(rustc_commands: &[String]) -> anyhow::Result<Self> {
+        let mut crates = HashMap::default();
+        for original_cmd in rustc_commands {
+            let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
+                continue;
+            };
+            crates
+                .entry(c.name.to_owned())
+                .or_insert_with(Vec::new)
+                .push(c);
+        }
+        Ok(Self(crates))
+    }
+}
+
+#[derive(Debug)]
+struct CompileDb {
+    /// The directory that contains the prebuilt crates for phoenix_common.
+    prebuilt_dir: PathBuf,
+
+    /// The dependency closure for phoenix_common
+    prebuilt_crate_sets: PrebuiltCrates,
+
+    /// Lookup table that returns the crate information for a given cratename-metadata
+    crate_info: HashMap<String, Crate>,
+}
+
+impl CompileDb {
+    fn from_file<P: AsRef<Path>>(compile_log: P) -> anyhow::Result<Self> {
+        let compile_log_path = compile_log.as_ref();
+
+        // Parse rustc commands
+        let compile_log_file = fs::File::open(compile_log_path)?;
+        let mut reader = BufReader::new(compile_log_file);
+        let rustc_commands = capture_rustc_commands(&mut reader, 0);
+
+        // Extract the prebuilt_dir from the last command
+        let last_cmd = rustc_commands
+            .last()
+            .context("No commands captured from stderr during the initial cargo command")?;
+        let prebuilt_dir = PathBuf::from(get_out_dir_arg(last_cmd)?);
+
+        let prebuilt_dir = fs::canonicalize(&prebuilt_dir).with_context(|| {
+            format!("--input arg '{}' was invalid path.", prebuilt_dir.display())
+        })?;
+
+        // Scan all the rustc commands and build the index to the crates
+        let prebuilt_crate_sets = PrebuiltCrates::new(&rustc_commands)?;
+
+        // Organize the crates in prebuilt set for lookup
+        let crate_info = prebuilt_crate_sets
+            .0
+            .values()
+            .flat_map(|crates| {
+                crates
+                    .iter()
+                    .map(|c| (format!("{}-{}", c.name, c.metadata), c.clone()))
+            })
+            .collect();
+        Ok(Self {
+            prebuilt_dir,
+            prebuilt_crate_sets,
+            crate_info,
+        })
+    }
+
+    fn insert_crate(&mut self, c: &Crate) {
+        self.crate_info
+            .insert(c.crate_name_with_hash(), c.clone())
+            .ok_or(())
+            .unwrap_err();
+    }
+
+    fn get_crate(&self, crate_name_with_hash: &str) -> Option<Crate> {
+        self.crate_info.get(crate_name_with_hash).cloned()
+    }
+
+    fn find_compatible_crates_in_prebuilt(&self, c: &Crate) -> Vec<Crate> {
+        self.prebuilt_crate_sets
+            .0
+            .get(&c.name)
+            .map(|candidate_set| {
+                let desired_features: BTreeSet<_> = c.features.iter().cloned().collect();
+                let mut cands = Vec::new();
+                for cand in candidate_set {
+                    let req = VersionReq::parse(&c.pkg_version.to_string()).unwrap();
+                    if !req.matches(&cand.pkg_version) {
+                        continue;
+                    }
+                    let provided_features: BTreeSet<_> = cand.features.iter().cloned().collect();
+                    if !provided_features.is_superset(&desired_features) {
+                        continue;
+                    }
+                    cands.push(cand.clone());
+                }
+                cands
+            })
+            .unwrap_or_default()
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -20,11 +143,7 @@ use clap::Parser;
 struct Opts {
     /// The dep file that specifies the dependencies of a latest build of phoenix_common.
     #[arg(long)]
-    phoenix_dep: PathBuf,
-
-    /// The directory that contains the prebuilt crates for phoenix_common.
-    #[arg(long)]
-    prebuilt_dir: PathBuf,
+    compile_log: PathBuf,
 
     /// Cargo subcommand
     #[arg(raw = true, allow_hyphen_values = true)]
@@ -41,29 +160,11 @@ fn is_build_command(cargo_subcommand: &[String]) -> bool {
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
 
-    let prebuilt_dir = fs::canonicalize(&opts.prebuilt_dir).with_context(|| {
-        format!(
-            "--input arg '{}' was invalid path.",
-            opts.prebuilt_dir.display()
-        )
-    })?;
-    let phoenix_dep_path = fs::canonicalize(&opts.phoenix_dep).with_context(|| {
-        format!(
-            "--input arg '{}' was invalid path.",
-            opts.phoenix_dep.display()
-        )
-    })?;
+    // Build the compile database from the cargo's log file.
+    // This shoudl be the file generated during build package phoenix_common.
+    let mut compile_db = CompileDb::from_file(opts.compile_log)?;
 
-    let prebuilt_crates_set = if phoenix_dep_path.is_file() {
-        populate_crates_from_dep_file(&phoenix_dep_path)
-            .context("Error parsing --input arg as a dep file.")?
-    } else {
-        bail!(
-            "Couldn't access --input argument '{}' as a file",
-            phoenix_dep_path.display()
-        )
-    };
-    dbg!(&prebuilt_crates_set);
+    dbg!(&compile_db);
 
     let verbose_count = count_verbose_arg(&opts.cargo_subcommand);
 
@@ -74,6 +175,23 @@ fn main() -> anyhow::Result<()> {
     if !is_build_command(&opts.cargo_subcommand) {
         println!("Exiting after completing non-'build' cargo command.");
         return Ok(());
+    }
+
+    // Change working directory
+    if let Some(manifest_path) = opts
+        .cargo_subcommand
+        .iter()
+        .position(|arg| arg == "--manifest-path")
+        .map(|pos| opts.cargo_subcommand[pos + 1].clone())
+    {
+        let manifest_path = fs::canonicalize(&manifest_path)?;
+        let manifest_dir = manifest_path.parent().with_context(|| {
+            format!(
+                "manifest_path has no parent directory: {}",
+                manifest_path.display()
+            )
+        })?;
+        std::env::set_current_dir(manifest_dir)?;
     }
 
     let last_cmd = stderr_captured
@@ -113,10 +231,10 @@ fn main() -> anyhow::Result<()> {
         //
         // We do not know the exact hash value appended to each crate, we only know the plain crate name.
         // Here, extract the plain crate_name from the file name.
-        let crate_name = match path.extension().and_then(|os_str| os_str.to_str()) {
-            Some("d") | Some("o") => get_plain_crate_name_from_path(&path)?,
+        let crate_name_with_hash = match path.extension().and_then(|os_str| os_str.to_str()) {
+            Some("d") | Some("o") => get_crate_name_with_hash_from_path(&path)?,
             Some(RMETA_FILE_EXTENSION) | Some(RLIB_FILE_EXTENSION) | Some(DYLIB_FILE_EXTENSION) => {
-                let libcrate_name = get_plain_crate_name_from_path(&path)?;
+                let libcrate_name = get_crate_name_with_hash_from_path(&path)?;
                 if libcrate_name.starts_with(RMETA_RLIB_FILE_PREFIX) {
                     &libcrate_name[PREFIX_END..]
                 } else {
@@ -139,7 +257,11 @@ fn main() -> anyhow::Result<()> {
         };
 
         // See if that crate already exists in our set of prebuilt crates.
-        if prebuilt_crates_set.contains_key(crate_name) {
+        if compile_db
+            .get_crate(crate_name_with_hash)
+            .map(|c| !compile_db.find_compatible_crates_in_prebuilt(&c).is_empty())
+            == Some(true)
+        {
             // remove the redundant file
             println!("### Removing redundant crate file {}", path.display());
             // fs::remove_file(&path).with_context(|| {
@@ -179,72 +301,10 @@ fn main() -> anyhow::Result<()> {
     // re-execute the rustc commands that we captured from the original cargo verbose output.
     for original_cmd in &stderr_captured {
         // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
-        run_rustc_command(original_cmd, &prebuilt_crates_set, &prebuilt_dir)?;
+        run_rustc_command(original_cmd, &mut compile_db)?;
     }
 
     Ok(())
-}
-
-/// Returns true if the crate is a first party crate.
-fn is_first_party_crate(crate_name: &str, _crate_source_file: &str) -> bool {
-    // cjr@cjr-office ~/Developing/phoenix (git)-[refactor] % cargo metadata --format-version=1 | jq -c '.packages[] | select(.source == null) | .name'
-    [
-        // "alltoall",
-        // "bench",
-        // "benchmark",
-        // "experimental",
-        // "hello",
-        "ipc",
-        // "libphoenix",
-        "mmap",
-        "phoenix_salloc",
-        "phoenix_transport_rdma",
-        "phoenix_transport_tcp",
-        // "phoenix_cargo",
-        "phoenix_common",
-        // "phoenixctl",
-        "phoenixos",
-        "rdma",
-        // "send_bw",
-        // "send_lat",
-        // "shm",
-        // "shmalloc",
-        // "slabmalloc",
-        "uapi",
-        "uapi_core",
-        "uapi_mrpc",
-        "uapi_policy_qos",
-        "uapi_policy_ratelimit",
-        "uapi_rpc_adapter",
-        "uapi_salloc",
-        "uapi_transport",
-        "utils",
-        "mmap",
-        // "mrpc",
-        // "mrpc_build",
-        // "mrpc_derive",
-        // "mrpc_marshal",
-        "phoenix_mrpc",
-        "phoenix_rpc_adapter",
-        "phoenix_salloc",
-        "phoenix_tcp_rpc_adapter",
-        "phoenix_transport_rdma",
-        "phoenix_transport_tcp",
-        "phoenix_common",
-        "rdma",
-        "uapi",
-        "uapi_core",
-        "uapi_mrpc",
-        "uapi_policy_hotel_acl",
-        "uapi_policy_null",
-        "uapi_policy_qos",
-        "uapi_policy_ratelimit",
-        "uapi_rpc_adapter",
-        "uapi_salloc",
-        "uapi_tcp_rpc_adapter",
-        "uapi_transport",
-    ]
-    .contains(&crate_name)
 }
 
 // The commands we care about capturing starting with "Running `" and end with "`".
@@ -253,12 +313,104 @@ const COMMAND_END: &str = "`";
 const RUSTC_CMD_START: &str = "rustc --crate-name";
 const BUILD_SCRIPT_CRATE_NAME: &str = "build_script_build";
 
+const CARGO_PKG_VERSION: &str = "CARGO_PKG_VERSION";
+
 // The format of rmeta/rlib file names.
 const RMETA_RLIB_FILE_PREFIX: &str = "lib";
 const RMETA_FILE_EXTENSION: &str = "rmeta";
 const RLIB_FILE_EXTENSION: &str = "rlib";
 const DYLIB_FILE_EXTENSION: &str = "so";
 const PREFIX_END: usize = RMETA_RLIB_FILE_PREFIX.len();
+
+//
+fn capture_rustc_commands<R: io::Read>(
+    reader: &mut BufReader<R>,
+    verbose_level: usize,
+) -> Vec<String> {
+    let mut captured_commands = Vec::new();
+
+    // Use regex to strip out the ANSI color codes emitted by the cargo command
+    let ansi_escape_regex = regex::Regex::new(r"[\x1B\x9B]\[[^m]+m").unwrap();
+
+    let mut pending_multiline_cmd = false;
+    let mut original_multiline = String::new();
+
+    // Capture every line that cargo writes to stderr.
+    // We only re-echo the lines that should be outputted by the verbose level specified.
+    // The complexity below is due to the fact that a verbose command printed by cargo
+    // may span multiple lines, so we need to detect the beginning and end of a multi-line command
+    // and merge it into a single line in our captured output.
+    reader
+        .lines()
+        .filter_map(|line| line.ok())
+        .for_each(|original_line| {
+            let replaced = ansi_escape_regex.replace_all(&original_line, "");
+            let line_stripped = replaced.trim_start();
+
+            let is_final_line = (line_stripped.contains("--crate-name")
+                && line_stripped.contains("--crate-type"))
+                || line_stripped.ends_with("build-script-build`");
+
+            if line_stripped.starts_with(COMMAND_START) {
+                // Here, we've reached the beginning of a rustc command,
+                // which we actually do care about.
+                captured_commands.push(line_stripped.to_string());
+                pending_multiline_cmd = !is_final_line;
+                original_multiline = String::from(&original_line);
+                if !is_final_line {
+                    return; // continue to the next line
+                }
+            } else {
+                // Here, we've reached another line, which *may* bethe continuation of
+                // a previous rustc command, or it may just be a completely irrelevant
+                // line of output.
+                if pending_multiline_cmd {
+                    // append to the latest line of output instead of adding a new line
+                    let last = captured_commands
+                        .last_mut()
+                        .expect("BUG: captured_commands had no last element");
+                    last.push(' ');
+                    last.push_str(line_stripped);
+                    original_multiline.push('\n');
+                    original_multiline.push_str(&original_line);
+                    pending_multiline_cmd = !is_final_line;
+                    if !is_final_line {
+                        return; // continue to the next line
+                    }
+                } else {
+                    // Here: this is an unrelated line of output that isn't a command we want
+                    // to capture.
+                    original_multiline.clear(); // = String::from(&original_line);
+                }
+            }
+
+            // In the above cargo command, we added a verbose argument to capture the commands
+            // issued from cargo to rustc.
+            // But if the user didn't ask for that, then we shouldn't print that verbose output here.
+            // Verbose output lines start with "Running `", "+ ", or "[".
+            let should_print = |stripped_line: &str| {
+                verbose_level > 0 ||  // print everything if verbose
+                (
+                    // print only "Compiling" and warning/error lines if not verbose
+                    !stripped_line.starts_with("+ ")
+                    && !stripped_line.starts_with("[")
+                    && !stripped_line.starts_with(COMMAND_START)
+                )
+            };
+            if !original_multiline.is_empty() && is_final_line {
+                let original_multiline_replaced =
+                    ansi_escape_regex.replace_all(&original_multiline, "");
+                let original_multiline_stripped = original_multiline_replaced.trim_start();
+                if should_print(original_multiline_stripped) {
+                    eprintln!("{}", original_multiline)
+                }
+            } else if should_print(line_stripped) {
+                eprintln!("{}", original_line);
+            }
+        });
+
+    captured_commands
+}
 
 /// Runs the actual cargo build command.
 ///
@@ -340,88 +492,8 @@ fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Resu
         .stderr
         .take()
         .context("Could not capture stderr.")?;
-    let stderr_reader = BufReader::new(stderr);
-    let mut stderr_logs = Vec::new();
-
-    // Use regex to strip out the ANSI color codes emitted by the cargo command
-    let ansi_escape_regex = regex::Regex::new(r"[\x1B\x9B]\[[^m]+m").unwrap();
-
-    let mut pending_multiline_cmd = false;
-    let mut original_multiline = String::new();
-
-    // Capture every line that cargo writes to stderr.
-    // We only re-echo the lines that should be outputted by the verbose level specified.
-    // The complexity below is due to the fact that a verbose command printed by cargo
-    // may span multiple lines, so we need to detect the beginning and end of a multi-line command
-    // and merge it into a single line in our captured output.
-    stderr_reader
-        .lines()
-        .filter_map(|line| line.ok())
-        .for_each(|original_line| {
-            let replaced = ansi_escape_regex.replace_all(&original_line, "");
-            let line_stripped = replaced.trim_start();
-
-            let is_final_line = (line_stripped.contains("--crate-name")
-                && line_stripped.contains("--crate-type"))
-                || line_stripped.ends_with("build-script-build`");
-
-            if line_stripped.starts_with(COMMAND_START) {
-                // Here, we've reached the beginning of a rustc command,
-                // which we actually do care about.
-                stderr_logs.push(line_stripped.to_string());
-                pending_multiline_cmd = !is_final_line;
-                original_multiline = String::from(&original_line);
-                if !is_final_line {
-                    return; // continue to the next line
-                }
-            } else {
-                // Here, we've reached another line, which *may* bethe continuation of
-                // a previous rustc command, or it may just be a completely irrelevant
-                // line of output.
-                if pending_multiline_cmd {
-                    // append to the latest line of output instead of adding a new line
-                    let last = stderr_logs
-                        .last_mut()
-                        .expect("BUG: stderr_logs had no last element");
-                    last.push(' ');
-                    last.push_str(line_stripped);
-                    original_multiline.push('\n');
-                    original_multiline.push_str(&original_line);
-                    pending_multiline_cmd = !is_final_line;
-                    if !is_final_line {
-                        return; // continue to the next line
-                    }
-                } else {
-                    // Here: this is an unrelated line of output that isn't a command we want
-                    // to capture.
-                    original_multiline.clear(); // = String::from(&original_line);
-                }
-            }
-
-            // In the above cargo command, we added a verbose argument to capture the commands
-            // issued from cargo to rustc.
-            // But if the user didn't ask for that, then we shouldn't print that verbose output here.
-            // Verbose output lines start with "Running `", "+ ", or "[".
-            let should_print = |stripped_line: &str| {
-                verbose_level > 0 ||  // print everything if verbose
-                (
-                    // print only "Compiling" and warning/error lines if not verbose
-                    !stripped_line.starts_with("+ ")
-                    && !stripped_line.starts_with("[")
-                    && !stripped_line.starts_with(COMMAND_START)
-                )
-            };
-            if !original_multiline.is_empty() && is_final_line {
-                let original_multiline_replaced =
-                    ansi_escape_regex.replace_all(&original_multiline, "");
-                let original_multiline_stripped = original_multiline_replaced.trim_start();
-                if should_print(original_multiline_stripped) {
-                    eprintln!("{}", original_multiline)
-                }
-            } else if should_print(line_stripped) {
-                eprintln!("{}", original_line);
-            }
-        });
+    let mut stderr_reader = BufReader::new(stderr);
+    let stderr_logs = capture_rustc_commands(&mut stderr_reader, verbose_level);
 
     let _stdout_logs = t.join().unwrap();
     let exit_status = child_process
@@ -441,27 +513,9 @@ fn ignore_arg(arg: &str) -> bool {
     arg == "--error-format" || arg == "--json"
 }
 
-/// Takes the given `original_cmd` that was captured from the verbose output of cargo,
-/// and parses/modifies it to link against (depend on) the corresponding crate of the same name
-/// from the list of prebuilt crates.
-///
-/// The actual dependency files (.rmeta/.rlib) for the prebuilt crates should be located in the `prebuilt_dir`.
-/// The target specification JSON file should be found in the `target_dir_path`.
-/// These two directories are usually the same directory.
-///
-/// # Return
-/// * Returns `Ok(true` if everything works and the modified rustc command executes properly.
-/// * Returns `Ok(false)` if no action needs to be taken.
-///   This occurs if `original_cmd` is for building a build script (currently ignored),
-///   or if `original_cmd` is for building a crate that already exists in the set of `prebuilt_crates`.
-/// * Returns an error if the command fails.
-fn run_rustc_command<P: AsRef<Path>>(
+fn parse_rustc_command(
     original_cmd: &str,
-    prebuilt_crates: &HashMap<String, String>,
-    prebuilt_dir: P,
-) -> anyhow::Result<bool> {
-    let prebuilt_dir = prebuilt_dir.as_ref();
-
+) -> anyhow::Result<Option<(&str, &str, clap::ArgMatches)>> {
     let command = if original_cmd.starts_with(COMMAND_START) && original_cmd.ends_with(COMMAND_END)
     {
         let end_index = original_cmd.len() - COMMAND_END.len();
@@ -480,10 +534,9 @@ fn run_rustc_command<P: AsRef<Path>>(
     // If this turns out to be wrong and we do need to run them, we need to change this logic to simply re-run it
     // and skip pretty much the rest of this entire function.
     if command.ends_with("build-script-build") {
-        return Ok(false);
+        return Ok(None);
     }
 
-    println!("\n\nLooking at original command:\n{}", command);
     let start_of_rustc_cmd = command.find(RUSTC_CMD_START).with_context(|| {
         format!(
             "Couldn't find {:?} in command:\n{:?}",
@@ -511,6 +564,21 @@ fn run_rustc_command<P: AsRef<Path>>(
     let top_level_matches = top_level_matches
         .context("Missing support for argument found in captured rustc command")?;
 
+    Ok(Some((
+        rustc_env_vars,
+        command_without_env,
+        top_level_matches,
+    )))
+}
+
+fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Crate>> {
+    let Some((rustc_env_vars, command_without_env, top_level_matches)) =
+                parse_rustc_command(original_cmd)? else {
+                // skip invocations of build scripts
+                return Ok(None);
+            };
+
+    // crate-name
     // Clap will parse the args as such:
     // * the --crate-name will be the first argument
     // * the path to the crate's main file will be the first subcommand
@@ -518,21 +586,138 @@ fn run_rustc_command<P: AsRef<Path>>(
     let crate_name = top_level_matches
         .get_one::<String>("--crate-name")
         .expect("rustc command did not have required --crate-name argument");
+
+    // pkg_version
+    let splitted = shlex::split(&rustc_env_vars);
+    let (_key, pkg_version) = splitted
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|env| env.split_once('=').unwrap())
+        .find(|&(k, _v)| k == CARGO_PKG_VERSION)
+        .with_context(|| {
+            format!(
+                "Could not find {CARGO_PKG_VERSION} in envs: {:?}",
+                rustc_env_vars
+            )
+        })?;
+
+    // metadata
+    let (_crate_source_file, additional_args) = top_level_matches
+        .subcommand()
+        .context("Missing crate source files and addition args after rustc")?;
+    let args_after_source_file = additional_args.get_many::<OsString>("").unwrap();
+
+    let matches = rustc_clap_options("")
+        .disable_help_flag(true)
+        .disable_help_subcommand(true)
+        .allow_external_subcommands(true)
+        .color(clap::ColorChoice::Never)
+        .try_get_matches_from(args_after_source_file);
+
+    let matches =
+        matches.context("Missing support for argument found in captured rustc command")?;
+
+    let codegen_opts = matches
+        .get_many::<String>("-C")
+        .expect("rustc command did not have required -C argument");
+    let metadata = codegen_opts
+        .into_iter()
+        .find_map(|opt| opt.strip_prefix("metadata="))
+        .context("rustc command did not have metadata specified")?;
+
+    // features
+    let mut features = Vec::new();
+    if let Some(values) = matches.get_many::<String>("--cfg") {
+        for value in values {
+            dbg!(value);
+            if let Some(feature) = value.strip_prefix("feature=") {
+                features.push(feature.to_owned());
+            }
+        }
+    }
+
+    // crate path
+    let out_dir = PathBuf::from(get_out_dir_arg(command_without_env)?);
+    let path = out_dir.join(format!(
+        "{}{}-{}.rlib",
+        RMETA_RLIB_FILE_PREFIX, crate_name, metadata
+    ));
+    Ok(Some(Crate {
+        name: crate_name.to_owned(),
+        metadata: metadata.to_owned(),
+        pkg_version: Version::parse(pkg_version)?,
+        features,
+        path,
+    }))
+}
+
+/// Takes the given `original_cmd` that was captured from the verbose output of cargo,
+/// and parses/modifies it to link against (depend on) the corresponding crate of the same name
+/// from the list of prebuilt crates.
+///
+/// The actual dependency files (.rmeta/.rlib) for the prebuilt crates should be located in the `prebuilt_dir`.
+/// The target specification JSON file should be found in the `target_dir_path`.
+/// These two directories are usually the same directory.
+///
+/// # Return
+/// * Returns `Ok(true` if everything works and the modified rustc command executes properly.
+/// * Returns `Ok(false)` if no action needs to be taken.
+///   This occurs if `original_cmd` is for building a build script (currently ignored),
+///   or if `original_cmd` is for building a crate that already exists in the set of `prebuilt_crates`.
+/// * Returns an error if the command fails.
+fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::Result<bool> {
+    let prebuilt_dir = compile_db.prebuilt_dir.clone();
+
+    println!("\n\nLooking at original command:\n{}", original_cmd);
+    let Some((rustc_env_vars, _command_without_env, top_level_matches)) =
+        parse_rustc_command(original_cmd)? else {
+        // skip invocations of build scripts
+        return Ok(false);
+    };
+
+    let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
+        // skip invocations of build scripts
+        return Ok(false);
+    };
+
+    compile_db.insert_crate(&c);
+
+    let crate_name_with_hash = c.crate_name_with_hash();
+
     let (crate_source_file, additional_args) = top_level_matches
         .subcommand()
         .context("Missing crate source files and addition args after rustc")?;
 
     // Skip build script invocations, as we may not need to re-run those.
-    if crate_name == BUILD_SCRIPT_CRATE_NAME {
+    if c.name == BUILD_SCRIPT_CRATE_NAME {
         println!("\n### Skipping build script build");
         return Ok(false);
     }
 
     // Skip crates that have already been built. (Not sure if this is always 100% correct)
-    if prebuilt_crates.contains_key(crate_name) {
-        println!("\n### Skipping already-built crate {:?}", crate_name);
+    let crate_to_build = compile_db
+        .get_crate(&crate_name_with_hash)
+        .unwrap_or_else(|| panic!("Found no crate named: {:?}", crate_name_with_hash));
+    if !compile_db
+        .find_compatible_crates_in_prebuilt(&crate_to_build)
+        .is_empty()
+    {
+        println!(
+            "\n### Skipping already-built crate {:?}",
+            crate_name_with_hash
+        );
         return Ok(false);
     }
+
+    // Now, re-create the rustc command invocation with the proper arguments.
+    // First, we handle the --crate-name and --edition arguments, which may come before the crate source file path.
+    let mut recreated_cmd = Command::new("rustc");
+    recreated_cmd.arg("--crate-name").arg(c.name);
+    if let Some(edition) = top_level_matches.get_one::<String>("--edition") {
+        recreated_cmd.arg("--edition").arg(edition);
+    }
+    recreated_cmd.arg(crate_source_file);
 
     let args_after_source_file = additional_args.get_many::<OsString>("").unwrap();
 
@@ -548,21 +733,8 @@ fn run_rustc_command<P: AsRef<Path>>(
     let matches =
         matches.context("Missing support for argument found in captured rustc command")?;
 
-    // Now, re-create the rustc command invocation with the proper arguments.
-    // First, we handle the --crate-name and --edition arguments, which may come before the crate source file path.
-    let mut recreated_cmd = Command::new("rustc");
-    recreated_cmd.arg("--crate-name").arg(crate_name);
-    if let Some(edition) = top_level_matches.get_one::<String>("--edition") {
-        recreated_cmd.arg("--edition").arg(edition);
-    }
-    recreated_cmd.arg(crate_source_file);
-
-    // if !is_first_party_crate(crate_name, crate_source_file) {
-    //     println!("\n### Skipping third-party crate {:?}", crate_name);
-    //     return Ok(false);
-    // }
-
     let mut args_changed = false;
+    let mut is_proc_macro = false;
 
     // After adding the initial stuff: rustc command, crate name, (optional --edition), and crate source file,
     // the other arguments are added in the loop below.
@@ -584,6 +756,7 @@ fn run_rustc_command<P: AsRef<Path>>(
             if arg == "--crate-type" && value.as_ref() == "proc-macro" {
                 // Don't re-run proc_macro builds, as those are built to run on the host.
                 args_changed = false;
+                is_proc_macro = true;
                 break 'args_label;
             } else if arg == "--extern" {
                 let rmeta_or_rlib_extension = if value.ends_with(RMETA_FILE_EXTENSION) {
@@ -604,7 +777,7 @@ fn run_rustc_command<P: AsRef<Path>>(
                     // );
                 };
 
-                if let Some(extension) = rmeta_or_rlib_extension {
+                if let Some(_extension) = rmeta_or_rlib_extension {
                     let (extern_crate_name, crate_rmeta_path) = value
                         .find('=')
                         .map(|idx| value.split_at(idx))
@@ -615,25 +788,43 @@ fn run_rustc_command<P: AsRef<Path>>(
                                 value
                             )
                         })?;
-                    println!(
+                    print!(
                         "Found --extern arg, {:?} --> {:?}",
                         extern_crate_name, crate_rmeta_path
                     );
-                    if let Some(extern_crate_name_with_hash) =
-                        prebuilt_crates.get(extern_crate_name)
-                    {
-                        let mut new_crate_path = prebuilt_dir.to_path_buf();
-                        new_crate_path.push(format!(
-                            "{}{}.{}",
-                            RMETA_RLIB_FILE_PREFIX, extern_crate_name_with_hash, extension
-                        ));
+                    let crate_rmeta_path = Path::new(crate_rmeta_path);
+                    let crate_name_with_hash =
+                        get_crate_name_with_hash_from_path(crate_rmeta_path)?
+                        .strip_prefix(RMETA_RLIB_FILE_PREFIX)
+                            .with_context(
+                                || format!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}", 
+                                    crate_rmeta_path.display()))?;
+                    let extern_crate =
+                        compile_db
+                            .get_crate(crate_name_with_hash)
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "Found no information about crate: {:?}",
+                                    crate_name_with_hash
+                                )
+                            });
+                    println!(" ({:?})", extern_crate);
+                    let candidates = compile_db.find_compatible_crates_in_prebuilt(&extern_crate);
+                    if candidates.len() > 1 {
                         println!(
-                            "#### Replacing crate {:?} with prebuilt crate at {}",
-                            extern_crate_name,
-                            new_crate_path.display()
+                            "WARNING: found multiple candidates: {:?}, using the first one",
+                            candidates
                         );
-                        new_value =
-                            format!("{}={}", extern_crate_name, new_crate_path.display()).into();
+                    }
+                    if !candidates.is_empty() {
+                        let c = candidates.first().unwrap();
+                        println!(
+                            "#### Replacing crate {:?} with prebuilt crate at {} ({:?})",
+                            extern_crate_name,
+                            c.path.display(),
+                            c,
+                        );
+                        new_value = format!("{}={}", extern_crate_name, c.path.display()).into();
                     }
                 }
             } else if arg == "-L" {
@@ -661,7 +852,7 @@ fn run_rustc_command<P: AsRef<Path>>(
     }
 
     // If any args actually changed, we need to run the re-created command.
-    if args_changed || true {
+    if !is_proc_macro {
         // Add our directory of prebuilt crates as a library search path, for dependency resolution.
         // This is okay because we removed all of the potentially conflicting crates from the local target/ directory,
         // which ensures that adding in the directory of prebuilt crate .rmeta/.rlib files won't cause rustc to complain
@@ -681,6 +872,7 @@ fn run_rustc_command<P: AsRef<Path>>(
             recreated_cmd
         );
     } else {
+        // set_file_mtime(, FileTime::now()).unwrap();
         println!(
             "### Args did not change, skipping recreated_cmd:\n{:?}",
             recreated_cmd
@@ -691,7 +883,9 @@ fn run_rustc_command<P: AsRef<Path>>(
     // XXX For debugging, uncommment the following
     // println!("Press enter to run the above command ...");
     // let mut buf = String::new();
-    // io::stdin().read_line(&mut buf).expect("failed to read stdin");
+    // io::stdin()
+    //     .read_line(&mut buf)
+    //     .expect("failed to read stdin");
 
     // Ensure we have the RUST_TARGET_PATH env var so that rustc can find our target spec JSON file.
     // recreated_cmd.env("RUST_TARGET_PATH", target_dir_path);
@@ -704,7 +898,7 @@ fn run_rustc_command<P: AsRef<Path>>(
 
     match exit_status.code() {
         Some(0) => {
-            println!("Ran rustc command (modified for Theseus) successfully.");
+            println!("Ran rustc command (modified for Phoenix) successfully.");
             Ok(true)
         }
         Some(code) => bail!("rustc command exited with failure code {}", code),
@@ -854,6 +1048,26 @@ fn get_plain_crate_name_from_path<'p>(path: &'p Path) -> anyhow::Result<&'p str>
         .with_context(|| {
             format!(
                 "File in out_dir missing delimiter '-' between crate name and hash. {}",
+                path.display()
+            )
+        })
+}
+
+/// Parses the given `path` to obtain the part of the filename with a hash suffix
+fn get_crate_name_with_hash_from_path<'p>(path: &'p Path) -> anyhow::Result<&'p str> {
+    path.file_stem()
+        .and_then(|os_str| os_str.to_str())
+        .with_context(|| {
+            format!(
+                "Couldn't get file name of file in out_dir: {}",
+                path.display()
+            )
+        })?
+        .split('.')
+        .next()
+        .with_context(|| {
+            format!(
+                "File in out_dir missing delimiter '.' between crate name and suffix. {}",
                 path.display()
             )
         })
