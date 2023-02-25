@@ -11,7 +11,6 @@ use std::thread;
 
 use anyhow::{bail, Context};
 use clap::Parser;
-use filetime::{set_file_mtime, FileTime};
 use semver::{Version, VersionReq};
 
 #[derive(Debug, Clone)]
@@ -21,6 +20,7 @@ struct Crate {
     pkg_version: Version,
     features: Vec<String>,
     path: PathBuf,
+    is_primary: bool,
 }
 
 impl Crate {
@@ -101,10 +101,9 @@ impl CompileDb {
     }
 
     fn insert_crate(&mut self, c: &Crate) {
-        self.crate_info
-            .insert(c.crate_name_with_hash(), c.clone())
-            .ok_or(())
-            .unwrap_err();
+        self.crate_info.insert(c.crate_name_with_hash(), c.clone());
+        // .ok_or(())
+        // .unwrap_err();
     }
 
     fn get_crate(&self, crate_name_with_hash: &str) -> Option<Crate> {
@@ -602,6 +601,8 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
             )
         })?;
 
+    let is_primary = rustc_env_vars.contains("CARGO_PRIMARY_PACKAGE=1");
+
     // metadata
     let (_crate_source_file, additional_args) = top_level_matches
         .subcommand()
@@ -617,6 +618,10 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 
     let matches =
         matches.context("Missing support for argument found in captured rustc command")?;
+
+    let crate_type = matches
+        .get_one::<String>("--crate-type")
+        .expect("rustc command did not have required --crate-type argument");
 
     let codegen_opts = matches
         .get_many::<String>("-C")
@@ -639,16 +644,21 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 
     // crate path
     let out_dir = PathBuf::from(get_out_dir_arg(command_without_env)?);
-    let path = out_dir.join(format!(
-        "{}{}-{}.rlib",
-        RMETA_RLIB_FILE_PREFIX, crate_name, metadata
-    ));
+    let path = if crate_type == "bin" {
+        out_dir.join(format!("{}-{}", crate_name, metadata))
+    } else {
+        out_dir.join(format!(
+            "{}{}-{}.rlib",
+            RMETA_RLIB_FILE_PREFIX, crate_name, metadata
+        ))
+    };
     Ok(Some(Crate {
         name: crate_name.to_owned(),
         metadata: metadata.to_owned(),
         pkg_version: Version::parse(pkg_version)?,
         features,
         path,
+        is_primary,
     }))
 }
 
@@ -713,7 +723,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
     // Now, re-create the rustc command invocation with the proper arguments.
     // First, we handle the --crate-name and --edition arguments, which may come before the crate source file path.
     let mut recreated_cmd = Command::new("rustc");
-    recreated_cmd.arg("--crate-name").arg(c.name);
+    recreated_cmd.arg("--crate-name").arg(&c.name);
     if let Some(edition) = top_level_matches.get_one::<String>("--edition") {
         recreated_cmd.arg("--edition").arg(edition);
     }
@@ -899,11 +909,47 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
     match exit_status.code() {
         Some(0) => {
             println!("Ran rustc command (modified for Phoenix) successfully.");
+
+            // Copy the compilation result
+            if !is_proc_macro {
+                if c.is_primary {
+                    copy_result(&c)?;
+                }
+            }
             Ok(true)
         }
         Some(code) => bail!("rustc command exited with failure code {}", code),
         _ => bail!("rustc command failed and was killed."),
     }
+}
+
+fn copy_result(c: &Crate) -> anyhow::Result<()> {
+    // copy the library
+    let destdir = c.path.parent().unwrap().parent().unwrap();
+    let mut is_binary = false;
+    let result_name = if let Some(ext) = c.path.extension() {
+        // lib
+        format!("lib{}.{}", c.name, ext.to_string_lossy())
+    } else {
+        // binary
+        is_binary = true;
+        c.name.clone()
+    };
+    let to = destdir.join(result_name);
+    println!("Copy {} to {}", c.path.display(), to.display());
+    fs::copy(&c.path, to)?;
+
+    // copy the dep file
+    if !is_binary {
+        let from = c
+            .path
+            .with_file_name(format!("{}-{}.d", c.name, c.metadata));
+        let to = destdir.join(format!("lib{}.d", c.name));
+        println!("Copy {} to {}", from.display(), to.display());
+        fs::copy(from, to)?;
+    }
+
+    Ok(())
 }
 
 /// Iterates over the contents of the given directory to find crates within it.

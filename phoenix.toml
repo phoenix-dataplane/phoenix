@@ -63,17 +63,6 @@ engine_basename = "salloc"
 
 [[modules]]
 name = "Mrpc"
-lib_path = "plugins/libphoenix_mrpc-9ee6f973defe4e82.rlib"
-config_string = '''
-prefix = "/tmp/phoenix-cjr"
-engine_basename = "mrpc-engine"
-build_cache = "/tmp/phoenix-cjr/build-cache"
-transport = "Rdma"
-nic_index = 0
-'''
-
-[[modules]]
-name = "Mrpc2"
 lib_path = "plugins/libphoenix_mrpc.rlib"
 config_string = '''
 prefix = "/tmp/phoenix-cjr"
@@ -82,6 +71,17 @@ build_cache = "/tmp/phoenix-cjr/build-cache"
 transport = "Rdma"
 nic_index = 0
 '''
+
+# [[modules]]
+# name = "Mrpc2"
+# lib_path = "plugins/libphoenix_mrpc.rlib"
+# config_string = '''
+# prefix = "/tmp/phoenix-cjr"
+# engine_basename = "mrpc-engine"
+# build_cache = "/tmp/phoenix-cjr/build-cache"
+# transport = "Rdma"
+# nic_index = 0
+# '''
 
 [[modules]]
 name = "RpcAdapter"
