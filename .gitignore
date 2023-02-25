@@ -70,3 +70,6 @@ cmake-build-*/
 
 # Private folder for development
 /_private
+
+/src/phoenix-python/target/
+/src/phoenix-python/phoenix_python/__pycache__/

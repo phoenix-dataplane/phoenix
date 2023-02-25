@@ -32,7 +32,7 @@ pub type ShmService<A, B, C, D> = Service<A, B, C, D>;
 
 unsafe impl<A: Sync, B: Sync, C: Sync, D: Sync> Sync for Service<A, B, C, D> {}
 
-/// A `Service` sends Command (contorl path) and WorkRequest (datapath)
+/// A `Service` sends Command (control path) and WorkRequest (datapath)
 /// and reply with Completion (control path) and WorkCompletion (datapath).
 ///
 /// The user must ensure that there is no concurrent access to this Service.
