@@ -9,8 +9,10 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-uapi = { workspace = true, features = ["mrpc"] } # Should be removed
+# uapi = { workspace = true, features = ["mrpc"] } # Should be removed
+uapi = { workspace = true, features = ["mrpc", "salloc", "transport"] }
 # hack: all for including "default" feature of tracing_core
+# ipc.workspace = true
 ipc = { workspace = true, features = ["all"] }
 
 # TODO(remove the deps)
@@ -24,9 +26,8 @@ crossbeam.workspace = true
 nix = { workspace = true, default-features = false, features = ["signal", "process"] }
 fnv.workspace = true
 futures = { workspace = true, features = ["executor", "thread-pool"] }
-# hack: enable "default" feature of futures_core
-futures-core = { workspace = true, features = ["default"] }
-tokio = { workspace = true, features = ["sync"] }
+# tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["full"] } # only sync is needed
 dashmap.workspace = true
 smallvec.workspace = true
 minstant.workspace = true
@@ -35,3 +36,16 @@ semver.workspace = true
 sharded-slab.workspace = true
 libnuma.workspace = true
 libnuma-sys.workspace = true
+
+# hack: manually enable these features
+# TODO: move these to a separate phoenix-common-workspace crate
+futures-core = { workspace = true, features = ["default"] }
+crossbeam-utils = { version = "0.8.12", features = ["default"] }
+crossbeam-channel = { version = "0.5.6", features = ["default", "std", "crossbeam-utils"] }
+crossbeam-epoch = { version = "0.9.14", features = ["default"] }
+hashbrown = { version = "0.12.3", features = ["raw"] }
+mio = { workspace = true, features = ["default", "net", "os-ext", "os-poll"] }
+log = { workspace = true, features = ["std"] }
+once_cell = { version = "1.17.1", features = ["default", "unstable"] }
+getrandom = { version = "0.2.8", features = ["js", "rdrand", "std"] }
+ahash = { version = "0.7.6", features = ["default"] }

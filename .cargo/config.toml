@@ -17,8 +17,10 @@ rustflags = [
   "-C", "link-dead-code",
 
   # -Zbinary-dep-depinfo allows us to track dependencies of each rlib
-  "-Zunstable-options", "-Zbinary-dep-depinfo",
+  # "-Zunstable-options", "-Zbinary-dep-depinfo",
 ]
+# this is to make sure cargo prints inforamtion about every crates
+# incremental = false
 
 [unstable]
 # mtime-on-use = true

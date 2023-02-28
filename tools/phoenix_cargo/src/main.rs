@@ -1,5 +1,11 @@
-// Inspired by Theseus cargo.
-// https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
+//! Inspired by Theseus cargo.
+//! https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
+//!
+//! Different than theseus_cargo, phoenix_cargo
+//! - supports dylib and proc_macro
+//! - supports linking with the correct one among multiple version of the same dependency crate
+//! by analyzing the package version and features
+//! - does not handle cross-compiling
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs;
@@ -20,6 +26,8 @@ struct Crate {
     pkg_version: Version,
     features: Vec<String>,
     path: PathBuf,
+    // direct dependencies, each is a name with hash suffix/metadata
+    dependencies: Vec<String>,
     is_primary: bool,
     // initialize it later
     is_recreated: Option<bool>,
@@ -125,23 +133,69 @@ impl CompileDb {
         self.crate_info.get(crate_name_with_hash).cloned()
     }
 
+    // Two crates are _compatible_ if they meets the following conditions:
+    // 1. they have the exact same crate name
+    // 2. their semantic versions are compatible (check more out on semantic version)
+    // 3. the feature set of `desired` is a subset of `provided`
+    // 4. their direct dependencies are also _compatible_.
+    fn is_compatible(&self, desired: &Crate, provided: &Crate, recurse_level: usize) -> bool {
+        let req = VersionReq::parse(&desired.pkg_version.to_string()).unwrap();
+        if !req.matches(&provided.pkg_version) {
+            println!(
+                "version not compatible: desired {:?}, provided {:?}",
+                desired, provided
+            );
+            return false;
+        }
+        let desired_features: BTreeSet<_> = desired.features.iter().cloned().collect();
+        let provided_features: BTreeSet<_> = provided.features.iter().cloned().collect();
+        if !provided_features.is_superset(&desired_features) {
+            println!(
+                "features not compatible: desired {:?}, provided {:?}",
+                desired, provided
+            );
+            return false;
+        }
+        if recurse_level == 0 {
+            // The implementation here does not check the compatibability of each crate exactly.
+            // Instead, it just checks whether a compatible one can be found in the prebuilt_set
+            // for all direct dependencies.
+            desired.dependencies.iter().all(|dep| {
+                self.get_crate(&dep)
+                    .map(|dep_crate| {
+                        self.contains_compatible_crates_in_prebuilt(&dep_crate, recurse_level + 1)
+                    })
+                    .unwrap_or(false)
+            })
+        } else {
+            true
+        }
+    }
+
+    fn contains_compatible_crates_in_prebuilt(&self, c: &Crate, recurse_level: usize) -> bool {
+        // TODO(cjr): Accelerate this function using a query cache.
+        self.prebuilt_crate_sets
+            .0
+            .get(&c.name)
+            .map(|candidate_set| {
+                candidate_set
+                    .iter()
+                    .any(|cand| self.is_compatible(c, cand, recurse_level))
+            })
+            .unwrap_or(false)
+    }
+
     fn find_compatible_crates_in_prebuilt(&self, c: &Crate) -> Vec<Crate> {
         self.prebuilt_crate_sets
             .0
             .get(&c.name)
             .map(|candidate_set| {
-                let desired_features: BTreeSet<_> = c.features.iter().cloned().collect();
                 let mut cands = Vec::new();
                 for cand in candidate_set {
-                    let req = VersionReq::parse(&c.pkg_version.to_string()).unwrap();
-                    if !req.matches(&cand.pkg_version) {
-                        continue;
+                    println!("cand: {:?}", cand);
+                    if self.is_compatible(c, cand, 0) {
+                        cands.push(cand.clone());
                     }
-                    let provided_features: BTreeSet<_> = cand.features.iter().cloned().collect();
-                    if !provided_features.is_superset(&desired_features) {
-                        continue;
-                    }
-                    cands.push(cand.clone());
                 }
                 cands
             })
@@ -308,16 +362,7 @@ fn main() -> anyhow::Result<()> {
     let target_dir = out_dir.parent().unwrap();
     let mut fingerprint_dir_path = target_dir.to_path_buf();
     fingerprint_dir_path.push(".fingerprint");
-    println!(
-        "--> Removing .fingerprint directory: {}",
-        fingerprint_dir_path.display()
-    );
-    fs::remove_dir_all(&fingerprint_dir_path).with_context(|| {
-        format!(
-            "Failed to remove .fingerprint directory: {}",
-            fingerprint_dir_path.display(),
-        )
-    })?;
+    remove_fingerprint_directory(fingerprint_dir_path)?;
 
     // Obtain the directory for the host system dependencies
     // let mut host_deps_dir_path = PathBuf::from(&input_dir_path);
@@ -476,13 +521,14 @@ fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Resu
     // proper config.
     // cmd.env("RUST_TARGET_PATH");
 
+    // Cargo will directly use the rustflags read from .cargo/config.toml
     // Add the sysroot argument to our rustflags so cargo will use our pre-built phoenix dependencies.
     // let mut rustflags = format!("--sysroot {}", sysroot_dir_path.display());
-    let mut rustflags = String::new();
+    // let mut rustflags = String::new();
 
     // -Zbinary-dep-depinfo allows us to track dependencies of each rlib
-    rustflags.push_str(" -Zunstable-options -Zbinary-dep-depinfo");
-    cmd.env("RUSTFLAGS", rustflags);
+    // rustflags.push_str(" -Zunstable-options -Zbinary-dep-depinfo");
+    // cmd.env("RUSTFLAGS", rustflags);
 
     println!("\nRunning initial cargo command:\n{:?}", cmd);
     cmd.get_envs()
@@ -670,20 +716,51 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 
     // crate path
     let out_dir = PathBuf::from(get_out_dir_arg(command_without_env)?);
-    let path = if crate_type == "bin" {
-        out_dir.join(format!("{}-{}", crate_name, metadata))
-    } else {
-        out_dir.join(format!(
+    let path = match crate_type.as_str() {
+        "bin" => out_dir.join(format!("{}-{}", crate_name, metadata)),
+        "lib" | "rlib" => out_dir.join(format!(
             "{}{}-{}.rlib",
             RMETA_RLIB_FILE_PREFIX, crate_name, metadata
-        ))
+        )),
+        "proc-macro" | "dylib" => out_dir.join(format!(
+            "{}{}-{}.so",
+            RMETA_RLIB_FILE_PREFIX, crate_name, metadata
+        )),
+        _ => {
+            panic!("Todo: support this crate-type: {}", crate_type)
+        }
     };
+
+    // direct dependencies
+    let mut dependencies = Vec::new();
+    if let Some(values) = matches.get_many::<String>("--extern") {
+        for value in values {
+            if value == "proc_macro" {
+                dependencies.push(value.clone());
+            } else {
+                if let Some((_crate_name, crate_path)) = value.split_once('=') {
+                    let crate_path = Path::new(crate_path);
+                    let crate_name_with_hash =
+                        get_crate_name_with_hash_from_path(crate_path)?
+                        .strip_prefix(RMETA_RLIB_FILE_PREFIX)
+                            .with_context(
+                                || format!("Found .rlib or .rmeta file after '--extern' that didn't start with 'lib' prefix: {}",
+                                    crate_path.display()))?;
+                    dependencies.push(crate_name_with_hash.to_owned());
+                } else {
+                    panic!("Found --extern '{}' that does not have a exact path", value);
+                }
+            }
+        }
+    }
+
     Ok(Some(Crate {
         name: crate_name.to_owned(),
         metadata: metadata.to_owned(),
         pkg_version: Version::parse(pkg_version)?,
         features,
         path,
+        dependencies,
         is_primary,
         is_recreated: None,
     }))
@@ -772,11 +849,10 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
         matches.context("Missing support for argument found in captured rustc command")?;
 
     let mut args_or_deps_changed = false;
-    let mut _is_proc_macro = false;
 
     // After adding the initial stuff: rustc command, crate name, (optional --edition), and crate source file,
     // the other arguments are added in the loop below.
-    'args_label: for arg in matches.ids() {
+    for arg in matches.ids() {
         let values = matches
             .get_raw(arg.as_str())
             .unwrap()
@@ -791,28 +867,22 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             let value = value.to_string_lossy();
             let mut new_value = value.to_owned();
 
-            if arg == "--crate-type" && value.as_ref() == "proc-macro" {
-                // Don't re-run proc_macro builds, as those are built to run on the host.
-                args_or_deps_changed = false;
-                _is_proc_macro = true;
-                break 'args_label;
-            } else if arg == "--extern" {
+            if arg == "--extern" {
                 let rmeta_or_rlib_extension = if value.ends_with(RMETA_FILE_EXTENSION) {
                     Some(RMETA_FILE_EXTENSION)
                 } else if value.ends_with(RLIB_FILE_EXTENSION) {
                     Some(RLIB_FILE_EXTENSION)
-                } else if value == "proc_macro" {
-                    None
                 } else if value.ends_with(DYLIB_FILE_EXTENSION) {
                     Some(DYLIB_FILE_EXTENSION)
-                } else {
-                    println!("Skipping non-rlib or non-dylib --extern value: {:?}", value);
+                } else if value == "proc_macro" {
                     None
-                    // bail!(
-                    //     "Unsupported --extern arg value {:?}. \
-                    //     We only support '.rlib' or '.rmeta' files",
-                    //     value
-                    // );
+                } else {
+                    // println!("Skipping non-rlib or non-dylib --extern value: {:?}", value);
+                    bail!(
+                        "Unsupported --extern arg value {:?}. \
+                        We only support '.rlib', '.rmeta', or '.so' files",
+                        value
+                    );
                 };
 
                 if let Some(_extension) = rmeta_or_rlib_extension {
@@ -893,10 +963,15 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
         }
     }
 
-    // If any args actually changed, we need to run the re-created command.
+    if c.name == "phoenix_common" {
+        panic!(
+            "phoenix_common will be rebuilt, this is usually not an expected behavior. \
+            Please check the compile log and tune dependencies if necessary."
+        );
+    }
 
+    // If any args actually changed, we need to run the re-created command.
     compile_db.mark_recreated(&c, args_or_deps_changed);
-    // if !is_proc_macro {
     if args_or_deps_changed {
         // Add our directory of prebuilt crates as a library search path, for dependency resolution.
         // This is okay because we removed all of the potentially conflicting crates from the local target/ directory,
@@ -1190,6 +1265,21 @@ fn get_out_dir_arg(cmd_str: &str) -> anyhow::Result<String> {
         .get_one::<String>("--out-dir")
         .cloned()
         .context("--out-dir argument did not have a value")
+}
+
+fn remove_fingerprint_directory<P: AsRef<Path>>(fingerprint_dir: P) -> anyhow::Result<()> {
+    let fingerprint_dir_path = fingerprint_dir.as_ref();
+    println!(
+        "--> Removing .fingerprint directory: {}",
+        fingerprint_dir_path.display()
+    );
+    fs::remove_dir_all(&fingerprint_dir_path).with_context(|| {
+        format!(
+            "Failed to remove .fingerprint directory: {}",
+            fingerprint_dir_path.display(),
+        )
+    })?;
+    Ok(())
 }
 
 /// Creates a `Clap::App` instance that handles all (most) of the command-line arguments

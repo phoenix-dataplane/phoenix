@@ -158,6 +158,7 @@ impl Linker {
         let phoenix_deps = Self::load_deps(dep_path)?;
         let crates_to_skip = phoenix_deps
             .into_iter()
+            .filter(|x| !x.ends_with("rlib"))
             // .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
             // .filter(|x| {
             //     x.contains("libstd")
@@ -165,7 +166,7 @@ impl Linker {
             //         || x.contains("libcompiler_builtins")
             //         || !x.ends_with("rlib")
             // })
-            .filter(|x| /* filter out everything */ false)
+            // .filter(|_| /* filter out everything */ false)
             .collect();
 
         // Validate the parse the ELF binary of phoenix
