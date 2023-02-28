@@ -33,7 +33,7 @@ pub(crate) fn do_relocation(
                         // for global symbols, get its name first
                         // then query the symbol in the global symbol lookup table
                         log::trace!(
-                            "name: {}, sec_name: {}, P's off in sec: {:0x}, rela.kind: {:?}, rela.size: {}",
+                            "name: '{}', sec_name: {}, P's off in sec: {:0x}, rela.kind: {:?}, rela.size: {}",
                             sym.name,
                             sec.name,
                             off,
@@ -56,12 +56,19 @@ pub(crate) fn do_relocation(
                         }
                     } else {
                         log::trace!(
-                            "name: {}, rela.kind: {:?}, A: {}, rela.size: {}",
+                            "name: '{}', rela.kind: {:?}, A: {}, rela.size: {}",
                             sym.name,
                             rela.kind(),
                             A,
                             rela.size()
                         );
+                        if sym.kind == SymbolKind::Tls {
+                            // local TLS symbols, the logic should be similar to
+                            // SymbolLookupTable::lookup_tls_symbol()
+                            assert!(!sym.is_undefined, "sym: {:?}", sym);
+                            rela_size = 32;
+                            sym_mod_id = sym.mod_id;
+                        }
                         sym.address
                     }
                 }

@@ -190,7 +190,7 @@ impl SymbolLookupTable {
             //
             // This is because mod_id is globally unified across threads, and offset
             // if just the address of the variable relative to the base tls_data of each
-            // thread. It should also be identical across threads!
+            // thread. Thus, both should also be identical across threads!
 
             unsafe extern "C" fn cb(
                 info: *mut libc::dl_phdr_info,

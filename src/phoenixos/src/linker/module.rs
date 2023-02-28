@@ -92,7 +92,7 @@ impl LoadableModule {
 
         let mod_id = MODULE_COUNTER.fetch_add(1, Ordering::AcqRel);
 
-        let mut file = FILE.lock().unwrap();
+        // let mut file = FILE.lock().unwrap();
 
         // Update the symbol to point to the address we allocated for each section
         for (_, sym) in symtab.iter_mut() {
@@ -118,8 +118,8 @@ impl LoadableModule {
                 sym.address = sym_addr;
             }
 
-            use std::io::Write;
-            writeln!(file, "{}: 0x{:0x}", sym.name, sym.address).unwrap();
+            // use std::io::Write;
+            // writeln!(file, "{}: 0x{:0x}", sym.name, sym.address).unwrap();
 
             // if sym.name == "_ZN14phoenix_salloc7my_tls27__getit5__KEY17h0a62b7d86b328016E" {
             //     panic!("sym: {:?}, tls_initimage: {:?}", sym, tls_initimage);

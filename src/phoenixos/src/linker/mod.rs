@@ -159,12 +159,13 @@ impl Linker {
         let crates_to_skip = phoenix_deps
             .into_iter()
             // .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
-            .filter(|x| {
-                x.contains("libstd")
-                    || x.contains("libcore")
-                    || x.contains("libcompiler_builtins")
-                    || !x.ends_with("rlib")
-            })
+            // .filter(|x| {
+            //     x.contains("libstd")
+            //         || x.contains("libcore")
+            //         || x.contains("libcompiler_builtins")
+            //         || !x.ends_with("rlib")
+            // })
+            .filter(|x| /* filter out everything */ false)
             .collect();
 
         // Validate the parse the ELF binary of phoenix

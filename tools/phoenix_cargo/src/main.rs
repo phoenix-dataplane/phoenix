@@ -21,6 +21,8 @@ struct Crate {
     features: Vec<String>,
     path: PathBuf,
     is_primary: bool,
+    // initialize it later
+    is_recreated: Option<bool>,
 }
 
 impl Crate {
@@ -34,12 +36,14 @@ impl Crate {
 struct PrebuiltCrates(HashMap<String, Vec<Crate>>);
 
 impl PrebuiltCrates {
-    fn new(rustc_commands: &[String]) -> anyhow::Result<Self> {
+    fn new(rustc_commands: &[String], host_dep: &Path) -> anyhow::Result<Self> {
         let mut crates = HashMap::default();
         for original_cmd in rustc_commands {
-            let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
+            let Some(mut c) = get_crate_from_rustc_command(original_cmd)? else {
                 continue;
             };
+            c.is_recreated = Some(true);
+            c.path = host_dep.join(c.path.file_name().context("Could not get file_name")?);
             crates
                 .entry(c.name.to_owned())
                 .or_insert_with(Vec::new)
@@ -62,8 +66,12 @@ struct CompileDb {
 }
 
 impl CompileDb {
-    fn from_file<P: AsRef<Path>>(compile_log: P) -> anyhow::Result<Self> {
+    fn from_file<P1: AsRef<Path>, P2: AsRef<Path>>(
+        compile_log: P1,
+        host_dep: P2,
+    ) -> anyhow::Result<Self> {
         let compile_log_path = compile_log.as_ref();
+        let copy_to = host_dep.as_ref();
 
         // Parse rustc commands
         let compile_log_file = fs::File::open(compile_log_path)?;
@@ -71,17 +79,17 @@ impl CompileDb {
         let rustc_commands = capture_rustc_commands(&mut reader, 0);
 
         // Extract the prebuilt_dir from the last command
-        let last_cmd = rustc_commands
-            .last()
-            .context("No commands captured from stderr during the initial cargo command")?;
-        let prebuilt_dir = PathBuf::from(get_out_dir_arg(last_cmd)?);
+        // let last_cmd = rustc_commands
+        //     .last()
+        //     .context("No commands captured from stderr during the initial cargo command")?;
+        // let prebuilt_dir = PathBuf::from(get_out_dir_arg(last_cmd)?);
 
-        let prebuilt_dir = fs::canonicalize(&prebuilt_dir).with_context(|| {
-            format!("--input arg '{}' was invalid path.", prebuilt_dir.display())
-        })?;
+        // let prebuilt_dir = fs::canonicalize(&prebuilt_dir).with_context(|| {
+        //     format!("--input arg '{}' was invalid path.", prebuilt_dir.display())
+        // })?;
 
         // Scan all the rustc commands and build the index to the crates
-        let prebuilt_crate_sets = PrebuiltCrates::new(&rustc_commands)?;
+        let prebuilt_crate_sets = PrebuiltCrates::new(&rustc_commands, copy_to)?;
 
         // Organize the crates in prebuilt set for lookup
         let crate_info = prebuilt_crate_sets
@@ -94,10 +102,17 @@ impl CompileDb {
             })
             .collect();
         Ok(Self {
-            prebuilt_dir,
+            prebuilt_dir: copy_to.to_path_buf(),
             prebuilt_crate_sets,
             crate_info,
         })
+    }
+
+    fn mark_recreated(&mut self, c: &Crate, is_recreated: bool) {
+        self.crate_info
+            .get_mut(&c.crate_name_with_hash())
+            .unwrap_or_else(|| panic!("Not found info for crate: {:?}", c))
+            .is_recreated = Some(is_recreated);
     }
 
     fn insert_crate(&mut self, c: &Crate) {
@@ -144,6 +159,10 @@ struct Opts {
     #[arg(long)]
     compile_log: PathBuf,
 
+    /// The path to the phoenix_common dependencies we will copy to.
+    #[arg(long)]
+    host_dep: PathBuf,
+
     /// Cargo subcommand
     #[arg(raw = true, allow_hyphen_values = true)]
     cargo_subcommand: Vec<String>,
@@ -159,9 +178,16 @@ fn is_build_command(cargo_subcommand: &[String]) -> bool {
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
 
+    let host_dep = fs::canonicalize(&opts.host_dep).with_context(|| {
+        format!(
+            "--host-dep arg '{}' was invalid path.",
+            opts.host_dep.display()
+        )
+    })?;
+
     // Build the compile database from the cargo's log file.
-    // This shoudl be the file generated during build package phoenix_common.
-    let mut compile_db = CompileDb::from_file(opts.compile_log)?;
+    // This should be the file generated during build package phoenix_common.
+    let mut compile_db = CompileDb::from_file(opts.compile_log, host_dep)?;
 
     dbg!(&compile_db);
 
@@ -263,12 +289,12 @@ fn main() -> anyhow::Result<()> {
         {
             // remove the redundant file
             println!("### Removing redundant crate file {}", path.display());
-            // fs::remove_file(&path).with_context(|| {
-            //     format!(
-            //         "Failed to remove redundant crate file in out_dir: {}",
-            //         path.display(),
-            //     )
-            // })?;
+            fs::remove_file(&path).with_context(|| {
+                format!(
+                    "Failed to remove redundant crate file in out_dir: {}",
+                    path.display(),
+                )
+            })?;
         } else {
             // Here, do nothing. We must keep the non-redundant files,
             // as they represent new dependencies that were not part of
@@ -659,6 +685,7 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
         features,
         path,
         is_primary,
+        is_recreated: None,
     }))
 }
 
@@ -717,6 +744,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             "\n### Skipping already-built crate {:?}",
             crate_name_with_hash
         );
+        compile_db.mark_recreated(&c, false);
         return Ok(false);
     }
 
@@ -743,8 +771,8 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
     let matches =
         matches.context("Missing support for argument found in captured rustc command")?;
 
-    let mut args_changed = false;
-    let mut is_proc_macro = false;
+    let mut args_or_deps_changed = false;
+    let mut _is_proc_macro = false;
 
     // After adding the initial stuff: rustc command, crate name, (optional --edition), and crate source file,
     // the other arguments are added in the loop below.
@@ -765,8 +793,8 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
 
             if arg == "--crate-type" && value.as_ref() == "proc-macro" {
                 // Don't re-run proc_macro builds, as those are built to run on the host.
-                args_changed = false;
-                is_proc_macro = true;
+                args_or_deps_changed = false;
+                _is_proc_macro = true;
                 break 'args_label;
             } else if arg == "--extern" {
                 let rmeta_or_rlib_extension = if value.ends_with(RMETA_FILE_EXTENSION) {
@@ -778,7 +806,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                 } else if value.ends_with(DYLIB_FILE_EXTENSION) {
                     Some(DYLIB_FILE_EXTENSION)
                 } else {
-                    println!("Skipping non-rlib --extern value: {:?}", value);
+                    println!("Skipping non-rlib or non-dylib --extern value: {:?}", value);
                     None
                     // bail!(
                     //     "Unsupported --extern arg value {:?}. \
@@ -807,7 +835,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                         get_crate_name_with_hash_from_path(crate_rmeta_path)?
                         .strip_prefix(RMETA_RLIB_FILE_PREFIX)
                             .with_context(
-                                || format!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}", 
+                                || format!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}",
                                     crate_rmeta_path.display()))?;
                     let extern_crate =
                         compile_db
@@ -819,6 +847,9 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                                 )
                             });
                     println!(" ({:?})", extern_crate);
+                    args_or_deps_changed |= extern_crate
+                        .is_recreated
+                        .expect("field `is_recreated` not properly initialized");
                     let candidates = compile_db.find_compatible_crates_in_prebuilt(&extern_crate);
                     if candidates.len() > 1 {
                         println!(
@@ -835,6 +866,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                             c,
                         );
                         new_value = format!("{}={}", extern_crate_name, c.path.display()).into();
+                        args_or_deps_changed = true;
                     }
                 }
             } else if arg == "-L" {
@@ -854,7 +886,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             }
 
             if value != new_value.as_ref() {
-                args_changed = true;
+                args_or_deps_changed = true;
             }
             recreated_cmd.arg(arg.as_str());
             recreated_cmd.arg(new_value.as_ref());
@@ -862,7 +894,10 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
     }
 
     // If any args actually changed, we need to run the re-created command.
-    if !is_proc_macro {
+
+    compile_db.mark_recreated(&c, args_or_deps_changed);
+    // if !is_proc_macro {
+    if args_or_deps_changed {
         // Add our directory of prebuilt crates as a library search path, for dependency resolution.
         // This is okay because we removed all of the potentially conflicting crates from the local target/ directory,
         // which ensures that adding in the directory of prebuilt crate .rmeta/.rlib files won't cause rustc to complain
@@ -878,7 +913,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
         // println!("\n\n--------------- Inherited Environment Variables ----------------\n");
         // let _env_cmd = Command::new("env").spawn().unwrap().wait().unwrap();
         println!(
-            "About to execute recreated_cmd that had changed arguments:\n{:?}",
+            "About to execute recreated_cmd that had changed arguments or updated dependencies:\n{:?}",
             recreated_cmd
         );
     } else {
@@ -910,11 +945,10 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
         Some(0) => {
             println!("Ran rustc command (modified for Phoenix) successfully.");
 
-            // Copy the compilation result
-            if !is_proc_macro {
-                if c.is_primary {
-                    copy_result(&c)?;
-                }
+            // Copy the compilation result to the parent directory of deps, just like what cargo
+            // would do.
+            if c.is_primary {
+                copy_result(&c)?;
             }
             Ok(true)
         }
@@ -926,20 +960,19 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
 fn copy_result(c: &Crate) -> anyhow::Result<()> {
     // copy the library
     let destdir = c.path.parent().unwrap().parent().unwrap();
-    let mut is_binary = false;
-    let result_name = if let Some(ext) = c.path.extension() {
+    let (result_name, is_binary) = if let Some(ext) = c.path.extension() {
         // lib
-        format!("lib{}.{}", c.name, ext.to_string_lossy())
+        (format!("lib{}.{}", c.name, ext.to_string_lossy()), false)
     } else {
         // binary
-        is_binary = true;
-        c.name.clone()
+        (c.name.clone(), true)
     };
+
     let to = destdir.join(result_name);
     println!("Copy {} to {}", c.path.display(), to.display());
     fs::copy(&c.path, to)?;
 
-    // copy the dep file
+    // copy the dep file if it is not an bin executable
     if !is_binary {
         let from = c
             .path
@@ -964,6 +997,7 @@ fn copy_result(c: &Crate) -> anyhow::Result<()> {
 /// Returns the set of discovered crates as a map, in which the key is the simple crate name
 /// ("my_crate") and the value is the full crate name with the hash included ("my_crate-43462c60d48a531a").
 /// The value can be used to define the path to crate's actual .rmeta/.rlib file.
+#[allow(unused)]
 fn populate_crates_from_dir<P: AsRef<Path>>(dir_path: P) -> io::Result<HashMap<String, String>> {
     let mut crates = HashMap::default();
 
@@ -1006,6 +1040,7 @@ fn populate_crates_from_dir<P: AsRef<Path>>(dir_path: P) -> io::Result<HashMap<S
     Ok(crates)
 }
 
+#[allow(unused)]
 fn populate_crates_from_dep_file<P: AsRef<Path>>(
     dep_path: P,
 ) -> io::Result<HashMap<String, String>> {
@@ -1080,6 +1115,7 @@ fn populate_crates_from_dep_file<P: AsRef<Path>>(
 }
 
 /// Parses the given `path` to obtain the part of the filename before the crate name delimiter '-'.
+#[allow(unused)]
 fn get_plain_crate_name_from_path<'p>(path: &'p Path) -> anyhow::Result<&'p str> {
     path.file_stem()
         .and_then(|os_str| os_str.to_str())
