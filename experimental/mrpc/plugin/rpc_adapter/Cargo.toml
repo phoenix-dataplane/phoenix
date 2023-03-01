@@ -10,11 +10,11 @@ crate-type = ["rlib"]
 
 [dependencies]
 mrpc-marshal.workspace = true
-uapi-mrpc.workspace = true
-uapi-rpc-adapter.workspace = true
+phoenix-api-mrpc.workspace = true
+phoenix-api-rpc-adapter.workspace = true
 phoenix-mrpc.workspace = true
 
-uapi = { workspace = true, features = ["mrpc"] }
+phoenix-api = { workspace = true, features = ["mrpc"] }
 ipc.workspace = true
 phoenix_common.workspace = true
 rdma = { workspace = true, features = ["phoenix"] }

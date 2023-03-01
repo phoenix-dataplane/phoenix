@@ -9,7 +9,7 @@ use futures::executor::{ThreadPool, ThreadPoolBuilder};
 use nix::unistd::Pid;
 use semver::Version;
 
-use uapi::engine::{SchedulingHint, SchedulingMode};
+use phoenix_api::engine::{SchedulingHint, SchedulingMode};
 
 use phoenix_common::engine::datapath::{
     create_channel, ChannelDescriptor, ChannelFlavor, DataPathNode,

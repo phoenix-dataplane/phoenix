@@ -10,11 +10,11 @@ crate-type = ["rlib"]
 
 [dependencies]
 phoenix-common-workspace.workspace = true
-uapi = { workspace = true, features = ["mrpc"] } # The feature mrpc should be removed in the future
+phoenix-api = { workspace = true, features = ["mrpc"] } # The feature mrpc should be removed in the future
 ipc.workspace = true
 
 # TODO: remove the dep to mrpc
-uapi-mrpc = { path = "../../experimental/mrpc/uapi/mrpc" }
+phoenix-api-mrpc = { path = "../../experimental/mrpc/phoenix-api/mrpc" }
 
 tracing.workspace = true
 anyhow.workspace = true

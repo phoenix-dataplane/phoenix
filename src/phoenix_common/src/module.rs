@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
 pub use semver::Version;
-use uapi::engine::SchedulingMode;
+use phoenix_api::engine::SchedulingMode;
 
 use crate::engine::datapath::node::{ChannelDescriptor, DataPathNode};
 use crate::engine::{Engine, EnginePair, EngineType};

@@ -9,9 +9,9 @@ edition = "2021"
 timing = ["dep:minstant"]
 
 [dependencies]
-uapi-mrpc.workspace = true
+phoenix-api-mrpc.workspace = true
 
-uapi = { workspace = true, features = ["mrpc"] }
+phoenix-api = { workspace = true, features = ["mrpc"] }
 ipc = { workspace = true, features = ["customer"] }
 shm = { workspace = true, features = ["mrpc"] }
 mmap.workspace = true
@@ -43,14 +43,14 @@ members = [
   "mrpc-build",
   "mrpc-derive",
   "mrpc-marshal",
-  # uapi
-  "uapi/mrpc",
-  "uapi/rpc_adapter",
-  "uapi/tcp_rpc_adapter",
-  "uapi/policy/null",
-  "uapi/policy/ratelimit",
-  "uapi/policy/qos",
-  "uapi/policy/hotel-acl",
+  # phoenix-api
+  "phoenix-api/mrpc",
+  "phoenix-api/rpc_adapter",
+  "phoenix-api/tcp_rpc_adapter",
+  "phoenix-api/policy/null",
+  "phoenix-api/policy/ratelimit",
+  "phoenix-api/policy/qos",
+  "phoenix-api/policy/hotel-acl",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/rpc_adapter",
@@ -75,13 +75,13 @@ exclude = [
 
 [workspace.dependencies]
 mrpc = { path = "." }
-uapi-mrpc = { path = "uapi/mrpc" }
-uapi-tcp-rpc-adapter = { path = "uapi/tcp_rpc_adapter" }
-uapi-rpc-adapter = { path = "uapi/rpc_adapter" }
-uapi-policy-null = { path = "uapi/policy/null" }
-uapi-policy-ratelimit = { path = "uapi/policy/ratelimit" }
-uapi-policy-qos = { path = "uapi/policy/qos" }
-uapi-policy-hotel-acl = { path = "uapi/policy/hotel-acl" }
+phoenix-api-mrpc = { path = "phoenix-api/mrpc" }
+phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
+phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
+phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
+phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
+phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
+phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -91,7 +91,7 @@ prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
 
 libphoenix = { path = "../../src/libphoenix" }
-uapi = { path = "../../src/uapi" }
+phoenix-api = { path = "../../src/phoenix-api" }
 ipc = { path = "../../src/ipc" }
 mmap = { path = "../../src/mmap" }
 rdma = { path = "../../src/rdma" }

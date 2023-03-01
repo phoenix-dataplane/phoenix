@@ -13,16 +13,16 @@ use memfd::Memfd;
 use memmap2::{MmapOptions, MmapRaw};
 use utils::bounded_vec::BoundedVecDeque;
 
-use uapi::net;
-use uapi::net::returned;
-use uapi::transport::rdma::cmd::{Command, CompletionKind};
+use phoenix_api::net;
+use phoenix_api::net::returned;
+use phoenix_api::transport::rdma::cmd::{Command, CompletionKind};
 
 use crate::transport::{Error, CQ_BUFFERS, KL_CTX};
 use crate::{rx_recv_impl, FromBorrow};
 
 // Re-exports
-pub use uapi::net::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
-pub use uapi::net::{QpCapability, QpType, RemoteKey};
+pub use phoenix_api::net::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
+pub use phoenix_api::net::{QpCapability, QpType, RemoteKey};
 
 lazy_static! {
     pub static ref DEFAULT_PDS: Vec<ProtectionDomain> =

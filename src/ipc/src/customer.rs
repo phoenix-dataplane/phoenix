@@ -11,7 +11,7 @@ use minstant::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use uapi::engine::SchedulingMode;
+use phoenix_api::engine::SchedulingMode;
 
 use crate::control;
 use crate::ipc_channel::{IpcReceiver, IpcSender, IpcSenderNotify};

@@ -19,10 +19,10 @@ use thiserror::Error;
 use ipc::service::ShmService;
 use libphoenix::_rx_recv_impl as rx_recv_impl;
 use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
-pub use uapi::engine::SchedulingHint;
-use uapi::Handle;
-use uapi_mrpc::control_plane::Setting;
-use uapi_mrpc::{cmd, dp};
+pub use phoenix_api::engine::SchedulingHint;
+use phoenix_api::Handle;
+use phoenix_api_mrpc::control_plane::Setting;
+use phoenix_api_mrpc::{cmd, dp};
 
 pub use libphoenix;
 
@@ -107,10 +107,10 @@ pub mod stub;
 #[macro_use]
 pub mod macros;
 
-pub use uapi::rpc::Token;
+pub use phoenix_api::rpc::Token;
 
 #[doc(hidden)]
-pub use uapi::rpc::MessageErased;
+pub use phoenix_api::rpc::MessageErased;
 
 pub mod rref;
 pub use rref::RRef;
@@ -139,11 +139,11 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, uapi::Error),
+    Interface(&'static str, phoenix_api::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
     #[error("Connect failed: {0}")]
-    Connect(uapi::Error),
+    Connect(phoenix_api::Error),
     #[error("Disconnected: {0:?}")]
     Disconnect(Handle),
     #[error("Connection closed.")]

@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use memfd::Memfd;
 use mmap::MmapFixed;
 
-use uapi::{AsHandle, Handle};
-use uapi_mrpc::cmd::ConnectResponse;
+use phoenix_api::{AsHandle, Handle};
+use phoenix_api_mrpc::cmd::ConnectResponse;
 
 use super::Error;
 

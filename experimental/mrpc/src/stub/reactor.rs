@@ -6,8 +6,8 @@ use fnv::FnvHashMap as HashMap;
 use slab::Slab;
 
 use ipc::channel::{create_channel, ChannelFlavor, Receiver, Sender};
-use uapi::Handle;
-use uapi_mrpc::dp;
+use phoenix_api::Handle;
+use phoenix_api_mrpc::dp;
 
 use super::conn::Connection;
 use crate::{Error, MRPC_CTX};

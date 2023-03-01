@@ -9,7 +9,7 @@ use anyhow::bail;
 use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
 use itertools::Itertools;
-use uapi::engine::SchedulingMode;
+use phoenix_api::engine::SchedulingMode;
 
 use ipc::control::PluginDescriptor;
 

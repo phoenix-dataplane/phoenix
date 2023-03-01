@@ -55,9 +55,9 @@ pub(crate) enum ControlPathError {
     LibLoading(#[from] libloading::Error),
 }
 
-impl From<ControlPathError> for uapi::Error {
+impl From<ControlPathError> for phoenix_api::Error {
     fn from(other: ControlPathError) -> Self {
-        uapi::Error::Generic(other.to_string())
+        phoenix_api::Error::Generic(other.to_string())
     }
 }
 

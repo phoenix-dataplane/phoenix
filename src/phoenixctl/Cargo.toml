@@ -7,11 +7,11 @@ edition = "2021"
 
 [dependencies]
 ipc.workspace = true
-uapi.workspace = true
+phoenix-api.workspace = true
 
-uapi-policy-ratelimit = { path = "../../experimental/mrpc/uapi/policy/ratelimit" }
-uapi-policy-qos = { path = "../../experimental/mrpc/uapi/policy/qos" }
-uapi-rpc-adapter = { path = "../../experimental/mrpc/uapi/rpc_adapter" }
+phoenix-api-policy-ratelimit = { path = "../../experimental/mrpc/phoenix-api/policy/ratelimit" }
+phoenix-api-policy-qos = { path = "../../experimental/mrpc/phoenix-api/policy/qos" }
+phoenix-api-rpc-adapter = { path = "../../experimental/mrpc/phoenix-api/rpc_adapter" }
 
 uuid.workspace = true
 bincode.workspace = true

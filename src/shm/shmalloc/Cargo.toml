@@ -8,7 +8,7 @@ edition = "2021"
 mmap.workspace = true
 slabmalloc.workspace = true
 libphoenix.workspace = true
-uapi = { workspace = true, features = ["salloc"] }
+phoenix-api = { workspace = true, features = ["salloc"] }
 ipc.workspace = true
 shm.workspace = true
 

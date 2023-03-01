@@ -8,10 +8,10 @@ use std::task::{Context, Poll};
 
 use ipc::channel::{Receiver, TryRecvError};
 use libphoenix::_rx_recv_impl as rx_recv_impl;
-use uapi::rpc::{CallId, MessageErased, MessageMeta, RpcId, RpcMsgType, TransportStatus};
-use uapi::AsHandle;
-use uapi_mrpc::cmd::{Command, CompletionKind};
-use uapi_mrpc::dp;
+use phoenix_api::rpc::{CallId, MessageErased, MessageMeta, RpcId, RpcMsgType, TransportStatus};
+use phoenix_api::AsHandle;
+use phoenix_api_mrpc::cmd::{Command, CompletionKind};
+use phoenix_api_mrpc::dp;
 
 use super::conn::Connection;
 use super::reply_cache::ReplyCache;

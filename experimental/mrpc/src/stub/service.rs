@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use uapi::rpc::{MessageErased, MessageMeta, RpcMsgType};
+use phoenix_api::rpc::{MessageErased, MessageMeta, RpcMsgType};
 
 use super::RpcData;
 use crate::{RRef, ReadHeap, WRef, WRefOpaque};

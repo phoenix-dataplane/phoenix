@@ -7,7 +7,7 @@ use fnv::FnvHashMap as HashMap;
 use mrpc_marshal::SgList;
 use nix::unistd::Pid;
 use phoenix_salloc::region::AddressMediator;
-use uapi::Handle;
+use phoenix_api::Handle;
 
 use phoenix_common::state_mgr::ProcessShared;
 

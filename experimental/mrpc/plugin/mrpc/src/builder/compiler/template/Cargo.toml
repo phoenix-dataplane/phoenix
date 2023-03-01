@@ -10,4 +10,4 @@ crate-type = ["dylib"]
 mrpc-derive = {{ path = "{mrpc_derive}" }}
 mrpc-marshal = {{ path = "{mrpc_marshal}" }}
 shm = {{ path = "{shm}" }}
-uapi = {{ path = "{uapi}", features = ["mrpc"] }}
+phoenix-api = {{ path = "{phoenix_api}", features = ["mrpc"] }}

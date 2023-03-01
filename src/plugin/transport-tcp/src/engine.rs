@@ -6,9 +6,9 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use uapi::engine::SchedulingMode;
-use uapi::net::{WcOpcode, WcStatus};
-use uapi::transport::tcp::{cmd, dp};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::net::{WcOpcode, WcStatus};
+use phoenix_api::transport::tcp::{cmd, dp};
 
 use super::module::CustomerType;
 use super::ops::Ops;
@@ -264,7 +264,7 @@ impl TransportEngine {
             conn_id: sock_handle.0 as _,
             opcode: WcOpcode::Invalid,
             status: WcStatus::Error(NonZeroU32::new(e.as_vendor_err()).unwrap()),
-            buf: uapi::buf::Range { offset: 0, len: 0 },
+            buf: phoenix_api::buf::Range { offset: 0, len: 0 },
             byte_len: 0,
             imm: 0,
         }

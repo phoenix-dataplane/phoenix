@@ -5,9 +5,9 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use uapi::engine::SchedulingMode;
-use uapi::rpc::{MessageErased, RpcId};
-use uapi_mrpc::{cmd, control_plane, dp};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::rpc::{MessageErased, RpcId};
+use phoenix_api_mrpc::{cmd, control_plane, dp};
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
@@ -301,7 +301,7 @@ impl MrpcEngine {
         &mut self,
         req: &cmd::Command,
     ) -> Result<Option<cmd::CompletionKind>, Error> {
-        use uapi_mrpc::cmd::{Command, CompletionKind};
+        use phoenix_api_mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(transport_type) => {
                 if self.transport_type.is_some() {
@@ -531,7 +531,7 @@ impl MrpcEngine {
 
     fn check_input_cmd_queue(&mut self) -> Result<Status, Error> {
         use tokio::sync::mpsc::error::TryRecvError;
-        use uapi_mrpc::cmd::{Completion, CompletionKind};
+        use phoenix_api_mrpc::cmd::{Completion, CompletionKind};
         match self.cmd_rx.try_recv() {
             Ok(Completion(comp)) => {
                 match comp {

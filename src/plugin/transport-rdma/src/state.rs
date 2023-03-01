@@ -12,8 +12,8 @@ use nix::unistd::Pid;
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
-use uapi::net;
-use uapi::{AsHandle, Handle};
+use phoenix_api::net;
+use phoenix_api::{AsHandle, Handle};
 
 use phoenix_common::resource::{ResourceSlab, ResourceTable};
 use phoenix_common::state_mgr::ProcessShared;

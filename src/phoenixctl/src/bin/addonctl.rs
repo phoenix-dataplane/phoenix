@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use uapi::engine::SchedulingMode;
+use phoenix_api::engine::SchedulingMode;
 use uuid::Uuid;
 
 use ipc::control::Request;

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use uapi::engine::CustomSchedulingSpec;
+use phoenix_api::engine::CustomSchedulingSpec;
 
 use ipc::control::PluginDescriptor;
 

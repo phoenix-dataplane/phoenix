@@ -1,8 +1,8 @@
 use std::ptr::Unique;
 
-use uapi::rpc::{CallId, MessageMeta, RpcId, TransportStatus};
-use uapi::Handle;
-use uapi_mrpc::dp::RECV_RECLAIM_BS;
+use phoenix_api::rpc::{CallId, MessageMeta, RpcId, TransportStatus};
+use phoenix_api::Handle;
+use phoenix_api_mrpc::dp::RECV_RECLAIM_BS;
 
 // use crate::mrpc::meta_pool::MetaBufferPtr;
 use super::meta_pool::MetaBufferPtr;

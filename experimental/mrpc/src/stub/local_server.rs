@@ -13,10 +13,10 @@ use futures::FutureExt;
 
 use ipc::channel::{Receiver, TryRecvError};
 use libphoenix::_rx_recv_impl as rx_recv_impl;
-use uapi::rpc::{MessageErased, RpcId, RpcMsgType, TransportStatus};
-use uapi::{AsHandle, Handle};
-use uapi_mrpc::cmd::{Command, CompletionKind, ConnectResponse};
-use uapi_mrpc::dp;
+use phoenix_api::rpc::{MessageErased, RpcId, RpcMsgType, TransportStatus};
+use phoenix_api::{AsHandle, Handle};
+use phoenix_api_mrpc::cmd::{Command, CompletionKind, ConnectResponse};
+use phoenix_api_mrpc::dp;
 
 use super::conn::Connection;
 use super::service::{NamedService, Service};

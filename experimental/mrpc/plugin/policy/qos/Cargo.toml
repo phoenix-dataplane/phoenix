@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 phoenix_common.workspace = true
-uapi-policy-qos.workspace = true
+phoenix-api-policy-qos.workspace = true
 
 futures.workspace = true
 minstant.workspace = true

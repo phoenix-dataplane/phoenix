@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use ipc::control::Request;
 use ipc::unix::DomainSocket;
-use uapi_policy_qos::control_plane::Request as QosRequest;
+use phoenix_api_policy_qos::control_plane::Request as QosRequest;
 
 const MAX_MSG_LEN: usize = 65536;
 

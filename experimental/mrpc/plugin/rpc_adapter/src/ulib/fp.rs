@@ -1,7 +1,7 @@
 //! Fast path operations.
 use std::slice::SliceIndex;
 
-use uapi::buf;
+use phoenix_api::buf;
 
 use super::{get_ops, Error};
 
@@ -136,7 +136,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: uverbs::SendFlags,
-        rkey: uapi::net::RemoteKey,
+        rkey: phoenix_api::net::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where
@@ -166,7 +166,7 @@ impl CmId {
         range: R,
         context: u64,
         flags: uverbs::SendFlags,
-        rkey: uapi::net::RemoteKey,
+        rkey: phoenix_api::net::RemoteKey,
         remote_offset: u64,
     ) -> Result<(), Error>
     where

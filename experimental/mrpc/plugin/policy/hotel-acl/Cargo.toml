@@ -7,13 +7,13 @@ edition = "2021"
 
 
 [dependencies]
-uapi-policy-hotel-acl.workspace = true
+phoenix-api-policy-hotel-acl.workspace = true
 mrpc-marshal.workspace = true
 mrpc-derive.workspace = true
 
 phoenix_common.workspace = true
 shm.workspace = true
-uapi = { workspace = true, features = ["mrpc"] }
+phoenix-api = { workspace = true, features = ["mrpc"] }
 
 futures.workspace = true
 minstant.workspace = true

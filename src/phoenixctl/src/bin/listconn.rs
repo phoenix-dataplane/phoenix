@@ -6,7 +6,7 @@ use uuid::Uuid;
 use clap::Parser;
 use ipc::control::Request;
 use ipc::unix::DomainSocket;
-use uapi_rpc_adapter::control_plane::Request as RpcAdapterRequest;
+use phoenix_api_rpc_adapter::control_plane::Request as RpcAdapterRequest;
 
 const MAX_MSG_LEN: usize = 65536;
 

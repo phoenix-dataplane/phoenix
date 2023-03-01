@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use ipc::customer::ShmCustomer;
 use ipc::unix::DomainSocket;
-use uapi::engine::SchedulingMode;
-use uapi::transport::tcp::{cmd, dp};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::transport::tcp::{cmd, dp};
 
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EnginePair, EngineType};

@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 use minstant::Instant;
 
-use uapi_policy_ratelimit::control_plane;
+use phoenix_api_policy_ratelimit::control_plane;
 
 use phoenix_common::engine::datapath::message::{EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;

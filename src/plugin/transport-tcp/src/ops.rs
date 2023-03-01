@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
-use uapi::buf::Range;
-use uapi::net::{MappedAddrStatus, WcOpcode, WcStatus};
-use uapi::transport::tcp::dp;
-use uapi::{AsHandle, Handle};
+use phoenix_api::buf::Range;
+use phoenix_api::net::{MappedAddrStatus, WcOpcode, WcStatus};
+use phoenix_api::transport::tcp::dp;
+use phoenix_api::{AsHandle, Handle};
 
 use super::state::State;
 use super::{ApiError, TransportError};

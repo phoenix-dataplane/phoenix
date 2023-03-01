@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use fnv::FnvHashMap as HashMap;
 
-use uapi::rpc::RpcId;
+use phoenix_api::rpc::RpcId;
 
 use super::RpcData;
 use crate::wref::{WRef, WRefOpaque};

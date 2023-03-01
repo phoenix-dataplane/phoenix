@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 
 use mrpc_marshal::{ExcavateContext, SgList};
 use mrpc_marshal::{MarshalError, UnmarshalError};
-use uapi::rpc::MessageMeta;
+use phoenix_api::rpc::MessageMeta;
 
 pub(crate) use mrpc_marshal::AddressMap;
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use minstant::Instant;
 
-use uapi::rpc::RpcId;
+use phoenix_api::rpc::RpcId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SampleKind {

@@ -10,7 +10,7 @@ use futures::future::BoxFuture;
 use minstant::Instant;
 use nix::unistd::Pid;
 
-use uapi_policy_qos::control_plane;
+use phoenix_api_policy_qos::control_plane;
 
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::datapath::EngineTxMessage;

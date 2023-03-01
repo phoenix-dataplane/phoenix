@@ -6,13 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-uapi = { workspace = true, features = ["mrpc"] } # Should be removed
+phoenix-api = { workspace = true, features = ["mrpc"] } # Should be removed
 ipc.workspace = true
 phoenix_common.workspace = true
 mmap.workspace = true
 
 # TODO(remove the deps)
-uapi-mrpc = { path = "../../experimental/mrpc/uapi/mrpc" }
+phoenix-api-mrpc = { path = "../../experimental/mrpc/phoenix-api/mrpc" }
 
 chrono.workspace = true
 ansi_term.workspace = true

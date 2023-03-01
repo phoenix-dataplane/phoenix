@@ -63,7 +63,7 @@ pub fn generate(
     let dispatch = quote! {
         #![feature(strict_provenance)]
 
-        use uapi::rpc::{MessageMeta, RpcMsgType};
+        use phoenix_api::rpc::{MessageMeta, RpcMsgType};
         use mrpc_marshal::{SgList, ExcavateContext, RpcMessage};
         use mrpc_marshal::{MarshalError, UnmarshalError, AddressMap};
 

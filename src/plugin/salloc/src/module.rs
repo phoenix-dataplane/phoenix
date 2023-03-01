@@ -6,8 +6,8 @@ use nix::unistd::Pid;
 use uuid::Uuid;
 
 use ipc::customer::ShmCustomer;
-use uapi::engine::SchedulingMode;
-use uapi::salloc::{cmd, dp};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::salloc::{cmd, dp};
 
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{Engine, EnginePair, EngineType};

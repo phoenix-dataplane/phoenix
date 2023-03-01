@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use rdma::rdmacm;
-use uapi::Handle;
+use phoenix_api::Handle;
 
 use phoenix_common::log;
 use phoenix_common::resource::{Error as ResourceError, ResourceTable};

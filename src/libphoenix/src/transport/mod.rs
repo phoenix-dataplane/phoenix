@@ -6,9 +6,9 @@ use lazy_static::lazy_static;
 use thiserror::Error;
 
 use ipc::service::ShmService;
-pub use uapi::engine::SchedulingHint;
-use uapi::transport::rdma::control_plane::Setting;
-use uapi::transport::rdma::{cmd, dp};
+pub use phoenix_api::engine::SchedulingHint;
+use phoenix_api::transport::rdma::control_plane::Setting;
+use phoenix_api::transport::rdma::{cmd, dp};
 
 use crate::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
@@ -31,7 +31,7 @@ pub fn set_schedulint_hint(hint: &SchedulingHint) {
 // NOTE(cjr): Will lazy_static affect the performance?
 lazy_static! {
     // A cq can be created by calling create_cq, but it can also come from create_ep
-    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<uapi::net::CompletionQueue, verbs::CqBuffer>> =
+    pub(crate) static ref CQ_BUFFERS: spin::Mutex<HashMap<phoenix_api::net::CompletionQueue, verbs::CqBuffer>> =
         spin::Mutex::new(HashMap::default());
 }
 
@@ -68,9 +68,9 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, uapi::Error),
+    Interface(&'static str, phoenix_api::Error),
     #[error("No address is resolved")]
     NoAddrResolved,
     #[error("Connect failed: {0}")]
-    Connect(uapi::Error),
+    Connect(phoenix_api::Error),
 }

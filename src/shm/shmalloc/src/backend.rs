@@ -3,8 +3,8 @@ use std::io;
 use thiserror::Error;
 
 use ipc::service::ShmService;
-use uapi::engine::SchedulingHint;
-use uapi::salloc::{cmd, dp};
+use phoenix_api::engine::SchedulingHint;
+use phoenix_api::salloc::{cmd, dp};
 
 use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
@@ -39,5 +39,5 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, uapi::Error),
+    Interface(&'static str, phoenix_api::Error),
 }

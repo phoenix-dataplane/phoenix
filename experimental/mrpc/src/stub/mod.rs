@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use crate::{Error, MRPC_CTX};
 
 /// Re-exports
-pub use uapi::rpc::{MessageErased, MessageMeta, RpcMsgType};
-pub use uapi_mrpc::control_plane::TransportType;
+pub use phoenix_api::rpc::{MessageErased, MessageMeta, RpcMsgType};
+pub use phoenix_api_mrpc::control_plane::TransportType;
 
 pub mod service;
 pub use service::{service_post_handler, service_pre_handler, NamedService, Service};

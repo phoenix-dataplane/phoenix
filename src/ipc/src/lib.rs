@@ -97,7 +97,7 @@ pub enum Error {
     #[error("Credential mismatch {0:?} vs {1:?}")]
     CredentialMismatch(UCred, UCred),
     #[error("Control plane error {0}: {1}")]
-    ControlPlane(&'static str, uapi::Error),
+    ControlPlane(&'static str, phoenix_api::Error),
 }
 
 impl From<crate::ipc_channel::TryRecvError> for TryRecvError {

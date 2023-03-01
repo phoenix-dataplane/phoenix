@@ -6,10 +6,10 @@ use anyhow::{bail, Result};
 use uuid::Uuid;
 
 use ipc::customer::ShmCustomer;
-use uapi::engine::SchedulingMode;
-use uapi_mrpc::control_plane::Setting;
-use uapi_mrpc::control_plane::TransportType;
-use uapi_mrpc::{cmd, dp};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api_mrpc::control_plane::Setting;
+use phoenix_api_mrpc::control_plane::TransportType;
+use phoenix_api_mrpc::{cmd, dp};
 
 use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix_common::engine::datapath::node::{ChannelDescriptor, DataPathNode};

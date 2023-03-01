@@ -9,7 +9,7 @@ use memfd::{Memfd, MemfdOptions};
 use mmap::MmapFixed;
 use thiserror::Error;
 
-use uapi::{AsHandle, Handle};
+use phoenix_api::{AsHandle, Handle};
 
 #[derive(Debug, Error)]
 pub enum Error {

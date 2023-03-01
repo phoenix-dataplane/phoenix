@@ -4,7 +4,7 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use uapi_policy_null::control_plane;
+use phoenix_api_policy_null::control_plane;
 
 use phoenix_common::engine::datapath::message::EngineTxMessage;
 use phoenix_common::engine::datapath::node::DataPathNode;

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use uapi::Handle;
+use phoenix_api::Handle;
 
 use super::pending::PendingWRef;
 use crate::{Error, ReadHeap};

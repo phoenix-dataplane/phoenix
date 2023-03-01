@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use serde::{Deserialize, Serialize};
 
-use uapi::engine::SchedulingHint;
+use phoenix_api::engine::SchedulingHint;
 
 use crate::control;
 use crate::ipc_channel::{IpcReceiver, IpcSender, IpcSenderNotify};

@@ -17,7 +17,7 @@ use nix::unistd::Pid;
 
 use ipc::control::ServiceSubscriptionInfo;
 use ipc::unix::DomainSocket;
-use uapi::engine::{SchedulingHint, SchedulingMode};
+use phoenix_api::engine::{SchedulingHint, SchedulingMode};
 
 use phoenix_common::engine::datapath::{ChannelDescriptor, DataPathNode};
 use phoenix_common::engine::EngineType;
@@ -49,7 +49,7 @@ impl Control {
     ) -> anyhow::Result<()> {
         if service == &Service("Mrpc") {
             if let Some(config_string) = config_string {
-                use uapi_mrpc::control_plane::{Setting, TransportType};
+                use phoenix_api_mrpc::control_plane::{Setting, TransportType};
                 let setting: Setting = serde_json::from_str(config_string)?;
                 if let Some(mrpc_module) = self.config.modules.iter_mut().find(|x| x.name == "Mrpc")
                 {

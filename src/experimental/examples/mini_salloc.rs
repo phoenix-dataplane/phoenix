@@ -6,8 +6,8 @@ use memfd::Memfd;
 use thiserror::Error;
 
 use ipc::service::ShmService;
-use uapi::engine::SchedulingHint;
-use uapi_salloc::{cmd, dp};
+use phoenix_api::engine::SchedulingHint;
+use phoenix_api_salloc::{cmd, dp};
 
 const DEFAULT_PHOENIX_PREFIX: &str = "/tmp/phoenix";
 const DEFAULT_PHOENIX_CONTROL: &str = "control.sock";
@@ -119,7 +119,7 @@ pub enum Error {
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
     #[error("Interface error {0}: {1}")]
-    Interface(&'static str, uapi::Error),
+    Interface(&'static str, phoenix_api::Error),
 }
 
 fn main() {

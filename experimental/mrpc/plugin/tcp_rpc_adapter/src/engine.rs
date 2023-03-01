@@ -16,14 +16,14 @@ use phoenix_mrpc::unpack::UnpackFromSgE;
 use phoenix_salloc::state::State as SallocState;
 use transport_tcp::ops::Ops;
 use transport_tcp::ApiError;
-use uapi::buf::Range;
-use uapi::engine::SchedulingMode;
-use uapi::net::{MappedAddrStatus, WcOpcode, WcStatus};
-use uapi::rpc::{MessageMeta, RpcId, TransportStatus};
-use uapi::transport::tcp::dp::Completion;
-use uapi::{AsHandle, Handle};
-use uapi_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
-use uapi_tcp_rpc_adapter::control_plane;
+use phoenix_api::buf::Range;
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::net::{MappedAddrStatus, WcOpcode, WcStatus};
+use phoenix_api::rpc::{MessageMeta, RpcId, TransportStatus};
+use phoenix_api::transport::tcp::dp::Completion;
+use phoenix_api::{AsHandle, Handle};
+use phoenix_api_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
+use phoenix_api_tcp_rpc_adapter::control_plane;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
@@ -73,8 +73,8 @@ pub(crate) struct TcpRpcAdapterEngine {
     pub(crate) serialization_engine: Option<SerializationEngine>,
 
     pub(crate) node: DataPathNode,
-    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<uapi_mrpc::cmd::Command>,
-    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<uapi_mrpc::cmd::Completion>,
+    pub(crate) cmd_rx: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
+    pub(crate) cmd_tx: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
 
     pub(crate) _mode: SchedulingMode,
     pub(crate) indicator: Indicator,
@@ -179,12 +179,12 @@ impl TcpRpcAdapterEngine {
         let cmd_tx = *local
             .remove("cmd_tx")
             .unwrap()
-            .downcast::<tokio::sync::mpsc::UnboundedSender<uapi_mrpc::cmd::Completion>>()
+            .downcast::<tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let cmd_rx = *local
             .remove("cmd_rx")
             .unwrap()
-            .downcast::<tokio::sync::mpsc::UnboundedReceiver<uapi_mrpc::cmd::Command>>()
+            .downcast::<tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let salloc = *local
             .remove("salloc")
@@ -576,8 +576,8 @@ impl TcpRpcAdapterEngine {
                 conn_handle: *handle,
                 read_regions,
             };
-            let comp = uapi_mrpc::cmd::Completion(Ok(
-                uapi_mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
+            let comp = phoenix_api_mrpc::cmd::Completion(Ok(
+                phoenix_api_mrpc::cmd::CompletionKind::NewConnectionInternal(conn_resp, fds),
             ));
             self.cmd_tx.send(comp)?;
             Ok(())
@@ -740,10 +740,10 @@ impl TcpRpcAdapterEngine {
             Ok(req) => {
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(uapi_mrpc::cmd::Completion(Ok(res)))?,
+                    Ok(res) => self.cmd_tx.send(phoenix_api_mrpc::cmd::Completion(Ok(res)))?,
                     Err(e) => self
                         .cmd_tx
-                        .send(uapi_mrpc::cmd::Completion(Err(e.into())))?,
+                        .send(phoenix_api_mrpc::cmd::Completion(Err(e.into())))?,
                 }
                 Ok(Progress(1))
             }
@@ -754,9 +754,9 @@ impl TcpRpcAdapterEngine {
 
     fn process_cmd(
         &mut self,
-        req: &uapi_mrpc::cmd::Command,
-    ) -> Result<uapi_mrpc::cmd::CompletionKind, ControlPathError> {
-        use uapi_mrpc::cmd::{Command, CompletionKind};
+        req: &phoenix_api_mrpc::cmd::Command,
+    ) -> Result<phoenix_api_mrpc::cmd::CompletionKind, ControlPathError> {
+        use phoenix_api_mrpc::cmd::{Command, CompletionKind};
         match req {
             Command::SetTransport(_) => {
                 unreachable!();

@@ -19,7 +19,7 @@ use socket2::SockAddr;
 use nix::sys::socket::{AddressFamily, SockaddrLike, SockaddrStorage};
 
 #[cfg(feature = "phoenix")]
-use uapi::{AsHandle, Handle};
+use phoenix_api::{AsHandle, Handle};
 
 use crate::ffi;
 use crate::ibv;

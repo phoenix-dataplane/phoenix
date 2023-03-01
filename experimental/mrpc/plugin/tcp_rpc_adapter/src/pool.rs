@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bitvec::bitvec;
 use bitvec::vec::BitVec;
 
-use uapi::{AsHandle, Handle};
+use phoenix_api::{AsHandle, Handle};
 
 use phoenix_salloc::region::{AddressMediator, SharedRegion};
 

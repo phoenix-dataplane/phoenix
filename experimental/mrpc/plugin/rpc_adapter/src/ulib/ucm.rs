@@ -4,8 +4,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 use phoenix_common::log;
 use rdma::rdmacm;
-use uapi::net;
-use uapi::{AsHandle, Handle};
+use phoenix_api::net;
+use phoenix_api::{AsHandle, Handle};
 
 use super::get_ops;
 use super::{uverbs, Error, FromBorrow};
@@ -13,7 +13,7 @@ use uverbs::AccessFlags;
 use uverbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
 // Re-exports
-pub use uapi::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
+pub use phoenix_api::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 #[derive(Clone)]
 pub(crate) struct CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {

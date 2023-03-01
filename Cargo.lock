@@ -872,6 +872,8 @@ dependencies = [
  "num_cpus",
  "object",
  "petgraph",
+ "phoenix-api",
+ "phoenix-api-salloc",
  "rand 0.8.5",
  "ringbuf",
  "rustc-demangle",
@@ -886,8 +888,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "uapi",
- "uapi-salloc",
  "uuid",
  "zerocopy",
 ]
@@ -1261,10 +1261,10 @@ dependencies = [
  "minstant",
  "mio 0.8.5",
  "nix 0.25.1",
+ "phoenix-api",
  "serde",
  "shmem-ipc",
  "thiserror",
- "uapi",
  "unique",
  "uuid",
  "zerocopy",
@@ -1407,10 +1407,10 @@ dependencies = [
  "libc",
  "memfd",
  "memmap2 0.5.8",
+ "phoenix-api",
  "serde_json",
  "spin",
  "thiserror",
- "uapi",
  "utils",
  "uuid",
 ]
@@ -1905,6 +1905,78 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "phoenix-api-salloc",
+ "phoenix-api-transport",
+]
+
+[[package]]
+name = "phoenix-api-core"
+version = "0.1.0"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+ "serde",
+ "static_assertions",
+ "thiserror",
+ "zerocopy",
+]
+
+[[package]]
+name = "phoenix-api-mrpc"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-policy-qos"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-rpc-adapter"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-salloc"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-transport"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "phoenix-common-workspace"
 version = "0.1.0"
 dependencies = [
@@ -1919,8 +1991,8 @@ dependencies = [
  "log",
  "mio 0.8.5",
  "once_cell",
+ "phoenix-api",
  "tokio",
- "uapi",
 ]
 
 [[package]]
@@ -1934,12 +2006,12 @@ dependencies = [
  "memfd",
  "mmap",
  "nix 0.25.1",
+ "phoenix-api",
  "phoenix_common",
  "serde",
  "spin",
  "thiserror",
  "toml",
- "uapi",
  "uuid",
 ]
 
@@ -1955,6 +2027,7 @@ dependencies = [
  "memoffset 0.6.5",
  "mio 0.7.14",
  "nix 0.25.1",
+ "phoenix-api",
  "phoenix_common",
  "rdma",
  "serde",
@@ -1963,7 +2036,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "uapi",
  "uuid",
 ]
 
@@ -1979,6 +2051,7 @@ dependencies = [
  "memoffset 0.6.5",
  "mio 0.8.5",
  "nix 0.25.1",
+ "phoenix-api",
  "phoenix_common",
  "serde",
  "socket2",
@@ -1986,7 +2059,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
- "uapi",
  "uuid",
 ]
 
@@ -2019,6 +2091,8 @@ dependencies = [
  "libnuma-sys",
  "minstant",
  "nix 0.25.1",
+ "phoenix-api",
+ "phoenix-api-mrpc",
  "phoenix-common-workspace",
  "semver 1.0.14",
  "sharded-slab",
@@ -2027,8 +2101,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "uapi",
- "uapi-mrpc",
 ]
 
 [[package]]
@@ -2039,14 +2111,14 @@ dependencies = [
  "clap 4.1.6",
  "ipc",
  "lazy_static",
+ "phoenix-api",
+ "phoenix-api-policy-qos",
+ "phoenix-api-policy-ratelimit",
+ "phoenix-api-rpc-adapter",
  "prettytable-rs",
  "serde",
  "serde_json",
  "toml",
- "uapi",
- "uapi-policy-qos",
- "uapi-policy-ratelimit",
- "uapi-rpc-adapter",
  "uuid",
 ]
 
@@ -2075,6 +2147,8 @@ dependencies = [
  "object",
  "page_size",
  "petgraph",
+ "phoenix-api",
+ "phoenix-api-mrpc",
  "phoenix_common",
  "rustc-demangle",
  "semver 1.0.14",
@@ -2086,8 +2160,6 @@ dependencies = [
  "tracing-appender",
  "tracing-chrome",
  "tracing-subscriber",
- "uapi",
- "uapi-mrpc",
 ]
 
 [[package]]
@@ -2310,12 +2382,12 @@ dependencies = [
  "memfd",
  "mmap",
  "nix 0.25.1",
+ "phoenix-api",
  "serde",
  "socket2",
  "spin",
  "static_assertions",
  "thiserror",
- "uapi",
 ]
 
 [[package]]
@@ -2607,12 +2679,12 @@ dependencies = [
  "libphoenix",
  "memfd",
  "mmap",
+ "phoenix-api",
  "shm",
  "slabmalloc",
  "smol",
  "spin",
  "thiserror",
- "uapi",
 ]
 
 [[package]]
@@ -3036,78 +3108,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "uapi"
-version = "0.1.0"
-dependencies = [
- "uapi-core",
- "uapi-salloc",
- "uapi-transport",
-]
-
-[[package]]
-name = "uapi-core"
-version = "0.1.0"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
- "serde",
- "static_assertions",
- "thiserror",
- "zerocopy",
-]
-
-[[package]]
-name = "uapi-mrpc"
-version = "0.1.0"
-dependencies = [
- "serde",
- "static_assertions",
- "uapi",
-]
-
-[[package]]
-name = "uapi-policy-qos"
-version = "0.1.0"
-dependencies = [
- "serde",
- "uapi",
-]
-
-[[package]]
-name = "uapi-policy-ratelimit"
-version = "0.1.0"
-dependencies = [
- "serde",
- "uapi",
-]
-
-[[package]]
-name = "uapi-rpc-adapter"
-version = "0.1.0"
-dependencies = [
- "serde",
- "uapi",
-]
-
-[[package]]
-name = "uapi-salloc"
-version = "0.1.0"
-dependencies = [
- "serde",
- "static_assertions",
- "uapi-core",
-]
-
-[[package]]
-name = "uapi-transport"
-version = "0.1.0"
-dependencies = [
- "serde",
- "static_assertions",
- "uapi-core",
 ]
 
 [[package]]

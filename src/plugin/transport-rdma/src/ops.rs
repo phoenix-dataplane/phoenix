@@ -10,9 +10,9 @@ use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
-use uapi::net;
-use uapi::net::returned;
-use uapi::{AsHandle, Handle};
+use phoenix_api::net;
+use phoenix_api::net::returned;
+use phoenix_api::{AsHandle, Handle};
 
 use phoenix_common::engine::future;
 use phoenix_common::log;
@@ -57,7 +57,7 @@ impl Ops {
         &self,
         cmid_handle: Handle,
         mr: &rdmacm::MemoryRegion,
-        range: uapi::buf::Range,
+        range: phoenix_api::buf::Range,
         wr_id: u64,
     ) -> std::result::Result<(), DatapathError> {
         // trace!(
@@ -91,7 +91,7 @@ impl Ops {
         &self,
         cmid_handle: Handle,
         mr: &rdmacm::MemoryRegion,
-        range: uapi::buf::Range,
+        range: phoenix_api::buf::Range,
         wr_id: u64,
         send_flags: net::SendFlags,
     ) -> std::result::Result<(), DatapathError> {
@@ -124,7 +124,7 @@ impl Ops {
         &self,
         cmid_handle: Handle,
         mr: &rdmacm::MemoryRegion,
-        range: uapi::buf::Range,
+        range: phoenix_api::buf::Range,
         wr_id: u64,
         send_flags: net::SendFlags,
         imm: u32,
@@ -150,7 +150,7 @@ impl Ops {
         &self,
         cmid_handle: Handle,
         mr: &rdmacm::MemoryRegion,
-        range: uapi::buf::Range,
+        range: phoenix_api::buf::Range,
         wr_id: u64,
         rkey: net::RemoteKey,
         remote_offset: u64,
@@ -179,7 +179,7 @@ impl Ops {
         &self,
         cmid_handle: Handle,
         mr: &rdmacm::MemoryRegion,
-        range: uapi::buf::Range,
+        range: phoenix_api::buf::Range,
         wr_id: u64,
         rkey: net::RemoteKey,
         remote_offset: u64,
@@ -266,8 +266,8 @@ impl Ops {
         &mut self,
         node: Option<&str>,
         service: Option<&str>,
-        hints: Option<&uapi::addrinfo::AddrInfoHints>,
-    ) -> Result<uapi::addrinfo::AddrInfo> {
+        hints: Option<&phoenix_api::addrinfo::AddrInfoHints>,
+    ) -> Result<phoenix_api::addrinfo::AddrInfo> {
         log::debug!(
             "GetAddrInfo, node: {:?}, service: {:?}, hints: {:?}",
             node,
@@ -285,7 +285,7 @@ impl Ops {
 
     pub fn create_ep(
         &self,
-        ai: &uapi::addrinfo::AddrInfo,
+        ai: &phoenix_api::addrinfo::AddrInfo,
         pd: Option<&net::ProtectionDomain>,
         qp_init_attr: Option<&net::QpInitAttr>,
     ) -> Result<returned::CmId> {
@@ -317,7 +317,7 @@ impl Ops {
 
     pub async fn create_id_with_event_channel(
         &self,
-        port_space: uapi::addrinfo::PortSpace,
+        port_space: phoenix_api::addrinfo::PortSpace,
     ) -> Result<(returned::CmId, returned::EventChannel)> {
         let returned_cmid = self.create_id(port_space)?;
         let cmid = self
@@ -347,7 +347,7 @@ impl Ops {
         Ok((channel_handle, channel))
     }
 
-    pub fn create_id(&self, port_space: uapi::addrinfo::PortSpace) -> Result<returned::CmId> {
+    pub fn create_id(&self, port_space: phoenix_api::addrinfo::PortSpace) -> Result<returned::CmId> {
         log::debug!("CreateId, port_space: {:?}", port_space);
 
         // prepare an event channel

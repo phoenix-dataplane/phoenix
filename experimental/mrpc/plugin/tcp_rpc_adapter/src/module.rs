@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use nix::unistd::Pid;
 
-use uapi::engine::SchedulingMode;
-use uapi_mrpc::cmd;
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api_mrpc::cmd;
 
 use phoenix_salloc::module::SallocModule;
 use phoenix_salloc::region::AddressMediator;
@@ -27,8 +27,8 @@ use crate::state::{Shared, State};
 pub(crate) struct RpcAdapterEngineBuilder {
     _client_pid: Pid,
     mode: SchedulingMode,
-    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<uapi_mrpc::cmd::Command>,
-    cmd_tx: tokio::sync::mpsc::UnboundedSender<uapi_mrpc::cmd::Completion>,
+    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
     node: DataPathNode,
     ops: Ops,
     shared: Arc<Shared>,
@@ -41,8 +41,8 @@ impl RpcAdapterEngineBuilder {
     fn new(
         client_pid: Pid,
         mode: SchedulingMode,
-        cmd_tx: tokio::sync::mpsc::UnboundedSender<uapi_mrpc::cmd::Completion>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<uapi_mrpc::cmd::Command>,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
         node: DataPathNode,
         ops: Ops,
         shared: Arc<Shared>,

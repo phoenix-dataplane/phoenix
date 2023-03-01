@@ -3,9 +3,9 @@ use std::path::PathBuf;
 pub use libc::pid_t;
 use serde::{Deserialize, Serialize};
 
-use uapi::engine::{SchedulingHint, SchedulingMode};
+use phoenix_api::engine::{SchedulingHint, SchedulingMode};
 
-type IResult<T> = Result<T, uapi::Error>;
+type IResult<T> = Result<T, phoenix_api::Error>;
 
 /// Description for loading/upgrading a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]

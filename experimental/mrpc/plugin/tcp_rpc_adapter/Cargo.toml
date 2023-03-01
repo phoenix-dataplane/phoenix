@@ -9,12 +9,12 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-uapi-mrpc.workspace = true
-uapi-tcp-rpc-adapter.workspace = true
+phoenix-api-mrpc.workspace = true
+phoenix-api-tcp-rpc-adapter.workspace = true
 phoenix-mrpc.workspace = true
 mrpc-marshal.workspace = true
 
-uapi = { workspace = true, features = ["mrpc", "transport"] }
+phoenix-api = { workspace = true, features = ["mrpc", "transport"] }
 ipc.workspace = true
 phoenix_common.workspace = true
 transport-tcp.workspace = true

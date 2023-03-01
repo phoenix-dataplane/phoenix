@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use uapi_mrpc::control_plane::TransportType;
+use phoenix_api_mrpc::control_plane::TransportType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

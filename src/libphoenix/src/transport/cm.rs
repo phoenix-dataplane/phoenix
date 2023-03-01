@@ -2,8 +2,8 @@ use std::any::Any;
 use std::mem;
 use std::net::ToSocketAddrs;
 
-use uapi::net;
-use uapi::transport::rdma::cmd::{Command, CompletionKind};
+use phoenix_api::net;
+use phoenix_api::transport::rdma::cmd::{Command, CompletionKind};
 
 use crate::transport::verbs;
 use crate::transport::Error;
@@ -13,7 +13,7 @@ use verbs::AccessFlags;
 use verbs::{ConnParam, ProtectionDomain, QpInitAttr};
 
 // Re-exports
-pub use uapi::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
+pub use phoenix_api::addrinfo::{AddrFamily, AddrInfo, AddrInfoFlags, AddrInfoHints, PortSpace};
 
 /// Address and route resolution service.
 pub fn getaddrinfo(
@@ -53,7 +53,7 @@ impl<'pd, 'ctx, 'scq, 'rcq, 'srq> Default for CmIdBuilder<'pd, 'ctx, 'scq, 'rcq,
 impl<'pd, 'ctx, 'scq, 'rcq, 'srq> CmIdBuilder<'pd, 'ctx, 'scq, 'rcq, 'srq> {
     pub fn new() -> Self {
         CmIdBuilder {
-            handle: net::CmId(uapi::Handle::INVALID),
+            handle: net::CmId(phoenix_api::Handle::INVALID),
             pd: None,
             qp_init_attr: Default::default(),
         }

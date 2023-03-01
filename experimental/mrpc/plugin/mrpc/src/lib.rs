@@ -32,9 +32,9 @@ pub(crate) enum Error {
     MarshalLibBuilder(#[from] builder::Error),
 }
 
-impl From<Error> for uapi::Error {
+impl From<Error> for phoenix_api::Error {
     fn from(other: Error) -> Self {
-        uapi::Error::Generic(other.to_string())
+        phoenix_api::Error::Generic(other.to_string())
     }
 }
 

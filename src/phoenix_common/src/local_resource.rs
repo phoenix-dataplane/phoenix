@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use fnv::FnvHashMap as HashMap;
 
-use uapi::Handle;
+use phoenix_api::Handle;
 
 use super::resource::Error;
 

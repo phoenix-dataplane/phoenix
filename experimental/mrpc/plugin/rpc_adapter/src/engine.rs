@@ -16,13 +16,13 @@ use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use phoenix_mrpc::unpack::UnpackFromSgE;
 use phoenix_salloc::state::State as SallocState;
 use transport_rdma::ops::Ops;
-use uapi::engine::SchedulingMode;
-use uapi::net;
-use uapi::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
-use uapi::{AsHandle, Handle};
-use uapi_mrpc::cmd;
-use uapi_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
-use uapi_rpc_adapter::control_plane;
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::net;
+use phoenix_api::rpc::{MessageMeta, RpcId, RpcMsgType, TransportStatus};
+use phoenix_api::{AsHandle, Handle};
+use phoenix_api_mrpc::cmd;
+use phoenix_api_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
+use phoenix_api_rpc_adapter::control_plane;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,

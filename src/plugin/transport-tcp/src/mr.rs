@@ -6,8 +6,8 @@ use memfd::{Memfd, MemfdOptions};
 use memmap_fixed::MmapFixed;
 use thiserror::Error;
 
-use uapi::buf::Range;
-use uapi::{AsHandle, Handle};
+use phoenix_api::buf::Range;
+use phoenix_api::{AsHandle, Handle};
 
 static GLOBAL_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 

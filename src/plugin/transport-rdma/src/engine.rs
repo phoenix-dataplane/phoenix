@@ -8,11 +8,11 @@ use std::slice;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use uapi::engine::SchedulingMode;
-use uapi::net;
-use uapi::net::returned;
-use uapi::transport::rdma::{cmd, dp};
-use uapi::{AsHandle, Handle};
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::net;
+use phoenix_api::net::returned;
+use phoenix_api::transport::rdma::{cmd, dp};
+use phoenix_api::{AsHandle, Handle};
 
 // use rdma::ibv;
 use rdma::rdmacm;

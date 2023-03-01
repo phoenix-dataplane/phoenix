@@ -1,7 +1,7 @@
 use std::ptr::Unique;
 
 use mrpc_marshal::{SgE, UnmarshalError};
-use uapi::rpc::MessageMeta;
+use phoenix_api::rpc::MessageMeta;
 
 pub trait UnpackFromSgE: Sized {
     /// # Safety

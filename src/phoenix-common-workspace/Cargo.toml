@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 # hack: these following features are manually enabled
-uapi = { workspace = true, features = ["mrpc", "salloc", "transport"] }
+phoenix-api = { workspace = true, features = ["mrpc", "salloc", "transport"] }
 ipc = { workspace = true, features = ["all"] }
 
 futures-core = { workspace = true, features = ["default"] }

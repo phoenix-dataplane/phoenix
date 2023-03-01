@@ -8,7 +8,7 @@ edition = "2021"
 # crate-type = ["dylib", "rlib"]
 
 [dependencies]
-uapi = { workspace = true, features = ["transport"] }
+phoenix-api = { workspace = true, features = ["transport"] }
 ipc.workspace = true
 utils.workspace = true
 

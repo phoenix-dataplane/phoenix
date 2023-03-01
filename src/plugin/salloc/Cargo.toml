@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-uapi = { workspace = true, features = ["salloc"] }
+phoenix-api = { workspace = true, features = ["salloc"] }
 ipc.workspace = true
 mmap.workspace = true
 phoenix_common.workspace = true

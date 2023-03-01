@@ -6,8 +6,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use shm::ptr::ShmPtr;
-use uapi::rpc::{CallId, MessageErased, RpcId, Token};
-use uapi_mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
+use phoenix_api::rpc::{CallId, MessageErased, RpcId, Token};
+use phoenix_api_mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
 
 use crate::ReadHeap;
 use crate::MRPC_CTX;

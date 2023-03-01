@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-uapi.workspace = true
+phoenix-api.workspace = true
 ipc.workspace = true
 phoenix_common.workspace = true
 

@@ -5,7 +5,7 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use uapi::salloc::cmd;
+use phoenix_api::salloc::cmd;
 
 use super::module::CustomerType;
 use super::region::SharedRegion;

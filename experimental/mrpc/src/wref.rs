@@ -4,7 +4,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use shm::ptr::ShmNonNull;
-use uapi::rpc::Token;
+use phoenix_api::rpc::Token;
 
 use crate::alloc::Box as ShmBox;
 use crate::stub::RpcData;

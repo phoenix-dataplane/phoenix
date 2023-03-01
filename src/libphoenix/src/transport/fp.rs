@@ -3,8 +3,8 @@ use std::mem;
 use std::slice::SliceIndex;
 use std::sync::atomic::Ordering;
 
-use uapi::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
-use uapi::{buf, net};
+use phoenix_api::transport::rdma::dp::{Completion, WorkRequest, WorkRequestSlot};
+use phoenix_api::{buf, net};
 
 use crate::transport::{Context, Error, CQ_BUFFERS, KL_CTX};
 

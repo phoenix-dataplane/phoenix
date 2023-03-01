@@ -8,8 +8,8 @@ use fnv::FnvBuildHasher;
 use nix::unistd::Pid;
 
 use mrpc_marshal::SgList;
-use uapi::rpc::CallId;
-use uapi::AsHandle;
+use phoenix_api::rpc::CallId;
+use phoenix_api::AsHandle;
 
 use phoenix_salloc::region::AddressMediator;
 
@@ -78,7 +78,7 @@ impl Shared {
 
 #[derive(Debug)]
 pub(crate) struct WrContext {
-    pub(crate) conn_id: uapi::Handle,
+    pub(crate) conn_id: phoenix_api::Handle,
     pub(crate) buffer_addr: usize,
 }
 
@@ -94,7 +94,7 @@ pub(crate) struct RecvContext {
     // buffer for recevied sges
     pub(crate) sg_list: SgList,
     // recv mrs that received sges are on
-    pub(crate) recv_buffer_handles: Vec<uapi::Handle>,
+    pub(crate) recv_buffer_handles: Vec<phoenix_api::Handle>,
 }
 
 #[derive(Debug)]

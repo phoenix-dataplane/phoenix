@@ -4,7 +4,7 @@ use std::ptr::Unique;
 
 use fnv::FnvHashMap as HashMap;
 
-use uapi::rpc::{MessageMeta, RpcId};
+use phoenix_api::rpc::{MessageMeta, RpcId};
 
 use crate::resource::Error as ResourceError;
 

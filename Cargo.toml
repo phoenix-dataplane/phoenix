@@ -2,9 +2,9 @@
 members = [
   "src/experimental",
   # the API for user app
-  "src/uapi",
-  "src/uapi/salloc",
-  "src/uapi/transport",
+  "src/phoenix-api",
+  "src/phoenix-api/salloc",
+  "src/phoenix-api/transport",
   "src/mmap",
   "src/rdma",
   "src/utils",
@@ -39,7 +39,7 @@ exclude = [
 ]
 
 [workspace.dependencies]
-uapi = { path = "src/uapi" }
+phoenix-api = { path = "src/phoenix-api" }
 mmap = { path = "src/mmap" }
 rdma = { path = "src/rdma" }
 utils = { path = "src/utils" }

@@ -8,8 +8,8 @@ use anyhow::{anyhow, Result};
 use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
-use uapi::rpc::{RpcId, TransportStatus};
-use uapi_policy_hotel_acl::control_plane;
+use phoenix_api::rpc::{RpcId, TransportStatus};
+use phoenix_api_policy_hotel_acl::control_plane;
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;

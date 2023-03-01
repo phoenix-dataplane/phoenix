@@ -8,15 +8,15 @@ use std::slice;
 use phoenix_common::log;
 use rdma::mr::OdpMemoryRegion;
 use rdma::rdmacm;
-use uapi::net;
-use uapi::net::returned;
-use uapi::{AsHandle, Handle};
+use phoenix_api::net;
+use phoenix_api::net::returned;
+use phoenix_api::{AsHandle, Handle};
 
 use super::{get_ops, Error, FromBorrow};
 
 // Re-exports
-pub use uapi::net::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
-pub use uapi::net::{QpCapability, QpType, RemoteKey};
+pub use phoenix_api::net::{AccessFlags, SendFlags, WcFlags, WcOpcode, WcStatus, WorkCompletion};
+pub use phoenix_api::net::{QpCapability, QpType, RemoteKey};
 
 pub(crate) fn get_default_verbs_contexts() -> Result<Vec<VerbsContext>, Error> {
     let ctx_list = get_ops().get_default_contexts()?;

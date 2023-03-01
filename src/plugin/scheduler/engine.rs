@@ -20,9 +20,9 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 use std::{mem, ptr};
-use uapi::engine::SchedulingMode;
-use uapi::rpc::{ImmFlags, RpcId, TransportStatus};
-use uapi::Handle;
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::rpc::{ImmFlags, RpcId, TransportStatus};
+use phoenix_api::Handle;
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);
@@ -236,8 +236,8 @@ impl BufferPool {
     }
 
     #[allow(unused)]
-    fn get_range_handle(&self, handle: usize) -> uapi::buf::Range {
-        uapi::buf::Range {
+    fn get_range_handle(&self, handle: usize) -> phoenix_api::buf::Range {
+        phoenix_api::buf::Range {
             offset: unsafe { self.buf.as_ptr().offset(handle as isize) } as u64,
             len: PAGE_SIZE as u64,
         }
@@ -591,7 +591,7 @@ impl SchedulerEngine {
                             });
                             temp_arr[cursor].write(RawRdmaMsgTx {
                                 mr: prev.mr,
-                                range: uapi::buf::Range { offset: 0, len: 1 }, // should be examined later
+                                range: phoenix_api::buf::Range { offset: 0, len: 1 }, // should be examined later
                                 rpc_id,
                             });
                             buffer.copy_in(

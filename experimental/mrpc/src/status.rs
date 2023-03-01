@@ -2,7 +2,7 @@
 use std::error::Error;
 use std::fmt;
 
-use uapi::rpc::TransportStatus;
+use phoenix_api::rpc::TransportStatus;
 
 /// A gRPC status describing the result of an RPC call.
 ///

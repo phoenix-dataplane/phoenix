@@ -10,7 +10,7 @@ bindgen.workspace = true
 cc.workspace = true
 
 [dependencies]
-uapi = { workspace = true, optional = true }
+phoenix-api = { workspace = true, optional = true }
 
 thiserror.workspace = true
 log.workspace = true
@@ -26,4 +26,4 @@ lazy_static = { workspace = true, optional = true }
 nix = { workspace = true, default-features = false, features = ["socket"] }
 
 [features]
-phoenix = ["dep:uapi", "dep:serde", "dep:bincode", "dep:mmap", "dep:spin", "dep:lazy_static"]
+phoenix = ["dep:phoenix-api", "dep:serde", "dep:bincode", "dep:mmap", "dep:spin", "dep:lazy_static"]
