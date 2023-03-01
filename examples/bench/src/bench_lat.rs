@@ -1,5 +1,5 @@
 use clap::Parser;
-use libphoenix::Error;
+use phoenix_syscalls::Error;
 
 use bench::util::{Context, Opts, Test, Verb};
 

@@ -568,7 +568,7 @@ impl TransportEngine {
                 // NOTE(cjr): The correctness of the following code extremely depends on the memory
                 // layout. It must be carefully checked.
                 //
-                // This send must be successful because the libphoenix uses an outstanding flag to
+                // This send must be successful because the phoenix_syscalls uses an outstanding flag to
                 // reduce the busy polling from the user appliation. If the shared memory cq is
                 // full of completions from cq A, and the shared memory wq only has one poll_cq,
                 // and the poll_cq is not really executed because the shmcq is full. Then

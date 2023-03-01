@@ -15,7 +15,7 @@ phoenix-api = { workspace = true, features = ["mrpc"] }
 ipc = { workspace = true, features = ["customer"] }
 shm = { workspace = true, features = ["mrpc"] }
 mmap.workspace = true
-libphoenix.workspace = true
+phoenix-syscalls.workspace = true
 shmalloc.workspace = true
 
 minstant = { workspace = true, optional = true }
@@ -90,7 +90,7 @@ prost = { path = "3rdparty/prost" }
 prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
 
-libphoenix = { path = "../../src/libphoenix" }
+phoenix-syscalls = { path = "../../src/phoenix-syscalls" }
 phoenix-api = { path = "../../src/phoenix-api" }
 ipc = { path = "../../src/ipc" }
 mmap = { path = "../../src/mmap" }

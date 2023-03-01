@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::util::{handshake, print_lat, Context};
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
-use libphoenix::{cm, Error};
+use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
+use phoenix_syscalls::{cm, Error};
 
 pub fn run_client(ctx: &Context) -> Result<(), Error> {
     let mut send_flags = SendFlags::empty();
@@ -55,7 +55,7 @@ pub fn run_server(ctx: &Context) -> Result<(), Error> {
     }
     send_flags |= SendFlags::SIGNALED;
 
-    let listener = libphoenix::cm::CmIdListener::bind((ctx.opt.ip.to_owned(), ctx.opt.port))
+    let listener = phoenix_syscalls::cm::CmIdListener::bind((ctx.opt.ip.to_owned(), ctx.opt.port))
         .expect("Listener bind failed");
     eprintln!("listen_id created");
 

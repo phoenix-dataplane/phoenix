@@ -17,14 +17,14 @@ use std::io;
 use thiserror::Error;
 
 use ipc::service::ShmService;
-use libphoenix::_rx_recv_impl as rx_recv_impl;
-use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 pub use phoenix_api::engine::SchedulingHint;
 use phoenix_api::Handle;
 use phoenix_api_mrpc::control_plane::Setting;
 use phoenix_api_mrpc::{cmd, dp};
+use phoenix_syscalls::_rx_recv_impl as rx_recv_impl;
+use phoenix_syscalls::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
-pub use libphoenix;
+pub use phoenix_syscalls;
 
 pub mod rheap;
 pub use rheap::ReadHeap;

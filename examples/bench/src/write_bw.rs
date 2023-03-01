@@ -3,8 +3,8 @@ use std::thread;
 use std::time::Instant;
 
 use crate::util::{print_bw, Context, CTX_POLL_BATCH};
-use libphoenix::verbs::{CompletionQueue, MemoryRegion, RemoteKey, SendFlags, VerbsContext};
-use libphoenix::{cm, verbs, Error};
+use phoenix_syscalls::verbs::{CompletionQueue, MemoryRegion, RemoteKey, SendFlags, VerbsContext};
+use phoenix_syscalls::{cm, verbs, Error};
 
 #[derive(Debug)]
 struct Channel {
@@ -123,14 +123,16 @@ fn run_client_thread(tid: usize, server_tid: usize, ctx: Context) -> Result<(), 
     let nic_index = tid % num_nics;
 
     // Notify the backend our choice of NIC
-    let mut setting = libphoenix::transport::current_setting();
+    let mut setting = phoenix_syscalls::transport::current_setting();
     setting.nic_index = nic_index;
-    libphoenix::transport::set(&setting);
+    phoenix_syscalls::transport::set(&setting);
 
-    libphoenix::transport::set_schedulint_hint(&libphoenix::transport::SchedulingHint {
-        mode: Default::default(),
-        numa_node_affinity: Some((tid % num_numa_nodes) as u8),
-    });
+    phoenix_syscalls::transport::set_schedulint_hint(
+        &phoenix_syscalls::transport::SchedulingHint {
+            mode: Default::default(),
+            numa_node_affinity: Some((tid % num_numa_nodes) as u8),
+        },
+    );
 
     // TODO(cjr): update this
     let connects = ["rdma0.danyang-06", "rdma1.danyang-06"];
@@ -255,14 +257,16 @@ fn run_server_thread(tid: usize, ctx: Context) -> Result<(), Error> {
     let nic_index = tid % num_nics;
 
     // Notify the backend our choice of NIC
-    let mut setting = libphoenix::transport::current_setting();
+    let mut setting = phoenix_syscalls::transport::current_setting();
     setting.nic_index = nic_index;
-    libphoenix::transport::set(&setting);
+    phoenix_syscalls::transport::set(&setting);
 
-    libphoenix::transport::set_schedulint_hint(&libphoenix::transport::SchedulingHint {
-        mode: Default::default(),
-        numa_node_affinity: Some((tid % num_numa_nodes) as u8),
-    });
+    phoenix_syscalls::transport::set_schedulint_hint(
+        &phoenix_syscalls::transport::SchedulingHint {
+            mode: Default::default(),
+            numa_node_affinity: Some((tid % num_numa_nodes) as u8),
+        },
+    );
 
     // Create a global CQ
     let cq = VerbsContext::default_verbs_contexts()[nic_index].create_cq(65536, 0)?;

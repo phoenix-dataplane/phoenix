@@ -23,7 +23,7 @@ members = [
   # the products
   "src/phoenixos",
   "src/phoenixctl",
-  "src/libphoenix",
+  "src/phoenix-syscalls",
   "benchmark",
   # examples
   "examples/hello",
@@ -46,7 +46,7 @@ utils = { path = "src/utils" }
 shm = { path = "src/shm" }
 ipc = { path = "src/ipc" }
 slabmalloc = { path = "src/slabmalloc" }
-libphoenix = { path = "src/libphoenix" }
+phoenix-syscalls = { path = "src/phoenix-syscalls" }
 shmalloc = { path = "src/shm/shmalloc" }
 phoenix_common = { path = "src/phoenix_common" }
 phoenix-common-workspace = { path = "src/phoenix-common-workspace" }

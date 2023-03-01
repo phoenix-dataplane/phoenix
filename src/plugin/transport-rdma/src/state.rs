@@ -9,11 +9,11 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use nix::unistd::Pid;
 
+use phoenix_api::net;
+use phoenix_api::{AsHandle, Handle};
 use rdma::ibv;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
-use phoenix_api::net;
-use phoenix_api::{AsHandle, Handle};
 
 use phoenix_common::resource::{ResourceSlab, ResourceTable};
 use phoenix_common::state_mgr::ProcessShared;

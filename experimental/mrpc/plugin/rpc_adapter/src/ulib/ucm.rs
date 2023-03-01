@@ -2,10 +2,10 @@ use std::any::Any;
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use phoenix_common::log;
-use rdma::rdmacm;
 use phoenix_api::net;
 use phoenix_api::{AsHandle, Handle};
+use phoenix_common::log;
+use rdma::rdmacm;
 
 use super::get_ops;
 use super::{uverbs, Error, FromBorrow};
@@ -256,7 +256,7 @@ impl Drop for DropCmId {
     }
 }
 
-// COMMENT(cjr): here we remove some functionalities of the CmIdListener from the libphoenix so that
+// COMMENT(cjr): here we remove some functionalities of the CmIdListener from the phoenix_syscalls so that
 // the 5 lifetime generices does not need to propagate.
 pub(crate) struct CmIdListener {
     pub(crate) handle: net::CmId,

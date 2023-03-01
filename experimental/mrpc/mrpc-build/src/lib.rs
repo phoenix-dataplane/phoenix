@@ -8,7 +8,7 @@
 //! ```toml
 //! [dependencies]
 //! # TODO(cjr): move mrpc to a separate crate, low priority
-//! libphoenix = { path = <path-to-libphoenix>, version = <libphoenix-version> }
+//! phoenix-syscalls = { path = <path-to-phoenix-syscalls>, version = <phoenix-syscalls-version> }
 //! prost = { patht = <path-to-custom-prost>, features = ["mrpc"] }
 //!
 //! [build-dependencies]

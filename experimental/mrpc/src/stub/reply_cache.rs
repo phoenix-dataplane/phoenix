@@ -1,5 +1,5 @@
-use thiserror::Error;
 use phoenix_api::rpc::{CallId, MessageErased, TransportStatus};
+use thiserror::Error;
 
 use slab::Slab;
 

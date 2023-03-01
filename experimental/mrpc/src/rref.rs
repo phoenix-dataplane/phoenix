@@ -5,9 +5,9 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use shm::ptr::ShmPtr;
 use phoenix_api::rpc::{CallId, MessageErased, RpcId, Token};
 use phoenix_api_mrpc::dp::{WorkRequest, RECV_RECLAIM_BS};
+use shm::ptr::ShmPtr;
 
 use crate::ReadHeap;
 use crate::MRPC_CTX;

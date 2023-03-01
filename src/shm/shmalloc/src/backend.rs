@@ -6,7 +6,7 @@ use ipc::service::ShmService;
 use phoenix_api::engine::SchedulingHint;
 use phoenix_api::salloc::{cmd, dp};
 
-use libphoenix::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
+use phoenix_syscalls::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 
 thread_local! {
     /// Initialization is dynamically performed on the first call to with within a thread.

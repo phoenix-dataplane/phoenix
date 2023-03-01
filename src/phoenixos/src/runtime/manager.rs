@@ -13,10 +13,10 @@ use crc32fast::Hasher as Crc32Hasher;
 use dashmap::DashMap;
 use nix::unistd::Pid;
 
+use phoenix_api::engine::{SchedulingHint, SchedulingMode};
 use phoenix_common::engine::EngineType;
 use phoenix_common::module::Service;
 use phoenix_common::storage::ResourceCollection;
-use phoenix_api::engine::{SchedulingHint, SchedulingMode};
 
 use super::affinity::CoreMask;
 use super::container::EngineContainer;

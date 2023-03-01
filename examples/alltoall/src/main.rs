@@ -9,8 +9,8 @@ use std::time;
 use arg_enum_proc_macro::ArgEnum;
 use clap::Parser;
 
-use libphoenix::cm;
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
+use phoenix_syscalls::cm;
+use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
 
 #[derive(ArgEnum, Debug, Clone, Copy)]
 pub enum Mode {
@@ -166,7 +166,7 @@ impl Communicator {
 
                 match pre_id.connect(None) {
                     Ok(id) => break (id, recv_mr),
-                    Err(libphoenix::Error::Connect(e)) => {
+                    Err(phoenix_syscalls::Error::Connect(e)) => {
                         eprintln!("connect error: {}, connect retrying...", e);
                         thread::sleep(time::Duration::from_millis(100));
                         retry += 1;

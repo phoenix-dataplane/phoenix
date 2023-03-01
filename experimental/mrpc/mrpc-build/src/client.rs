@@ -60,7 +60,7 @@ pub fn generate<T: Service>(
                     // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
                     // cmid communicates directly to the transport engine. you need to pass your raw rpc
                     // request/response to/from the rpc engine rather than the transport engine.
-                    // let stub = libphoenix::mrpc::cm::MrpcStub::set_transport(libphoenix::mrpc::cm::TransportType::Rdma)?;
+                    // let stub = phoenix_syscalls::mrpc::cm::MrpcStub::set_transport(phoenix_syscalls::mrpc::cm::TransportType::Rdma)?;
                     Self::update_protos()?;
                     let stub = ClientStub::connect(dst).unwrap();
                     Ok(Self {

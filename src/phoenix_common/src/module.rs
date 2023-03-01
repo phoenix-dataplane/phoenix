@@ -4,8 +4,8 @@ use std::{os::unix::ucred::UCred, path::Path};
 use dashmap::DashMap;
 use ipc::unix::DomainSocket;
 use nix::unistd::Pid;
-pub use semver::Version;
 use phoenix_api::engine::SchedulingMode;
+pub use semver::Version;
 
 use crate::engine::datapath::node::{ChannelDescriptor, DataPathNode};
 use crate::engine::{Engine, EnginePair, EngineType};

@@ -1,10 +1,10 @@
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
+use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
 
 const SERVER_ADDR: &str = "192.168.211.194";
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let builder = libphoenix::cm::CmId::resolve_route((SERVER_ADDR, SERVER_PORT))
+    let builder = phoenix_syscalls::cm::CmId::resolve_route((SERVER_ADDR, SERVER_PORT))
         .expect("Route resolve failed!");
     eprintln!("Route resolved");
 

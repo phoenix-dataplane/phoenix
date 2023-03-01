@@ -6,13 +6,13 @@ use std::slice;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use phoenix_api::net;
+use phoenix_api::net::returned;
+use phoenix_api::{AsHandle, Handle};
 use rdma::ibv;
 use rdma::mr::MemoryRegion;
 use rdma::rdmacm;
 use rdma::rdmacm::CmId;
-use phoenix_api::net;
-use phoenix_api::net::returned;
-use phoenix_api::{AsHandle, Handle};
 
 use phoenix_common::engine::future;
 use phoenix_common::log;
@@ -347,7 +347,10 @@ impl Ops {
         Ok((channel_handle, channel))
     }
 
-    pub fn create_id(&self, port_space: phoenix_api::addrinfo::PortSpace) -> Result<returned::CmId> {
+    pub fn create_id(
+        &self,
+        port_space: phoenix_api::addrinfo::PortSpace,
+    ) -> Result<returned::CmId> {
         log::debug!("CreateId, port_space: {:?}", port_space);
 
         // prepare an event channel

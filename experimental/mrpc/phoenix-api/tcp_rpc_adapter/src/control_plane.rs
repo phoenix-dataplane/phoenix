@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
-use serde::{Deserialize, Serialize};
 use phoenix_api::Handle;
+use serde::{Deserialize, Serialize};
 
 type IResult<T> = Result<T, phoenix_api::Error>;
 

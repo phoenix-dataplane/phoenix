@@ -1,10 +1,10 @@
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
+use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
 
 const SERVER_PORT: u16 = 5000;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener =
-        libphoenix::cm::CmIdListener::bind(("0.0.0.0", SERVER_PORT)).expect("Listener bind failed");
+    let listener = phoenix_syscalls::cm::CmIdListener::bind(("0.0.0.0", SERVER_PORT))
+        .expect("Listener bind failed");
     eprintln!("listen_id created");
 
     let builder = listener.get_request().expect("Get request failed!");

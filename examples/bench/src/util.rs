@@ -1,9 +1,9 @@
 use clap::Parser;
 use std::time::{Duration, Instant};
 
-use libphoenix::verbs::{RemoteKey, SendFlags, WcStatus};
-use libphoenix::Error;
-use libphoenix::{cm, verbs};
+use phoenix_syscalls::verbs::{RemoteKey, SendFlags, WcStatus};
+use phoenix_syscalls::Error;
+use phoenix_syscalls::{cm, verbs};
 
 pub const CTX_POLL_BATCH: usize = 16;
 

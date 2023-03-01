@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 mmap.workspace = true
 slabmalloc.workspace = true
-libphoenix.workspace = true
+phoenix-syscalls.workspace = true
 phoenix-api = { workspace = true, features = ["salloc"] }
 ipc.workspace = true
 shm.workspace = true

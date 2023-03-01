@@ -12,10 +12,6 @@ use futures::future::BoxFuture;
 use slab::Slab;
 
 use mrpc_marshal::{ExcavateContext, SgE, SgList};
-use phoenix_mrpc::unpack::UnpackFromSgE;
-use phoenix_salloc::state::State as SallocState;
-use transport_tcp::ops::Ops;
-use transport_tcp::ApiError;
 use phoenix_api::buf::Range;
 use phoenix_api::engine::SchedulingMode;
 use phoenix_api::net::{MappedAddrStatus, WcOpcode, WcStatus};
@@ -24,6 +20,10 @@ use phoenix_api::transport::tcp::dp::Completion;
 use phoenix_api::{AsHandle, Handle};
 use phoenix_api_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
 use phoenix_api_tcp_rpc_adapter::control_plane;
+use phoenix_mrpc::unpack::UnpackFromSgE;
+use phoenix_salloc::state::State as SallocState;
+use transport_tcp::ops::Ops;
+use transport_tcp::ApiError;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
@@ -740,7 +740,9 @@ impl TcpRpcAdapterEngine {
             Ok(req) => {
                 let result = self.process_cmd(&req);
                 match result {
-                    Ok(res) => self.cmd_tx.send(phoenix_api_mrpc::cmd::Completion(Ok(res)))?,
+                    Ok(res) => self
+                        .cmd_tx
+                        .send(phoenix_api_mrpc::cmd::Completion(Ok(res)))?,
                     Err(e) => self
                         .cmd_tx
                         .send(phoenix_api_mrpc::cmd::Completion(Err(e.into())))?,

@@ -5,12 +5,12 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::slice;
 
-use phoenix_common::log;
-use rdma::mr::OdpMemoryRegion;
-use rdma::rdmacm;
 use phoenix_api::net;
 use phoenix_api::net::returned;
 use phoenix_api::{AsHandle, Handle};
+use phoenix_common::log;
+use rdma::mr::OdpMemoryRegion;
+use rdma::rdmacm;
 
 use super::{get_ops, Error, FromBorrow};
 

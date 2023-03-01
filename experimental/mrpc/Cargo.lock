@@ -1104,24 +1104,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libphoenix"
-version = "0.1.0"
-dependencies = [
- "fnv",
- "ipc",
- "lazy_static",
- "libc",
- "memfd",
- "memmap2 0.5.7",
- "phoenix-api",
- "serde_json",
- "spin",
- "thiserror",
- "utils",
- "uuid",
-]
-
-[[package]]
 name = "link-cplusplus"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1358,13 +1340,13 @@ dependencies = [
  "lazy_static",
  "libc",
  "libnuma",
- "libphoenix",
  "log",
  "memfd",
  "minstant",
  "mmap",
  "phoenix-api",
  "phoenix-api-mrpc",
+ "phoenix-syscalls",
  "serde_json",
  "shm",
  "shmalloc",
@@ -1851,6 +1833,24 @@ dependencies = [
  "spin",
  "thiserror",
  "toml",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-syscalls"
+version = "0.1.0"
+dependencies = [
+ "fnv",
+ "ipc",
+ "lazy_static",
+ "libc",
+ "memfd",
+ "memmap2 0.5.7",
+ "phoenix-api",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "utils",
  "uuid",
 ]
 
@@ -2424,10 +2424,10 @@ version = "0.1.0"
 dependencies = [
  "ipc",
  "lazy_static",
- "libphoenix",
  "memfd",
  "mmap",
  "phoenix-api",
+ "phoenix-syscalls",
  "shm",
  "slabmalloc",
  "smol",

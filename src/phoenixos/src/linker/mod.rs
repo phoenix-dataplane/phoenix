@@ -442,40 +442,6 @@ fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize
 #[cfg(test)]
 mod tests {
     use super::*;
-    // #[test]
-    // fn test_linker() {
-    //     let workdir = "/tmp/tmp";
-    //     let mut linker = Linker::new(workdir.into()).unwrap();
-    //     println!("{:?}", std::env::current_dir());
-    //     let target_deps_dir = format!("{}/../../target/debug", env!("CARGO_MANIFEST_DIR"));
-    //     linker
-    //         .load_archive(
-    //             format!("{}/libmmap.rlib", target_deps_dir),
-    //             format!("{}/libmmap.d", target_deps_dir),
-    //         )
-    //         .unwrap();
-    //     let f_eprint = linker
-    //         .global_sym_table
-    //         .lookup_symbol_addr("_ZN3std2io5stdio7_eprint17h5f2ebd38f95a420bE")
-    //         .unwrap();
-    //     println!("f_eprint: {:0x?}", f_eprint);
-    //     println!("f_eprint: {:0x?}", unsafe {
-    //         std::slice::from_raw_parts(f_eprint as *const u8, 128)
-    //     });
-    //     let f_addr = linker
-    //         .global_sym_table
-    //         // .lookup_symbol_addr("_ZN4mmap16test_load_module17h8f26bf5d2a7b7653E")
-    //         .lookup_symbol_addr("test_load_module")
-    //         .unwrap();
-    //     println!("{:0x?}", f_addr);
-    //     println!("{:0x?}", unsafe {
-    //         std::slice::from_raw_parts(f_addr as *const u8, 128)
-    //     });
-    //     // std::thread::sleep(std::time::Duration::from_secs(10000));
-    //     let c = unsafe { (std::mem::transmute::<usize, fn(i32, i32) -> i32>(f_addr))(42, 1) };
-    //     println!("c = {}", c);
-    //     // let _f2_addr = mmap::test_load_module as usize;
-    // }
     #[test]
     fn test_linker2() {
         let workdir = "/tmp/tmp";

@@ -10,6 +10,9 @@ use anyhow::anyhow;
 use futures::future::BoxFuture;
 use ipc::RawRdmaMsgTx;
 use minstant::Instant;
+use phoenix_api::engine::SchedulingMode;
+use phoenix_api::rpc::{ImmFlags, RpcId, TransportStatus};
+use phoenix_api::Handle;
 use rdma::POST_BUF_LEN;
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
@@ -20,9 +23,6 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 use std::{mem, ptr};
-use phoenix_api::engine::SchedulingMode;
-use phoenix_api::rpc::{ImmFlags, RpcId, TransportStatus};
-use phoenix_api::Handle;
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct FlattenKey(u64);

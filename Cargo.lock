@@ -46,7 +46,7 @@ dependencies = [
  "anyhow",
  "arg_enum_proc_macro",
  "clap 4.1.6",
- "libphoenix",
+ "phoenix-syscalls",
 ]
 
 [[package]]
@@ -250,7 +250,7 @@ version = "0.1.0"
 dependencies = [
  "clap 4.1.6",
  "libnuma",
- "libphoenix",
+ "phoenix-syscalls",
  "scheduler",
 ]
 
@@ -1157,7 +1157,7 @@ checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
 name = "hello"
 version = "0.1.0"
 dependencies = [
- "libphoenix",
+ "phoenix-syscalls",
 ]
 
 [[package]]
@@ -1395,24 +1395,6 @@ checksum = "cf3c04e9d759ab6999ca6e4f4846f009188edecbe52d700483d9912919984ade"
 dependencies = [
  "bitflags 0.6.0",
  "libc",
-]
-
-[[package]]
-name = "libphoenix"
-version = "0.1.0"
-dependencies = [
- "fnv",
- "ipc",
- "lazy_static",
- "libc",
- "memfd",
- "memmap2 0.5.8",
- "phoenix-api",
- "serde_json",
- "spin",
- "thiserror",
- "utils",
- "uuid",
 ]
 
 [[package]]
@@ -2016,6 +1998,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-syscalls"
+version = "0.1.0"
+dependencies = [
+ "fnv",
+ "ipc",
+ "lazy_static",
+ "libc",
+ "memfd",
+ "memmap2 0.5.8",
+ "phoenix-api",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "utils",
+ "uuid",
+]
+
+[[package]]
 name = "phoenix-transport-rdma"
 version = "0.1.0"
 dependencies = [
@@ -2580,7 +2580,7 @@ name = "send_bw"
 version = "0.1.0"
 dependencies = [
  "clap 4.1.6",
- "libphoenix",
+ "phoenix-syscalls",
 ]
 
 [[package]]
@@ -2588,7 +2588,7 @@ name = "send_lat"
 version = "0.1.0"
 dependencies = [
  "clap 4.1.6",
- "libphoenix",
+ "phoenix-syscalls",
 ]
 
 [[package]]
@@ -2676,10 +2676,10 @@ version = "0.1.0"
 dependencies = [
  "ipc",
  "lazy_static",
- "libphoenix",
  "memfd",
  "mmap",
  "phoenix-api",
+ "phoenix-syscalls",
  "shm",
  "slabmalloc",
  "smol",

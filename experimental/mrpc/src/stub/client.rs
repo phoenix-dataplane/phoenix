@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use ipc::channel::{Receiver, TryRecvError};
-use libphoenix::_rx_recv_impl as rx_recv_impl;
 use phoenix_api::rpc::{CallId, MessageErased, MessageMeta, RpcId, RpcMsgType, TransportStatus};
 use phoenix_api::AsHandle;
 use phoenix_api_mrpc::cmd::{Command, CompletionKind};
 use phoenix_api_mrpc::dp;
+use phoenix_syscalls::_rx_recv_impl as rx_recv_impl;
 
 use super::conn::Connection;
 use super::reply_cache::ReplyCache;

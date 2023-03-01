@@ -2,8 +2,8 @@ use std::time;
 
 use clap::Parser;
 
-use libphoenix::cm;
-use libphoenix::verbs::{MemoryRegion, SendFlags, WcStatus};
+use phoenix_syscalls::cm;
+use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
 
 const SERVER_PORT: &str = "5000";
 
