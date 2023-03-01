@@ -20,4 +20,5 @@ log = { workspace = true, features = ["std"] }
 once_cell = { version = "1.17.1", features = ["default", "unstable"] }
 getrandom = { version = "0.2.8", features = ["js", "rdrand", "std"] }
 ahash = { version = "0.7.6", features = ["default"] }
-tokio = { workspace = true, features = ["full"] } # only sync is needed
+tokio = { workspace = true, features = ["full"] }
+tracing-core = { workspace = true, features = ["default"] }

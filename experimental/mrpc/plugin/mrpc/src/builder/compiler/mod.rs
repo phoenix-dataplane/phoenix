@@ -12,7 +12,7 @@ mod code_generator;
 const MRPC_DERIVE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-derive");
 const MRPC_MARSHAL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
 const SHM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/shm");
-const PHOENIX_API: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/phoenix_api");
+const PHOENIX_API: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/phoenix-api");
 const TOOLCHAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../../rust-toolchain"
