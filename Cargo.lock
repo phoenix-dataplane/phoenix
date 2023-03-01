@@ -1905,6 +1905,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-common-workspace"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.7.6",
+ "crossbeam-channel 0.5.6",
+ "crossbeam-epoch 0.9.14",
+ "crossbeam-utils 0.8.14",
+ "futures-core",
+ "getrandom 0.2.8",
+ "hashbrown 0.12.3",
+ "ipc",
+ "log",
+ "mio 0.8.5",
+ "once_cell",
+ "tokio",
+ "uapi",
+]
+
+[[package]]
 name = "phoenix-salloc"
 version = "0.1.0"
 dependencies = [
@@ -1990,26 +2009,17 @@ dependencies = [
 name = "phoenix_common"
 version = "0.1.0"
 dependencies = [
- "ahash 0.7.6",
  "anyhow",
  "crossbeam",
- "crossbeam-channel 0.5.6",
- "crossbeam-epoch 0.9.14",
- "crossbeam-utils 0.8.14",
  "dashmap",
  "fnv",
  "futures",
- "futures-core",
- "getrandom 0.2.8",
- "hashbrown 0.12.3",
  "ipc",
  "libnuma",
  "libnuma-sys",
- "log",
  "minstant",
- "mio 0.8.5",
  "nix 0.25.1",
- "once_cell",
+ "phoenix-common-workspace",
  "semver 1.0.14",
  "sharded-slab",
  "smallvec 1.10.0",
@@ -2017,7 +2027,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-core",
  "uapi",
  "uapi-mrpc",
 ]

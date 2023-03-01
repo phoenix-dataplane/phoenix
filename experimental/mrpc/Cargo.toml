@@ -39,7 +39,7 @@ spin.workspace = true
 
 [workspace]
 members = [
-  # products
+  # the products
   "mrpc-build",
   "mrpc-derive",
   "mrpc-marshal",
@@ -51,22 +51,15 @@ members = [
   "uapi/policy/ratelimit",
   "uapi/policy/qos",
   "uapi/policy/hotel-acl",
-  # plugins
+  # the pheonix plugins
   "plugin/mrpc",
-  # "plugin/mrpc/plugin",
   "plugin/rpc_adapter",
-  # "plugin/rpc_adapter/plugin",
-  # TODO(cjr): Add it back
   "plugin/tcp_rpc_adapter",
-  # "plugin/tcp_rpc_adapter/plugin",
-  # "plugin/policy/null",
-  # "plugin/policy/null/plugin",
-  # "plugin/policy/ratelimit",
-  # "plugin/policy/ratelimit/plugin",
-  # "plugin/policy/qos",
-  # "plugin/policy/qos/plugin",
-  # "plugin/policy/hotel-acl",
-  # "plugin/policy/hotel-acl/plugin",
+  # TODO(cjr): Add them back
+  "plugin/policy/null",
+  "plugin/policy/ratelimit",
+  "plugin/policy/qos",
+  "plugin/policy/hotel-acl",
   # examples
   "examples/rpc_hello",
   "examples/rpc_bench",
@@ -98,15 +91,12 @@ prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
 
 libphoenix = { path = "../../src/libphoenix" }
-# uapi = { path = "../../src/uapi", extern = "../../target/release/deps/libuapi.so", search = "../../target/release/deps" }
 uapi = { path = "../../src/uapi" }
 ipc = { path = "../../src/ipc" }
 mmap = { path = "../../src/mmap" }
 rdma = { path = "../../src/rdma" }
 shm = { path = "../../src/shm" }
 shmalloc = { path = "../../src/shm/shmalloc" }
-# phoenix = { path = "../../src/phoenix", prebuilt = true, search = "../../target/release/deps" }
-# phoenix = { path = "../../src/phoenix", extern = "../../target/release/deps/libphoenix.so", search = "../../target/release/deps" }
 phoenix_common = { path = "../../src/phoenix_common" }
 transport-rdma = { path = "../../src/plugin/transport-rdma", package = "phoenix-transport-rdma" }
 transport-tcp = { path = "../../src/plugin/transport-tcp", package = "phoenix-transport-tcp" }

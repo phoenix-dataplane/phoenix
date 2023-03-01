@@ -4,10 +4,10 @@ use anyhow::{bail, Result};
 use minstant::Instant;
 use nix::unistd::Pid;
 
-use phoenix::addon::{PhoenixAddon, Version};
-use phoenix::engine::datapath::DataPathNode;
-use phoenix::engine::{Engine, EngineType};
-use phoenix::storage::ResourceCollection;
+use phoenix_common::addon::{PhoenixAddon, Version};
+use phoenix_common::engine::datapath::DataPathNode;
+use phoenix_common::engine::{Engine, EngineType};
+use phoenix_common::storage::ResourceCollection;
 
 use super::engine::RateLimitEngine;
 use crate::config::RateLimitConfig;

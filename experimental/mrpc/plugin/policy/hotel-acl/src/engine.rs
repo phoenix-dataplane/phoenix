@@ -11,14 +11,14 @@ use futures::future::BoxFuture;
 use uapi::rpc::{RpcId, TransportStatus};
 use uapi_policy_hotel_acl::control_plane;
 
-use phoenix::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
-use phoenix::engine::datapath::node::DataPathNode;
-use phoenix::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
-use phoenix::envelop::ResourceDowncast;
-use phoenix::impl_vertex_for_engine;
-use phoenix::log;
-use phoenix::module::Version;
-use phoenix::storage::{ResourceCollection, SharedStorage};
+use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use phoenix_common::engine::datapath::node::DataPathNode;
+use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
+use phoenix_common::envelop::ResourceDowncast;
+use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::log;
+use phoenix_common::module::Version;
+use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
 use crate::config::HotelAclConfig;
@@ -166,7 +166,7 @@ fn should_block(req: &reservation::Request) -> bool {
 
 impl HotelAclEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
-        use phoenix::engine::datapath::TryRecvError;
+        use phoenix_common::engine::datapath::TryRecvError;
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {

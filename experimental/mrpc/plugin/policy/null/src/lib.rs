@@ -2,8 +2,7 @@
 
 use thiserror::Error;
 
-pub use phoenix::addon::PhoenixAddon;
-pub use phoenix::plugin::InitFnResult;
+pub use phoenix_common::{InitFnResult, PhoenixAddon};
 
 pub mod config;
 pub(crate) mod engine;
@@ -15,9 +14,19 @@ pub(crate) enum DatapathError {
     InternalQueueSend,
 }
 
-use phoenix::engine::datapath::SendError;
+use phoenix_common::engine::datapath::SendError;
 impl<T> From<SendError<T>> for DatapathError {
     fn from(_other: SendError<T>) -> Self {
         DatapathError::InternalQueueSend
     }
+}
+
+use crate::config::NullConfig;
+use crate::module::NullAddon;
+
+#[no_mangle]
+pub fn init_addon(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>> {
+    let config = NullConfig::new(config_string)?;
+    let addon = NullAddon::new(config);
+    Ok(Box::new(addon))
 }
