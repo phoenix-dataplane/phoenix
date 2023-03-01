@@ -227,7 +227,7 @@ use Status::Progress;
 impl Engine for TcpRpcAdapterEngine {
     fn description(self: Pin<&Self>) -> String {
         format!(
-            "RpcAdapterEngine, user: {:?}",
+            "TcpRpcAdapterEngine, user: {:?}",
             self.get_ref().state.shared.pid
         )
     }

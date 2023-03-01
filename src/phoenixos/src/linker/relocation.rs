@@ -24,7 +24,7 @@ pub(crate) fn do_relocation(
             let mut sym_mod_id = 0;
             let P = sec.address + off;
             let A = rela.addend();
-            let mut rela_size = rela.size();
+            // let mut rela_size = rela.size();
             let S = match rela.target() {
                 RelocationTarget::Symbol(sym_index) => {
                     cur_sym_index = Some(sym_index);
@@ -45,7 +45,6 @@ pub(crate) fn do_relocation(
                             let ti = global_sym_table
                                 .lookup_tls_symbol(&sym.name)
                                 .unwrap_or_else(|| panic!("missing TLS symbol {}", sym.name));
-                            rela_size = 32;
                             sym_mod_id = ti.mod_id.0;
                             ti.offset as u64
                         } else {
@@ -66,7 +65,6 @@ pub(crate) fn do_relocation(
                             // local TLS symbols, the logic should be similar to
                             // SymbolLookupTable::lookup_tls_symbol()
                             assert!(!sym.is_undefined, "sym: {:?}", sym);
-                            rela_size = 32;
                             sym_mod_id = sym.mod_id;
                         }
                         sym.address
@@ -81,7 +79,40 @@ pub(crate) fn do_relocation(
             let Image = image_addr as i64;
             let Section = sec.address as i64;
             let GotBase = extra_symbol_sec.get_base_address() as i64;
-            let value = match rela.kind() {
+
+            let (rela_kind, rela_size) = match rela.kind() {
+                RelocationKind::Absolute => (rela.kind(), rela.size()),
+                RelocationKind::Relative => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_PC64) => (RelocationKind::Relative, 64),
+                RelocationKind::Got => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_GOT64) => (RelocationKind::Got, 64),
+                RelocationKind::GotRelative => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_GOTPCREL64) => {
+                    (RelocationKind::GotRelative, 64)
+                }
+                RelocationKind::GotBaseRelative => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_GOTPC64) => {
+                    (RelocationKind::GotBaseRelative, 64)
+                }
+                RelocationKind::GotBaseOffset => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_GOTOFF64) => {
+                    (RelocationKind::GotBaseOffset, 64)
+                }
+                RelocationKind::PltRelative => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_PLTOFF64) => {
+                    (RelocationKind::PltRelative, 64)
+                }
+                RelocationKind::ImageOffset => (rela.kind(), rela.size()),
+                RelocationKind::SectionOffset => (rela.kind(), rela.size()),
+                RelocationKind::Elf(object::elf::R_X86_64_TLSGD) => (rela.kind(), 32),
+                RelocationKind::Elf(object::elf::R_X86_64_TLSLD) => (rela.kind(), 32),
+                RelocationKind::Elf(object::elf::R_X86_64_DTPOFF32) => (rela.kind(), 32),
+                RelocationKind::Elf(object::elf::R_X86_64_DTPOFF64) => (rela.kind(), 64),
+                RelocationKind::Elf(object::elf::R_X86_64_GOTPCRELX) => (rela.kind(), 32),
+                _ => panic!("Unknown relocation kind: {:?}", rela),
+            };
+
+            let value = match rela_kind {
                 RelocationKind::Absolute => S + A,
                 RelocationKind::Relative => S + A - P,
                 RelocationKind::Got => {
@@ -117,6 +148,7 @@ pub(crate) fn do_relocation(
                 RelocationKind::SectionOffset => S + A - Section,
                 RelocationKind::Elf(object::elf::R_X86_64_TLSGD) => {
                     // 19
+                    debug_assert_eq!(rela_size, 32);
                     let ti = TlsIndex {
                         mod_id: PhoenixModId(sym_mod_id),
                         offset: S as usize,
@@ -135,6 +167,7 @@ pub(crate) fn do_relocation(
                 }
                 RelocationKind::Elf(object::elf::R_X86_64_TLSLD) => {
                     // 20
+                    debug_assert_eq!(rela_size, 32);
                     let ti = TlsIndex {
                         mod_id: PhoenixModId(sym_mod_id),
                         offset: 0,
@@ -160,7 +193,7 @@ pub(crate) fn do_relocation(
                         .make_got_entry(S as usize, cur_sym_index.expect("sth wrong"))
                         as i64;
                     eprintln!("rela: {:?}, rela_size: {}", rela, rela_size);
-                    rela_size = 32;
+                    debug_assert_eq!(rela_size, 32);
                     G + A - P
                 }
                 _ => panic!("rela: {:?}", rela),

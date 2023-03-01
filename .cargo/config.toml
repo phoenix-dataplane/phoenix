@@ -16,6 +16,10 @@ rustflags = [
   # link all symbols in dependent crates even if they are not actually used (moved to phoenix/build.rs)
   "-C", "link-dead-code",
 
+  # employ no restriction on the addresses of the symbols and sizes of sections,
+  # as more and more plugins loaded, 2GB code and data size might be too restricted.
+  "-C", "code-model=large",
+
   # -Zbinary-dep-depinfo allows us to track dependencies of each rlib
   # "-Zunstable-options", "-Zbinary-dep-depinfo",
 ]

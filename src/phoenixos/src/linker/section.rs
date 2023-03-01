@@ -98,6 +98,9 @@ impl Section {
         } else if self.need_load() {
             let file_off = self.file_range.expect("impossible").0;
             self.address = unsafe { image_start.offset(file_off as isize) }.addr() as u64;
+            // if let Some((file_off, ..)) = self.file_range {
+            //    self.address = unsafe { image_start.offset(file_off as isize) }.addr() as u64;
+            // }
             // eprintln!(
             //     "section: {}, {:0x}, image_addr: {:0x}, file_off: {:0x}",
             //     self.name,
@@ -115,8 +118,18 @@ impl Section {
     // Allocate an offset for thread local variable
     pub(crate) fn alloc_tlv(&mut self, sym: &Symbol) -> u64 {
         assert!(self.used + sym.size <= self.size);
-        let ret = self.address + sym.size;
-        self.used += sym.size;
+        assert_eq!(sym.address, 0);
+        // here the `self.address` is is set to the offset into the tls_initimage.
+        let ret = self.address + self.used;
+        self.used += sym.size.next_multiple_of(8);
+        // println!(
+        //     "self.address: {}, ret: {}, sym.size: {}, sym.size_rounded: {}, self.used: {}",
+        //     self.address,
+        //     ret,
+        //     sym.size,
+        //     sym.size.next_multiple_of(8),
+        //     self.used
+        // );
         ret
     }
 }

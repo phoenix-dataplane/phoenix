@@ -145,7 +145,7 @@ impl SymbolLookupTable {
         Self::hack();
         let mut sym_table = HashMap::new();
         for sym in elf.symbols() {
-            if sym.is_undefined() || sym.is_local() {
+            if sym.is_undefined() || (sym.is_local() && sym.name() != Ok("_GLOBAL_OFFSET_TABLE_")) {
                 continue;
             }
             if sym.kind() == SymbolKind::Unknown {
@@ -176,7 +176,8 @@ impl SymbolLookupTable {
             Entry::Occupied(o) => {
                 log::trace!(
                     "found duplicated definition of symbol: {:?} vs {:?}, use the first one",
-                    o.get(), sym,
+                    o.get(),
+                    sym,
                 );
             }
         }

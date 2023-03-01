@@ -158,8 +158,8 @@ impl Linker {
         let phoenix_deps = Self::load_deps(dep_path)?;
         let crates_to_skip = phoenix_deps
             .into_iter()
-            .filter(|x| !x.ends_with("rlib"))
-            // .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
+            // .filter(|x| !x.ends_with("rlib"))
+            .filter(|x| x.contains(".rustup/toolchains") || !x.ends_with("rlib"))
             // .filter(|x| {
             //     x.contains("libstd")
             //         || x.contains("libcore")
@@ -182,7 +182,7 @@ impl Linker {
         let mut global_sym_table = SymbolLookupTable::new(&elf);
         for sym in global_sym_table.table.values_mut() {
             // normal symbol definitions
-            if sym.is_global && sym.is_definition {
+            if sym.is_definition {
                 sym.address = (sym.address as isize + runtime_offset) as u64;
             }
             // TLS symbol definitions
@@ -359,7 +359,7 @@ impl Linker {
             }
 
             if !dep.ends_with(".rlib") {
-                log::error!("unexpected dep: {}", dep);
+                log::warn!("unexpected dep: {}", dep);
                 continue;
             }
 

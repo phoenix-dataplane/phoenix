@@ -25,20 +25,24 @@ pub(crate) struct PhoenixModId(pub(crate) usize);
 
 impl PhoenixModId {
     /// The module is defined in the init binary.
+    #[inline]
     pub(crate) const fn is_init_exec(&self) -> bool {
         self.0 == PHOENIX_MOD_INIT_EXEC
     }
 
     /// The module is a dynamic binary, should ask __tls_get_addr to resolve for us.
+    #[inline]
     pub(crate) const fn is_dynamic_library(&self) -> bool {
         !self.is_init_exec() && self.0 < PHOENIX_MOD_BASE
     }
 
     /// The module is a phoenix plugin.
+    #[inline]
     pub(crate) const fn is_phoenix_plugin(&self) -> bool {
         self.0 >= PHOENIX_MOD_BASE
     }
 
+    #[inline]
     pub(crate) const fn is_valid(&self) -> bool {
         self.0 != PHOENIX_MOD_INVALID
     }
@@ -82,7 +86,7 @@ impl TlsInitImage {
 
         // Do the first pass to compute memsz, filesz, and maxalign
         for sec in sections.iter() {
-            let size = sec.size.next_multiple_of(sec.align.max(1)) as usize;
+            let size = sec.size.next_multiple_of(sec.align.max(8)) as usize;
             match sec.kind {
                 SectionKind::Tls => {
                     filesz += size;
@@ -124,7 +128,7 @@ impl TlsInitImage {
         let mut tdata_off = memsz - filesz;
         let mut tbss_off = 0;
         for sec in sections {
-            let size = sec.size.next_multiple_of(sec.align.max(1)) as usize;
+            let size = sec.size.next_multiple_of(sec.align.max(8)) as usize;
             match sec.kind {
                 SectionKind::Tls => {
                     mmap[tdata_off..tdata_off + size].copy_from_slice(unsafe {
@@ -176,9 +180,11 @@ type TlsBlock = Option<TlsBlockInner>;
 struct Dtv(Vec<TlsBlock>);
 
 impl Dtv {
+    #[inline]
     fn get_or_create(&mut self, ti: TlsIndex) -> &mut TlsBlock {
         let mod_id = ti.mod_id.0 - PHOENIX_MOD_BASE;
         if mod_id >= self.0.len() {
+            println!("trigger a resize, in Dtv::get_or_create, ti: {:?}", ti);
             self.0.resize_with(mod_id + 1, || None);
         }
 
@@ -188,6 +194,10 @@ impl Dtv {
             let data = LOADED_MODULES
                 .clone_tls_initimage(ti.mod_id.0)
                 .unwrap_or_else(|| panic!("No such mod_id: {} found", ti.mod_id.0));
+            println!(
+                "trigger a tls_initimage clone, in Dtv::get_or_create, ti: {:?}",
+                ti
+            );
 
             self.0[mod_id] = Some(TlsBlockInner { data });
         }
@@ -238,12 +248,15 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
     unsafe {
         asm!("mov {}, rdi", out(reg) tls_index_addr);
     }
+    // let start = minstant::Instant::now();
     DTV.with_borrow_mut(|dtv| {
         let tls_index: &TlsIndex = unsafe { &*(tls_index_addr as *const TlsIndex) };
         assert!(
             tls_index.mod_id.is_valid(),
-            "Invalid mod_id: {PHOENIX_MOD_INVALID}"
+            "Invalid mod_id: {}",
+            PHOENIX_MOD_INVALID
         );
+        // println!("tls_index: {:?}", tls_index);
 
         if tls_index.mod_id.is_phoenix_plugin() {
             let tls_block = dtv.get_or_create(*tls_index);
@@ -255,15 +268,17 @@ pub(crate) extern "C" fn phoenix_tls_get_addr(/*tls_index: &TlsIndex*/) -> *mut 
                 .as_mut_ptr()
                 .map_addr(|addr| addr + tls_index.offset);
             // println!("ret: {:0x}, value: {:0x}", ret as usize, unsafe { ret.cast::<u64>().read() });
+            // let dura = start.elapsed();
+            // println!("phoenix_plugin_tls: {:?}", dura);
             ret
         } else if tls_index.mod_id.is_dynamic_library() || tls_index.mod_id.is_init_exec() {
-            unsafe {
-                asm!("mov rdi, {}", in(reg) tls_index_addr);
-            }
             let ret = unsafe {
+                asm!("mov rdi, {}", in(reg) tls_index_addr);
                 __tls_get_addr(tls_index as *const TlsIndex as *mut TlsIndex as *mut libc::size_t)
             };
             // println!("ret: {:0x}", ret as usize);
+            // let dura = start.elapsed();
+            // println!("__tls_get_addr: {:?}", dura);
             ret as _
         } else {
             panic!("invalid tls_index: {:?}", tls_index);

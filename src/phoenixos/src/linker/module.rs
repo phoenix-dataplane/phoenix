@@ -11,6 +11,8 @@ use object::{Object, SymbolKind};
 
 use mmap::{Mmap, MmapOptions};
 
+use phoenix_common::log;
+
 use super::initfini::InitFini;
 use super::relocation::do_relocation;
 use super::section::{CommonSection, ExtraSymbolSection, Section};
@@ -65,6 +67,16 @@ impl LoadableModule {
 
         let image_start = image.as_ptr();
 
+        let mod_id = MODULE_COUNTER.fetch_add(1, Ordering::AcqRel);
+
+        log::debug!(
+            "Module {} (mod_id: {}) loaded at: [0x{:0x}, 0x{:0x})",
+            path_rlib.display(),
+            mod_id,
+            image_start.expose_addr(),
+            image_start.expose_addr() + image.len()
+        );
+
         // The step to verify ELF is included in `parse`.
         let elf = ElfFile::<FileHeader64<LittleEndian>>::parse(&*image)?;
 
@@ -81,6 +93,14 @@ impl LoadableModule {
         // Update runtime address and allocate space for bss
         for sec in &mut sections {
             sec.update_runtime_addr(image_start)?;
+
+            log::trace!(
+                "Section '{}' loaded at: [0x{:0x}, 0x{:0x} + {})",
+                sec.name,
+                sec.address,
+                sec.address,
+                sec.size
+            );
         }
 
         // Create the TLS initialization image
@@ -89,8 +109,6 @@ impl LoadableModule {
         // Allocate space for SHN_COMMON. See ELF Spec 1-19
         let mut symtab = SymbolTable::new(&elf);
         let mut common_section = CommonSection::new(&symtab)?;
-
-        let mod_id = MODULE_COUNTER.fetch_add(1, Ordering::AcqRel);
 
         // let mut file = FILE.lock().unwrap();
 

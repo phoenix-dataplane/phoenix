@@ -1047,15 +1047,17 @@ fn copy_result(c: &Crate) -> anyhow::Result<()> {
     println!("Copy {} to {}", c.path.display(), to.display());
     fs::copy(&c.path, to)?;
 
-    // copy the dep file if it is not an bin executable
-    if !is_binary {
-        let from = c
-            .path
-            .with_file_name(format!("{}-{}.d", c.name, c.metadata));
-        let to = destdir.join(format!("lib{}.d", c.name));
-        println!("Copy {} to {}", from.display(), to.display());
-        fs::copy(from, to)?;
-    }
+    // copy the dep file
+    let from = c
+        .path
+        .with_file_name(format!("{}-{}.d", c.name, c.metadata));
+    let to = if !is_binary {
+        destdir.join(format!("lib{}.d", c.name))
+    } else {
+        destdir.join(format!("{}.d", c.name))
+    };
+    println!("Copy {} to {}", from.display(), to.display());
+    fs::copy(from, to)?;
 
     Ok(())
 }
