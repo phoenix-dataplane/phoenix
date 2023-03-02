@@ -1,4 +1,5 @@
-[alias]     # command aliases
+[alias]
+# command aliases
 rr = "run --release"
 build-plan = "build --build-plan -Z unstable-options"
 
@@ -6,5 +7,19 @@ build-plan = "build --build-plan -Z unstable-options"
 RUST_BACKTRACE = "1"
 
 [build]
-# link libphoenix and all engine plugins as dynamic library
-rustflags = ["-C", "prefer-dynamic", "-C", "rpath"]
+rustflags = [
+  # "-C", "codegen-units=1",
+
+  # link all symbols in dependent crates even if they are not actually used (moved to phoenix/build.rs)
+  "-C", "link-dead-code",
+
+  # employ no restriction on the addresses of the symbols and sizes of sections,
+  # as more and more plugins loaded, 2GB code and data size might be too restricted.
+  "-C", "code-model=large",
+]
+# disable incremental compilation to ensure cargo prints inforamtion about every crates
+# incremental = false
+
+[unstable]
+# -Zbinary-dep-depinfo allows us to track dependencies of each rlib
+binary-dep-depinfo = true

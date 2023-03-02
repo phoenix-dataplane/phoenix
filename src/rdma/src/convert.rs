@@ -12,19 +12,19 @@ use crate::rdmacm;
 
 mod sa {
     use super::*;
-    use interface::addrinfo::AddrInfoFlags;
+    use phoenix_api::addrinfo::AddrInfoFlags;
     const_assert_eq!(AddrInfoFlags::PASSIVE.bits(), ffi::RAI_PASSIVE);
     const_assert_eq!(AddrInfoFlags::NUMERICHOST.bits(), ffi::RAI_NUMERICHOST);
     const_assert_eq!(AddrInfoFlags::NOROUTE.bits(), ffi::RAI_NOROUTE);
     const_assert_eq!(AddrInfoFlags::FAMILY.bits(), ffi::RAI_FAMILY);
-    use interface::WcFlags;
+    use phoenix_api::net::WcFlags;
     const_assert_eq!(WcFlags::GRH.bits(), ffi::ibv_wc_flags::IBV_WC_GRH.0);
     const_assert_eq!(
         WcFlags::WITH_IMM.bits(),
         ffi::ibv_wc_flags::IBV_WC_WITH_IMM.0
     );
 
-    use interface::SendFlags;
+    use phoenix_api::net::SendFlags;
     const_assert_eq!(
         SendFlags::FENCE.bits(),
         ffi::ibv_send_flags::IBV_SEND_FENCE.0
@@ -42,7 +42,7 @@ mod sa {
         ffi::ibv_send_flags::IBV_SEND_INLINE.0
     );
 
-    use interface::AccessFlags;
+    use phoenix_api::net::AccessFlags;
     const_assert_eq!(
         AccessFlags::LOCAL_WRITE.bits(),
         ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE.0
@@ -61,9 +61,9 @@ mod sa {
     );
 }
 
-impl From<interface::addrinfo::PortSpace> for rdmacm::PortSpace {
-    fn from(other: interface::addrinfo::PortSpace) -> Self {
-        use interface::addrinfo::PortSpace;
+impl From<phoenix_api::addrinfo::PortSpace> for rdmacm::PortSpace {
+    fn from(other: phoenix_api::addrinfo::PortSpace) -> Self {
+        use phoenix_api::addrinfo::PortSpace;
         let inner = match other {
             PortSpace::IPOIB => ffi::rdma_port_space::RDMA_PS_IPOIB,
             PortSpace::TCP => ffi::rdma_port_space::RDMA_PS_TCP,
@@ -74,10 +74,10 @@ impl From<interface::addrinfo::PortSpace> for rdmacm::PortSpace {
     }
 }
 
-impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
-    fn from(h: interface::addrinfo::AddrInfoHints) -> Self {
-        use interface::addrinfo::AddrFamily;
-        use interface::QpType;
+impl From<phoenix_api::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
+    fn from(h: phoenix_api::addrinfo::AddrInfoHints) -> Self {
+        use phoenix_api::addrinfo::AddrFamily;
+        use phoenix_api::net::QpType;
         let flags = h.flags.bits();
 
         let family = h
@@ -105,12 +105,12 @@ impl From<interface::addrinfo::AddrInfoHints> for rdmacm::AddrInfoHints {
     }
 }
 
-impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
+impl From<rdmacm::AddrInfo> for phoenix_api::addrinfo::AddrInfo {
     fn from(other: rdmacm::AddrInfo) -> Self {
-        use interface::addrinfo::AddrFamily;
-        use interface::addrinfo::AddrInfoFlags;
-        use interface::addrinfo::PortSpace;
-        use interface::QpType;
+        use phoenix_api::addrinfo::AddrFamily;
+        use phoenix_api::addrinfo::AddrInfoFlags;
+        use phoenix_api::addrinfo::PortSpace;
+        use phoenix_api::net::QpType;
 
         let ai = other;
         let flags = AddrInfoFlags::from_bits(ai.ai_flags as _).unwrap();
@@ -135,7 +135,7 @@ impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
         let mut buffer = Vec::new();
         bincode::serialize_into(&mut buffer, &(ai.ai_route, ai.ai_connect))
             .expect("serialize_into");
-        interface::addrinfo::AddrInfo {
+        phoenix_api::addrinfo::AddrInfo {
             flags,
             family,
             qp_type,
@@ -149,9 +149,9 @@ impl From<rdmacm::AddrInfo> for interface::addrinfo::AddrInfo {
     }
 }
 
-impl From<interface::addrinfo::AddrInfo> for rdmacm::AddrInfo {
-    fn from(other: interface::addrinfo::AddrInfo) -> Self {
-        let hints = interface::addrinfo::AddrInfoHints::new(
+impl From<phoenix_api::addrinfo::AddrInfo> for rdmacm::AddrInfo {
+    fn from(other: phoenix_api::addrinfo::AddrInfo) -> Self {
+        let hints = phoenix_api::addrinfo::AddrInfoHints::new(
             other.flags,
             other.family,
             other.qp_type,
@@ -174,8 +174,8 @@ impl From<interface::addrinfo::AddrInfo> for rdmacm::AddrInfo {
     }
 }
 
-impl From<interface::QpCapability> for ibv::QpCapability {
-    fn from(other: interface::QpCapability) -> Self {
+impl From<phoenix_api::net::QpCapability> for ibv::QpCapability {
+    fn from(other: phoenix_api::net::QpCapability) -> Self {
         let inner = ffi::ibv_qp_cap {
             max_send_wr: other.max_send_wr,
             max_recv_wr: other.max_recv_wr,
@@ -187,9 +187,9 @@ impl From<interface::QpCapability> for ibv::QpCapability {
     }
 }
 
-impl From<interface::QpType> for ibv::QpType {
-    fn from(other: interface::QpType) -> Self {
-        use interface::QpType::*;
+impl From<phoenix_api::net::QpType> for ibv::QpType {
+    fn from(other: phoenix_api::net::QpType) -> Self {
+        use phoenix_api::net::QpType::*;
         let inner = match other {
             RC => ffi::ibv_qp_type::IBV_QPT_RC,
             UD => ffi::ibv_qp_type::IBV_QPT_UD,
@@ -198,12 +198,12 @@ impl From<interface::QpType> for ibv::QpType {
     }
 }
 
-impl From<ffi::ibv_wc> for interface::WorkCompletion {
+impl From<ffi::ibv_wc> for phoenix_api::net::WorkCompletion {
     fn from(other: ffi::ibv_wc) -> Self {
         use ffi::ibv_wc_opcode;
         use ffi::ibv_wc_status;
-        use interface::WcOpcode;
-        use interface::WcStatus;
+        use phoenix_api::net::WcOpcode;
+        use phoenix_api::net::WcStatus;
         let status = match other.status {
             ibv_wc_status::IBV_WC_SUCCESS => WcStatus::Success,
             e => WcStatus::Error(NonZeroU32::new(e).unwrap()),
@@ -224,9 +224,9 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
             WcOpcode::Invalid
         };
 
-        let wc_flags = interface::WcFlags::from_bits(other.wc_flags.0).unwrap();
+        let wc_flags = phoenix_api::net::WcFlags::from_bits(other.wc_flags.0).unwrap();
 
-        interface::WorkCompletion {
+        phoenix_api::net::WorkCompletion {
             wr_id: other.wr_id,
             status,
             opcode,
@@ -245,14 +245,14 @@ impl From<ffi::ibv_wc> for interface::WorkCompletion {
     }
 }
 
-impl From<interface::SendFlags> for ibv::SendFlags {
-    fn from(other: interface::SendFlags) -> Self {
+impl From<phoenix_api::net::SendFlags> for ibv::SendFlags {
+    fn from(other: phoenix_api::net::SendFlags) -> Self {
         ibv::SendFlags(ffi::ibv_send_flags(other.bits()))
     }
 }
 
-impl From<interface::AccessFlags> for ibv::AccessFlags {
-    fn from(other: interface::AccessFlags) -> Self {
+impl From<phoenix_api::net::AccessFlags> for ibv::AccessFlags {
+    fn from(other: phoenix_api::net::AccessFlags) -> Self {
         ibv::AccessFlags(ffi::ibv_access_flags(other.bits()))
     }
 }

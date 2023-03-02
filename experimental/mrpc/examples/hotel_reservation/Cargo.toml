@@ -1,0 +1,29 @@
+[package]
+name = "hotel_reservation"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+mrpc-build.workspace = true
+
+[dependencies]
+mrpc.workspace = true
+prost = { workspace = true, features = ["mrpc-frontend"] }
+
+structopt.workspace = true
+futures.workspace = true
+smol.workspace = true
+minstant.workspace = true
+hdrhistogram.workspace = true
+fastrand.workspace = true
+
+
+[[bin]]
+name = "hotel_reservation_client"
+path = "src/client.rs"
+
+[[bin]]
+name = "hotel_reservation_server"
+path = "src/server.rs"

@@ -30,76 +30,27 @@ prefix = "/tmp/phoenix"
 # overwrite with PHOENIX_CONTROL
 path = "control.sock"
 
-# Modules
+[linker]
+workdir = "linker"
+
+# Prelude Modules
 [[modules]]
 name = "RdmaTransport"
-lib_path = "/tmp/phoenix/plugins/libphoenix_transport_rdma_plugin.so"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "transport-engine-rdma"
-datapath_wq_depth = 32
-datapath_cq_depth = 32
-command_max_interval_ms = 1000
-'''
+lib_path = "plugins/libphoenix_transport_rdma.rlib"
 
 [[modules]]
 name = "TcpTransport"
-lib_path = "/tmp/phoenix/plugins/libphoenix_transport_tcp_plugin.so"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "transport-engine-tcp"
-'''
+lib_path = "plugins/libphoenix_transport_tcp.rlib"
 
 [[modules]]
 name = "Salloc"
-lib_path = "/tmp/phoenix/plugins/libphoenix_salloc_plugin.so"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "salloc"
-'''
+lib_path = "plugins/libphoenix_salloc.rlib"
 
-[[modules]]
-name = "Mrpc"
-lib_path = "/tmp/phoenix/plugins/libphoenix_mrpc_plugin.so"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "mrpc-engine"
-build_cache = "/tmp/phoenix/build-cache"
-transport = "Rdma"
-nic_index = 0
-'''
-
-[[modules]]
-name = "RpcAdapter"
-lib_path = "/tmp/phoenix/plugins/libphoenix_rpc_adapter_plugin.so"
-config_string = '''
-enable_scheduler = false
-'''
-
-
-[[modules]]
-name = "TcpRpcAdapter"
-lib_path = "/tmp/phoenix/plugins/libphoenix_tcp_rpc_adapter_plugin.so"
-
-
-# Addons being here
+# Prelude Addons (not in effect until being attached)
 [[addons]]
 name = "RateLimit"
-lib_path = "/tmp/phoenix/plugins/libphoenix_ratelimit_plugin.so"
+lib_path = "plugins/libphoenix_ratelimit.rlib"
 config_string = '''
 requests_per_sec = 1000
 bucket_size = 1000
-'''
-
-[[addons]]
-name = "Qos"
-lib_path = "/tmp/phoenix/plugins/libphoenix_qos_plugin.so"
-config_string = '''
-latency_budget_microsecs = 10
-'''
-
-[[addons]]
-name = "HotelAcl"
-lib_path = "/tmp/phoenix/plugins/libphoenix_hotel_acl_plugin.so"
-config_string = '''
 '''

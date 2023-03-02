@@ -1,0 +1,39 @@
+[package]
+name = "phoenix-tcp-rpc-adapter"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+phoenix-api-mrpc.workspace = true
+phoenix-api-tcp-rpc-adapter.workspace = true
+phoenix-mrpc.workspace = true
+mrpc-marshal.workspace = true
+
+phoenix-api = { workspace = true, features = ["mrpc", "transport"] }
+ipc.workspace = true
+phoenix_common.workspace = true
+transport-tcp.workspace = true
+phoenix-salloc.workspace = true
+utils.workspace = true
+
+fnv.workspace = true
+anyhow.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+thiserror.workspace = true
+nix.workspace = true
+futures.workspace = true
+dashmap.workspace = true
+spin.workspace = true
+libloading.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true, features = ["preserve_order"] }
+fastrand.workspace = true
+bitvec.workspace = true
+bincode.workspace = true
+socket2.workspace = true
+slab.workspace = true

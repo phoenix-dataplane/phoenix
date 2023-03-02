@@ -1,0 +1,18 @@
+[package]
+name = "mrpc-build"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+prost-build = { workspace = true, features = ["mrpc-frontend"] }
+
+prettyplease.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+crc32fast.workspace = true

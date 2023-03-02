@@ -1,0 +1,16 @@
+[package]
+name = "phoenix-api"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+core = { path = "core", package = "phoenix-api-core" }
+salloc = { path = "salloc", package = "phoenix-api-salloc", optional = true }
+transport = { path = "transport", package = "phoenix-api-transport", optional = true }
+
+[features]
+salloc = ["dep:salloc"]
+transport = ["dep:transport"]
+mrpc = ["core/mrpc"]

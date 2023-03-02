@@ -1,0 +1,26 @@
+[package]
+name = "phoenix-salloc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+phoenix-api = { workspace = true, features = ["salloc"] }
+ipc.workspace = true
+mmap.workspace = true
+phoenix_common.workspace = true
+
+anyhow.workspace = true
+nix.workspace = true
+uuid.workspace = true
+memfd.workspace = true
+thiserror.workspace = true
+spin.workspace = true
+libc.workspace = true
+futures.workspace = true # unused futures
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true, features = ["preserve_order"] }

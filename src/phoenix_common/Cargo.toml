@@ -1,0 +1,32 @@
+[package]
+name = "phoenix_common"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+phoenix-common-workspace.workspace = true
+phoenix-api = { workspace = true, features = ["mrpc"] } # The feature mrpc should be removed in the future
+ipc.workspace = true
+
+# TODO: remove the dep to mrpc
+phoenix-api-mrpc = { path = "../../experimental/mrpc/phoenix-api/mrpc" }
+
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+crossbeam.workspace = true
+nix = { workspace = true, default-features = false, features = ["signal", "process"] }
+fnv.workspace = true
+futures = { workspace = true, features = ["executor", "thread-pool"] }
+tokio = { workspace = true, features = ["sync"] }
+dashmap.workspace = true
+static_assertions.workspace = true
+semver.workspace = true
+sharded-slab.workspace = true
+libnuma.workspace = true
+libnuma-sys.workspace = true

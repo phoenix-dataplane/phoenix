@@ -1,0 +1,39 @@
+[package]
+name = "phoenix-mrpc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+phoenix-api-mrpc.workspace = true
+mrpc-marshal.workspace = true
+
+phoenix-api = { workspace = true, features = ["mrpc"] }
+ipc.workspace = true
+phoenix_common.workspace = true
+prost-build = { workspace = true, features = ["mrpc-backend"] }
+utils.workspace = true
+
+tokio = { workspace = true, features = ["sync"] }
+anyhow.workspace = true
+lazy_static.workspace = true
+fnv.workspace = true
+uuid.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+itertools.workspace = true
+crc32fast.workspace = true
+fastrand.workspace = true
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+md5.workspace = true
+prettyplease.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml = { workspace = true, features = ["preserve_order"] }
+static_assertions.workspace = true

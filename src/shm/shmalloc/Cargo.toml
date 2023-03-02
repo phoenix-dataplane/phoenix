@@ -1,0 +1,19 @@
+[package]
+name = "shmalloc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+mmap.workspace = true
+slabmalloc.workspace = true
+phoenix-syscalls.workspace = true
+phoenix-api = { workspace = true, features = ["salloc"] }
+ipc.workspace = true
+shm.workspace = true
+
+lazy_static.workspace = true
+smol.workspace = true
+memfd.workspace = true
+spin.workspace = true
+thiserror.workspace = true
