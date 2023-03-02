@@ -30,9 +30,9 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "Koala plugin upgrade utility")]
+#[command(name = "Phoenix plugin upgrade utility")]
 struct Opts {
-    /// Koala config path
+    /// Phoenix config path
     #[arg(short, long)]
     config: PathBuf,
 }

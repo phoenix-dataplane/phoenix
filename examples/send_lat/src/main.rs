@@ -10,7 +10,7 @@ use phoenix_syscalls::verbs::{
 const SERVER_PORT: &str = "5000";
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Koala send/recv latency.")]
+#[command(about = "Phoenix send/recv latency.")]
 pub struct Opts {
     /// The address to connect, can be an IP address or domain name.
     #[arg(short, long)]

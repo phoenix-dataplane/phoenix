@@ -2,8 +2,9 @@
 PHOENIX_PREFIX = { value = "/tmp/phoenix", condition.env_not_set = ["PHOENIX_PREFIX"] }
 PROJECT_ROOT = { script = ["pwd"] }
 TARGET_DIR = "${PROJECT_ROOT}/target"
-PHOENIX_COMPILE_LOG = "${PROJECT_ROOT}/phoenix_compile_log.txt"
-HOST_DEP = "${TARGET_DIR}/host_dep"
+PHOENIX_TARGET_DIR = "${PROJECT_ROOT}/target/phoenix"
+PHOENIX_COMPILE_LOG = "${PHOENIX_TARGET_DIR}/phoenix_compile_log.txt"
+HOST_DEP = "${PHOENIX_TARGET_DIR}/host_dep"
 
 [tasks.default]
 alias = "dev-test-flow"
@@ -30,10 +31,11 @@ cwd = "${PROJECT_ROOT}"
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
-cargo build -vv --release -p phoenix_common --color=always |& tee ${PHOENIX_COMPILE_LOG}.2
+cargo build -vv --release -p phoenix_common --color=always \
+  --target-dir ${PHOENIX_TARGET_DIR} |& tee ${PHOENIX_COMPILE_LOG}.2
 mv -f ${PHOENIX_COMPILE_LOG}.2 ${PHOENIX_COMPILE_LOG}
 rm -rf ${HOST_DEP}
-cp -r ${TARGET_DIR}/release/deps ${HOST_DEP}
+cp -r ${PHOENIX_TARGET_DIR}/release/deps ${HOST_DEP}
 '''
 dependencies = ["remove-fingerprint1"]
 
@@ -48,7 +50,7 @@ cwd = "${PROJECT_ROOT}"
 script = '''
   ${TARGET_DIR}/release/phoenix_cargo \
     --compile-log ${PHOENIX_COMPILE_LOG} --host-dep ${HOST_DEP} -- \
-    build --release --target-dir ${TARGET_DIR} -p phoenixos
+    build --release --target-dir ${PHOENIX_TARGET_DIR} -p phoenixos
 '''
 dependencies = [
   "phoenix_common",
@@ -62,7 +64,7 @@ alias = "build-phoenixos"
 [tasks.run-phoenixos]
 description = "Start the phoenixos system service."
 cwd = "${PROJECT_ROOT}"
-command = "${TARGET_DIR}/release/phoenixos"
+command = "${PHOENIX_TARGET_DIR}/release/phoenixos"
 args = ["${@}"]
 
 [tasks.run]
@@ -79,19 +81,19 @@ command = "${TARGET_DIR}/release/phoenix_cargo"
 args = [
     "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
     "--",
-    "build", "--release", "--target-dir", "${TARGET_DIR}",
+    "build", "--release", "--target-dir", "${PHOENIX_TARGET_DIR}",
     "-p ${@}"
 ]
 dependencies = ["remove-fingerprint3"]
 
 [tasks.deploy-plugins]
 description = "Deploy all plugins."
-script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh ${PHOENIX_PREFIX}"
+script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh ${PHOENIX_PREFIX} ${PHOENIX_TARGET_DIR}"
 
 [tasks.remove-fingerprint]
 description = "Clear cargo fingerprint under target/release."
 script = '''
-rm -rf ${TARGET_DIR}/release/.fingerprint
+rm -rf ${PHOENIX_TARGET_DIR}/release/.fingerprint
 '''
 
 # cargo-make won't run the same task twice, so we have to use aliases

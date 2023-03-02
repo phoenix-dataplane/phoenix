@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "Koala RpcAdapter connection viewer")]
+#[command(name = "Phoenix RpcAdapter connection viewer")]
 struct Opts {
     #[arg(short, long)]
     eid: u64,

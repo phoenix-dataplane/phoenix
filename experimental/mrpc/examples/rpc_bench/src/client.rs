@@ -21,7 +21,7 @@ use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::{HelloReply, HelloRequest};
 
 #[derive(StructOpt, Debug)]
-#[structopt(about = "Koala RPC hello client")]
+#[structopt(about = "mRPC benchmark client")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
     /// When multiple addresses are specified, each client thread connects to one of them.

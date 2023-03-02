@@ -34,7 +34,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "Koala service subscription viewer")]
+#[command(name = "Phoenix service subscription viewer")]
 struct Opts {
     #[arg(short, long)]
     dump: Option<PathBuf>,

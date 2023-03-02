@@ -32,7 +32,7 @@ arg_enum! {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(about = "Koala RPC hello client")]
+#[structopt(about = "mRPC benchmark client")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
     #[structopt(short = "c", long = "connect", default_value = "192.168.211.66")]

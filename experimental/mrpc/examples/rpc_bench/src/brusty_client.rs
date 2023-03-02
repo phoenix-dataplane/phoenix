@@ -20,7 +20,7 @@ use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
 
 #[derive(StructOpt, Debug)]
-#[structopt(about = "Koala RPC hello client")]
+#[structopt(about = "mRPC benchmark client (bursty)")]
 pub struct Args {
     /// The address to connect, can be an IP address or domain name.
     #[structopt(short = "c", long = "connect", default_value = "192.168.211.66")]

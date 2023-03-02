@@ -31,7 +31,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, clap::Parser)]
-#[command(name = "Koala addon manager")]
+#[command(name = "Phoenix addon manager")]
 struct Opts {
     #[arg(short, long)]
     config: PathBuf,

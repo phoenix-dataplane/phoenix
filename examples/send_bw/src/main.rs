@@ -8,7 +8,7 @@ use phoenix_syscalls::verbs::{MemoryRegion, SendFlags, WcStatus};
 const SERVER_PORT: &str = "5000";
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Koala send/recv bandwidth")]
+#[command(about = "Phoenix send/recv bandwidth")]
 pub struct Opts {
     /// The address to connect, can be an IP address or domain name.
     #[arg(short, long)]

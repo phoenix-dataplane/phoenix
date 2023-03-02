@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "Koala qos policy control")]
+#[command(name = "Phoenix qos policy control")]
 struct Opts {
     #[arg(short, long)]
     eid: u64,

@@ -13,7 +13,7 @@ Build and deploy mRPC plugins. Build and deploy phoenix plugins. Run phoenix dae
 dependencies = [
   "build-phoenixos",
   "build-mrpc-plugins",
-  # "build-plugins",
+  "build-plugins",
   "deploy-mrpc-plugins",
   "build-mrpc-examples",
   "run-phoenixos",
@@ -29,14 +29,14 @@ command = "${TARGET_DIR}/release/phoenix_cargo"
 args = [
     "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
     "--",
-    "build", "--release", "--target-dir", "${TARGET_DIR}",
+    "build", "--release", "--target-dir", "${PHOENIX_TARGET_DIR}",
     "--manifest-path", "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
     "-p", "phoenix-*",
 ]
 dependencies = ["remove-fingerprint4"]
 
 [tasks.deploy-mrpc-plugins]
-script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh"
+script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh ${PHOENIX_PREFIX} ${PHOENIX_TARGET_DIR}"
 
 [tasks.build-mrpc-examples]
 description = '''

@@ -383,6 +383,7 @@ fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
             "--release",
             "--manifest-path",
             manifest_path.to_string_lossy().as_ref(),
+            "--workspace",
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

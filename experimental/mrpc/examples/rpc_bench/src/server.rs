@@ -16,7 +16,7 @@ use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};
 
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(about = "Koala RPC hello client")]
+#[structopt(about = "mRPC benchmark server")]
 pub struct Args {
     /// The port number to use.
     #[structopt(short, long, default_value = "5000")]

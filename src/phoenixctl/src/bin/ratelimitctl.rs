@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "Koala rate limit policy control")]
+#[command(name = "Phoenix rate limit policy control")]
 struct Opts {
     #[arg(short, long)]
     eid: u64,
