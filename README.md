@@ -1,7 +1,10 @@
-# phoenix
+# Phoenix
 
 [![Build Status](https://github.com/phoenix-dataplane/phoenix/workflows/build/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions)
 
+## Getting Started
+
+### Building Phoenix
 Clone the repo and its submodule.
 ```
 $ git clone git@github.com:phoenix-dataplane/phoenix.git --recursive
@@ -10,10 +13,14 @@ $ git clone git@github.com:phoenix-dataplane/phoenix.git
 $ git submodule update --init --recursive
 ```
 
-Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, globally available.
+Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang
+available on your system. On ubuntu, you can install them using the following
+command.
 ```
 # apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler
 ```
+
+### Building mRPC
 
 Start the phoenix backend service on all servers.
 ```bash

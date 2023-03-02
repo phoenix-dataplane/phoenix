@@ -83,9 +83,9 @@ impl Ops {
         Ok(handle)
     }
 
-    fn try_accept(&self, handle: Handle) -> Result<Handle, ApiError> {
+    fn try_accept(&self, listener_handle: Handle) -> Result<Handle, ApiError> {
         let table = self.state.listener_table.borrow();
-        let listener = table.get(&handle).ok_or(ApiError::NotFound)?;
+        let listener = table.get(&listener_handle).ok_or(ApiError::NotFound)?;
         let (mut sock, _addr) = listener.accept()?;
         sock.set_nodelay(true)?;
         let sock_handle = sock.as_raw_fd().as_handle();
@@ -205,7 +205,8 @@ impl Ops {
                 .borrow()
                 .contains_key(&Handle(handle as _))
             {
-                if let Ok(handle) = self.try_accept(Handle(handle as _)) {
+                let listener_handle = handle;
+                if let Ok(handle) = self.try_accept(Handle(listener_handle as _)) {
                     conns.push(handle);
                 }
             } else {

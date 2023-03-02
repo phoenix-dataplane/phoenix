@@ -46,8 +46,8 @@ impl Reactor {
 
     pub(crate) fn register_connection(&mut self, stub_id: usize, conn: &Connection) {
         let conn_id = conn.handle();
-        if let Some(h) = self.conn_to_stub.insert(conn_id, stub_id) {
-            panic!("Duplicated conn_id: {:?}", h);
+        if let Some(_old_stub_id) = self.conn_to_stub.insert(conn_id, stub_id) {
+            // panic!("Duplicated conn_id: {:?}, old stub_id: {:?}", conn_id, h);
         }
     }
 
@@ -70,8 +70,6 @@ impl Reactor {
                     count
                 })
                 .map_err(Error::Service)?;
-
-            // let cnt = self.buffer.len();
 
             // dispatch newly arrived completions
             let ret = self.buffer.len();
