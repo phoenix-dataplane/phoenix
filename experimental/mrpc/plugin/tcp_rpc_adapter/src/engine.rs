@@ -36,7 +36,7 @@ use phoenix_common::impl_vertex_for_engine;
 use phoenix_common::module::{ModuleCollection, Version};
 use phoenix_common::resource::Error as ResourceError;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
-use phoenix_common::{log, tracing};
+use phoenix_common::log;
 
 use super::get_ops;
 use super::pool::BufferSlab;
@@ -104,7 +104,7 @@ impl Decompose for TcpRpcAdapterEngine {
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(14);
-        tracing::trace!("dumping RpcAdapterEngine states...");
+        log::debug!("dumping RpcAdapterEngine states...");
 
         let node = unsafe {
             collections.insert("state".to_string(), Box::new(ptr::read(&engine.state)));
@@ -145,7 +145,7 @@ impl TcpRpcAdapterEngine {
         _plugged: &ModuleCollection,
         _prev_version: Version,
     ) -> Result<Self> {
-        tracing::trace!("restoring RpcAdapterEngine states...");
+        log::debug!("restoring RpcAdapterEngine states...");
         let state = *local
             .remove("state")
             .unwrap()
@@ -272,7 +272,7 @@ impl Engine for TcpRpcAdapterEngine {
 
                 for conn in connections {
                     log::info!(
-                        "RpcAdapter connection, Socket={:?}, local_addr={:?}, peer_addr={:?}",
+                        "TcpRpcAdapter connection, Socket={:?}, local_addr={:?}, peer_addr={:?}",
                         conn.sock,
                         conn.local,
                         conn.peer
@@ -296,15 +296,15 @@ impl Drop for TcpRpcAdapterEngine {
 impl TcpRpcAdapterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-            // let mut timer = phoenix::timer::Timer::new();
+            // let mut timer = utils::timer::Timer::new();
 
             let mut work = 0;
-            let mut nums = Vec::new();
+            // let mut nums = Vec::new();
 
             match self.check_input_queue()? {
                 Progress(n) => {
                     work += n;
-                    nums.push(n)
+                    // nums.push(n)
                 }
                 Status::Disconnected => return Ok(()),
             }
@@ -312,22 +312,23 @@ impl TcpRpcAdapterEngine {
 
             if let Progress(n) = self.check_transport_service()? {
                 work += n;
-                nums.push(n);
+                // nums.push(n);
             }
             // timer.tick();
 
             match self.check_input_cmd_queue()? {
                 Progress(n) => {
                     work += n;
-                    nums.push(n)
+                    // nums.push(n)
                 }
                 Status::Disconnected => return Ok(()),
             }
 
             self.indicator.set_nwork(work);
 
+            // timer.tick();
             // if work > 0 {
-            //     log::info!("RpcAdapter mainloop: {:?} {}", nums, timer);
+            //     log::info!("TcpRpcAdapter mainloop: {:?} {}", nums, timer);
             // }
             future::yield_now().await;
         }
@@ -661,7 +662,10 @@ impl TcpRpcAdapterEngine {
     }
 
     fn check_transport_service(&mut self) -> Result<Status, DatapathError> {
-        let (conns, wcs) = get_ops().poll_io(Duration::from_micros(5))?;
+        // since mio 0.8.5, the timeout will be round up to 1 millisecond unless
+        // the user explicitly specify a zero timeout.
+        let (conns, wcs) = get_ops().poll_io(Duration::from_micros(0))?;
+        // let (conns, wcs) = get_ops().poll_io(Duration::from_micros(5))?;
 
         let mut progress = 0;
         for conn in &conns {

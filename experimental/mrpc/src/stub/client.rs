@@ -249,6 +249,7 @@ impl ClientStub {
         })
     }
 
+    /// Create an RPC client by connecting to a given socket address.
     // TODO(cjr): Change this to async too
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let connect_addr = addr

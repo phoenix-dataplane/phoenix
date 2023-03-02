@@ -20,9 +20,6 @@ pub mod resource;
 pub mod state_mgr;
 pub mod storage;
 
-#[allow(unused)]
-pub mod timer;
-
 pub type PhoenixResult<T> = anyhow::Result<T>;
 
 // Re-export for plugin implementer's use

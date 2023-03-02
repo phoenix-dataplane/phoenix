@@ -19,6 +19,7 @@ ipc.workspace = true
 phoenix_common.workspace = true
 transport-tcp.workspace = true
 phoenix-salloc.workspace = true
+utils.workspace = true
 
 fnv.workspace = true
 anyhow.workspace = true

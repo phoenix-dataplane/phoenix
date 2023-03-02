@@ -265,7 +265,6 @@ where
     }
 
     /// For CPU efficient scenarios.
-    /// Returns
     #[cfg(feature = "customer")]
     pub fn poll_wc_readable(&self, cx: &mut Context<'_>) -> Poll<Result<bool, Error>> {
         let s = self.dp_cq.borrow_mut().receiver_mut().read_count()?;

@@ -362,7 +362,8 @@ fn start_ssh(
     }
 }
 
-// We assume a NFS setup, so we do not need to ssh to each worker machine to build the binaries.
+// We assume a NFS setup, so we just build once and the products will be available to other
+// machines.
 fn build_all<A: AsRef<str>, P: AsRef<path::Path>>(
     binaries: impl IntoIterator<Item = A>,
     cargo_dir: P,

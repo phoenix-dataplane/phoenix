@@ -101,6 +101,7 @@ phoenix_common = { path = "../../src/phoenix_common" }
 transport-rdma = { path = "../../src/plugin/transport-rdma", package = "phoenix-transport-rdma" }
 transport-tcp = { path = "../../src/plugin/transport-tcp", package = "phoenix-transport-tcp" }
 phoenix-salloc = { path = "../../src/plugin/salloc", package = "phoenix-salloc" }
+utils = { path = "../../src/utils" }
 
 thiserror = "1.0.31"
 uuid = "0.8.2"

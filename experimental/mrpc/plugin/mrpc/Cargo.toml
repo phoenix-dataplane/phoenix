@@ -16,6 +16,7 @@ phoenix-api = { workspace = true, features = ["mrpc"] }
 ipc.workspace = true
 phoenix_common.workspace = true
 prost-build = { workspace = true, features = ["mrpc-backend"] }
+utils.workspace = true
 
 tokio = { workspace = true, features = ["sync"] }
 anyhow.workspace = true

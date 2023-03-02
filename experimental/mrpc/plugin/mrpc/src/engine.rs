@@ -19,7 +19,7 @@ use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
 use phoenix_common::module::{ModuleCollection, Version};
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
-use phoenix_common::tracing;
+use phoenix_common::{log, tracing};
 
 use super::builder::build_serializer_lib;
 use super::module::CustomerType;
@@ -75,7 +75,7 @@ impl Decompose for MrpcEngine {
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(10);
-        tracing::trace!("dumping MrpcEngine states...");
+        log::debug!("dumping MrpcEngine states...");
         collections.insert("customer".to_string(), Box::new(engine.customer));
         collections.insert("mode".to_string(), Box::new(engine._mode));
         collections.insert("state".to_string(), Box::new(engine._state));
@@ -107,7 +107,7 @@ impl MrpcEngine {
         _plugged: &ModuleCollection,
         _prev_version: Version,
     ) -> Result<Self> {
-        tracing::trace!("restoring MrpcEngine states...");
+        log::debug!("restoring MrpcEngine states...");
 
         let customer = *local
             .remove("customer")
@@ -198,7 +198,7 @@ impl Engine for MrpcEngine {
 impl MrpcEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-            // let mut timer = crate::timer::Timer::new();
+            // let mut timer = utils::timer::Timer::new();
             let mut nwork = 0;
 
             // no work 80ns
@@ -410,10 +410,10 @@ impl MrpcEngine {
                 // let mut timer = crate::timer::Timer::new();
 
                 // 1300ns, even if the tracing level is filtered shit!!!!!!
-                // tracing::debug!(
-                //     "mRPC engine got a message from App, call_id: {}",
-                //     erased.meta.call_id
-                // );
+                tracing::trace!(
+                    "mRPC engine got a message from App, call_id: {}",
+                    erased.meta.call_id
+                );
 
                 // timer.tick();
 
@@ -490,13 +490,11 @@ impl MrpcEngine {
                                 1
                             })?;
                         }
-
                         // timer.tick();
                         // log::info!("MrpcEngine check_input_queue: {}", timer);
                     }
                     EngineRxMessage::Ack(rpc_id, status) => {
                         // release message meta buffer
-                        // tracing::warn!("rpc_id: {:?}, status: {:?}", rpc_id, status);
                         self.meta_buf_pool.release(rpc_id)?;
                         let mut sent = false;
                         while !sent {

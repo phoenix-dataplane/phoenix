@@ -196,14 +196,14 @@ async fn run_bench(
                     if rcnt>args.warmup{
                         if args.log_latency {
                             my_print!(
-                                    "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
-                                    tid,
-                                    rps,
-                                    bw,
-                                    Duration::from_nanos(hist.value_at_percentile(95.0)),
-                                    Duration::from_nanos(hist.value_at_percentile(99.0)),
-                                );
-                                hist.clear();
+                                "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                tid,
+                                rps,
+                                bw,
+                                Duration::from_nanos(hist.value_at_percentile(95.0)),
+                                Duration::from_nanos(hist.value_at_percentile(99.0)),
+                            );
+                            hist.clear();
                         } else {
                             my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                         }
@@ -226,14 +226,14 @@ async fn run_bench(
                     if rcnt>args.warmup{
                         if args.log_latency {
                             my_print!(
-                                    "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
-                                    tid,
-                                    rps,
-                                    bw,
-                                    Duration::from_nanos(hist.value_at_percentile(95.0)),
-                                    Duration::from_nanos(hist.value_at_percentile(99.0)),
-                                );
-                                hist.clear();
+                                "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                tid,
+                                rps,
+                                bw,
+                                Duration::from_nanos(hist.value_at_percentile(95.0)),
+                                Duration::from_nanos(hist.value_at_percentile(99.0)),
+                            );
+                            hist.clear();
                         } else {
                             my_print!("Thread {}, {} rps, {} Gb/s", tid, rps, bw);
                         }
