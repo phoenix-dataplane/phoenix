@@ -18,6 +18,7 @@ use crate::ptr::{ShmNonNull, ShmPtr};
 use super::boxed::Box;
 use super::raw_vec::RawVec;
 
+#[repr(C)]
 pub struct Vec<T, A: ShmAllocator = System> {
     buf: RawVec<T, A>,
     len: usize,

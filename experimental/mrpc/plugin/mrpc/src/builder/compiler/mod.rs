@@ -13,6 +13,7 @@ const MRPC_DERIVE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-deriv
 const MRPC_MARSHAL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mrpc-marshal");
 const SHM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/shm");
 const PHOENIX_API: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/phoenix-api");
+// Make sure the compiler for plugins is the same as the compiler for the backend.
 const TOOLCHAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../../rust-toolchain"

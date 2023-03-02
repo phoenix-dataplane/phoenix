@@ -1,3 +1,6 @@
+//! There are extensive FFI in this module. However, these foreign function only interface between
+//! the backend compiler and the backend's plugin compiler, which we can guarantee to be the exact
+//! same. Therefore, types such as SgList, ExcavateContext, MarshalError do not need to be #[repr(C)].
 #![feature(strict_provenance)]
 #![feature(core_intrinsics)]
 #![feature(allocator_api)]

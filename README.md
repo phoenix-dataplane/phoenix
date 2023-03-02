@@ -92,7 +92,8 @@ with a prebuilt set of phoenix crates. This is currently done by
 `cargo-make`. However, building user libraries and apps does not require that.
 We can still use `cargo`.
 
-After `rpc_hello` is built, you can have two methods to start it.
+### Running mRPC examples
+Once `rpc_hello` is built, you can have two methods to start it.
 1. (Recommended) To start the applications on multiple machines, we prepare
 a launcher for this job.
 ```bash
