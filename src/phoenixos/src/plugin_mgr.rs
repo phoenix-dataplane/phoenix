@@ -89,6 +89,11 @@ impl PluginManager {
     pub fn load_or_upgrade_addon(&self, addon: &PluginDescriptor) -> anyhow::Result<()> {
         // Get the library path and its dep file path
         let (lib_path, dep_path) = self.get_plugin_path(&addon);
+        log::info!(
+            "load_or_upgrade_addon: lib_path: {}, dep_path: {}",
+            lib_path.display(),
+            dep_path.display()
+        );
 
         // RT linker load the rlib and its all transitive dependencies
         let linked = {

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail};
-use ipc::control::Response;
 use ipc::control::ResponseKind;
+use ipc::control::{PluginType, Response};
 use itertools::Itertools;
 use nix::unistd::Pid;
 
@@ -387,7 +387,9 @@ impl Control {
                     .plugins
                     .service_registry
                     .get(&service)
-                    .ok_or_else(|| anyhow!("service {:?} not found", sender))?
+                    .ok_or_else(|| {
+                        anyhow!("Service {:?} not found, requested by {:?}", service, sender)
+                    })?
                     .key();
                 let desired_mode = hint.mode;
                 let mode_override = self
@@ -414,13 +416,23 @@ impl Control {
                 Ok(())
             }
             control::Request::Upgrade(request) => {
-                log::info!("Receive backend upgrade request from phoenixctl");
-                let engines_to_upgrade = self.plugins.load_or_upgrade_modules(&request.plugins)?;
-                self.upgrader.upgrade(
-                    engines_to_upgrade,
-                    request.flush,
-                    request.detach_subscription,
-                )?;
+                log::info!("Receive backend upgrade request: {:?}", request);
+                match request.ty {
+                    PluginType::Module => {
+                        let engines_to_upgrade =
+                            self.plugins.load_or_upgrade_modules(&request.plugins)?;
+                        self.upgrader.upgrade(
+                            engines_to_upgrade,
+                            request.flush,
+                            request.detach_subscription,
+                        )?;
+                    }
+                    PluginType::Addon => {
+                        for addon in &request.plugins {
+                            self.plugins.load_or_upgrade_addon(addon)?;
+                        }
+                    }
+                }
                 Ok(())
             }
             control::Request::ListSubscription => {

@@ -33,10 +33,10 @@ use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::log;
 use phoenix_common::module::{ModuleCollection, Version};
 use phoenix_common::resource::Error as ResourceError;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
-use phoenix_common::log;
 
 use super::get_ops;
 use super::pool::BufferSlab;

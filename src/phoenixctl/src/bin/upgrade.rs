@@ -70,30 +70,39 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    assert!(
-        config.modules.is_empty() ^ config.addons.is_empty(),
-        "modules and addons cannot be upgraded at the same time"
-    );
-    let (plugins, ty) = if config.modules.is_empty() {
-        (config.addons, PluginType::Addon)
-    } else {
-        (config.modules, PluginType::Module)
-    };
-
     let flush = config.flush.unwrap_or(false);
     let detach_subscription = config.detach_subscription.unwrap_or(true);
 
-    let upgrade_request = UpgradeRequest {
-        plugins,
-        ty,
-        flush,
-        detach_subscription,
+    let send_req = |upgrade_request| {
+        let req = Request::Upgrade(upgrade_request);
+        let buf = bincode::serialize(&req).unwrap();
+        assert!(buf.len() < MAX_MSG_LEN);
+
+        let service_path = PHOENIX_PREFIX.join(PHOENIX_CONTROL_SOCK.as_path());
+        sock.send_to(&buf, &service_path).unwrap();
     };
 
-    let req = Request::Upgrade(upgrade_request);
-    let buf = bincode::serialize(&req).unwrap();
-    assert!(buf.len() < MAX_MSG_LEN);
+    // handle modules
+    if !config.modules.is_empty() {
+        let upgrade_request = UpgradeRequest {
+            plugins: config.modules,
+            ty: PluginType::Module,
+            flush,
+            detach_subscription,
+        };
 
-    let service_path = PHOENIX_PREFIX.join(PHOENIX_CONTROL_SOCK.as_path());
-    sock.send_to(&buf, &service_path).unwrap();
+        send_req(upgrade_request);
+    }
+
+    // handle addons
+    if !config.addons.is_empty() {
+        let upgrade_request = UpgradeRequest {
+            plugins: config.addons,
+            ty: PluginType::Addon,
+            flush,
+            detach_subscription,
+        };
+
+        send_req(upgrade_request);
+    }
 }

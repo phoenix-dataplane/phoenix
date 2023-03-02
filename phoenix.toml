@@ -33,7 +33,7 @@ path = "control.sock"
 [linker]
 workdir = "linker"
 
-# Modules
+# Prelude Modules
 [[modules]]
 name = "RdmaTransport"
 lib_path = "plugins/libphoenix_transport_rdma.rlib"
@@ -83,26 +83,26 @@ enable_scheduler = false
 [[modules]]
 name = "TcpRpcAdapter"
 lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
-#
-#
-# # Addons being here
-# [[addons]]
-# name = "RateLimit"
-# lib_path = "plugins/libphoenix_ratelimit_plugin.so"
-# config_string = '''
-# requests_per_sec = 1000
-# bucket_size = 1000
-# '''
-#
-# [[addons]]
-# name = "Qos"
-# lib_path = "plugins/libphoenix_qos_plugin.so"
-# config_string = '''
-# latency_budget_microsecs = 10
-# '''
-#
-# [[addons]]
-# name = "HotelAcl"
-# lib_path = "plugins/libphoenix_hotel_acl_plugin.so"
-# config_string = '''
-# '''
+
+
+# Prelude Addons (not in effect until being attached)
+[[addons]]
+name = "RateLimit"
+lib_path = "plugins/libphoenix_ratelimit.rlib"
+config_string = '''
+requests_per_sec = 1000
+bucket_size = 1000
+'''
+
+[[addons]]
+name = "Qos"
+lib_path = "plugins/libphoenix_qos.rlib"
+config_string = '''
+latency_budget_microsecs = 10
+'''
+
+[[addons]]
+name = "HotelAcl"
+lib_path = "plugins/libphoenix_hotel_acl.rlib"
+config_string = '''
+'''
