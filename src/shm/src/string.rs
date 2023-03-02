@@ -361,6 +361,7 @@ use crate::vec::Vec;
 /// [Deref]: core::ops::Deref "ops::Deref"
 /// [`Deref`]: core::ops::Deref "ops::Deref"
 /// [`as_str()`]: String::as_str
+#[repr(C)]
 #[derive(PartialOrd, Ord)]
 pub struct String<A: ShmAllocator = System> {
     vec: Vec<u8, A>,

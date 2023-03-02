@@ -22,6 +22,7 @@ enum AllocInit {
     Zeroed,
 }
 
+#[repr(C)]
 pub struct RawVec<T, A: ShmAllocator = System> {
     ptr: ShmPtr<T>,
     cap: usize,
