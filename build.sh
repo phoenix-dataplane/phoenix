@@ -9,10 +9,6 @@ cargo build -vv -r -p phoenix_common --color=always |& tee $PHOENIX_COMPILE_LOG
 
 cp -r target/release/deps $HOST_DEP
 
-# DEP_FILE=`find target/release/deps | grep 'phoenix_common-[^.]*\.d'`
-# echo $DEP_FILE
-# cargo rr --bin phoenix_cargo -- --phoenix-dep $DEP_FILE --prebuilt-dir target/release/deps -- build -v --target-dir target --manifest-path experimental/mrpc/Cargo.toml --workspace
-
 cargo build -r --bin phoenix_cargo
 rm -r target/release/.fingerprint
 
