@@ -1,0 +1,109 @@
+[env]
+PHOENIX_PREFIX = { value = "/tmp/phoenix", condition.env_not_set = ["PHOENIX_PREFIX"] }
+PROJECT_ROOT = { script = ["pwd"] }
+TARGET_DIR = "${PROJECT_ROOT}/target"
+PHOENIX_COMPILE_LOG = "${PROJECT_ROOT}/phoenix_compile_log.txt"
+HOST_DEP = "${TARGET_DIR}/host_dep"
+
+[tasks.default]
+alias = "dev-test-flow"
+
+# the default make target
+[tasks.dev-test-flow]
+description = '''
+Development testing flow.
+You can customize your own development testing flow.
+It current builds phoenixos; builds and deploys phoenix plugins, and runs phoenix daemon.
+'''
+dependencies = [
+  "build-phoenixos",
+  "build-plugins",
+  "deploy-plugins",
+  "run-phoenixos",
+]
+
+[tasks.phoenix_common]
+description = '''
+Build phoenix-common package and deploy it to target/host_dep.
+'''
+cwd = "${PROJECT_ROOT}"
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo build -vv --release -p phoenix_common --color=always |& tee ${PHOENIX_COMPILE_LOG}.2
+mv -f ${PHOENIX_COMPILE_LOG}.2 ${PHOENIX_COMPILE_LOG}
+rm -rf ${HOST_DEP}
+cp -r ${TARGET_DIR}/release/deps ${HOST_DEP}
+'''
+dependencies = ["remove-fingerprint1"]
+
+[tasks.phoenix_cargo]
+description = "Build phoenix_cargo tool."
+cwd = "${PROJECT_ROOT}"
+script = "cargo build --release --bin phoenix_cargo"
+
+[tasks.build-phoenixos]
+description = "Build phoenixos."
+cwd = "${PROJECT_ROOT}"
+script = '''
+  ${TARGET_DIR}/release/phoenix_cargo \
+    --compile-log ${PHOENIX_COMPILE_LOG} --host-dep ${HOST_DEP} -- \
+    build --release --target-dir ${TARGET_DIR} -p phoenixos
+'''
+dependencies = [
+  "phoenix_common",
+  "phoenix_cargo",
+  "remove-fingerprint2",
+]
+
+[tasks.phoenixos]
+alias = "build-phoenixos"
+
+[tasks.run-phoenixos]
+description = "Start the phoenixos system service."
+cwd = "${PROJECT_ROOT}"
+command = "${TARGET_DIR}/release/phoenixos"
+args = ["${@}"]
+
+[tasks.run]
+alias = "run-phoenixos"
+
+[tasks.build-plugins]
+description = '''
+Build specified plugins by package name.
+If no argument is provided, build all plugins in this workspace.
+'''
+# cargo make build-plugins [package-name]*
+cwd = "${PROJECT_ROOT}"
+command = "${TARGET_DIR}/release/phoenix_cargo"
+args = [
+    "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
+    "--",
+    "build", "--release", "--target-dir", "${TARGET_DIR}",
+    "-p ${@}"
+]
+dependencies = ["remove-fingerprint3"]
+
+[tasks.deploy-plugins]
+description = "Deploy all plugins."
+script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh ${PHOENIX_PREFIX}"
+
+[tasks.remove-fingerprint]
+description = "Clear cargo fingerprint under target/release."
+script = '''
+rm -rf ${TARGET_DIR}/release/.fingerprint
+'''
+
+# cargo-make won't run the same task twice, so we have to use aliases
+[tasks]
+remove-fingerprint1.alias = "remove-fingerprint"
+remove-fingerprint2.alias = "remove-fingerprint"
+remove-fingerprint3.alias = "remove-fingerprint"
+
+[tasks.build]
+description = "Forward everything to cargo build."
+command = "cargo"
+args = ["build", "${@}"]
+
+[config]
+default_to_workspace = false

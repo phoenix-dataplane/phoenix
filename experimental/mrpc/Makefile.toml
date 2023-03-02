@@ -1,42 +1,50 @@
+extend = "../../Makefile.toml"
+
+[env]
+PROJECT_ROOT = { script = ["realpath $(pwd)/../../"] }
+
 # the default target
 [tasks.dev-test-flow]
 description = '''
 Development testing flow.
+You can customize your own developmenet testing flow.
 Build and deploy mRPC plugins. Build and deploy phoenix plugins. Run phoenix daemon.
 '''
 dependencies = [
-  "build-phoenix",
-  "build-release",
+  "build-phoenixos",
+  "build-mrpc-plugins",
+  # "build-plugins",
   "deploy-mrpc-plugins",
-  "run-phoenix",
+  "build-mrpc-examples",
+  "run-phoenixos",
 ]
 
-[tasks.build]
-args = ["build", "--workspace"]
-
-[tasks.build-release]
-args = ["build", "--release", "--workspace", "--verbose"]
+[tasks.build-mrpc-plugins]
+description = '''
+Build specified plugins by package name.
+If no argument is provided, build all plugins in this workspace.
+'''
+# cargo make build-plugins [package-name]*
+command = "${TARGET_DIR}/release/phoenix_cargo"
+args = [
+    "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
+    "--",
+    "build", "--release", "--target-dir", "${TARGET_DIR}",
+    "--manifest-path", "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
+    "-p", "phoenix-*",
+]
+dependencies = ["remove-fingerprint4"]
 
 [tasks.deploy-mrpc-plugins]
-script = "scripts/deploy_plugins.sh"
+script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh"
 
-[tasks.build-phoenix]
-command = "cargo"
-args = ["build", "--release", "--workspace", "--manifest-path", "../../Cargo.toml", "--verbose"]
+[tasks.build-mrpc-examples]
+description = '''
+Build mRPC example apps under the `examples/` directory.
+'''
+script = '''
+cargo build --release -p 'rpc_*' -p 'masstree_analytics' -p 'hotel_reservation'
+'''
 
-[tasks.deploy-phoenix-plugins]
-script = "../../scripts/deploy_plugins.sh"
-dependencies = ["build-phoenix"]
-
-[tasks.run-phoenix]
-command = "cargo"
-args = [
-  "run", "--release", "--bin", "phoenix",
-  "--manifest-path", "../../Cargo.toml",
-  "--",
-  "-c", "../../phoenix.toml"
-]
-dependencies = ["deploy-phoenix-plugins"]
-
-[config]
-default_to_workspace = false
+[tasks]
+remove-fingerprint4.alias = "remove-fingerprint"

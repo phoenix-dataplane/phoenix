@@ -72,17 +72,6 @@ transport = "Rdma"
 nic_index = 0
 '''
 
-# [[modules]]
-# name = "Mrpc2"
-# lib_path = "plugins/libphoenix_mrpc.rlib"
-# config_string = '''
-# prefix = "/tmp/phoenix"
-# engine_basename = "mrpc-engine"
-# build_cache = "/tmp/phoenix/build-cache"
-# transport = "Rdma"
-# nic_index = 0
-# '''
-
 [[modules]]
 name = "RpcAdapter"
 lib_path = "plugins/libphoenix_rpc_adapter.rlib"

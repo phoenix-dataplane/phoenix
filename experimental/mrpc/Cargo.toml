@@ -39,11 +39,11 @@ spin.workspace = true
 
 [workspace]
 members = [
-  # the products
+  # mrpc user-land libraries
   "mrpc-build",
   "mrpc-derive",
   "mrpc-marshal",
-  # phoenix-api
+  # extension to phoenix-api
   "phoenix-api/mrpc",
   "phoenix-api/rpc_adapter",
   "phoenix-api/tcp_rpc_adapter",

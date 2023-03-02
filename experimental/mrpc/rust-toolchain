@@ -1,4 +1,1 @@
-[toolchain]
-channel = "nightly-2022-10-01"
-components = [ "cargo", "clippy", "rust-docs", "rust-std", "rustc", "rustfmt", "rust-analyzer" ]
-profile = "minimal"
+../../rust-toolchain
