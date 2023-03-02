@@ -37,53 +37,14 @@ workdir = "linker"
 [[modules]]
 name = "RdmaTransport"
 lib_path = "plugins/libphoenix_transport_rdma.rlib"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "transport-engine-rdma"
-datapath_wq_depth = 32
-datapath_cq_depth = 32
-command_max_interval_ms = 1000
-'''
 
 [[modules]]
 name = "TcpTransport"
 lib_path = "plugins/libphoenix_transport_tcp.rlib"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "transport-engine-tcp"
-'''
 
 [[modules]]
 name = "Salloc"
 lib_path = "plugins/libphoenix_salloc.rlib"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "salloc"
-'''
-
-[[modules]]
-name = "Mrpc"
-lib_path = "plugins/libphoenix_mrpc.rlib"
-config_string = '''
-prefix = "/tmp/phoenix"
-engine_basename = "mrpc-engine"
-build_cache = "/tmp/phoenix/build-cache"
-transport = "Rdma"
-nic_index = 0
-'''
-
-[[modules]]
-name = "RpcAdapter"
-lib_path = "plugins/libphoenix_rpc_adapter.rlib"
-config_string = '''
-enable_scheduler = false
-'''
-
-
-[[modules]]
-name = "TcpRpcAdapter"
-lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
-
 
 # Prelude Addons (not in effect until being attached)
 [[addons]]
@@ -92,17 +53,4 @@ lib_path = "plugins/libphoenix_ratelimit.rlib"
 config_string = '''
 requests_per_sec = 1000
 bucket_size = 1000
-'''
-
-[[addons]]
-name = "Qos"
-lib_path = "plugins/libphoenix_qos.rlib"
-config_string = '''
-latency_budget_microsecs = 10
-'''
-
-[[addons]]
-name = "HotelAcl"
-lib_path = "plugins/libphoenix_hotel_acl.rlib"
-config_string = '''
 '''
