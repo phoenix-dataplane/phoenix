@@ -1,27 +1,20 @@
 #include "ffi/src/client.rs"
 #include <iostream>
 
-void sendRequest(IncrementerClient* client, ValueRequest req) {
-  std::cout << "request: ValueRequest { val: " << req.val << " }" << std::endl;
-  ValueReply reply = client->increment(req);
-  std::cout << "response: ValueReply { val: " << reply.val << " }" << std::endl;
+void sendRequest(IncrementerClient* client, ValueRequest* req) {
+  std::cout << "request: ValueRequest { val: " << req->val() << " }" << std::endl;
+  ValueReply* reply = client->increment(rust::Box<ValueRequest>::from_raw(req)).into_raw();
+  std::cout << "response: ValueReply { val: " << reply->val() << " }" << std::endl;
 }
 
 int main() {
   IncrementerClient* client_1 = connect("127.0.0.1:5000").into_raw();
-  IncrementerClient* client_2 = connect("127.0.0.1:5002").into_raw();
-  ValueRequest req1;
-  req1.val = 1;
+  ValueRequest* req = new_value_request().into_raw();
+  req->set_val(0);
+  req->add_foo(22);
+  req->add_foo(42);
 
-  ValueRequest req2;
-  req2.val = 1000;
-
-  for (int i = 0; i < 100; i++) {
-    sendRequest(client_1, req1);
-    sendRequest(client_2, req2);
-    req1.val++;
-    req2.val++;
-  }
+  sendRequest(client_1, req);
   
   return 0;
 }
