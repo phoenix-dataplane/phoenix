@@ -14,7 +14,9 @@ Phoenix is a dataplane service which serves as a framework to develop and deploy
 The key features of Phoenix include:
 
 **Modular Plugin Systems**: Phoenix provides an engine abstraction which, as the modular unit, can be developed, dynamically load, scheduled, and even be live upgraded with minimal disruption to user applications.
+
 **High-performance Networking**: Phoenix offers managed access to networking devices while exposing a user-friendly API.
+
 **Policy Manageability**: Phoenix supports application-layer policies which can be specified by infrastructure administers to gain visibility and control user application behaviors.
 
 ## Getting Started
@@ -107,6 +109,9 @@ $ cd experimental/mrpc
 
 You can explore the set of mRPC user applications in
 `experimental/mrpc/examples`.
+
+## Learning More
+[**Documentation**](https://phoenix-dataplane.github.io/)
 
 ## License
 Phoenix is licensed under the [Apache-2.0 license](https://github.com/phoenix-dataplane/phoenix/blob/main/LICENSE).
