@@ -111,5 +111,8 @@ cd benchmark
 cargo rr --bin launcher -- -b benchmark/rpc_hello.toml
 ```
 
+## Learning More
+[**Documentation**](https://phoenix-dataplane.github.io/)
+
 ## License
 Phoenix is licensed under the [Apache-2.0 license](https://github.com/phoenix-dataplane/phoenix/blob/main/LICENSE).
