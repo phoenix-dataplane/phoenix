@@ -415,7 +415,7 @@ impl Control {
                 }
                 Ok(())
             }
-            control::Request::Upgrade(request) => {
+            control::Request::Upgrade(mut request) => {
                 log::info!("Receive backend upgrade request: {:?}", request);
                 match request.ty {
                     PluginType::Module => {
@@ -426,6 +426,8 @@ impl Control {
                             request.flush,
                             request.detach_subscription,
                         )?;
+
+                        self.config.modules.append(&mut request.plugins);
                     }
                     PluginType::Addon => {
                         for addon in &request.plugins {
