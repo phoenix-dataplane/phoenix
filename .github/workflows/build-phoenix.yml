@@ -40,7 +40,7 @@ jobs:
       run: cargo make build-phoenixos
 
     - name: Build phoenix plugins
-      run: cargo make build-phoenix-plugins
+      run: cargo make build-plugins
 
     - name: Build phoenix-cli tools
       run: cargo make build-phoenix-cli
