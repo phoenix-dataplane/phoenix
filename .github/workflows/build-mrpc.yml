@@ -31,10 +31,28 @@ jobs:
     - name: Install nightly rust toolchain
       run: rustup show
 
+    - name: Install cargo-make
+      run: cargo install cargo-make
+
     - name: Run cargo check
       uses: actions-rs/cargo@v1
       with:
         command: check
+
+    - name: Build phoenixos
+      uses: actions-rs/cargo@v1
+      with:
+        command: cargo make build-phoenixos
+
+    - name: Build mRPC plugins
+      uses: actions-rs/cargo@v1
+      with:
+        command: cargo make build-mrpc-plugins
+
+    - name: Build mRPC library and examples
+      uses: actions-rs/cargo@v1
+      with:
+        command: cargo make build-mrpc-examples
 
     - name: Run cargo test
       uses: actions-rs/cargo@v1
