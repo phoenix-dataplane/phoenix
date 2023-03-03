@@ -35,21 +35,21 @@ jobs:
       with:
         command: check
 
+    - name: Install cargo-make
+      uses: davidB/rust-cargo-make@v1
+
     - name: Build phoenixos
       uses: actions-rs/cargo@v1
-      uses: davidB/rust-cargo-make@v1
       with:
         command: cargo make build-phoenixos
 
     - name: Build mRPC plugins
       uses: actions-rs/cargo@v1
-      uses: davidB/rust-cargo-make@v1
       with:
         command: cargo make build-mrpc-plugins
 
     - name: Build mRPC library and examples
       uses: actions-rs/cargo@v1
-      uses: davidB/rust-cargo-make@v1
       with:
         command: cargo make build-mrpc-examples
 
