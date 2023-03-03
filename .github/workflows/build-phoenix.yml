@@ -1,5 +1,4 @@
-# cargo build & test
-name: build-phoenix
+name: build Phoenix
 
 on:
   push:

@@ -1,5 +1,4 @@
-# cargo build & test
-name: build
+name: Build mRPC
 
 on:
   push:
