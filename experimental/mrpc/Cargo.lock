@@ -1679,6 +1679,7 @@ dependencies = [
  "once_cell",
  "phoenix-api",
  "tokio",
+ "tracing-core",
 ]
 
 [[package]]
@@ -1731,6 +1732,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "utils",
  "uuid",
 ]
 
@@ -1883,6 +1885,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "utils",
 ]
 
 [[package]]
@@ -1944,14 +1947,12 @@ dependencies = [
  "ipc",
  "libnuma",
  "libnuma-sys",
- "minstant",
  "nix",
  "phoenix-api",
  "phoenix-api-mrpc",
  "phoenix-common-workspace",
  "semver 1.0.14",
  "sharded-slab",
- "smallvec",
  "static_assertions",
  "thiserror",
  "tokio",
@@ -2849,6 +2850,10 @@ checksum = "d360722e1f3884f5b14d332185f02ff111f771f0c76a313268fe6af1409aba96"
 [[package]]
 name = "utils"
 version = "0.1.0"
+dependencies = [
+ "minstant",
+ "smallvec",
+]
 
 [[package]]
 name = "uuid"
