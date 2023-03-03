@@ -29,7 +29,7 @@ impl Greeter for MyGreeter {
     }
 }
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     smol::block_on(async {
         let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
         server

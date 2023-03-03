@@ -7,7 +7,7 @@ pub mod rpc_hello {
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = GreeterClient::connect("rdma0.danyang-06:5000")?;
     let req = HelloRequest {
         name: "mRPC".into(),

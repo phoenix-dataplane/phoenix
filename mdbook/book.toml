@@ -1,0 +1,27 @@
+[book]
+title = "Phoenix Documentation"
+description = "Phoenix Documentation"
+authors = ["Yongji Wu", "Jingrong Chen"]
+language = "en"
+
+[rust]
+edition = "2021"
+
+[output.html]
+mathjax-support = true
+site-url = "/"
+git-repository-url = "https://github.com/phoenix-dataplane/phoenix/tree/main/mdbook"
+edit-url-template = "https://github.com/phoenix-dataplane/phoenix/edit/main/mdbook/{path}"
+
+[output.html.playground]
+editable = true
+line-numbers = true
+
+[output.html.search]
+limit-results = 20
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 2
+boost-paragraph = 1
+expand = true
+heading-split-level = 2

@@ -1,15 +1,15 @@
 # Working with mRPC Library
-This tutorial shows how to develop user applications with mRPC library.
+This tutorial describes how to develop user applications with mRPC library.
 
 ## Overview
 mRPC library provides interfaces similar to [tonic](https://github.com/hyperium/tonic), which is a Rust implementation of gRPC.
 mRPC Rust library is built to have first class support of the async ecosystem.
-Protocol Buffers, which are used by gRPC to sepcify services and messages, are also applied by mRPC.
-mRPC library's codegen generates client and servers stubs based on the protobuf specs.
+Protocol Buffers, which are used by gRPC to specify services and messages, are also applied by mRPC.
+mRPC library's codegen generates client and server stubs based on the protobuf specs.
 
 ## Defining the HelloWorld service
-Our first step is to define a mRPC service with protobuf.
-Let's first create a new Cargo project for our hello world demo.
+The first step is to define a mRPC service with protobuf.
+Let us first create a new Cargo project for our hello world demo.
 ```
 cargo new rpc_hello
 ```
@@ -93,14 +93,13 @@ Create a file `server.rs`. We can start by including our hello world proto's mes
 pub mod rpc_hello {
     // The string specified here must match the proto package name
     mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
 }
 
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
 use rpc_hello::{HelloReply, HelloRequest};
 ```
 
-Now, we need to implmenet the Greeter service we defined.
+Now, we need to implement the `Greeter` service we defined.
 In particular, we need to implement how `say_hello` should be handled by the server.
 ```rust
 #[mrpc::async_trait]
@@ -119,7 +118,6 @@ impl Greeter for MyGreeter {
             Ok(reply)
         }
     }
-    ```
 ```
 
 Here, `RRef<HelloRequest>` wraps the received `HelloRequest` on the receive heap of the shared memory with the mRPC service.
@@ -128,13 +126,13 @@ Here, `RRef<HelloRequest>` wraps the received `HelloRequest` on the receive heap
 
 With Greeter service implemented, we can implement a simple server that runs our Greeter service with smol runtime (which is a small and fast async runtime).
 ```rust
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     smol::block_on(async {
         let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
         server
-        .add_service(GreeterServer::new(MyGreeter::default()))
-        .serve()
-        .await?;
+			.add_service(GreeterServer::new(MyGreeter::default()))
+			.serve()
+			.await?;
         Ok(())
     })
 }
@@ -145,7 +143,6 @@ The complete code for the server is:
 pub mod rpc_hello {
     // The string specified here must match the proto package name
     mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
 }
 
 use rpc_hello::greeter_server::{Greeter, GreeterServer};
@@ -159,10 +156,10 @@ struct MyGreeter;
 #[mrpc::async_trait]
 impl Greeter for MyGreeter {
     async fn say_hello(
-    &self,
-    request: RRef<HelloRequest>,
+		&self,
+		request: RRef<HelloRequest>,
     ) -> Result<WRef<HelloReply>, mrpc::Status> {
-        eprintln!("request: {:?}", request);
+        println!("request: {:?}", request);
 
         let message = format!("Hello {}!", String::from_utf8_lossy(&request.name));
         let reply = WRef::new(HelloReply {
@@ -173,13 +170,13 @@ impl Greeter for MyGreeter {
     }
 }
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     smol::block_on(async {
         let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
         server
-        .add_service(GreeterServer::new(MyGreeter::default()))
-        .serve()
-        .await?;
+			.add_service(GreeterServer::new(MyGreeter::default()))
+			.serve()
+			.await?;
         Ok(())
     })
 }
@@ -191,14 +188,13 @@ We can write a client to send a single request to server and get the reply.
 pub mod rpc_hello {
     // The string specified here must match the proto package name
     mrpc::include_proto!("rpc_hello");
-    // include!("../../../mrpc/src/codegen.rs");
 }
 
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
 
 
-fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = GreeterClient::connect("server-addr:5000")?;
     let req = HelloRequest {
         name: "mRPC".into(),
@@ -210,19 +206,23 @@ fn main() -> Result<(), std::boxed::Box<dyn std::error::Error>> {
 ```
 
 With the client stub, we can just directly call `client.say_hello(req)` to send a request.
-It will return a future that we can await on, which resolves to a `RRef<HelloReply>`.
-The `HelloRequest` and `HelloReply` types in the generated code internally uses our customized Rust types, e.g., `Vec<u8>`, where
-our customized version directly allocates buffers on shared memory.
+It will return a Future that we can await on, which resolves to a `Result<RRef<HelloReply>, mrpc::Status>`.
+The `HelloRequest` and `HelloReply` types in the generated code internally
+uses our customized Rust collection types, e.g., `mrpc::alloc::Vec<u8>`, where
+it provides similar API as its std counterpart but directly allocates buffers on shared memory.
 
 ## Running the demo
-First, start mRPC services on the host machines that we will run the client and the server:
+First, start mRPC services on the machines that we will run the client and the server:
 ```
-KOALA_LOG=info cargo run --release --bin koala
+cd experimental/mrpc
+cat load-mrpc-plugins.toml >> ../../phoenix.toml
+cargo make
 ```
 
 Note that mRPC service needs to run on both the client side and the server side.
 After spinning up mRPC services, we can run the client and server applications:
 ```
+cd experimental/mrpc/examples/rpc_hello
 cargo run --release --bin rpc_hello_server
 cargo run --release --bin rpc_hello_client
 ```

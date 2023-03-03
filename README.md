@@ -64,6 +64,7 @@ You can simply change directory to `experimental/mrpc` to build,
 deploy mRPC plugins, and run phoenixos in one command.
 
 ```bash
+$ cat experimental/mrpc/load-mrpc-plugins.toml >> phoenix.toml
 $ cd experimental/mrpc && cargo make
 or equivalently
 $ cargo make --cwd experimental/mrpc
@@ -104,8 +105,8 @@ $ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
 2. Alternatively, you can run the examples manually by
 ```bash
 $ cd experimental/mrpc
-(server) $ cargo rr --workspace --bin rpc_hello_server
-(client) $ cargo rr --workspace --bin rpc_hello_client
+(server) $ cargo rr -p rpc_hello --bin rpc_hello_server
+(client) $ cargo rr -p rpc_hello --bin rpc_hello_client
 ```
 
 You can explore the set of mRPC user applications in
