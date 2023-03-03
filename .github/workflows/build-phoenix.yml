@@ -27,7 +27,6 @@ jobs:
     - name: Install RDMA library
       run: sudo apt install -y rdma-core libibverbs-dev librdmacm-dev libnuma-dev
 
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Install nightly rust toolchain
       run: rustup show
 
