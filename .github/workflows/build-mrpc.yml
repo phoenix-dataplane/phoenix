@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    name: Cargo check, run tests and fmt
+    name: Build mRPC, run tests and fmt
     runs-on: ubuntu-22.04
 
     steps:
