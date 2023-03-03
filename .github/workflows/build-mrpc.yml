@@ -27,13 +27,12 @@ jobs:
     - name: Install RDMA library
       run: sudo apt install -y rdma-core libibverbs-dev librdmacm-dev libnuma-dev
 
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Install nightly rust toolchain
       run: rustup show
 
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
+      run: cargo check
 
     - name: Install cargo-make
       uses: davidB/rust-cargo-make@v1
@@ -48,19 +47,12 @@ jobs:
       run: cargo make build-mrpc-examples
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
+      run: cargo test
       env:
         RUST_BACKTRACE: 1
 
     - name: Run cargo clippy
-      uses: actions-rs/cargo@v1
-      with:
-        command: clippy
+      run: cargo clippy
 
     - name: Check formatting
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo fmt --all -- --check
