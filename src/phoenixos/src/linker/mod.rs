@@ -446,7 +446,7 @@ mod tests {
     fn test_linker2() {
         let workdir = "/tmp/tmp";
         let mut linker = Linker::new(workdir.into()).unwrap();
-        let target_deps_dir = format!("{}/../../target/release", env!("CARGO_MANIFEST_DIR"));
+        let target_deps_dir = format!("{}/../../target/phoenix/release", env!("CARGO_MANIFEST_DIR"));
         let transport_rdma_module = linker
             .load_archive(
                 format!("{}/libphoenix_transport_rdma.rlib", target_deps_dir),
@@ -459,10 +459,6 @@ mod tests {
                 format!("{}/libphoenix_salloc.d", target_deps_dir),
             )
             .unwrap();
-        // let f_addr = linker
-        //     .global_sym_table
-        //     .lookup_symbol_addr("init_module_salloc")
-        //     .unwrap();
         let init_module_func = transport_rdma_module
             .lookup_symbol_addr("init_module")
             .unwrap();
