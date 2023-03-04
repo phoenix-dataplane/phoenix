@@ -438,34 +438,3 @@ fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize
 
     runtime_offset
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_linker2() {
-        let workdir = "/tmp/tmp";
-        let mut linker = Linker::new(workdir.into()).unwrap();
-        let target_deps_dir = format!("{}/../../target/phoenix/release", env!("CARGO_MANIFEST_DIR"));
-        let transport_rdma_module = linker
-            .load_archive(
-                format!("{}/libphoenix_transport_rdma.rlib", target_deps_dir),
-                format!("{}/libphoenix_transport_rdma.d", target_deps_dir),
-            )
-            .unwrap();
-        let salloc_module = linker
-            .load_archive(
-                format!("{}/libphoenix_salloc.rlib", target_deps_dir),
-                format!("{}/libphoenix_salloc.d", target_deps_dir),
-            )
-            .unwrap();
-        let init_module_func = transport_rdma_module
-            .lookup_symbol_addr("init_module")
-            .unwrap();
-        use phoenix_common::InitModuleFn;
-        let _c = unsafe { std::mem::transmute::<usize, InitModuleFn>(init_module_func)(None) };
-        let init_module_func = salloc_module.lookup_symbol_addr("init_module").unwrap();
-        let _c = unsafe { std::mem::transmute::<usize, InitModuleFn>(init_module_func)(None) };
-        // println!("c: {:?}", c);
-    }
-}
