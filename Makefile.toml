@@ -31,6 +31,7 @@ cwd = "${PROJECT_ROOT}"
 script = '''
 #!/usr/bin/env bash
 set -euo pipefail
+mkdir -p ${PHOENIX_TARGET_DIR}
 cargo build -vv --release -p phoenix_common --color=always \
   --target-dir ${PHOENIX_TARGET_DIR} |& tee ${PHOENIX_COMPILE_LOG}.2
 mv -f ${PHOENIX_COMPILE_LOG}.2 ${PHOENIX_COMPILE_LOG}
@@ -48,9 +49,10 @@ script = "cargo build --release --bin phoenix_cargo"
 description = "Build phoenixos."
 cwd = "${PROJECT_ROOT}"
 script = '''
-  ${TARGET_DIR}/release/phoenix_cargo \
-    --compile-log ${PHOENIX_COMPILE_LOG} --host-dep ${HOST_DEP} -- \
-    build --release --target-dir ${PHOENIX_TARGET_DIR} -p phoenixos
+mkdir -p ${PHOENIX_TARGET_DIR}
+${TARGET_DIR}/release/phoenix_cargo \
+  --compile-log ${PHOENIX_COMPILE_LOG} --host-dep ${HOST_DEP} -- \
+  build --release --target-dir ${PHOENIX_TARGET_DIR} -p phoenixos
 '''
 dependencies = [
   "phoenix_common",

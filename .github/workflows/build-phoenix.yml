@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    name: Cargo check, run tests and fmt
+    name: Build phoenix, run tests and fmt
     runs-on: ubuntu-22.04
 
     steps:
@@ -30,43 +30,28 @@ jobs:
     - name: Install nightly rust toolchain
       run: rustup show
 
-    - name: Install cargo-make
-      run: cargo install cargo-make
-
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
+      run: cargo check
+
+    - name: Install cargo-make
+      uses: davidB/rust-cargo-make@v1
 
     - name: Build phoenixos
-      uses: actions-rs/cargo@v1
-      with:
-        command: cargo make build-phoenixos
+      run: cargo make build-phoenixos
 
     - name: Build phoenix plugins
-      uses: actions-rs/cargo@v1
-      with:
-        command: cargo make build-phoenix-plugins
+      run: cargo make build-plugins
 
     - name: Build phoenix-cli tools
-      uses: actions-rs/cargo@v1
-      with:
-        command: cargo make build-phoenix-cli
+      run: cargo make build-phoenix-cli
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
+      run: cargo test
       env:
         RUST_BACKTRACE: 1
 
     - name: Run cargo clippy
-      uses: actions-rs/cargo@v1
-      with:
-        command: clippy
+      run: cargo clippy
 
     - name: Check formatting
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo fmt --all -- --check

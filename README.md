@@ -85,7 +85,7 @@ $ cargo build --release --manifest-path experimental/mrpc/Cargo.toml --workspace
 
 You could also build all the mRPC example applications using
 ```bash
-$ cargo make build-mrpc-examples --cwd experimental/mrpc
+$ cargo make --cwd experimental/mrpc build-mrpc-examples
 ```
 Note: building phoenixos and its plugins requires the plugins to link
 with a prebuilt set of phoenix crates. This is currently done by

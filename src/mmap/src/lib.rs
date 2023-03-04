@@ -6,7 +6,7 @@ pub mod aligned;
 pub use aligned::MmapAligned;
 
 pub mod mmap;
-pub use mmap::{Mmap, MmapOptions};
+pub use self::mmap::{Mmap, MmapOptions};
 
 #[no_mangle]
 pub fn test_load_module(a: i32, b: i32) -> i32 {
