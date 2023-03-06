@@ -1,4 +1,4 @@
-name: build Phoenix
+name: Build Phoenix
 
 on:
   push:
