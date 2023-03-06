@@ -5,7 +5,8 @@
 
 # Phoenix Dataplane Service
 
-[![Build Status](https://github.com/phoenix-dataplane/phoenix/workflows/build/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions)
+[![Build Phoenix](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-phoenix.yml/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-phoenix.yml)
+[![Build mRPC](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-mrpc.yml/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-mrpc.yml)
 
 [**Documentation**](https://phoenix-dataplane.github.io/)
 
