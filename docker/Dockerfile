@@ -31,7 +31,6 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN cargo install cargo-make
 
-RUN mkdir -p ~/.ssh && ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts && ssh-keygen -q -t ed25519 -P '' -f ~/.ssh/id_ed25519
-RUN git clone git@github.com:phoenix-dataplane/phoenix.git --recursive
+COPY . phoenix
 
 WORKDIR phoenix
