@@ -471,19 +471,20 @@ fn capture_rustc_commands<R: io::Read>(
                 //     verbose_level,
                 //     &stripped_line[0..30.min(stripped_line.len())]
                 // );
-                let filter_warning = || {
-                    is_primary
-                        && !stripped_line.starts_with("+ ")
-                        && !stripped_line.starts_with("[")
-                        && !stripped_line.starts_with(COMMAND_START)
-                };
+                // TODO(cjr): cargo displays warnings for local package, but I did not find a
+                // convenient way to determine if a package is local, so here we just show
+                // warnings for primary packages we are building.
+                let show_warnings = is_primary
+                    && !stripped_line.starts_with("+ ")
+                    && !stripped_line.starts_with("[")
+                    && !stripped_line.starts_with(COMMAND_START);
                 match verbose_level {
-                    0 => stripped_line.starts_with(COMMAND_COMPILING) || filter_warning(),
+                    0 => stripped_line.starts_with(COMMAND_COMPILING) || show_warnings,
                     1 => {
                         // print only "Compiling" and warning/error lines if not verbose
                         stripped_line.starts_with(COMMAND_COMPILING)
                             || stripped_line.starts_with(COMMAND_START)
-                            || filter_warning()
+                            || show_warnings
                     }
                     2.. => true, // print everything if verbose
                     _ => panic!("negative verbose_level: {}", verbose_level),
