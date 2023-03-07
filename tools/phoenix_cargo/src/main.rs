@@ -2,10 +2,10 @@
 //! https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
 //!
 //! Different than theseus_cargo, phoenix_cargo
-//! - supports dylib and proc_macro
-//! - supports linking with the correct one among multiple version of the same dependency crate
-//! by analyzing the package version and features
-//! - does not handle cross-compiling
+//! + supports dylib and proc_macro
+//! + supports choosing a crate among multiple builds (with different versions or features)
+//! of the same dependency crate.
+//! - it does not currenlty handle cross-compiling
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs;
@@ -305,6 +305,7 @@ fn main() -> anyhow::Result<()> {
         // * <crate_name>-<hash>.o
         // * lib<crate_name>-<hash>.rmeta
         // * lib<crate_name>-<hash>.rlib
+        // * lib<crate_name>-<hash>.so
         //
         // DO NOT remove * <crate_name>-<hash>.d
         //
@@ -378,12 +379,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 // The commands we care about capturing starting with "Running `" and end with "`".
+const COMMAND_COMPILING: &str = "Compiling ";
 const COMMAND_START: &str = "Running `";
 const COMMAND_END: &str = "`";
 const RUSTC_CMD_START: &str = "rustc --crate-name";
 const BUILD_SCRIPT_CRATE_NAME: &str = "build_script_build";
 
 const CARGO_PKG_VERSION: &str = "CARGO_PKG_VERSION";
+const CARGO_PRIMARY_PKG: &str = "CARGO_PRIMARY_PACKAGE=1";
 
 // The format of rmeta/rlib file names.
 const RMETA_RLIB_FILE_PREFIX: &str = "lib";
@@ -392,7 +395,7 @@ const RLIB_FILE_EXTENSION: &str = "rlib";
 const DYLIB_FILE_EXTENSION: &str = "so";
 const PREFIX_END: usize = RMETA_RLIB_FILE_PREFIX.len();
 
-//
+// Captures the `Running` rustc commands printed by cargo. Prints only the user desired output.
 fn capture_rustc_commands<R: io::Read>(
     reader: &mut BufReader<R>,
     verbose_level: usize,
@@ -404,6 +407,7 @@ fn capture_rustc_commands<R: io::Read>(
 
     let mut pending_multiline_cmd = false;
     let mut original_multiline = String::new();
+    let mut is_primary_pkg = false;
 
     // Capture every line that cargo writes to stderr.
     // We only re-echo the lines that should be outputted by the verbose level specified.
@@ -424,6 +428,8 @@ fn capture_rustc_commands<R: io::Read>(
             if line_stripped.starts_with(COMMAND_START) {
                 // Here, we've reached the beginning of a rustc command,
                 // which we actually do care about.
+                is_primary_pkg = false;
+                is_primary_pkg |= line_stripped.contains(CARGO_PRIMARY_PKG);
                 captured_commands.push(line_stripped.to_string());
                 pending_multiline_cmd = !is_final_line;
                 original_multiline = String::from(&original_line);
@@ -431,9 +437,10 @@ fn capture_rustc_commands<R: io::Read>(
                     return; // continue to the next line
                 }
             } else {
-                // Here, we've reached another line, which *may* bethe continuation of
+                // Here, we've reached another line, which *may* be the continuation of
                 // a previous rustc command, or it may just be a completely irrelevant
                 // line of output.
+                is_primary_pkg |= line_stripped.contains(CARGO_PRIMARY_PKG);
                 if pending_multiline_cmd {
                     // append to the latest line of output instead of adding a new line
                     let last = captured_commands
@@ -458,23 +465,39 @@ fn capture_rustc_commands<R: io::Read>(
             // issued from cargo to rustc.
             // But if the user didn't ask for that, then we shouldn't print that verbose output here.
             // Verbose output lines start with "Running `", "+ ", or "[".
-            let should_print = |stripped_line: &str| {
-                verbose_level > 0 ||  // print everything if verbose
-                (
-                    // print only "Compiling" and warning/error lines if not verbose
-                    !stripped_line.starts_with("+ ")
-                    && !stripped_line.starts_with("[")
-                    && !stripped_line.starts_with(COMMAND_START)
-                )
+            let should_print = |stripped_line: &str, is_primary: bool| {
+                // println!(
+                //     "debuggin: verbose_level: {}, stripped_line: {}",
+                //     verbose_level,
+                //     &stripped_line[0..30.min(stripped_line.len())]
+                // );
+                let filter_warning = || {
+                    is_primary
+                        && !stripped_line.starts_with("+ ")
+                        && !stripped_line.starts_with("[")
+                        && !stripped_line.starts_with(COMMAND_START)
+                };
+                match verbose_level {
+                    0 => stripped_line.starts_with(COMMAND_COMPILING) || filter_warning(),
+                    1 => {
+                        // print only "Compiling" and warning/error lines if not verbose
+                        stripped_line.starts_with(COMMAND_COMPILING)
+                            || stripped_line.starts_with(COMMAND_START)
+                            || filter_warning()
+                    }
+                    2.. => true, // print everything if verbose
+                    _ => panic!("negative verbose_level: {}", verbose_level),
+                }
             };
+
             if !original_multiline.is_empty() && is_final_line {
                 let original_multiline_replaced =
                     ansi_escape_regex.replace_all(&original_multiline, "");
                 let original_multiline_stripped = original_multiline_replaced.trim_start();
-                if should_print(original_multiline_stripped) {
+                if should_print(original_multiline_stripped, is_primary_pkg) {
                     eprintln!("{}", original_multiline)
                 }
-            } else if should_print(line_stripped) {
+            } else if should_print(line_stripped, is_primary_pkg) {
                 eprintln!("{}", original_line);
             }
         });
@@ -521,7 +544,7 @@ fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Resu
     // proper config.
     // cmd.env("RUST_TARGET_PATH");
 
-    // Cargo will directly use the rustflags read from .cargo/config.toml
+    // Cargo will directly use the rustflags read from .cargo/config.toml if RUSTFLAGS not set.
     // Add the sysroot argument to our rustflags so cargo will use our pre-built phoenix dependencies.
     // let mut rustflags = format!("--sysroot {}", sysroot_dir_path.display());
     // let mut rustflags = String::new();
@@ -673,7 +696,7 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
             )
         })?;
 
-    let is_primary = rustc_env_vars.contains("CARGO_PRIMARY_PACKAGE=1");
+    let is_primary = rustc_env_vars.contains(CARGO_PRIMARY_PKG);
 
     // metadata
     let (_crate_source_file, additional_args) = top_level_matches
@@ -740,12 +763,15 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
             } else {
                 if let Some((_crate_name, crate_path)) = value.split_once('=') {
                     let crate_path = Path::new(crate_path);
-                    let crate_name_with_hash =
-                        get_crate_name_with_hash_from_path(crate_path)?
+                    let crate_name_with_hash = get_crate_name_with_hash_from_path(crate_path)?
                         .strip_prefix(RMETA_RLIB_FILE_PREFIX)
-                            .with_context(
-                                || format!("Found .rlib or .rmeta file after '--extern' that didn't start with 'lib' prefix: {}",
-                                    crate_path.display()))?;
+                        .with_context(|| {
+                            format!(
+                                "Found .rlib or .rmeta file after '--extern' \
+                                    that didn't start with 'lib' prefix: {}",
+                                crate_path.display()
+                            )
+                        })?;
                     dependencies.push(crate_name_with_hash.to_owned());
                 } else {
                     panic!("Found --extern '{}' that does not have a exact path", value);
@@ -770,7 +796,8 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 /// and parses/modifies it to link against (depend on) the corresponding crate of the same name
 /// from the list of prebuilt crates.
 ///
-/// The actual dependency files (.rmeta/.rlib) for the prebuilt crates should be located in the `prebuilt_dir`.
+/// The actual dependency files (.rmeta/.rlib) for the prebuilt crates should be located in the
+/// `prebuilt_dir`.
 /// The target specification JSON file should be found in the `target_dir_path`.
 /// These two directories are usually the same directory.
 ///
@@ -903,10 +930,14 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                     let crate_rmeta_path = Path::new(crate_rmeta_path);
                     let crate_name_with_hash =
                         get_crate_name_with_hash_from_path(crate_rmeta_path)?
-                        .strip_prefix(RMETA_RLIB_FILE_PREFIX)
-                            .with_context(
-                                || format!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}",
-                                    crate_rmeta_path.display()))?;
+                            .strip_prefix(RMETA_RLIB_FILE_PREFIX)
+                            .with_context(|| {
+                                format!(
+                                    "Found .rlib or .rmeta file in out_dir that \
+                                    didn't start with 'lib' prefix: {}",
+                                    crate_rmeta_path.display()
+                                )
+                            })?;
                     let extern_crate =
                         compile_db
                             .get_crate(crate_name_with_hash)
@@ -1145,8 +1176,6 @@ fn populate_crates_from_dep_file<P: AsRef<Path>>(
         if filestem.starts_with(RMETA_RLIB_FILE_PREFIX) {
             all_deps.push(name.to_owned());
         }
-        // let v: Vec<String> = deps.split(' ').map(|s| s.to_owned()).collect();
-        // all_deps.extend(v);
     }
     // deduplicate
     all_deps.sort();
