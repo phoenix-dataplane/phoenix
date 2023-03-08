@@ -8,16 +8,69 @@
 //! - it does not currenlty handle cross-compiling
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use anyhow::{bail, Context};
 use clap::Parser;
 use semver::{Version, VersionReq};
+
+#[derive(Clone)]
+struct Available {
+    inner: Arc<AvailableInner>,
+}
+
+impl fmt::Debug for Available {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Available")
+            .field("data", &self.inner.lock)
+            .finish()
+    }
+}
+
+impl Default for Available {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Available {
+    fn new() -> Self {
+        Available {
+            inner: Arc::new(AvailableInner {
+                lock: Mutex::new(false),
+                cvar: Condvar::new(),
+            }),
+        }
+    }
+
+    fn wait(&self) {
+        let AvailableInner { lock, cvar } = &*self.inner;
+        let mut available = lock.lock().unwrap();
+        while !*available {
+            available = cvar.wait(available).unwrap();
+        }
+    }
+
+    fn make_available(&self) {
+        let AvailableInner { lock, cvar } = &*self.inner;
+        let mut available = lock.lock().unwrap();
+        *available = true;
+        cvar.notify_all();
+    }
+}
+
+#[derive(Debug)]
+struct AvailableInner {
+    lock: Mutex<bool>,
+    cvar: Condvar,
+}
 
 #[derive(Debug, Clone)]
 struct Crate {
@@ -31,6 +84,8 @@ struct Crate {
     is_primary: bool,
     // initialize it later
     is_recreated: Option<bool>,
+    // whether the crate has been available
+    available: Available,
 }
 
 impl Crate {
@@ -52,6 +107,7 @@ impl PrebuiltCrates {
             };
             c.is_recreated = Some(true);
             c.path = host_dep.join(c.path.file_name().context("Could not get file_name")?);
+            c.available.make_available();
             crates
                 .entry(c.name.to_owned())
                 .or_insert_with(Vec::new)
@@ -266,13 +322,21 @@ fn locate_project_root(cargo_subcommand: &[String]) -> anyhow::Result<PathBuf> {
     let output_json = String::from_utf8(output.stdout)?;
 
     // Extract the path inside the json
-    let bcx_root = output_json
+    let manifest_path = output_json
         .trim()
         .strip_prefix(r#"{"root":""#)
         .and_then(|s| s.strip_suffix(r#""}"#))
         .with_context(|| format!("Unexpected output: {}", output_json))?;
 
-    Ok(PathBuf::from(bcx_root))
+    let manifest_path = PathBuf::from(manifest_path);
+    let bcx_root = manifest_path.parent().with_context(|| {
+        format!(
+            "Unable to get parent directory for manifest: {}",
+            manifest_path.display(),
+        )
+    })?;
+
+    Ok(bcx_root.to_path_buf())
 }
 
 /// Returns the target-dir for this build.
@@ -288,7 +352,7 @@ fn locate_target_dir(cargo_subcommand: &[String], bcx_root: &Path) -> PathBuf {
         .iter()
         .position(|arg| arg == "--target-dir")
         .map(|pos| PathBuf::from(&cargo_subcommand[pos + 1]))
-        .unwrap_or_else(|| bcx_root.join("target"))
+        .unwrap_or_else(|| bcx_root.join("target").join("phoenix"))
 
     // let cargo_config = cargo::util::config::Config::default()?;
     // cargo_config.configure(
@@ -307,6 +371,24 @@ fn locate_target_dir(cargo_subcommand: &[String], bcx_root: &Path) -> PathBuf {
     // Ok(PathBuf::new())
 }
 
+fn determine_profile_dir(cargo_subcommand: &[String]) -> String {
+    // I couldn't find a more reliable yet simple way to do this unless follow the cargo's source
+    // code to parse, initialize workspace, and expand the command alias
+    if cargo_subcommand
+        .iter()
+        .find(|s| s.as_str() == "--release")
+        .is_some()
+        || cargo_subcommand
+            .iter()
+            .find(|s| s.as_str() == "-r")
+            .is_some()
+    {
+        "release".to_owned()
+    } else {
+        "debug".to_owned()
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let mut opts = Opts::parse();
 
@@ -314,16 +396,18 @@ fn main() -> anyhow::Result<()> {
     // dbg!(&opts.cargo_subcommand);
     let cargo_bcx_root = locate_project_root(&opts.cargo_subcommand)?;
 
+    // First pass, do not touch .fingerprint, set RUSTC_WRAPPER=echo, and capture the stderr
+    // Since we could run from a last failed or interrupted build, we need to recover the old
+    // fingerprint directory.
+    let target_dir = locate_target_dir(&opts.cargo_subcommand, &cargo_bcx_root);
+    let profile_dir = determine_profile_dir(&opts.cargo_subcommand);
+
     // Adjust `compile_log` and `host_dep` according to cargo_subcommand if not set by the user
     if opts.compile_log.is_none() {
-        opts.compile_log = Some(
-            cargo_bcx_root
-                .join("phoenix")
-                .join("phoenix_compile_log.txt"),
-        );
+        opts.compile_log = Some(target_dir.join("phoenix_compile_log.txt"));
     }
     if opts.host_dep.is_none() {
-        opts.host_dep = Some(cargo_bcx_root.join("phoenix").join("host_dep"));
+        opts.host_dep = Some(target_dir.join("host_dep"));
     }
 
     // Initialize the compile database from the cargo's log file.
@@ -335,18 +419,13 @@ fn main() -> anyhow::Result<()> {
     let verbose_count = count_verbose_arg(&opts.cargo_subcommand);
 
     // phoenix_cargo builds in three passes.
+    recover_fingerprint_directory(&target_dir, &profile_dir)?;
+    // let first_pass_stderr_captured = run_initial_cargo(&opts.cargo_subcommand, verbose_count)?;
 
-    // First pass, do not touch .fingerprint, set RUSTC_WRAPPER=echo, and capture the stderr
-    // Since we could run from a last failed or interrupted build, we need to recover the old
-    // fingerprint directory.
-    let target_dir = locate_target_dir(&opts.cargo_subcommand, &cargo_bcx_root);
-    recover_fingerprint_directory(&target_dir)?;
-    let first_pass_stderr_captured = run_initial_cargo(&opts.cargo_subcommand, verbose_count)?;
-
-    if !is_build_command(&opts.cargo_subcommand) {
-        println!("Exiting after completing non-'build' cargo command.");
-        return Ok(());
-    }
+    // if !is_build_command(&opts.cargo_subcommand) {
+    //     println!("Exiting after completing non-'build' cargo command.");
+    //     return Ok(());
+    // }
 
     // Second pass, rename .fingerprint and do a fresh build, capture the full compilation
     // information and rename .fingerprint back
@@ -355,10 +434,15 @@ fn main() -> anyhow::Result<()> {
         // Here, temporarily remove the ".fingerprint/` directory, in order to force rustc
         // to rebuild all artifacts for all of the modified rustc commands to capture the
         // informatino to build compile db.
-        let _guard = FingerprintDirGuard::new(target_dir)?;
+        let _guard = FingerprintDirGuard::new(&target_dir, &profile_dir)?;
 
-        run_initial_cargo(&opts.cargo_subcommand, verbose_count)?
+        run_initial_cargo(&opts.cargo_subcommand, verbose_count, &target_dir)?
     };
+
+    if !is_build_command(&opts.cargo_subcommand) {
+        println!("Exiting after completing non-'build' cargo command.");
+        return Ok(());
+    }
 
     {
         // Final pass, re-run the commands captured in the first stage, modify the extern arguments
@@ -394,39 +478,45 @@ fn main() -> anyhow::Result<()> {
 
         remove_redundant_artifacts(&compile_db, out_dir)?;
 
-        // Update the compile database
-        for original_cmd in &second_pass_stderr_captured {
-            let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
-                // skip invocations of build scripts
-                continue;
-            };
-
-            compile_db.insert_crate(&c);
-
-            let crate_name_with_hash = c.crate_name_with_hash();
-
-            // Skip build script invocations, as we may not need to re-run those.
-            if c.name == BUILD_SCRIPT_CRATE_NAME {
-                continue;
-            }
-
-            // Skip crates that have already been built. (Not sure if this is always 100% correct)
-            let crate_to_build = compile_db
-                .get_crate(&crate_name_with_hash)
-                .unwrap_or_else(|| panic!("Found no crate named: {:?}", crate_name_with_hash));
-            if !compile_db
-                .find_compatible_crates_in_prebuilt(&crate_to_build)
-                .is_empty()
-            {
-                compile_db.mark_recreated(&c, false);
-            }
-        }
-
         // Re-execute the rustc commands that we captured from the original cargo verbose output.
-        for original_cmd in &first_pass_stderr_captured {
-            // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
-            run_rustc_command(original_cmd, &mut compile_db)?;
-        }
+        rayon::scope(|s| {
+            for original_cmd in &second_pass_stderr_captured {
+                // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
+                if let Some(mut task) = run_rustc_command(original_cmd, &mut compile_db).unwrap() {
+                    s.spawn(move |_s| {
+                        for dep in task.dependencies {
+                            dep.1.wait();
+                        }
+
+                        // Finally, we run the recreated rustc command.
+                        let mut rustc_process = task
+                            .recreated_cmd
+                            .spawn()
+                            .expect("Failed to run cargo command");
+                        let exit_status = rustc_process.wait().expect("Error running rustc");
+
+                        match exit_status.code() {
+                            Some(0) => {
+                                println!(
+                                    "{} {}: Ran rustc command (modified for Phoenix) successfully.",
+                                    task.c.name, task.c.pkg_version
+                                );
+
+                                // Copy the compilation result to the parent directory of deps, just like what cargo
+                                // would do.
+                                if task.c.is_primary {
+                                    copy_result(&task.c).unwrap();
+                                }
+
+                                task.c.available.make_available();
+                            }
+                            Some(code) => panic!("rustc command exited with failure code {}", code),
+                            _ => panic!("rustc command failed and was killed."),
+                        }
+                    });
+                }
+            }
+        });
     }
 
     Ok(())
@@ -563,7 +653,11 @@ fn capture_rustc_commands<R: io::Read>(
 /// Runs the actual cargo build command.
 ///
 /// Returns the captured content of content written to `stderr` by the cargo command, as a list of lines.
-fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Result<Vec<String>> {
+fn run_initial_cargo<P: AsRef<Path>>(
+    full_args: &[String],
+    verbose_level: usize,
+    target_dir: P,
+) -> anyhow::Result<Vec<String>> {
     let subcommand = full_args
         .first()
         .context("Missing subcommand argument to `phoenix_cargo` (e.g., `build`)")?;
@@ -597,6 +691,8 @@ fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Resu
 
     // RUSTC_WRAPPER=echo
     // cmd.env("RUSTC_WRAPPER", "echo");
+
+    cmd.env("CARGO_TARGET_DIR", target_dir.as_ref());
 
     // TODO: Add the requisite environment variables to configure cargo such that rustc builds with the
     // proper config.
@@ -847,7 +943,14 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
         dependencies,
         is_primary,
         is_recreated: None,
+        available: Available::new(),
     }))
+}
+
+struct RustcTask {
+    recreated_cmd: Command,
+    c: Crate,
+    dependencies: Vec<(String, Available)>,
 }
 
 /// Takes the given `original_cmd` that was captured from the verbose output of cargo,
@@ -860,27 +963,30 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 /// These two directories are usually the same directory.
 ///
 /// # Return
-/// * Returns `Ok(true` if everything works and the modified rustc command executes properly.
-/// * Returns `Ok(false)` if no action needs to be taken.
+/// * Returns `Ok(task)` that contains that rustc task about to execute.
+/// * Returns `Ok(None)` if no action needs to be taken.
 ///   This occurs if `original_cmd` is for building a build script (currently ignored),
 ///   or if `original_cmd` is for building a crate that already exists in the set of `prebuilt_crates`.
-/// * Returns an error if the command fails.
-fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::Result<bool> {
+/// * Returns an error if the command fails to parse.
+fn run_rustc_command(
+    original_cmd: &str,
+    compile_db: &mut CompileDb,
+) -> anyhow::Result<Option<RustcTask>> {
     let prebuilt_dir = compile_db.prebuilt_dir.clone();
 
     let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
         // skip invocations of build scripts
-        return Ok(false);
+        return Ok(None);
     };
 
-    // compile_db.insert_crate(&c);
+    compile_db.insert_crate(&c);
 
     let crate_name_with_hash = c.crate_name_with_hash();
 
     // Skip build script invocations, as we may not need to re-run those.
     if c.name == BUILD_SCRIPT_CRATE_NAME {
         println!("\n### Skipping build script build");
-        return Ok(false);
+        return Ok(None);
     }
 
     // Skip crates that have already been built. (Not sure if this is always 100% correct)
@@ -895,15 +1001,15 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             "\n### Skipping already-built crate {:?}",
             crate_name_with_hash
         );
-        // compile_db.mark_recreated(&c, false);
-        return Ok(false);
+        compile_db.mark_recreated(&c, false);
+        return Ok(None);
     }
 
     println!("\n\nLooking at original command:\n{}", original_cmd);
     let Some((rustc_env_vars, _command_without_env, top_level_matches)) =
         parse_rustc_command(original_cmd)? else {
         // skip invocations of build scripts
-        return Ok(false);
+        return Ok(None);
     };
 
     let (crate_source_file, additional_args) = top_level_matches
@@ -933,6 +1039,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
     let matches =
         matches.context("Missing support for argument found in captured rustc command")?;
 
+    let mut dependencies = Vec::new();
     let mut args_or_deps_changed = false;
 
     // After adding the initial stuff: rustc command, crate name, (optional --edition), and crate source file,
@@ -1006,6 +1113,7 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                                 )
                             });
                     println!(" ({:?})", extern_crate);
+
                     args_or_deps_changed |= extern_crate
                         .is_recreated
                         .expect("field `is_recreated` not properly initialized");
@@ -1017,15 +1125,27 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
                         );
                     }
                     if !candidates.is_empty() {
-                        let c = candidates.first().unwrap();
+                        let prebuilt_crate = candidates.first().unwrap();
                         println!(
                             "#### Replacing crate {:?} with prebuilt crate at {} ({:?})",
                             extern_crate_name,
-                            c.path.display(),
-                            c,
+                            prebuilt_crate.path.display(),
+                            prebuilt_crate,
                         );
-                        new_value = format!("{}={}", extern_crate_name, c.path.display()).into();
+                        new_value =
+                            format!("{}={}", extern_crate_name, prebuilt_crate.path.display())
+                                .into();
                         args_or_deps_changed = true;
+
+                        dependencies.push((
+                            prebuilt_crate.path.display().to_string(),
+                            prebuilt_crate.available.clone(),
+                        ));
+                    } else {
+                        dependencies.push((
+                            extern_crate.path.display().to_string(),
+                            extern_crate.available.clone(),
+                        ));
                     }
                 }
             } else if arg == "-L" {
@@ -1086,39 +1206,18 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             "### Args did not change, skipping recreated_cmd:\n{:?}",
             recreated_cmd
         );
-        return Ok(false);
+        c.available.make_available();
+        return Ok(None);
     }
-
-    // XXX For debugging, uncommment the following
-    // println!("Press enter to run the above command ...");
-    // let mut buf = String::new();
-    // io::stdin()
-    //     .read_line(&mut buf)
-    //     .expect("failed to read stdin");
 
     // Ensure we have the RUST_TARGET_PATH env var so that rustc can find our target spec JSON file.
     // recreated_cmd.env("RUST_TARGET_PATH", target_dir_path);
 
-    // Finally, we run the recreated rustc command.
-    let mut rustc_process = recreated_cmd
-        .spawn()
-        .context("Failed to run cargo command")?;
-    let exit_status = rustc_process.wait().context("Error running rustc")?;
-
-    match exit_status.code() {
-        Some(0) => {
-            println!("Ran rustc command (modified for Phoenix) successfully.");
-
-            // Copy the compilation result to the parent directory of deps, just like what cargo
-            // would do.
-            if c.is_primary {
-                copy_result(&c)?;
-            }
-            Ok(true)
-        }
-        Some(code) => bail!("rustc command exited with failure code {}", code),
-        _ => bail!("rustc command failed and was killed."),
-    }
+    Ok(Some(RustcTask {
+        recreated_cmd,
+        c: c.clone(),
+        dependencies,
+    }))
 }
 
 fn copy_result(c: &Crate) -> anyhow::Result<()> {
@@ -1382,8 +1481,8 @@ struct FingerprintDirGuard {
 }
 
 impl FingerprintDirGuard {
-    fn new<P: AsRef<Path>>(target_dir: P) -> anyhow::Result<Self> {
-        let target_dir = target_dir.as_ref().to_path_buf().join("release");
+    fn new<P: AsRef<Path>>(target_dir: P, profile_dir: &str) -> anyhow::Result<Self> {
+        let target_dir = target_dir.as_ref().to_path_buf().join(profile_dir);
         let fingerprint_dir = target_dir.join(".fingerprint");
         let renamed_fingerprint_dir = target_dir.join(".fingerprint.orig");
         Self::move_dir(&fingerprint_dir, &renamed_fingerprint_dir)?;
@@ -1417,8 +1516,11 @@ impl FingerprintDirGuard {
 /// If phoenix_cargo is interrupted or quits during the second pass, the temporarily
 /// fingerprint directory `.fingerprint.orig` is present on the file system and that one should
 /// be the one in use.
-fn recover_fingerprint_directory<P: AsRef<Path>>(target_dir: P) -> anyhow::Result<()> {
-    let target_dir = target_dir.as_ref().join("release");
+fn recover_fingerprint_directory<P: AsRef<Path>>(
+    target_dir: P,
+    profile_dir: &str,
+) -> anyhow::Result<()> {
+    let target_dir = target_dir.as_ref().join(profile_dir);
     let fingerprint_dir = target_dir.join(".fingerprint");
     let renamed_fingerprint_dir = target_dir.join(".fingerprint.orig");
     if renamed_fingerprint_dir.exists() {
