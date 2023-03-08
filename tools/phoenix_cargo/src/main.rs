@@ -74,11 +74,16 @@ struct CompileDb {
 }
 
 impl CompileDb {
-    fn from_file<P1: AsRef<Path>, P2: AsRef<Path>>(
-        compile_log: P1,
-        host_dep: P2,
-    ) -> anyhow::Result<Self> {
-        let compile_log_path = compile_log.as_ref();
+    fn from_file(opts: &Opts) -> anyhow::Result<Self> {
+        let compile_log_path = opts.compile_log.as_ref().unwrap().as_path();
+
+        let host_dep = fs::canonicalize(&opts.host_dep.as_ref().unwrap()).with_context(|| {
+            format!(
+                "--host-dep arg '{}' was invalid path.",
+                opts.host_dep.as_ref().unwrap().display()
+            )
+        })?;
+
         let copy_to = host_dep.as_ref();
 
         // Parse rustc commands
@@ -210,12 +215,17 @@ impl CompileDb {
 )]
 struct Opts {
     /// The dep file that specifies the dependencies of a latest build of phoenix_common.
+    ///
+    /// If not specified, it will be the phoenix/phoneix_compile_log.txt under the target_dir
+    /// for this build.
     #[arg(long)]
-    compile_log: PathBuf,
+    compile_log: Option<PathBuf>,
 
     /// The path to the phoenix_common dependencies we will copy to.
+    ///
+    /// If not specified, it will be the phoenix/host_dep under the target_dir for this build.
     #[arg(long)]
-    host_dep: PathBuf,
+    host_dep: Option<PathBuf>,
 
     /// Cargo subcommand
     #[arg(raw = true, allow_hyphen_values = true)]
@@ -229,150 +239,194 @@ fn is_build_command(cargo_subcommand: &[String]) -> bool {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let opts = Opts::parse();
+/// Returns the project's workspace root.
+///
+/// It is equivalent to running cargo locate-project --workspace [--manifest-path some_path].
+fn locate_project_root(cargo_subcommand: &[String]) -> anyhow::Result<PathBuf> {
+    let mut cmd = Command::new("cargo");
+    cmd.arg("locate-project").arg("--workspace");
 
-    let host_dep = fs::canonicalize(&opts.host_dep).with_context(|| {
+    // Forward the --manifest-path option if present
+    if let Some(manifest_path) = cargo_subcommand
+        .iter()
+        .position(|arg| arg == "--manifest-path")
+        .map(|pos| cargo_subcommand[pos + 1].clone())
+    {
+        cmd.arg("--manifest-path").arg(manifest_path);
+    }
+
+    let output = cmd.output().with_context(|| {
         format!(
-            "--host-dep arg '{}' was invalid path.",
-            opts.host_dep.display()
+            "Failed to run cargo command: {:?} {:?}",
+            cmd.get_program(),
+            cmd.get_args()
         )
     })?;
 
-    // Build the compile database from the cargo's log file.
-    // This should be the file generated during build package phoenix_common.
-    let mut compile_db = CompileDb::from_file(opts.compile_log, host_dep)?;
+    let output_json = String::from_utf8(output.stdout)?;
+
+    // Extract the path inside the json
+    let bcx_root = output_json
+        .trim()
+        .strip_prefix(r#"{"root":""#)
+        .and_then(|s| s.strip_suffix(r#""}"#))
+        .with_context(|| format!("Unexpected output: {}", output_json))?;
+
+    Ok(PathBuf::from(bcx_root))
+}
+
+/// Returns the target-dir for this build.
+///
+/// It returns the value of `--target-dir` is it is present. Otherwise, it returns bcx_root/target.
+fn locate_target_dir(cargo_subcommand: &[String], bcx_root: &Path) -> PathBuf {
+    // determine the target-dir in the following order
+    // 1. --target-dir command-line flag
+    // 2. build.target-dir config value
+    // 3. env CARGO_TARGET_DIR/CARGO_BUILD_TARGET_DIR
+    // 4. default: bcx_root/target
+    cargo_subcommand
+        .iter()
+        .position(|arg| arg == "--target-dir")
+        .map(|pos| PathBuf::from(&cargo_subcommand[pos + 1]))
+        .unwrap_or_else(|| bcx_root.join("target"))
+
+    // let cargo_config = cargo::util::config::Config::default()?;
+    // cargo_config.configure(
+    //     0,
+    //     false,
+    //     None,
+    //     false,
+    //     false,
+    //     true,
+    //     &args_target_dir,
+    //     &[],
+    //     &[],
+    // )?;
+
+    // let ws = cargo::core::Workspace::new(&bcx_root.join("Cargo.toml"), &cargo_config)?;
+    // Ok(PathBuf::new())
+}
+
+fn main() -> anyhow::Result<()> {
+    let mut opts = Opts::parse();
+
+    // Determine the cargo root workspace directory
+    // dbg!(&opts.cargo_subcommand);
+    let cargo_bcx_root = locate_project_root(&opts.cargo_subcommand)?;
+
+    // Adjust `compile_log` and `host_dep` according to cargo_subcommand if not set by the user
+    if opts.compile_log.is_none() {
+        opts.compile_log = Some(
+            cargo_bcx_root
+                .join("phoenix")
+                .join("phoenix_compile_log.txt"),
+        );
+    }
+    if opts.host_dep.is_none() {
+        opts.host_dep = Some(cargo_bcx_root.join("phoenix").join("host_dep"));
+    }
+
+    // Initialize the compile database from the cargo's log file.
+    // This log file should be the file generated during building package phoenix_common.
+    let mut compile_db = CompileDb::from_file(&opts)?;
 
     dbg!(&compile_db);
 
     let verbose_count = count_verbose_arg(&opts.cargo_subcommand);
 
-    // dbg!(&opts.cargo_subcommand);
+    // phoenix_cargo builds in three passes.
 
-    let stderr_captured = run_initial_cargo(&opts.cargo_subcommand, verbose_count)?;
+    // First pass, do not touch .fingerprint, set RUSTC_WRAPPER=echo, and capture the stderr
+    // Since we could run from a last failed or interrupted build, we need to recover the old
+    // fingerprint directory.
+    let target_dir = locate_target_dir(&opts.cargo_subcommand, &cargo_bcx_root);
+    recover_fingerprint_directory(&target_dir)?;
+    let first_pass_stderr_captured = run_initial_cargo(&opts.cargo_subcommand, verbose_count)?;
 
     if !is_build_command(&opts.cargo_subcommand) {
         println!("Exiting after completing non-'build' cargo command.");
         return Ok(());
     }
 
-    // Change working directory
-    if let Some(manifest_path) = opts
-        .cargo_subcommand
-        .iter()
-        .position(|arg| arg == "--manifest-path")
-        .map(|pos| opts.cargo_subcommand[pos + 1].clone())
+    // Second pass, rename .fingerprint and do a fresh build, capture the full compilation
+    // information and rename .fingerprint back
+    // Determine the target dir for this build
+    let second_pass_stderr_captured = {
+        // Here, temporarily remove the ".fingerprint/` directory, in order to force rustc
+        // to rebuild all artifacts for all of the modified rustc commands to capture the
+        // informatino to build compile db.
+        let _guard = FingerprintDirGuard::new(target_dir)?;
+
+        run_initial_cargo(&opts.cargo_subcommand, verbose_count)?
+    };
+
     {
-        let manifest_path = fs::canonicalize(&manifest_path)?;
-        let manifest_dir = manifest_path.parent().with_context(|| {
-            format!(
-                "manifest_path has no parent directory: {}",
-                manifest_path.display()
-            )
-        })?;
-        std::env::set_current_dir(manifest_dir)?;
-    }
+        // Final pass, re-run the commands captured in the first stage, modify the extern arguments
+        // based on the matched crates in the compile database.
 
-    let last_cmd = stderr_captured
-        .last()
-        .context("No commands captured from stderr during the initial cargo command")?;
-    let out_dir = PathBuf::from(get_out_dir_arg(last_cmd)?);
-
-    // Now that we have run the initial cargo build, it has created many redundant dependency artifacts
-    // in the local crate's target/ directory, namely the locally re-built versions of phoenix crates,
-    // specifically all the crates that are in the set of prebuilt crates.
-    // We need to remove those redundant files from the local target/ directory (the "out-dir")
-    // such that when we re-issue the rustc commands below, it won't fail with an error about
-    // multiple "potentially newer" versions of a given crate dependency.
-    for entry in fs::read_dir(&out_dir)? {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if entry.file_type().unwrap().is_dir() {
-            println!(
-                "Found unexpected directory entry in out_dir: {}",
-                path.display()
-            );
-            continue;
-        }
-        if !entry.file_type().unwrap().is_file() {
-            bail!(
-                "Found unexpected non-file entry in out_dir: {}",
-                path.display()
-            );
-        }
-
-        // We should remove all potential redundant files, including:
-        // * <crate_name>-<hash>.o
-        // * lib<crate_name>-<hash>.rmeta
-        // * lib<crate_name>-<hash>.rlib
-        // * lib<crate_name>-<hash>.so
-        //
-        // DO NOT remove * <crate_name>-<hash>.d
-        //
-        // We do not know the exact hash value appended to each crate, we only know the plain crate name.
-        // Here, extract the plain crate_name from the file name.
-        let crate_name_with_hash = match path.extension().and_then(|os_str| os_str.to_str()) {
-            Some("d") | Some("o") => get_crate_name_with_hash_from_path(&path)?,
-            Some(RMETA_FILE_EXTENSION) | Some(RLIB_FILE_EXTENSION) | Some(DYLIB_FILE_EXTENSION) => {
-                let libcrate_name = get_crate_name_with_hash_from_path(&path)?;
-                if libcrate_name.starts_with(RMETA_RLIB_FILE_PREFIX) {
-                    &libcrate_name[PREFIX_END..]
-                } else {
-                    bail!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}", path.display());
-                }
-            }
-            _ => {
-                println!(
-                    "Removing potentially-redundant file with unexpected extension: {}",
-                    path.display()
-                );
-                fs::remove_file(&path).with_context(|| {
-                    format!(
-                        "Failed to remove potentially-redundant file with unexpected extension: {}",
-                        path.display()
-                    )
-                })?;
-                continue;
-            }
-        };
-
-        // See if that crate already exists in our set of prebuilt crates.
-        if compile_db
-            .get_crate(crate_name_with_hash)
-            .map(|c| !compile_db.find_compatible_crates_in_prebuilt(&c).is_empty())
-            == Some(true)
+        // Change working directory
+        if let Some(manifest_path) = opts
+            .cargo_subcommand
+            .iter()
+            .position(|arg| arg == "--manifest-path")
+            .map(|pos| opts.cargo_subcommand[pos + 1].clone())
         {
-            // remove the redundant file
-            println!("### Removing redundant crate file {}", path.display());
-            fs::remove_file(&path).with_context(|| {
+            let manifest_path = fs::canonicalize(&manifest_path)?;
+            let manifest_dir = manifest_path.parent().with_context(|| {
                 format!(
-                    "Failed to remove redundant crate file in out_dir: {}",
-                    path.display(),
+                    "manifest_path has no parent directory: {}",
+                    manifest_path.display()
                 )
             })?;
-        } else {
-            // Here, do nothing. We must keep the non-redundant files,
-            // as they represent new dependencies that were not part of
-            // the original in-tree Theseus build.
+            std::env::set_current_dir(manifest_dir)?;
         }
-    }
 
-    // Here, remove the ".fingerprint/` directory, in order to force rustc
-    // to rebuild all artifacts for all of the modified rustc commands that we re-run below.
-    // Those fingerprint files are in the actual target directory, which is the parent directory of `out_dir`.
-    let target_dir = out_dir.parent().unwrap();
-    let mut fingerprint_dir_path = target_dir.to_path_buf();
-    fingerprint_dir_path.push(".fingerprint");
-    remove_fingerprint_directory(fingerprint_dir_path)?;
+        // Now that we have run the initial cargo build, it has created many redundant dependency artifacts
+        // in the local crate's target/ directory, namely the locally re-built versions of phoenix crates,
+        // specifically all the crates that are in the set of prebuilt crates.
+        // We need to remove those redundant files from the local target/ directory (the "out-dir")
+        // such that when we re-issue the rustc commands below, it won't fail with an error about
+        // multiple "potentially newer" versions of a given crate dependency.
+        let last_cmd = second_pass_stderr_captured
+            .last()
+            .context("No commands captured from stderr during the initial cargo command")?;
+        let out_dir = PathBuf::from(get_out_dir_arg(last_cmd)?);
 
-    // Obtain the directory for the host system dependencies
-    // let mut host_deps_dir_path = PathBuf::from(&input_dir_path);
-    // host_deps_dir_path.push(&build_config.host_deps);
+        remove_redundant_artifacts(&compile_db, out_dir)?;
 
-    // re-execute the rustc commands that we captured from the original cargo verbose output.
-    for original_cmd in &stderr_captured {
-        // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
-        run_rustc_command(original_cmd, &mut compile_db)?;
+        // Update the compile database
+        for original_cmd in &second_pass_stderr_captured {
+            let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
+                // skip invocations of build scripts
+                continue;
+            };
+
+            compile_db.insert_crate(&c);
+
+            let crate_name_with_hash = c.crate_name_with_hash();
+
+            // Skip build script invocations, as we may not need to re-run those.
+            if c.name == BUILD_SCRIPT_CRATE_NAME {
+                continue;
+            }
+
+            // Skip crates that have already been built. (Not sure if this is always 100% correct)
+            let crate_to_build = compile_db
+                .get_crate(&crate_name_with_hash)
+                .unwrap_or_else(|| panic!("Found no crate named: {:?}", crate_name_with_hash));
+            if !compile_db
+                .find_compatible_crates_in_prebuilt(&crate_to_build)
+                .is_empty()
+            {
+                compile_db.mark_recreated(&c, false);
+            }
+        }
+
+        // Re-execute the rustc commands that we captured from the original cargo verbose output.
+        for original_cmd in &first_pass_stderr_captured {
+            // This function will only re-run rustc for crates that don't already exist in the set of prebuilt crates.
+            run_rustc_command(original_cmd, &mut compile_db)?;
+        }
     }
 
     Ok(())
@@ -540,6 +594,9 @@ fn run_initial_cargo(full_args: &[String], verbose_level: usize) -> anyhow::Resu
 
     // Use full color output to get a regular terminal-esque display from cargo
     cmd.arg("--color=always");
+
+    // RUSTC_WRAPPER=echo
+    // cmd.env("RUSTC_WRAPPER", "echo");
 
     // TODO: Add the requisite environment variables to configure cargo such that rustc builds with the
     // proper config.
@@ -811,25 +868,14 @@ fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Cra
 fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::Result<bool> {
     let prebuilt_dir = compile_db.prebuilt_dir.clone();
 
-    println!("\n\nLooking at original command:\n{}", original_cmd);
-    let Some((rustc_env_vars, _command_without_env, top_level_matches)) =
-        parse_rustc_command(original_cmd)? else {
-        // skip invocations of build scripts
-        return Ok(false);
-    };
-
     let Some(c) = get_crate_from_rustc_command(original_cmd)? else {
         // skip invocations of build scripts
         return Ok(false);
     };
 
-    compile_db.insert_crate(&c);
+    // compile_db.insert_crate(&c);
 
     let crate_name_with_hash = c.crate_name_with_hash();
-
-    let (crate_source_file, additional_args) = top_level_matches
-        .subcommand()
-        .context("Missing crate source files and addition args after rustc")?;
 
     // Skip build script invocations, as we may not need to re-run those.
     if c.name == BUILD_SCRIPT_CRATE_NAME {
@@ -849,9 +895,20 @@ fn run_rustc_command(original_cmd: &str, compile_db: &mut CompileDb) -> anyhow::
             "\n### Skipping already-built crate {:?}",
             crate_name_with_hash
         );
-        compile_db.mark_recreated(&c, false);
+        // compile_db.mark_recreated(&c, false);
         return Ok(false);
     }
+
+    println!("\n\nLooking at original command:\n{}", original_cmd);
+    let Some((rustc_env_vars, _command_without_env, top_level_matches)) =
+        parse_rustc_command(original_cmd)? else {
+        // skip invocations of build scripts
+        return Ok(false);
+    };
+
+    let (crate_source_file, additional_args) = top_level_matches
+        .subcommand()
+        .context("Missing crate source files and addition args after rustc")?;
 
     // Now, re-create the rustc command invocation with the proper arguments.
     // First, we handle the --crate-name and --edition arguments, which may come before the crate source file path.
@@ -1299,6 +1356,7 @@ fn get_out_dir_arg(cmd_str: &str) -> anyhow::Result<String> {
         .context("--out-dir argument did not have a value")
 }
 
+#[allow(unused)]
 fn remove_fingerprint_directory<P: AsRef<Path>>(fingerprint_dir: P) -> anyhow::Result<()> {
     let fingerprint_dir_path = fingerprint_dir.as_ref();
     println!(
@@ -1311,6 +1369,150 @@ fn remove_fingerprint_directory<P: AsRef<Path>>(fingerprint_dir: P) -> anyhow::R
             fingerprint_dir_path.display(),
         )
     })?;
+    Ok(())
+}
+
+/// Move cargo's 1.fingerprint` directory temporarily.
+///
+/// Rename it back when this guard is dropped.
+///
+/// If the `.fingerprint` does not exist at all, it will return an error.
+struct FingerprintDirGuard {
+    target_dir: PathBuf,
+}
+
+impl FingerprintDirGuard {
+    fn new<P: AsRef<Path>>(target_dir: P) -> anyhow::Result<Self> {
+        let target_dir = target_dir.as_ref().to_path_buf().join("release");
+        let fingerprint_dir = target_dir.join(".fingerprint");
+        let renamed_fingerprint_dir = target_dir.join(".fingerprint.orig");
+        Self::move_dir(&fingerprint_dir, &renamed_fingerprint_dir)?;
+        Ok(Self { target_dir })
+    }
+
+    fn move_dir(from: &Path, to: &Path) -> anyhow::Result<()> {
+        println!(
+            "--> Moving .fingerprint directory from {} to {}",
+            from.display(),
+            to.display(),
+        );
+        if to.exists() && to.is_dir() {
+            fs::remove_dir_all(&to).with_context(|| {
+                format!("Failed to remove .fingerprint directory: {}", to.display(),)
+            })?;
+        }
+        fs::rename(from, to).with_context(|| {
+            format!(
+                "Failed to move .fingerprint directory from {} to {}",
+                from.display(),
+                to.display(),
+            )
+        })?;
+        Ok(())
+    }
+}
+
+/// Recovers the fingerprint directory.
+///
+/// If phoenix_cargo is interrupted or quits during the second pass, the temporarily
+/// fingerprint directory `.fingerprint.orig` is present on the file system and that one should
+/// be the one in use.
+fn recover_fingerprint_directory<P: AsRef<Path>>(target_dir: P) -> anyhow::Result<()> {
+    let target_dir = target_dir.as_ref().join("release");
+    let fingerprint_dir = target_dir.join(".fingerprint");
+    let renamed_fingerprint_dir = target_dir.join(".fingerprint.orig");
+    if renamed_fingerprint_dir.exists() {
+        FingerprintDirGuard::move_dir(&renamed_fingerprint_dir, &fingerprint_dir)?;
+    }
+    Ok(())
+}
+
+impl Drop for FingerprintDirGuard {
+    fn drop(&mut self) {
+        let fingerprint_dir = self.target_dir.join(".fingerprint");
+        let renamed_fingerprint_dir = self.target_dir.join(".fingerprint.orig");
+        Self::move_dir(&renamed_fingerprint_dir, &fingerprint_dir)
+            .expect("Failed to fingerprint directory back");
+    }
+}
+
+fn remove_redundant_artifacts<P: AsRef<Path>>(
+    compile_db: &CompileDb,
+    out_dir: P,
+) -> anyhow::Result<()> {
+    for entry in fs::read_dir(&out_dir)? {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if entry.file_type().unwrap().is_dir() {
+            println!(
+                "Found unexpected directory entry in out_dir: {}",
+                path.display()
+            );
+            continue;
+        }
+        if !entry.file_type().unwrap().is_file() {
+            bail!(
+                "Found unexpected non-file entry in out_dir: {}",
+                path.display()
+            );
+        }
+
+        // We should remove all potential redundant files, including:
+        // * <crate_name>-<hash>.o
+        // * lib<crate_name>-<hash>.rmeta
+        // * lib<crate_name>-<hash>.rlib
+        // * lib<crate_name>-<hash>.so
+        //
+        // DO NOT remove * <crate_name>-<hash>.d
+        //
+        // We do not know the exact hash value appended to each crate, we only know the plain crate name.
+        // Here, extract the plain crate_name from the file name.
+        let crate_name_with_hash = match path.extension().and_then(|os_str| os_str.to_str()) {
+            Some("d") | Some("o") => get_crate_name_with_hash_from_path(&path)?,
+            Some(RMETA_FILE_EXTENSION) | Some(RLIB_FILE_EXTENSION) | Some(DYLIB_FILE_EXTENSION) => {
+                let libcrate_name = get_crate_name_with_hash_from_path(&path)?;
+                if libcrate_name.starts_with(RMETA_RLIB_FILE_PREFIX) {
+                    &libcrate_name[PREFIX_END..]
+                } else {
+                    bail!("Found .rlib or .rmeta file in out_dir that didn't start with 'lib' prefix: {}", path.display());
+                }
+            }
+            _ => {
+                println!(
+                    "Removing potentially-redundant file with unexpected extension: {}",
+                    path.display()
+                );
+                fs::remove_file(&path).with_context(|| {
+                    format!(
+                        "Failed to remove potentially-redundant file with unexpected extension: {}",
+                        path.display()
+                    )
+                })?;
+                continue;
+            }
+        };
+
+        // See if that crate already exists in our set of prebuilt crates.
+        if compile_db
+            .get_crate(crate_name_with_hash)
+            .map(|c| !compile_db.find_compatible_crates_in_prebuilt(&c).is_empty())
+            == Some(true)
+        {
+            // remove the redundant file
+            println!("### Removing redundant crate file {}", path.display());
+            fs::remove_file(&path).with_context(|| {
+                format!(
+                    "Failed to remove redundant crate file in out_dir: {}",
+                    path.display(),
+                )
+            })?;
+        } else {
+            // Here, do nothing. We must keep the non-redundant files,
+            // as they represent new dependencies that were not part of
+            // the original in-tree Theseus build.
+        }
+    }
+
     Ok(())
 }
 
