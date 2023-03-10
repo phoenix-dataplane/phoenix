@@ -1,12 +1,12 @@
 #include "../include/increment.h"
-#include "ffi/src/server.rs"
+#include "ffi/src/codegen.rs"
 
 const ValueReply& CPPIncrementer::incrementServer(const ValueRequest& req) {
     // lock
     this->highestReqSeen = std::max(this->highestReqSeen, req.val());
     std::cout << "highest request seen: " << this->highestReqSeen << std::endl;
-    std::cout << "[" << req.key(0);
-    for (size_t i = 0; i < req.key_size(); i++) {
+    std::cout << "[" << unsigned(req.key(0));
+    for (size_t i = 1; i < req.key_size(); i++) {
         std::cout << ", " << unsigned(req.key(i));
     }
     std::cout << "]" << std::endl;

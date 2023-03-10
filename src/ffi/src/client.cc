@@ -1,4 +1,4 @@
-#include "ffi/src/client.rs"
+#include "ffi/src/codegen.rs"
 #include <iostream>
 
 void sendRequest(IncrementerClient* client, ValueRequest* req) {

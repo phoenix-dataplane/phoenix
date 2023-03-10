@@ -11,11 +11,11 @@ edition = "2021"
 
 [[bin]]
 name = "rpc_int_client"
-path = "src/client.rs"
+path = "src/codegen.rs"
 
 [[bin]]
 name = "rpc_int_server"
-path = "src/server.rs"
+path = "src/codegen.rs"
 
 [dependencies]
 cxx = "1.0"
