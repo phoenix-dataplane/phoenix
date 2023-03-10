@@ -15,3 +15,4 @@ serde = { workspace = true, features = ["derive"] }
 walkdir = "2.3.2"
 shlex = "1.1.0"
 semver.workspace = true
+rayon = "1.7.0"

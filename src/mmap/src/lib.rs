@@ -7,9 +7,3 @@ pub use aligned::MmapAligned;
 
 pub mod mmap;
 pub use self::mmap::{Mmap, MmapOptions};
-
-#[no_mangle]
-pub fn test_load_module(a: i32, b: i32) -> i32 {
-    eprintln!("test_load_module, cheers!");
-    a + b
-}

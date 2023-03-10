@@ -33,7 +33,7 @@ args = [
     "--manifest-path", "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
     "-p", "phoenix-*",
 ]
-dependencies = ["remove-fingerprint4"]
+# dependencies = ["remove-fingerprint4"]
 
 [tasks.deploy-mrpc-plugins]
 script = "${PROJECT_ROOT}/scripts/deploy_plugins.sh ${PHOENIX_PREFIX} ${PHOENIX_TARGET_DIR}"

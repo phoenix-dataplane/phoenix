@@ -57,7 +57,7 @@ ${TARGET_DIR}/release/phoenix_cargo \
 dependencies = [
   "phoenix_common",
   "phoenix_cargo",
-  "remove-fingerprint2",
+  # "remove-fingerprint2",
 ]
 
 [tasks.phoenixos]
@@ -86,7 +86,7 @@ args = [
     "build", "--release", "--target-dir", "${PHOENIX_TARGET_DIR}",
     "-p ${@}"
 ]
-dependencies = ["remove-fingerprint3"]
+# dependencies = ["remove-fingerprint3"]
 
 [tasks.deploy-plugins]
 description = "Deploy all plugins."
