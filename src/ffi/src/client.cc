@@ -11,8 +11,9 @@ int main() {
   IncrementerClient* client_1 = connect("127.0.0.1:5000").into_raw();
   ValueRequest* req = new_value_request().into_raw();
   req->set_val(0);
-  req->add_foo(22);
-  req->add_foo(42);
+  for (int i = 0; i < 200; i++) {
+    req->add_foo(i);
+  }
 
   sendRequest(client_1, req);
   

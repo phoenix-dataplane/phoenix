@@ -43,6 +43,11 @@ impl ValueRequest {
     }
 }
 
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ValueReply {
+    pub val: u64,
+}
+
 fn new_value_reply() -> Box<ValueReply> {
     Box::new(ValueReply { val: 0 })
 }
@@ -55,11 +60,6 @@ impl ValueReply {
     fn set_val(&mut self, val: u64) {
         self.val = val
     }
-}
-
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ValueReply {
-    pub val: u64,
 }
 
 

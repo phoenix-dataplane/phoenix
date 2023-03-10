@@ -14,19 +14,80 @@ use ipc::salloc::cmd::CompletionKind as SallocCompletion;
 use salloc::backend::SA_CTX;
 use mrpc::{MRPC_CTX, MessageErased, RRef, WRef};
 use ipc::mrpc::cmd::ReadHeapRegion;
+use mrpc::alloc::{Vec};
 ////////////////////////////// *** server code *** ///////////////////////////////////
 
 use incrementer_server::{IncrementerServer, Incrementer};
 
-unsafe impl ExternType for rpc_int::ValueRequest {
-    type Id = type_id!("ValueRequest");
-    type Kind = cxx::kind::Trivial;
+// Types
+#[derive(Debug, Default, Clone)]
+pub struct ValueRequest {
+    pub val: u64,
+    pub key: ::mrpc::alloc::Vec<u8>,
 }
 
-unsafe impl ExternType for rpc_int::ValueReply {
-    type Id = type_id!("ValueReply");
-    type Kind = cxx::kind::Trivial;
+fn new_value_request() -> Box<ValueRequest> {
+    Box::new( ValueRequest {
+        val: 0,
+        key: Vec::new()
+    })
 }
+
+impl ValueRequest {
+    fn val(&self) -> u64 {
+        self.val
+    }
+
+    fn set_val(&mut self, val: u64) {
+        self.val = val;
+    }
+
+    fn key(&self, index: usize) -> u8 {
+        self.key[index]
+    }
+
+    fn key_size(&self) -> usize {
+        self.key.len()
+    }
+
+    fn set_key(&mut self, index: usize, value: u8) {
+        self.key[index] = value;
+    }
+
+    fn add_foo(&mut self, value: u8) {
+        self.key.push(value);
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ValueReply {
+    pub val: u64,
+}
+
+fn new_value_reply() -> Box<ValueReply> {
+    Box::new(ValueReply { val: 0 })
+}
+
+impl ValueReply {
+    fn val(&self) -> u64 {
+        self.val
+    }
+
+    fn set_val(&mut self, val: u64) {
+        self.val = val
+    }
+}
+// Types end
+
+// unsafe impl ExternType for ValueRequest {
+//     type Id = type_id!("ValueRequest");
+//     type Kind = cxx::kind::Trivial;
+// }
+
+// unsafe impl ExternType for rpc_int::ValueReply {
+//     type Id = type_id!("ValueReply");
+//     type Kind = cxx::kind::Trivial;
+// }
 
 
 unsafe impl<'a> Send for rpc_handler_lib::CPPIncrementer<'a>{}
@@ -34,17 +95,30 @@ unsafe impl<'a> Sync for rpc_handler_lib::CPPIncrementer<'a>{}
 
 #[cxx::bridge]
 mod rpc_handler_lib {
+    extern "Rust" {
+        type ValueRequest;
+        type ValueReply;
+
+        fn new_value_request() -> Box<ValueRequest>;
+        fn val(self: &ValueRequest) -> u64;
+        fn set_val(self: &mut ValueRequest, val: u64);
+        fn key(self: &ValueRequest, index: usize) -> u8;
+        fn key_size(self: &ValueRequest) -> usize;
+        fn set_key(self: &mut ValueRequest, index: usize, value: u8);
+        fn add_foo(self: &mut ValueRequest, value: u8);
+        
+        fn new_value_reply() -> Box<ValueReply>;
+        fn val(self: &ValueReply) -> u64;
+        fn set_val(self: &mut ValueReply, val: u64);
+        
+        unsafe fn run<'a>(addr: &CxxString, service: Pin<&'static mut CPPIncrementer<'a>>) -> Result<()>;
+    }
+
     unsafe extern "C++" {
         type CPPIncrementer<'a>;
 
         include!("ffi/include/increment.h");
-        type ValueRequest = crate::rpc_int::ValueRequest;
-        type ValueReply = crate::rpc_int::ValueReply;
-        fn incrementServer<'a>(self: Pin<&mut CPPIncrementer<'a>>, req: ValueRequest) -> ValueReply;
-    }
-
-    extern "Rust" {
-        unsafe fn run<'a>(addr: &CxxString, service: Pin<&'static mut CPPIncrementer<'a>>) -> Result<()>;
+        fn incrementServer<'a>(self: Pin<&mut CPPIncrementer<'a>>, req: &ValueRequest) -> &ValueReply;
     }
 }
 
@@ -75,17 +149,17 @@ fn run(addr: &CxxString, service: Pin<&'static mut CPPIncrementer>) -> Result<()
     })
 }
 
-pub mod rpc_int {
-    #[derive(Debug, Default)]
-    pub struct ValueReply {
-        pub val: i32,
-    }
+// pub mod rpc_int {
+//     #[derive(Debug, Default)]
+//     pub struct ValueReply {
+//         pub val: i32,
+//     }
 
-    #[derive(Debug, Default)]
-    pub struct ValueRequest {
-        pub val: i32,
-    }
-}
+//     #[derive(Debug, Default)]
+//     pub struct ValueRequest {
+//         pub val: i32,
+//     }
+// }
 
 pub mod incrementer_server {
     use ::mrpc::stub::{NamedService, Service};
@@ -103,7 +177,9 @@ pub mod incrementer_server {
     }
     impl<T: Incrementer> IncrementerServer<T> {
         fn update_protos() -> Result<(), ::mrpc::Error> {
-            let srcs = [super::proto::PROTO_SRCS].concat();
+            let srcs = [include_str!(
+                "../../phoenix_examples/proto/rpc_int/rpc_int.proto"
+            )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }
         pub fn new(inner: T) -> Self {
@@ -144,12 +220,11 @@ pub mod incrementer_server {
     }
 }
 
-pub mod proto {
-    pub const PROTO_SRCS: &[&str] = &[
-        "syntax = \"proto3\";\n\npackage rpc_int;\n\nservice Incrementer {\n  // increments an int  \n  rpc Increment(ValueRequest) returns (ValueReply) {}\n}\n\nmessage ValueRequest {\n  uint64 val = 1;\n}\n\nmessage ValueReply {\n  uint64 val = 1;\n}\n",
-    ];
-}
-use rpc_int::{ValueRequest, ValueReply};
+// pub mod proto {
+//     pub const PROTO_SRCS: &[&str] = &[
+//         "syntax = \"proto3\";\n\npackage rpc_int;\n\nservice Incrementer {\n  // increments an int  \n  rpc Increment(ValueRequest) returns (ValueReply) {}\n}\n\nmessage ValueRequest {\n  uint64 val = 1;\n}\n\nmessage ValueReply {\n  uint64 val = 1;\n}\n",
+//     ];
+// }
 use std::pin::Pin;
 
 struct MyIncrementer {
@@ -167,7 +242,7 @@ impl Incrementer for MyIncrementer{
         &self,
         request: RRef<ValueRequest>,
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
-        eprintln!("request: {:?}", request);
+        // eprintln!("request: {:?}", request);
 
 
         let field_addr = &self.service as *const _ as *const usize;
@@ -175,7 +250,7 @@ impl Incrementer for MyIncrementer{
         let incrementer_mut: &mut CPPIncrementer = unsafe { &mut *(incrmenter_addr as *mut CPPIncrementer) };
 
         // unsafe pointer 
-        let reply = unsafe {Pin::new_unchecked(incrementer_mut).incrementServer(rpc_int::ValueRequest{val: request.val})};
+        let reply = unsafe {Pin::new_unchecked(incrementer_mut).incrementServer(request.as_ref())};
 
         Ok(WRef::new(ValueReply{
            val: reply.val,

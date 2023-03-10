@@ -2,29 +2,17 @@
 #include <iostream>
 #include <pthread.h>
 #include <string>
+// #include "ffi/src/server.rs"
 
-struct ValueRequest {
-  int val;
-};
-
-struct ValueReply {
-  int val;
-};
+struct ValueReply;
+struct ValueRequest;
 
 class RPCService {};
 
 class CPPIncrementer : public RPCService {
   public:
-    int highestReqSeen;
-    ValueReply incrementServer(ValueRequest req) {
-      // lock
-      this->highestReqSeen = std::max(this->highestReqSeen, req.val);
-      std::cout << "highest request seen: " << this->highestReqSeen << std::endl;
-      ValueReply rep;
-      rep.val = req.val + 1;
-      // release
-      return rep;
-    }
+    uint64_t highestReqSeen;
+    const ValueReply& incrementServer(const ValueRequest& req);
 }; 
 
 typedef struct Args {
