@@ -7,6 +7,7 @@
 
 [![Build Phoenix](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-phoenix.yml/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-phoenix.yml)
 [![Build mRPC](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-mrpc.yml/badge.svg)](https://github.com/phoenix-dataplane/phoenix/actions/workflows/build-mrpc.yml)
+[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/phoenix-dataplane/phoenix)
 
 [**Documentation**](https://phoenix-dataplane.github.io/)
 
@@ -42,6 +43,8 @@ command.
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 $ cargo install cargo-make
 ```
+
+Alternatively, if you already have VS Code and Docker installed, you can click the badge above or [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/phoenix-dataplane/phoenix) to get started.
 
 3. Build and run phoenixos service.
 ```bash
