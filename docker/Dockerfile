@@ -31,6 +31,6 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN cargo install cargo-make
 
-COPY . phoenix
+RUN git clone https://github.com/phoenix-dataplane/phoenix.git --recursive
 
 WORKDIR phoenix
