@@ -17,14 +17,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         iftop \
         unzip \
         cmake \
-		git \
+        git \
         lsb-release \
         numactl \
         libnuma-dev
 
 RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         --allow-unauthenticated --allow-downgrades --allow-change-held-packages --no-install-recommends \
-		libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler
+        libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
