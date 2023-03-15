@@ -15,7 +15,7 @@ Phoenix is a dataplane service which serves as a framework to develop and deploy
 
 The key features of Phoenix include:
 
-**Modular Plugin Systems**: Phoenix provides an engine abstraction which, as the modular unit, can be developed, dynamically load, scheduled, and even be live upgraded with minimal disruption to user applications.
+**Modular Plugin System**: Phoenix provides an engine abstraction which, as the modular unit, can be developed, dynamically load, scheduled, and even be live upgraded with minimal disruption to user applications.
 
 **High-performance Networking**: Phoenix offers managed access to networking devices while exposing a user-friendly API.
 
@@ -36,7 +36,7 @@ $ git submodule update --init --recursive
 Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang
 available on your system.
 In addition, you need to have rustup and cargo-make installed.
-On ubuntu 20.04, you can install them using the following
+On ubuntu 22.04, you can install them using the following
 command.
 ```
 # apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler
@@ -74,10 +74,12 @@ or equivalently
 $ cargo make --cwd experimental/mrpc
 ```
 
-For inter-host RPC in the following `rpc_hello` example, you need at
-least two servers. You can still run the client and server on the same
+For inter-host RPC in the following `rpc_hello` example, you may need at
+least two machines. However, you can still run the client and server on the same
 machine, communicating through the same instance of phoenixos.
-First, make sure phoenixos is started on all servers, 
+Choose whichever test scenario that is most suitable for you.
+
+To begin with, make sure phoenixos is started on all servers,
 
 Then, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
 to your server address.
