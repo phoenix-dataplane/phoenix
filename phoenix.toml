@@ -46,11 +46,12 @@ lib_path = "plugins/libphoenix_transport_tcp.rlib"
 name = "Salloc"
 lib_path = "plugins/libphoenix_salloc.rlib"
 
-# Prelude Addons (not in effect until being attached)
-[[addons]]
-name = "RateLimit"
-lib_path = "plugins/libphoenix_ratelimit.rlib"
-config_string = '''
-requests_per_sec = 1000
-bucket_size = 1000
-'''
+# Example Prelude Addons (not in effect until being attached)
+# To get the addon, compile mRPC project.
+# [[addons]]
+# name = "RateLimit"
+# lib_path = "plugins/libphoenix_ratelimit.rlib"
+# config_string = '''
+# requests_per_sec = 1000
+# bucket_size = 1000
+# '''
