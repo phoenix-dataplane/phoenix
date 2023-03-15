@@ -19,8 +19,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         cmake \
         git \
         lsb-release \
-        numactl \
-        libnuma-dev
+        numactl
 
 RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         --allow-unauthenticated --allow-downgrades --allow-change-held-packages --no-install-recommends \
