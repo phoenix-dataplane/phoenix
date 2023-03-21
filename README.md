@@ -35,7 +35,7 @@ Make sure you have `libibverbs`, `librdmacm`, `libnuma`, `protoc`, `libclang`, a
 Additionally, you need to have `rustup` and `cargo-make` installed.
 For Ubuntu 22.04, you can use the following commands:
 ```
-$ sudo apt-get update
+$ sudo apt update
 $ sudo apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler cmake
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 $ cargo install cargo-make
@@ -70,10 +70,10 @@ least two machines. However, you can still run the client and server on the same
 machine, communicating through the same instance of phoenixos.
 Choose whichever test scenario that is most suitable for you. -->
 
-Ensure that exactly one instance of PhoenixOS is running on all servers.
+Ensure that exactly one instance of PhoenixOS is running on each server.
 
-<!-- Then, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
-to your server address. -->
+Note: If you have multiple machines, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
+to your server address.
 
 Next, build the `rpc_hello` example:
 ```bash
@@ -91,21 +91,20 @@ with a prebuilt set of phoenix crates. This is currently done by
 We can still use `cargo`.
 
 ### Running mRPC examples
-<!-- Once `rpc_hello` is built, you can have two methods to start it.
-1. (Recommended) To start the applications on multiple machines, we prepare
-a launcher for this job.
-```bash
-$ cd ../../benchmark
-Follow the README under benchmark directory and update config.toml
-$ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
-``` -->
 
-2. Alternatively, you can run the examples manually by
+You can run the examples manually by
 ```bash
 $ cargo rr -p rpc_hello --bin rpc_hello_server
 # In a seperate terminal
 $ cargo rr -p rpc_hello --bin rpc_hello_client
 ```
+
+Note: If you have multiple machines, we provide a launcher to help with running the examples:
+```bash
+$ cd ../../benchmark
+# Follow the README under benchmark directory and update config.toml
+$ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
+``` 
 
 You can explore the set of mRPC user applications in
 `experimental/mrpc/examples`.
