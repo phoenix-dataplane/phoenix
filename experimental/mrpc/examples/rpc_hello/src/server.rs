@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start the server, binding it to port 5000.
     smol::block_on(async {
         let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
-        
+
         // Add the Greeter service to the server using the custom MyGreeter implementation.
         server
             .add_service(GreeterServer::new(MyGreeter::default()))
