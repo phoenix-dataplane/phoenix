@@ -1,5 +1,5 @@
-// This code defines a simple mRPC server that implements the Greeter service.
-// It listens for incoming "Hello" requests and sends back a greeting message.
+//! This code defines a simple mRPC server that implements the Greeter service.
+//! It listens for incoming "Hello" requests and sends back a greeting message.
 
 // Import the auto-generated code for the "rpc_hello" module from the Proto file.
 pub mod rpc_hello {

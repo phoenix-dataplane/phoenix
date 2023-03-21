@@ -1,5 +1,5 @@
-// This code defines a simple mRPC client to send a "Hello" request to an mRPC server
-// and prints the response received from the server.
+//! This code defines a simple mRPC client to send a "Hello" request to an mRPC server
+//! and prints the response received from the server.
 
 // Import the auto-generated code for the "rpc_hello" module from the Proto file.
 pub mod rpc_hello {
