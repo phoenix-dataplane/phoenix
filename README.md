@@ -30,39 +30,34 @@ $ git clone git@github.com:phoenix-dataplane/phoenix.git --recursive
 ```
 
 2. Install required packages.
-Make sure you have libibverbs, librdmacm, libnuma, protoc, libclang, and
-cmake available on your system.
-In addition, you need to have rustup and cargo-make installed.
-On ubuntu 22.04, you can install them using the following
-command.
+Make sure you have `libibverbs`, `librdmacm`, `libnuma`, `protoc`, `libclang`, and
+`cmake` available on your system.
+Additionally, you need to have `rustup` and `cargo-make` installed.
+For Ubuntu 22.04, you can use the following commands:
 ```
-# apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler cmake
+$ sudo apt update
+$ sudo apt install libclang-dev libnuma-dev librdmacm-dev libibverbs-dev protobuf-compiler cmake
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 $ cargo install cargo-make
 ```
 
-Alternatively, if you already have VS Code and Docker installed, you can click the badge above or [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/phoenix-dataplane/phoenix) to get started.
+Alternatively, if you already have VS Code and Docker installed, click the badge above or [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/phoenix-dataplane/phoenix) to start.
 
-3. Build and run phoenixos service.
+3. Build and run PhoenixOS service.
 ```bash
 $ cargo make
 ```
-`cargo make` without specifying a build target will build the default
-target, which is "dev-test-flow" by default. You can inspect and
-customize the stages of this default workflow in `Makefile.toml`.
+By default, cargo make will build the `dev-test-flow` target. You can inspect and
+customize the stages of this workflow in `Makefile.toml`. Use `cargo make run-phoenixos` to start the service after building.
 
-Optionally, you can manually execute each step in the dev-test-flow.
+You can also manually execute each step in the dev-test-flow.
 
-Note, once you have finished building, you can use
-`cargo make run-phoenixos` to start the service.
-
-Without any plugin, phoenixos itself is just an empty control plane. Next,
+PhoenixOS without any plugins is just an empty control plane. Next,
 you can build and load some useful plugins and run a few user applications.
 
-### Building mRPC
+### Building and Running mRPC
 mRPC is the first experimental feature on Phoenix.
-You can simply change directory to `experimental/mrpc` to build, 
-deploy mRPC plugins, and run phoenixos in one command.
+To build and deploy mRPC plugins, and run PhoenixOS, follow these steps:
 
 ```bash
 $ cd experimental/mrpc
@@ -70,22 +65,22 @@ $ cat load-mrpc-plugins.toml >> ../../phoenix.toml
 $ cargo make
 ```
 
-For inter-host RPC in the following `rpc_hello` example, you may need at
+<!-- For inter-host RPC in the following `rpc_hello` example, you may need at
 least two machines. However, you can still run the client and server on the same
 machine, communicating through the same instance of phoenixos.
-Choose whichever test scenario that is most suitable for you.
+Choose whichever test scenario that is most suitable for you. -->
 
-To begin with, make sure exactly one instance of phoenixos is running on all servers,
+Ensure that exactly one instance of PhoenixOS is running on each server.
 
-Then, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
+Note: If you have multiple machines, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
 to your server address.
 
-Next, build the example by
+Next, build the `rpc_hello` example:
 ```bash
 $ cargo build --release --workspace -p rpc_hello
 ```
 
-You could also build all mRPC examples using
+You can also build all mRPC examples using:
 ```bash
 $ cargo make build-mrpc-examples
 ```
@@ -96,21 +91,20 @@ with a prebuilt set of phoenix crates. This is currently done by
 We can still use `cargo`.
 
 ### Running mRPC examples
-Once `rpc_hello` is built, you can have two methods to start it.
-1. (Recommended) To start the applications on multiple machines, we prepare
-a launcher for this job.
+
+You can run the examples manually by
 ```bash
-$ cd ../../benchmark
-Follow the README under benchmark directory and update config.toml
-$ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
+$ cargo rr -p rpc_hello --bin rpc_hello_server
+# In a seperate terminal
+$ cargo rr -p rpc_hello --bin rpc_hello_client
 ```
 
-2. Alternatively, you can run the examples manually by
+Note: If you have multiple machines, we provide a launcher to help with running the examples:
 ```bash
-$ cd experimental/mrpc
-(server) $ cargo rr -p rpc_hello --bin rpc_hello_server
-(client) $ cargo rr -p rpc_hello --bin rpc_hello_client
-```
+$ cd ../../benchmark
+# Follow the README under benchmark directory and update config.toml
+$ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
+``` 
 
 You can explore the set of mRPC user applications in
 `experimental/mrpc/examples`.
