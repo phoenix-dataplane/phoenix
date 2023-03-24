@@ -1,0 +1,12 @@
+addon_engine = "BreakWaterEngine"
+tx_channels_replacements = [
+    ["MrpcEngine", "BreakWaterEngine", 0, 0],
+    ["BreakWaterEngine", "TcpRpcAdapterEngine", 0, 0],
+]
+rx_channels_replacements = []
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"
+config_string = '''
+requests_per_sec = 100
+bucket_size = 100
+'''

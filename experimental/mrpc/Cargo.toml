@@ -49,6 +49,7 @@ members = [
   "phoenix-api/tcp_rpc_adapter",
   "phoenix-api/policy/null",
   "phoenix-api/policy/ratelimit",
+  "phoenix-api/policy/breakwater",
   "phoenix-api/policy/qos",
   "phoenix-api/policy/hotel-acl",
   # the pheonix plugins
@@ -60,6 +61,7 @@ members = [
   "plugin/policy/ratelimit",
   "plugin/policy/qos",
   "plugin/policy/hotel-acl",
+  "plugin/policy/breakwater",
   # examples
   "examples/rpc_hello",
   "examples/rpc_bench",
@@ -82,6 +84,7 @@ phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
 phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
 phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
+phoenix-api-policy-breakwater = { path = "phoenix-api/policy/breakwater" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }

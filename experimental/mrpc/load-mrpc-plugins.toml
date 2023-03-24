@@ -42,3 +42,11 @@ name = "HotelAcl"
 lib_path = "plugins/libphoenix_hotel_acl.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "BreakWater"
+lib_path = "plugins/libphoenix_breakwater.rlib"
+config_string = '''
+requests_per_sec = 100
+bucket_size = 100
+'''
