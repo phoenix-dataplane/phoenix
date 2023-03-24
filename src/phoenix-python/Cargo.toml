@@ -10,8 +10,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 interface = {path = "../interface"}
-ipc = {path = "../ipc",features = ["mrpc"]}
+ipc = {path = "../ipc",features = ["mrpc","salloc"]}
+salloc = {path = "../shm/salloc"}
+mmap = { path = "../mmap" }
 thiserror = "1.0.29"
+memfd = "0.4.1"
 
 [dependencies.pyo3]
 version = "0.18.0"
