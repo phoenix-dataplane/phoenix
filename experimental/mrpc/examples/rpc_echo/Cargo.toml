@@ -1,0 +1,25 @@
+[package]
+name = "rpc_echo"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+mrpc-build.workspace = true
+
+[dependencies]
+mrpc.workspace = true
+prost = { workspace = true, features = ["mrpc-frontend"] }
+
+structopt.workspace = true
+smol.workspace = true
+
+
+[[bin]]
+name = "rpc_echo_frontend"
+path = "src/frontend.rs"
+
+[[bin]]
+name = "rpc_echo_server"
+path = "src/server.rs"
