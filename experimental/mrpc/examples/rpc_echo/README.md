@@ -5,7 +5,15 @@
 cargo build --release --workspace -p rpc_hello_frontend
 ```
 
-## Run the application
+## Run the application with client
+
+```bash
+cargo rr -p rpc_echo --bin rpc_echo_server
+# In a seperate terminal
+cargo rr -p rpc_echo --bin rpc_echo_client
+```
+
+## Run the application with frontend
 
 ```bash
 cargo rr -p rpc_echo --bin rpc_echo_server

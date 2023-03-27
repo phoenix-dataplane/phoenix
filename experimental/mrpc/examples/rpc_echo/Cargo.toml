@@ -23,3 +23,7 @@ path = "src/frontend.rs"
 [[bin]]
 name = "rpc_echo_server"
 path = "src/server.rs"
+
+[[bin]]
+name = "rpc_echo_client"
+path = "src/client.rs"
