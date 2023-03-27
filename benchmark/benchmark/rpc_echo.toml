@@ -1,0 +1,16 @@
+name = "benchmark/rpc_echo"
+description = "Run rpc_echo benchmark"
+group = "rpc_echo"
+timeout_secs = 10
+
+[[worker]]
+host = "<hostname>"
+bin = "rpc_echo_server"
+args = ""
+dependencies = []
+
+[[worker]]
+host = "<hostname>"
+bin = "rpc_echo_client"
+args = ""
+dependencies = [0]

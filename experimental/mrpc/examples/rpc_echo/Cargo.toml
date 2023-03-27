@@ -1,5 +1,5 @@
 [package]
-name = "rpc_hello"
+name = "rpc_echo"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,9 +17,13 @@ smol.workspace = true
 
 
 [[bin]]
-name = "rpc_hello_client"
-path = "src/client.rs"
+name = "rpc_echo_frontend"
+path = "src/frontend.rs"
 
 [[bin]]
-name = "rpc_hello_server"
+name = "rpc_echo_server"
 path = "src/server.rs"
+
+[[bin]]
+name = "rpc_echo_client"
+path = "src/client.rs"

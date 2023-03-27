@@ -61,7 +61,7 @@ members = [
   "plugin/policy/qos",
   "plugin/policy/hotel-acl",
   # examples
-  "examples/rpc_hello",
+  "examples/rpc_echo",
   "examples/rpc_bench",
   "examples/rpc_bench_plus",
   "examples/masstree_analytics",

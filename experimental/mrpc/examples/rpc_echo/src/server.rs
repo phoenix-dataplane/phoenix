@@ -2,13 +2,13 @@
 //! It listens for incoming "Hello" requests and sends back a greeting message.
 
 // Import the auto-generated code for the "rpc_hello" module from the Proto file.
-pub mod rpc_hello {
+pub mod rpc_echo {
     // The string specified here must match the proto package name
     mrpc::include_proto!("rpc_hello");
 }
 
-use rpc_hello::greeter_server::{Greeter, GreeterServer};
-use rpc_hello::{HelloReply, HelloRequest};
+use rpc_echo::greeter_server::{Greeter, GreeterServer};
+use rpc_echo::{HelloReply, HelloRequest};
 
 use mrpc::{RRef, WRef};
 

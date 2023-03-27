@@ -75,9 +75,9 @@ Ensure that exactly one instance of PhoenixOS is running on each server.
 Note: If you have multiple machines, update the destination address in `experimental/mrpc/examples/rpc_hello/src/client.rs`
 to your server address.
 
-Next, build the `rpc_hello` example:
+Next, build the `rpc_echo` example:
 ```bash
-$ cargo build --release --workspace -p rpc_hello
+$ cargo build --release --workspace -p rpc_echo
 ```
 
 You can also build all mRPC examples using:
@@ -94,16 +94,16 @@ We can still use `cargo`.
 
 You can run the examples manually by
 ```bash
-$ cargo rr -p rpc_hello --bin rpc_hello_server
+$ cargo rr -p rpc_echo --bin rpc_echo_server
 # In a seperate terminal
-$ cargo rr -p rpc_hello --bin rpc_hello_client
+$ cargo rr -p rpc_echo --bin rpc_echo_client
 ```
 
 Note: If you have multiple machines, we provide a launcher to help with running the examples:
 ```bash
 $ cd ../../benchmark
 # Follow the README under benchmark directory and update config.toml
-$ cargo rr --bin launcher -- --benchmark benchmark/rpc_hello.toml
+$ cargo rr --bin launcher -- --benchmark benchmark/rpc_echo.toml
 ``` 
 
 You can explore the set of mRPC user applications in
