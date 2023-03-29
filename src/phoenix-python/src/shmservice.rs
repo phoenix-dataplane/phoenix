@@ -2,13 +2,14 @@ use pyo3::prelude::*;
 use std::path::PathBuf;
 use interface::engine::{SchedulingMode,SchedulingHint};
 use ipc::service::{Service,ShmService};
-use ipc::mrpc::dp::{WorkRequestSlot,CompletionSlot};
+use ipc::salloc::dp::{WorkRequestSlot,CompletionSlot};
 use ipc::salloc::cmd::{Command,Completion,CompletionKind};
 use salloc::backend::Error;
 use std::cell::RefCell;
 use memfd::Memfd;
 use mmap::MmapFixed;
 use std::io;
+use pyo3::exceptions::PyException;
 
 #[pyclass]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,7 +34,7 @@ impl Hint {
         Hint{mode,affinity}
     }
 }
-
+#[derive(Debug)]
 pub struct WriteRegion {
     mmap: MmapFixed,
     remote_addr: usize,
@@ -78,7 +79,7 @@ thread_local! {
 
 pub struct SAContext {
     pub service:
-        ShmService<Command, Completion, WorkRequestSlot, CompletionSlot>,
+    ShmService<Command, Completion, WorkRequestSlot, CompletionSlot>,
 }
 
 impl SAContext {
@@ -106,14 +107,14 @@ pub fn salloc_register(
 }
 
 #[pyfunction]
-pub fn allocate_shm(len: usize) -> u32 {
-    assert!(len > 0);
-    ls.with(|ctx| {
+pub fn allocate_shm(len: usize) -> PyResult<String> {
+    if (len & (len - 1) != 0) {
+        return Err(PyException::new_err("Length must be a power of 2"));
+    }
+    SA_CTX.with(|ctx| {
         let align = len;
         let req = Command::AllocShm(len, align);
-        print!("send cmd");
-        ctx.service.send_cmd(req);
-        print!("send cmd done");
+        let send = ctx.service.send_cmd(req);
         let fdsresult = ctx.service.recv_fd();
         if let Ok(fds) = fdsresult {
             assert_eq!(fds.len(), 1);
@@ -126,30 +127,27 @@ pub fn allocate_shm(len: usize) -> u32 {
         
                     let result = match ctx.service.recv_comp().unwrap().0 {
                         Ok(CompletionKind::AllocShm(remote_addr, file_off)) => {
-                            println!("good");
                             Ok(WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
                         }
                         Err(e) => {
-                            println!("bad");
                             Err(Error::Interface("AllocShm", e))
                         }
                         otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
                     };
                     if let Ok(region) = result {
-                        0
+                        Ok(format!("{region:#?}"))
                     } else{
-                        1
+                        Err(PyException::new_err("Write region error"))
                     }
-                    }
-                    else{
-                        1
-                    }
+                }
+                else{
+                    Err(PyException::new_err("File metadata error"))
+                }
             } else{
-                1
+                Err(PyException::new_err("Memory file descriptor error"))
             }
-    
         } else{
-            1
+            Err(PyException::new_err("File descriptor error"))
         }
 
     })
