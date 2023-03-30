@@ -58,7 +58,8 @@ where
         mode: SchedulingMode,
         engine_path: Q,
     ) -> Result<Self, Error> {
-        if engine_path.as_ref().exists() {
+        let engine_path = engine_path.as_ref();
+        if engine_path.exists() {
             // This is actually impossible using uuid.
             fs::remove_file(&engine_path)?;
         }
@@ -66,7 +67,7 @@ where
 
         // 2. tell the engine's path to the client
         let mut buf = bincode::serialize(&control::Response(Ok(
-            control::ResponseKind::NewClient(engine_path.as_ref().to_path_buf()),
+            control::ResponseKind::NewClient(engine_path.to_path_buf()),
         )))?;
         let nbytes = sock.send_to(buf.as_mut_slice(), &client_path)?;
         assert_eq!(
@@ -80,7 +81,8 @@ where
         // 3. connect to the client
         engine_sock.connect(&client_path)?;
         // 4. create an IPC channel with a random name
-        let (server, server_name) = crate::ipc_channel::OneShotServer::new()?;
+        let engine_path_dir = engine_path.parent().expect("No parent directory");
+        let (server, server_name) = crate::ipc_channel::OneShotServer::new_in(engine_path_dir)?;
         // 5. tell the name and the capacities of data path shared memory queues to the client
         let wq_cap = DP_WQ_DEPTH * mem::size_of::<WorkRequest>();
         let cq_cap = DP_CQ_DEPTH * mem::size_of::<WorkCompletion>();

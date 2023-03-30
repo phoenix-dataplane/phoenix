@@ -69,7 +69,7 @@ object = "0.30.1"
 rustc-demangle = "0.1.21"
 page_size = "0.4.2"
 
-ipc-channel = "0.15.0"
+ipc-channel = { git = "https://github.com/phoenix-dataplane/ipc-channel.git", version = "0.16.0", branch = "phoenix-patch" }
 serde = "1.0.130"
 serde_derive = "1.0.130"
 shmem-ipc = "0.2.0"

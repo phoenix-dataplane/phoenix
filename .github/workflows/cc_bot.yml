@@ -40,4 +40,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          python tests/scripts/github_cc_reviewers.py || echo step failed
+          python scripts/github_cc_reviewers.py || echo step failed
