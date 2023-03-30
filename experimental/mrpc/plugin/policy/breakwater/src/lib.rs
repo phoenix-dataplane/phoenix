@@ -30,3 +30,4 @@ pub fn init_addon(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixAd
     let addon = BreakWaterAddon::new(config);
     Ok(Box::new(addon))
 }
+

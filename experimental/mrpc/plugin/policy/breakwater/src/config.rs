@@ -5,13 +5,17 @@ use serde::{Deserialize, Serialize};
 pub struct BreakWaterConfig {
     pub requests_per_sec: u64,
     pub bucket_size: u64,
+    pub request_credits: u64,
+    pub request_timestamp: u64,
 }
 
 impl Default for BreakWaterConfig {
     fn default() -> Self {
         BreakWaterConfig {
-            requests_per_sec: 100000,
-            bucket_size: 100000,
+            requests_per_sec: 1000,
+            bucket_size: 1000,
+            request_credits: 100,
+            request_timestamp: 10,
         }
     }
 }

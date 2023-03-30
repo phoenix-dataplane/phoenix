@@ -1917,6 +1917,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-breakwater"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-qos"
 version = "0.1.0"
 dependencies = [
@@ -2112,6 +2120,7 @@ dependencies = [
  "ipc",
  "lazy_static",
  "phoenix-api",
+ "phoenix-api-policy-breakwater",
  "phoenix-api-policy-qos",
  "phoenix-api-policy-ratelimit",
  "phoenix-api-rpc-adapter",

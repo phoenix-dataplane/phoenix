@@ -63,10 +63,12 @@ impl Engine for BreakWaterEngine {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         match request {
-            control_plane::Request::NewConfig(requests_per_sec, bucket_size) => {
+            control_plane::Request::NewConfig(requests_per_sec, bucket_size, request_credits, request_timestamp) => {
                 self.config = BreakWaterConfig {
                     requests_per_sec,
                     bucket_size,
+                    request_credits,
+                    request_timestamp,
                 };
             }
         }

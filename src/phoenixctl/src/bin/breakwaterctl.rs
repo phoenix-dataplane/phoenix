@@ -17,7 +17,7 @@ lazy_static::lazy_static! {
     static ref PHOENIX_PREFIX: PathBuf = {
         env::var("PHOENIX_PREFIX").map_or_else(|_| PathBuf::from(DEFAULT_PHOENIX_PREFIX), |p| {
             let path = PathBuf::from(p);
-            assert!(path.is_dir(), "{path:?} is not a directly");
+            assert!(path.is_dir(), "{path:?} is not a directory");
             path
         })
     };
@@ -37,6 +37,10 @@ struct Opts {
     request_per_sec: u64,
     #[arg(short, long)]
     bucket_size: u64,
+    #[arg(short, long)]
+    request_credits: u64,
+    #[arg(short, long)]
+    request_timestamp: u64,
 }
 
 fn main() {
@@ -53,7 +57,7 @@ fn main() {
     }
     let sock = DomainSocket::bind(sock_path).unwrap();
 
-    let request = BreakWaterRequest::NewConfig(opts.request_per_sec, opts.bucket_size);
+    let request = BreakWaterRequest::NewConfig(opts.request_per_sec, opts.bucket_size, opts.request_credits, opts.request_timestamp);
     let request_encoded = bincode::serialize(&request).unwrap();
     let req = Request::EngineRequest(opts.eid, request_encoded);
     let buf = bincode::serialize(&req).unwrap();

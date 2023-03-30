@@ -13,6 +13,9 @@ phoenix-api-policy-ratelimit = { path = "../../experimental/mrpc/phoenix-api/pol
 phoenix-api-policy-qos = { path = "../../experimental/mrpc/phoenix-api/policy/qos" }
 phoenix-api-rpc-adapter = { path = "../../experimental/mrpc/phoenix-api/rpc_adapter" }
 
+# add the policy dependency {breakwater} for mrpc
+phoenix-api-policy-breakwater = { path = "../../experimental/mrpc/phoenix-api/policy/breakwater" }
+
 uuid.workspace = true
 bincode.workspace = true
 clap = { workspace = true, features = ["derive"] }

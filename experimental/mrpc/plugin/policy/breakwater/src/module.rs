@@ -79,7 +79,7 @@ impl PhoenixAddon for BreakWaterAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != BreakWaterAddon::RATE_LIMIT_ENGINE {
+        if ty != BreakWaterAddon::BREAK_WATER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
