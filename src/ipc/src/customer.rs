@@ -82,8 +82,7 @@ where
         engine_sock.connect(&client_path)?;
         // 4. create an IPC channel with a random name
         let engine_path_dir = engine_path.parent().expect("No parent directory");
-        let (server, server_name) =
-            crate::ipc_channel::OneShotServer::new_in(engine_path_dir)?;
+        let (server, server_name) = crate::ipc_channel::OneShotServer::new_in(engine_path_dir)?;
         // 5. tell the name and the capacities of data path shared memory queues to the client
         let wq_cap = DP_WQ_DEPTH * mem::size_of::<WorkRequest>();
         let cq_cap = DP_CQ_DEPTH * mem::size_of::<WorkCompletion>();
