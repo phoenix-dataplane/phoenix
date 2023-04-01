@@ -2,15 +2,14 @@
 
 use pyo3::prelude::*;
 
-pub mod mrpcbindings;
 
-
-pub mod shmservice;
-pub use shmservice::salloc_register;
-pub use shmservice::shm_register;
-pub use shmservice::allocate_shm;
-pub use shmservice::Mode;
-pub use shmservice::Hint;
+pub mod register;
+pub mod allocate;
+pub use register::salloc_register;
+pub use register::shm_register;
+pub use allocate::allocate_shm;
+pub use register::Mode;
+pub use register::Hint;
 
 #[pymodule]
 fn phoenix_python(py: Python, m: &PyModule) -> PyResult<()> {
