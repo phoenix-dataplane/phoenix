@@ -25,6 +25,6 @@ jobs:
         with:
           deploy_key: ${{ secrets.DEPLOY_KEY_DOC }}
           external_repository: phoenix-dataplane/phoenix-dataplane.github.io
-          publish_branch: gh-pages
+          publish_branch: main
           publish_dir: .
           force_orphan: true
