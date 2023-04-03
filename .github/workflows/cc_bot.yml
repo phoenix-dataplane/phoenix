@@ -29,9 +29,7 @@ concurrency:
 
 jobs:
   cc-reviewers:
-    if: >-
-      github.repository == 'phoenix-dataplane/phoenix' &&
-      github.event.issue.pull_request
+    if: ${{ github.event.issue.pull_request }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
