@@ -60,12 +60,17 @@ if __name__ == "__main__":
     remote = git(["config", "--get", f"remote.{args.remote}.url"])
     user, repo = parse_remote(remote)
 
+    # https://docs.github.com/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
     pr = json.loads(os.environ["PR"])
 
     number = pr["number"]
     body = pr["body"]
     if body is None:
         body = ""
+
+    # https://docs.github.com/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
+    comment = json.loads(os.environ["COMMENT"])
+    body += "\n" + comment.get("COMMENT", "")
 
     new_reviewers = find_reviewers(body)
     print("Found these reviewers:", new_reviewers)
