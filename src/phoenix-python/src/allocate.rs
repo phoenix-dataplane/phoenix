@@ -6,10 +6,17 @@ use ipc::salloc::dp::{WorkRequestSlot,CompletionSlot};
 use ipc::salloc::cmd::{Command,Completion,CompletionKind};
 use salloc::backend::Error;
 use std::cell::RefCell;
+use std::mem;
 use memfd::Memfd;
 use mmap::MmapFixed;
 use std::io;
 use pyo3::exceptions::PyException;
+use slabmalloc::ObjectPage;
+use std::alloc::Layout;
+use slabmalloc::AllocablePage;
+use std::num::NonZeroUsize;
+use std::ptr::NonNull;
+use shm::ptr::ShmPtr;
 
 #[derive(Debug)]
 pub struct WriteRegion {
@@ -94,10 +101,30 @@ pub fn allocate_shm(len: usize) -> PyResult<String> {
         
                     let result = match ctx.service.recv_comp().unwrap().0 {
                         Ok(CompletionKind::AllocShm(remote_addr, file_off)) => {
-                            Ok(WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap())
+                            let addr = WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap().mmap.as_ptr().addr();
+                            let object_page : Option<&mut ObjectPage> = unsafe { mem::transmute(addr) };
+                            
+                            let layout = unsafe{Layout::from_size_align_unchecked(len,align)};
+                            if let Some(page) = object_page {
+                                    let alloc_ptr = page.allocate(layout);
+                                    // let ptr_app = NonNull::<u8>::new(alloc_ptr).ok_or(PyException::new_err("Null pointer returned"))?;
+                                    // let ptr_backend = ptr_app.with_addr(NonZeroUsize::new(alloc_ptr.addr()).unwrap());
+                                    // let ptr = ShmNonNull::slice_from_raw_parts(
+                                    //     nonnullptr,
+                                    //     ptr_backend,
+                                    //     layout.size(),
+                                    // );
+                                    let ptr :ShmPtr<u8> = unsafe {
+                                        ShmPtr::new_unchecked(alloc_ptr.cast(), alloc_ptr.cast())
+                                    };
+                        
+                                    Ok(ptr)                                
+                            } else{
+                                Err(PyException::new_err("Bad Page"))
+                            }
                         }
-                        Err(e) => {
-                            Err(Error::Interface("AllocShm", e))
+                        Err(_e) => {
+                            Err(PyException::new_err("Non AllocShm returned"))
                         }
                         otherwise => panic!("Expect AllocShm, found {:?}", otherwise),
                     };

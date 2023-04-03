@@ -1,4 +1,5 @@
 #![feature(local_key_cell_methods)]
+#![feature(strict_provenance)]
 
 use pyo3::prelude::*;
 

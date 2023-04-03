@@ -12,7 +12,9 @@ crate-type = ["cdylib"]
 interface = {path = "../interface"}
 ipc = {path = "../ipc",features = ["mrpc","salloc"]}
 salloc = {path = "../shm/salloc"}
+shm = { path = "../shm" }
 mmap = { path = "../mmap" }
+slabmalloc = { path = "../slabmalloc" }
 thiserror = "1.0.29"
 memfd = "0.4.1"
 
