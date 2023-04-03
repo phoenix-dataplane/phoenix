@@ -22,4 +22,4 @@ mRPC implements a novel RPC architecture that decouples marshalling/unmarshallin
 Compared to traditional library + sidecar solutions such as gRPC + Envoy,
 mRPC applies network policies and observability features with both security and low performance overhead,
 i.e., with minimal data movement and no redundant (un)marshalling. The mechanism supports live upgrade of
-RPC bindings, policies, transport, and marshalling without disrupting running applications.
+RPC bindings, policies, transports, and marshalling without disrupting running applications.
