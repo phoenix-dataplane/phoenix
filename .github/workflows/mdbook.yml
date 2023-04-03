@@ -26,5 +26,5 @@ jobs:
           deploy_key: ${{ secrets.DEPLOY_KEY_DOC }}
           external_repository: phoenix-dataplane/phoenix-dataplane.github.io
           publish_branch: main
-          publish_dir: .
+          publish_dir: mdbook/book
           force_orphan: true
