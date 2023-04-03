@@ -21,7 +21,6 @@ on:
   # See https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_target
   pull_request_target:
     types: [assigned, opened, synchronize, reopened, edited, ready_for_review]
-  issue_comment:
 
 concurrency:
   group: PR-${{ github.event.pull_request.number }}
@@ -29,7 +28,7 @@ concurrency:
 
 jobs:
   cc-reviewers:
-    if: ${{ github.event.issue.pull_request || github.event.pull_request }}
+    if: ${{ github.event.pull_request }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
@@ -38,7 +37,6 @@ jobs:
       - name: Add cc'ed reviewers
         env:
           PR: ${{ toJson(github.event.pull_request) }}
-          COMMENT: ${{ toJson(github.event.issue_comment) }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
