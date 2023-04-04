@@ -3,6 +3,8 @@
 
 #![no_main]
 
+use std::sync::Arc;
+
 use mrpc::{WRef};
 use mrpc::alloc::Vec;
 use mrpc::stub::{ClientStub, NamedService};
@@ -94,7 +96,7 @@ mod incrementer_ffi {
 
 #[derive(Debug)]
 pub struct IncrementerClient {
-    stub: ClientStub,
+    stub: Arc<ClientStub>,
 }
 
 fn connect(dst: String) -> Result<Box<IncrementerClient>, ::mrpc::Error> {
@@ -102,7 +104,7 @@ fn connect(dst: String) -> Result<Box<IncrementerClient>, ::mrpc::Error> {
     update_protos()?;
 
     let stub = ClientStub::connect(dst).unwrap();
-    Ok(Box::new(IncrementerClient { stub }))
+    Ok(Box::new(IncrementerClient { stub: Arc::clone(&stub) }))
 }
 
 fn update_protos() -> Result<(), ::mrpc::Error> {
@@ -120,7 +122,7 @@ impl IncrementerClient {
     ) ->  Result<Box<ValueReply>, ::mrpc::Status>
     {
         let f = self.increment_inner(req);
-        let r = smol::block_on(f);          // Rust stub returns a future, right now c++ client blocks on each req, what does a better interface look like?
+        let r = tokio::spawn(f);
         match r {
             Ok(val) => Ok( Box::new(*val) ),
             Err(error) => Err(error),
@@ -130,7 +132,7 @@ impl IncrementerClient {
     fn increment_inner(
         &self,
         req: Box<ValueRequest>,
-    ) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>> + '_
+    ) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>>
     {
         let call_id = self.stub.initiate_call();
         // Fill this with the right func_id
