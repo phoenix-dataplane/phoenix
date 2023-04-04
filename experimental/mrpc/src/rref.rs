@@ -13,9 +13,6 @@ use shm::ptr::ShmPtr;
 use crate::ReadHeap;
 use crate::MRPC_CTX;
 
-/// A alias for [`RRef<T>`].
-pub type ShmView<T> = RRef<T>;
-
 #[derive(Debug)]
 struct RRefInner<T> {
     rpc_id: RpcId,

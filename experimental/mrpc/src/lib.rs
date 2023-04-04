@@ -58,7 +58,6 @@ use thiserror::Error;
 
 use ipc::service::ShmService;
 pub use phoenix_api::engine::SchedulingHint;
-use phoenix_api::Handle;
 use phoenix_api_mrpc::control_plane::Setting;
 use phoenix_api_mrpc::{cmd, dp};
 use phoenix_syscalls::_rx_recv_impl as rx_recv_impl;
