@@ -6,7 +6,7 @@
 //! that runs as a plugin on [`Phoenix`]. This crate is the frontend shim library.
 //!
 //! The API design goal of this crate is to have a very similar developing experience as [`tonic`],
-//! which is a popular [gRPC] implementation in Rust. Migrating applications that are written in [`tonic`] is
+//! which is a popular [gRPC] implementation in Rust. Migrating applications that are written in `tonic` is
 //! expected to require minimal effort.
 //!
 //! # Examples
@@ -21,7 +21,10 @@
 //! Follow the instructions in the [`mrpc-tutorial`] to learn how to write applications.
 //!
 //! # Structure
-//! TODO: Describe the code organization.
+//! <div>
+//! <img src="../../../mrpc-overview.png" height="400" width="600" />
+//! </div>
+//! <hr/>
 //!
 //! # Max Message Size
 //!
