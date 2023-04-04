@@ -21,10 +21,8 @@
 //! Follow the instructions in the [`mrpc-tutorial`] to learn how to write applications.
 //!
 //! # Structure
-//! <div>
-//! <img src="../../../mrpc-overview.png" height="400" width="600" />
-//! </div>
-//! <hr/>
+//!
+#![doc = include_str!("../rpc.svg")]
 //!
 //! # Max Message Size
 //!
@@ -38,7 +36,6 @@
 //! [`phoenix-readme`]: https://github.com/phoenix-dataplane/phoenix/blob/main/README.md
 //! [`tonic`]: https://github.com/hyperium/tonic
 //! [gRPC]: https://grpc.io
-
 #![warn(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![feature(negative_impls)]
@@ -197,20 +194,25 @@ pub use async_trait::async_trait;
 /// The error type for operations interacting with the mRPC service.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Serde-json
     #[error("Serde-json: {0:?}")]
     Serde(#[from] serde_json::Error),
+    /// Exceptions on IPC communication with the service.
     #[error("Service error: {0}")]
     Service(#[from] ipc::Error),
+    /// Underlying I/O Error.
     #[error("IO Error {0}")]
     Io(#[from] io::Error),
+    /// General errors during processing the API in the backend.
     #[error("Interface error {0}: {1}")]
     Interface(&'static str, phoenix_api::Error),
+    /// No address is resolved.
     #[error("No address is resolved")]
     NoAddrResolved,
+    /// Cannot establish connection to the remote end.
     #[error("Connect failed: {0}")]
     Connect(phoenix_api::Error),
-    #[error("Disconnected: {0:?}")]
-    Disconnect(Handle),
+    /// Connection has been closed.
     #[error("Connection closed.")]
     ConnectionClosed,
 }

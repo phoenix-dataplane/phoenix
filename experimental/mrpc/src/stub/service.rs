@@ -6,7 +6,7 @@ use super::RpcData;
 use crate::{RRef, ReadHeap, WRef, WRefOpaque};
 
 /// A trait to provide a static reference to the service's name and ID.
-/// This is used for routing service's within the router.
+/// This is used for routing requests to service within the server.
 pub trait NamedService {
     /// The `Service-ID` corresponds to a [CRC32] hash of [`Self::NAME`].
     ///

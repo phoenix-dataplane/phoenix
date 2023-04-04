@@ -421,7 +421,6 @@ impl From<crate::Error> for Status {
             Serde(..) => Code::InvalidArgument,
             NoAddrResolved => Code::NotFound,
             Connect(..) => Code::Unavailable,
-            Disconnect(..) => Code::Internal,
             ConnectionClosed => Code::Cancelled,
         };
         Status::new(code, err.to_string())
