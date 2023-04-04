@@ -424,14 +424,10 @@ version = "0.1.0"
 dependencies = [
  "cxx",
  "cxx-build",
- "interface",
- "ipc",
  "libc",
  "memfd",
- "mmap",
  "mrpc",
  "raw-parts",
- "salloc",
  "smol",
 ]
 
@@ -599,17 +595,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "interface"
-version = "0.1.0"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
- "serde",
- "static_assertions",
- "thiserror",
-]
-
-[[package]]
 name = "iovec"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -622,10 +607,24 @@ dependencies = [
 name = "ipc"
 version = "0.1.0"
 dependencies = [
- "ipc-core",
- "ipc-mrpc",
- "ipc-salloc",
- "ipc-transport",
+ "async-io",
+ "atomic-traits",
+ "bincode",
+ "crossbeam",
+ "ipc-channel",
+ "libc",
+ "memfd",
+ "memmap2 0.5.8",
+ "minstant",
+ "mio 0.8.5",
+ "nix",
+ "phoenix-api",
+ "serde",
+ "shmem-ipc",
+ "thiserror",
+ "unique",
+ "uuid",
+ "zerocopy",
 ]
 
 [[package]]
@@ -645,60 +644,6 @@ dependencies = [
  "tempfile",
  "uuid",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "ipc-core"
-version = "0.1.0"
-dependencies = [
- "async-io",
- "atomic-traits",
- "bincode",
- "crossbeam",
- "interface",
- "ipc-channel",
- "libc",
- "memfd",
- "memmap2 0.5.8",
- "minstant",
- "mio 0.8.5",
- "nix 0.23.1",
- "serde",
- "shmem-ipc",
- "thiserror",
- "unique",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "ipc-mrpc"
-version = "0.1.0"
-dependencies = [
- "interface",
- "ipc-core",
- "serde",
- "static_assertions",
-]
-
-[[package]]
-name = "ipc-salloc"
-version = "0.1.0"
-dependencies = [
- "interface",
- "ipc-core",
- "serde",
- "static_assertions",
-]
-
-[[package]]
-name = "ipc-transport"
-version = "0.1.0"
-dependencies = [
- "interface",
- "ipc-core",
- "serde",
- "static_assertions",
 ]
 
 [[package]]
@@ -749,25 +694,6 @@ checksum = "cf3c04e9d759ab6999ca6e4f4846f009188edecbe52d700483d9912919984ade"
 dependencies = [
  "bitflags 0.6.0",
  "libc",
-]
-
-[[package]]
-name = "libphoenix"
-version = "0.1.0"
-dependencies = [
- "fnv",
- "interface",
- "ipc",
- "lazy_static",
- "libc",
- "memfd",
- "memmap2 0.5.8",
- "nix 0.23.1",
- "serde_json",
- "spin",
- "thiserror",
- "utils",
- "uuid",
 ]
 
 [[package]]
@@ -905,7 +831,8 @@ name = "mmap"
 version = "0.1.0"
 dependencies = [
  "libc",
- "nix 0.25.0",
+ "nix",
+ "page_size",
 ]
 
 [[package]]
@@ -918,19 +845,19 @@ dependencies = [
  "dashmap",
  "fnv",
  "futures",
- "interface",
  "ipc",
  "lazy_static",
  "libc",
  "libnuma",
- "libphoenix",
  "log",
  "memfd",
  "mmap",
- "nix 0.23.1",
- "salloc",
+ "phoenix-api",
+ "phoenix-api-mrpc",
+ "phoenix-syscalls",
  "serde_json",
  "shm",
+ "shmalloc",
  "slab",
  "spin",
  "thiserror",
@@ -947,19 +874,6 @@ dependencies = [
  "cfg-if 0.1.10",
  "libc",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "nix"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
-dependencies = [
- "bitflags 1.3.2",
- "cc",
- "cfg-if 1.0.0",
- "libc",
- "memoffset",
 ]
 
 [[package]]
@@ -981,6 +895,16 @@ name = "once_cell"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
+
+[[package]]
+name = "page_size"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebde548fbbf1ea81a99b128872779c437752fb99f217c45245e1a61dcd9edcd"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
+]
 
 [[package]]
 name = "parking"
@@ -1009,6 +933,72 @@ checksum = "a528564cc62c19a7acac4d81e01f39e53e25e17b934878f4c6d25cc2836e62f8"
 dependencies = [
  "thiserror",
  "ucd-trie",
+]
+
+[[package]]
+name = "phoenix-api"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "phoenix-api-salloc",
+ "phoenix-api-transport",
+]
+
+[[package]]
+name = "phoenix-api-core"
+version = "0.1.0"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+ "serde",
+ "static_assertions",
+ "thiserror",
+ "zerocopy",
+]
+
+[[package]]
+name = "phoenix-api-mrpc"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-salloc"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-transport"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api-core",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-syscalls"
+version = "0.1.0"
+dependencies = [
+ "fnv",
+ "ipc",
+ "lazy_static",
+ "libc",
+ "memfd",
+ "memmap2 0.5.8",
+ "phoenix-api",
+ "serde_json",
+ "spin",
+ "thiserror",
+ "utils",
+ "uuid",
 ]
 
 [[package]]
@@ -1142,25 +1132,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
 
 [[package]]
-name = "salloc"
-version = "0.1.0"
-dependencies = [
- "interface",
- "ipc",
- "lazy_static",
- "libphoenix",
- "memfd",
- "mmap",
- "nix 0.25.0",
- "shm",
- "slabmalloc",
- "smol",
- "spin",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1228,11 +1199,27 @@ dependencies = [
  "lazy_static",
  "memfd",
  "mmap",
- "nix 0.25.0",
+ "nix",
  "smol",
  "spin",
  "thiserror",
- "tracing",
+]
+
+[[package]]
+name = "shmalloc"
+version = "0.1.0"
+dependencies = [
+ "ipc",
+ "lazy_static",
+ "memfd",
+ "mmap",
+ "phoenix-api",
+ "phoenix-syscalls",
+ "shm",
+ "slabmalloc",
+ "smol",
+ "spin",
+ "thiserror",
 ]
 
 [[package]]
@@ -1467,6 +1454,10 @@ checksum = "d360722e1f3884f5b14d332185f02ff111f771f0c76a313268fe6af1409aba96"
 [[package]]
 name = "utils"
 version = "0.1.0"
+dependencies = [
+ "minstant",
+ "smallvec",
+]
 
 [[package]]
 name = "uuid"

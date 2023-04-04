@@ -1,5 +1,5 @@
 #include "../include/increment.h"
-#include "ffi/src/codegen.rs"
+#include "ffi/src/servercodegen.rs"
 
 const ValueReply& CPPIncrementer::incrementServer(const ValueRequest& req) {
     // lock

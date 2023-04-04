@@ -2277,7 +2277,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpc_hello"
+name = "rpc_echo"
 version = "0.1.0"
 dependencies = [
  "mrpc",

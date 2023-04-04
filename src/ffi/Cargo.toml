@@ -11,19 +11,15 @@ edition = "2021"
 
 [[bin]]
 name = "rpc_int_client"
-path = "src/codegen.rs"
+path = "src/clientcodegen.rs"
 
 [[bin]]
 name = "rpc_int_server"
-path = "src/codegen.rs"
+path = "src/servercodegen.rs"
 
 [dependencies]
 cxx = "1.0"
-interface = { path = "../interface" }
-ipc = { path = "../ipc", features = ["mrpc"] }
-mmap = { path = "../mmap" }
-salloc = { path = "../shm/salloc" }
-mrpc = { path = "../mrpc" }
+mrpc = { path = "../../experimental/mrpc" }
 memfd = "0.4.1"
 libc = "0.2"
 raw-parts = "1.1.2"
