@@ -1,3 +1,4 @@
+//! A non-[`Send`] and non-[`Sync`] Server implementation.
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::ToSocketAddrs;
@@ -32,6 +33,7 @@ thread_local! {
     static TIMER: std::cell::RefCell<Timer> = std::cell::RefCell::new(Timer::new());
 }
 
+/// An RPC server that accepts connections to a TCP port.
 pub struct LocalServer {
     stub_id: usize,
     listener_handle: Handle,
@@ -72,6 +74,9 @@ impl Inner {
 }
 
 impl LocalServer {
+    /// Bind to the provided [socket address][ToSocketAddrs].
+    ///
+    /// Construct itself on success. Returns an [`enum@Error`] otherwise.
     pub fn bind<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let bind_addr = addr
             .to_socket_addrs()?
@@ -96,6 +101,11 @@ impl LocalServer {
         })
     }
 
+    /// Add an RPC [`Service`] to the server.
+    ///
+    /// # Panics
+    ///
+    /// Panics on duplicate [`NamedService::SERVICE_ID`].
     pub fn add_service<S: Service + NamedService + 'static>(&mut self, svc: S) -> &mut Self {
         if self.routes.insert(S::SERVICE_ID, Box::new(svc)).is_some() {
             panic!("Hash collisions in func_id: {}", S::SERVICE_ID);
@@ -104,6 +114,9 @@ impl LocalServer {
     }
 
     /// Receive data from read shared heap and look up the routes and dispatch the erased message.
+    ///
+    /// Returns an [`Future`] that should be run by an `Executor`. The [`Future`] resolves to a
+    /// `Result` indicating any error during serving.
     pub async fn serve(&mut self) -> Result<(), Error> {
         // running tasks
         let mut running = FuturesUnordered::new();
@@ -147,6 +160,9 @@ impl LocalServer {
         .await
     }
 
+    /// Receive data from read shared heap and look up the routes and dispatch the erased message.
+    ///
+    /// Gracefully shutdown when the provided future `shutdown` completes.
     pub async fn serve_with_graceful_shutdown<F>(&mut self, shutdown: F) -> Result<(), Error>
     where
         F: Future<Output = ()> + Unpin,

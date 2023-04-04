@@ -1,3 +1,4 @@
+//! Read-only shared memory heap.
 use std::io;
 use std::ops::Deref;
 use std::os::unix::io::RawFd;
@@ -12,9 +13,11 @@ use phoenix_api_mrpc::cmd::ConnectResponse;
 
 use super::Error;
 
+/// A collection of read-only memory-mapped regions that are guarded by the same reference counter
+/// (the regions are bounded to the same connection).
 #[derive(Debug)]
 pub struct ReadHeap {
-    /// The number of `RRef<T>`s pointing to this heap.
+    /// The number of [`RRef<T>`](crate::rref::RRef<T>)s pointing to this heap.
     pub(crate) rref_cnt: AtomicUsize,
     pub(crate) rbufs: Vec<ReadRegion>,
 }
@@ -31,6 +34,7 @@ impl Drop for ReadHeap {
 }
 
 impl ReadHeap {
+    /// Creates a [`ReadHeap`] from a connection establishment event and a list of memfds.
     pub fn new(conn_resp: &ConnectResponse, fds: &[RawFd]) -> Self {
         let mut rbufs = Vec::new();
         for (rbuf, &fd) in conn_resp.read_regions.iter().zip(fds) {
@@ -59,7 +63,12 @@ impl ReadHeap {
     }
 }
 
-// Shared recv buffer
+/// A continuous region shared with the backend service.
+///
+/// Initially created by the backend service. Later memory-mapped as read-only in the library's
+/// address space.
+///
+/// On destruction, the internal `memfd` will be automatically released.
 #[derive(Debug)]
 pub(crate) struct ReadRegion {
     mmap: MmapFixed,

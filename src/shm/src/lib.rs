@@ -1,3 +1,6 @@
+//! A set of shared-memory related utilities that are intended to be used as replacement
+//! for the ones in [`std`], [`alloc`], or [`core`].
+
 // boxed.rs & shmptr.rs
 #![feature(strict_provenance)]
 #![feature(allocator_api)]
@@ -31,27 +34,38 @@
 #![allow(clippy::explicit_auto_deref)]
 #![allow(clippy::missing_safety_doc)]
 
-/// shm::ptr is similar to core::ptr
+/// A replacement for [`core::ptr`].
+///
+/// [`core::ptr`]: https://doc.rust-lang.org/nightly/core/ptr/index.html
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub mod ptr;
 
-/// shm::alloc is similar to alloc::alloc
+/// A replacement for [`alloc::alloc`].
+///
+/// [`alloc::alloc`]: https://doc.rust-lang.org/nightly/alloc/alloc/index.html
 pub mod alloc;
 
-/// shm::boxed is similar to alloc::boxed
+/// A replacement for [`alloc::boxed`].
+///
+/// [`alloc::boxed`]: https://doc.rust-lang.org/nightly/alloc/boxed/index.html
 #[allow(unused)]
 pub mod boxed;
 
 pub(crate) mod raw_vec;
-/// shm::vec is similar to alloc::vec
+
+/// A replacement for [`alloc::vec`].
+///
+/// [`alloc::vec`]: https://doc.rust-lang.org/nightly/alloc/vec/index.html
 #[allow(clippy::bool_comparison)]
 #[allow(clippy::partialeq_ne_impl)]
 #[allow(unused)]
 pub mod vec;
 
-/// shm::collections is similar to alloc::collections
+/// A replacement for [`alloc::collections`].
+///
+/// [`alloc::collections`]: https://doc.rust-lang.org/nightly/alloc/collections/index.html
 pub mod collections;
 
-/// shared-memory version for std::String
+/// Shared-memory version of [`std::string::String`].
 #[allow(clippy::partialeq_ne_impl)]
 pub mod string;

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 type IResult<T> = Result<T, phoenix_api::Error>;
 
+/// A list of supported underlying transports to use.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TransportType {
     #[serde(alias = "Rdma")]
@@ -32,7 +33,9 @@ pub enum ResponseKind {}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response(pub IResult<ResponseKind>);
 
-/// Service setting. Each use thread can have its own service setting.
+/// mRPC service setting.
+///
+/// Each user thread can have its own service setting.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Setting {
     /// The transport to use.
@@ -40,6 +43,7 @@ pub struct Setting {
     /// The NIC to use. TODO(cjr): choose a better configuration option rather than explicitly
     /// seting the NIC.
     pub nic_index: usize,
-    /// Set when the user thread binds to a CPU core.
+    /// The core index the user binds to. [`None`] if the user thread does not explicit set a
+    /// scheduling affinity.
     pub core_id: Option<usize>,
 }

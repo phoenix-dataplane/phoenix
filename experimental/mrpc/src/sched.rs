@@ -1,7 +1,18 @@
+//! Helper functions to NUMA-aware thread scheduling.
+
+/// Expose functionalities provided by [libnuma].
+///
+/// [libnuma]: https://github.com/lemonrock/libnuma
+#[doc(inline)]
 pub use libnuma;
 
 use libnuma::masks::indices::NodeIndex;
 
+/// Returns the number of NUMA nodes we can use.
+///
+/// # Panics
+///
+/// Panics if [libnuma] is not properly initialized in advance.
 pub fn num_numa_nodes() -> usize {
     if !libnuma::initialize() {
         panic!("NUMA is not available on the current system");
@@ -10,6 +21,18 @@ pub fn num_numa_nodes() -> usize {
     NodeIndex::number_of_nodes_permitted()
 }
 
+/// Conceptually equivalent to [`numa_run_on_node`].
+///
+/// It sets the cpumask to be all the cpus belonging to this `node_index`. Besides that, it also
+/// sets the scheduling hint so that the backend runtime can make best scheduling decisions.
+///
+/// # Panics
+///
+/// - Panics if [libnuma] is not properly initialized in advance.
+/// - Panics if the `node_index` is beyond number of permitted numa node.
+/// - Panics if the call to the low-level function [`numa_run_on_node`] fails.
+///
+/// [`numa_run_on_node`]: https://linux.die.net/man/3/numa_run_on_node
 pub fn bind_to_node(node_index: u8) {
     if !libnuma::initialize() {
         panic!("NUMA is not available on the current system");

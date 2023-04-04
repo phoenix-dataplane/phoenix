@@ -1,4 +1,4 @@
-//! RPC data structures
+//! RPC data structures.
 #![cfg(feature = "mrpc")]
 use std::fmt;
 use std::num::NonZeroU32;
@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::Handle;
 
+/// Associates custom user data with an RPC.
+///
+/// `Token` is a wrapper around a `usize`.
 #[repr(C)]
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
@@ -21,6 +24,7 @@ impl From<Token> for usize {
     }
 }
 
+/// Indicates the direction of an RPC message.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RpcMsgType {
@@ -28,6 +32,9 @@ pub enum RpcMsgType {
     Response,
 }
 
+/// An `u64` associated with an RPC.
+///
+/// This ID is guaranteed to be unique for RPC calls within a connection.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct CallId(pub u64);
@@ -44,12 +51,15 @@ impl fmt::Display for CallId {
     }
 }
 
-/// We pack `conn_id` and `call_id` into `RpcId`. It is used it uniquely identify an RPC call.
+/// A wrapper around a [`Handle`] and a [`CallId`] to uniquely identify an RPC for an application.
+///
+/// The `Handle` inside identifies the connection ID for this RPC.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct RpcId(pub Handle, pub CallId);
 
 impl RpcId {
+    /// Constructs the RPC from `conn_id` and `call_id`.
     #[inline]
     pub fn new(conn_id: Handle, call_id: CallId) -> Self {
         RpcId(conn_id, call_id)
@@ -71,6 +81,9 @@ pub enum TransportStatus {
 }
 
 impl TransportStatus {
+    /// Converting a [`TransportStatus`] to a `u32`.
+    ///
+    /// Returns 0 for Success. Returns the underlying error code otherwise.
     #[inline]
     pub fn code(self) -> u32 {
         match self {
@@ -80,6 +93,7 @@ impl TransportStatus {
     }
 }
 
+/// The metadata prepended to each RPC message.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StatusCode {
@@ -109,6 +123,10 @@ pub struct MessageMeta {
     pub status_code: StatusCode,
 }
 
+/// An RPC descriptor.
+///
+/// Contains the metadata of the RPC message and a group of pointer that points to the location of
+/// the RPC argument/response on the shared memory heap.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MessageErased {

@@ -1,3 +1,4 @@
+//! Reference-counting on read-only shared memory heaps.
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -12,6 +13,7 @@ use shm::ptr::ShmPtr;
 use crate::ReadHeap;
 use crate::MRPC_CTX;
 
+/// A alias for [`RRef<T>`].
 pub type ShmView<T> = RRef<T>;
 
 #[derive(Debug)]
@@ -23,7 +25,7 @@ struct RRefInner<T> {
     data: ShmPtr<T>,
 }
 
-/// A thread-safe reference-counting pointer to the read-only shared memory heap.
+/// A thread-safe reference-counting pointer to objects on the read-only shared memory heap.
 pub struct RRef<T>(Arc<RRefInner<T>>);
 
 // TODO(cjr): double-check this: on dropping, the inner type should not call its deallocator
@@ -108,6 +110,7 @@ impl<T> AsRef<T> for RRef<T> {
 }
 
 impl<T: Clone> RRef<T> {
+    /// Creates owned data from borrowed data, usually by cloning.
     pub fn into_owned(self) -> T {
         // Clone to get an owned data structure
         // ManuallyDrop::clone(&self.inner).clone()

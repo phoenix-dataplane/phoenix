@@ -10,7 +10,7 @@ use crate::alloc::Box as ShmBox;
 use crate::stub::RpcData;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
-pub struct WRefOpaqueVTable {
+pub(crate) struct WRefOpaqueVTable {
     /// This function will be called when the [`WRefOpaque`] gets cloned, e.g. when
     /// the [`WRef<T>`] which the [`WRefOpaque`] shadowed gets cloned.
     ///
@@ -51,7 +51,9 @@ impl WRefOpaqueVTable {
     }
 }
 
-/// A type erased object for WRef. The implemention is largely learned from `std::task::RawWaker`.
+/// A type-erased object for WRef.
+///
+/// The implemention is largely learned from `std::task::RawWaker`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct WRefOpaque {
     data: *const (),
@@ -63,7 +65,7 @@ unsafe impl Send for WRefOpaque {}
 unsafe impl Sync for WRefOpaque {}
 
 impl WRefOpaque {
-    /// Creates a new `WRefOpaque` from the provided `data` pointer and `vtable`.
+    /// Creates a new [`WRefOpaque`] from the provided `data` pointer and `vtable`.
     #[inline]
     #[must_use]
     pub(crate) const fn new(data: *const (), vtable: WRefOpaqueVTable) -> Self {
@@ -86,6 +88,7 @@ impl WRefOpaque {
         &self.vtable
     }
 
+    /// Constructs a [`WRefOpaque`] from a [`WRef<T>`], erasing its inner generic argument.
     #[inline]
     pub(crate) fn from_wref<T: RpcData>(wref: WRef<T>) -> Self {
         let data = WRef::into_raw(wref) as *const ();
@@ -128,8 +131,9 @@ mod sealed {
 
 impl<T> sealed::Sealed for T {}
 
+/// Trait implemented by RPC request types.
 pub trait IntoWRef<T: RpcData>: sealed::Sealed {
-    /// Wrap the input message `T` in a `WRef<T>`
+    /// Wrap the input message `T` in an `mrpc::WRef`.
     fn into_wref(self) -> WRef<T>;
 }
 
@@ -165,7 +169,7 @@ pub struct WRef<T: RpcData> {
 }
 
 impl<T: RpcData> WRef<T> {
-    /// Constructs a `WRef<T>` from the given user message on the writable shared memory
+    /// Constructs a [`WRef<T>`] from the given user message on the writable shared memory
     /// heap. The associated token is set to default.
     #[must_use]
     #[inline]
@@ -173,7 +177,7 @@ impl<T: RpcData> WRef<T> {
         Self::with_token(Token::default(), msg)
     }
 
-    /// Constructs a `WRef<T>` from a user token and the given user message on the
+    /// Constructs a [`WRef<T>`] from a user token and the given user message on the
     /// writable shared memory heap.
     #[must_use]
     #[inline]
@@ -193,7 +197,7 @@ impl<T: RpcData> WRef<T> {
         self.token
     }
 
-    /// Set the token.
+    /// Set the user token.
     #[inline]
     pub fn set_token(&mut self, token: Token) {
         self.token = token;
@@ -252,6 +256,10 @@ impl<T: RpcData> Deref for WRef<T> {
 }
 
 impl<T: RpcData> WRef<T> {
+    /// Returns a mutable reference into the given `WRef`, if there are no other `WRef` pointers
+    /// to the same allocation.
+    ///
+    /// Returns [`None`] otherwise, because it is not safe to mutable a shared value.
     #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         match Arc::get_mut(&mut this.inner) {
@@ -260,6 +268,12 @@ impl<T: RpcData> WRef<T> {
         }
     }
 
+    /// Returns a mutable reference into the given `WRef`, without any check.
+    ///
+    /// See also [`get_mut`], which is safe and does appropriate checks.
+    ///
+    /// [`get_mut`]: WRef::get_mut
+    ///
     /// # Safety
     ///
     /// Any other `WRef` pointers to the same allocation must not be dereferenced

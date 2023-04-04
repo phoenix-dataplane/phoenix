@@ -47,11 +47,11 @@ impl<T, A: ShmAllocator + Default> Vec<T, A> {
     ///   [`ShmString`]/`Vec<T>` (at least, it's highly likely to be incorrect if it wasn't).
     /// * `T` needs to have the same alignment as what `ptr` was allocated with.
     ///   (`T` having a less strict alignment is not sufficient, the alignment really
-    ///   needs to be equal to satisfy the [`dealloc`] requirement that memory must be
+    ///   needs to be equal to satisfy the [`deallocate`] requirement that memory must be
     ///   allocated and deallocated with the same layout.)
     /// * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs
     ///   to be the same size as the pointer was allocated with. (Because similar to
-    ///   alignment, [`dealloc`] must be called with the same layout `size`.)
+    ///   alignment, [`deallocate`] must be called with the same layout `size`.)
     /// * `length` needs to be less than or equal to `capacity`.
     ///
     /// Violating these may cause problems like corrupting the allocator's
@@ -73,7 +73,7 @@ impl<T, A: ShmAllocator + Default> Vec<T, A> {
     /// function.
     ///
     /// [`ShmString`]: crate::string::String
-    /// [`dealloc`]: crate::alloc::ShmAllocator::dealloc
+    /// [`deallocate`]: crate::alloc::ShmAllocator::deallocate
     pub unsafe fn from_raw_parts(
         ptr_app: *mut T,
         ptr_backend: *mut T,
@@ -113,11 +113,11 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     ///   [`ShmString`]/`Vec<T>` (at least, it's highly likely to be incorrect if it wasn't).
     /// * `T` needs to have the same alignment as what `ptr` was allocated with.
     ///   (`T` having a less strict alignment is not sufficient, the alignment really
-    ///   needs to be equal to satisfy the [`dealloc`] requirement that memory must be
+    ///   needs to be equal to satisfy the [`deallocate`] requirement that memory must be
     ///   allocated and deallocated with the same layout.)
     /// * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs
     ///   to be the same size as the pointer was allocated with. (Because similar to
-    ///   alignment, [`dealloc`] must be called with the same layout `size`.)
+    ///   alignment, [`deallocate`] must be called with the same layout `size`.)
     /// * `length` needs to be less than or equal to `capacity`.
     ///
     /// Violating these may cause problems like corrupting the allocator's
@@ -139,7 +139,7 @@ impl<T, A: ShmAllocator> Vec<T, A> {
     /// function.
     ///
     /// [`ShmString`]: crate::string::String
-    /// [`dealloc`]: crate::alloc::ShmAllocator::dealloc
+    /// [`deallocate`]: crate::alloc::ShmAllocator::deallocate
     #[inline]
     pub unsafe fn from_raw_parts_in(
         ptr_app: *mut T,

@@ -1,3 +1,43 @@
+//! The first implementation of RPC-as-a-Service architecture.
+//!
+//! [`mRPC`] is an implementation of RPC-as-a-Service architecture which removes redundant
+//! (un)marshalling steps in tradition library + sidecar approaches while achieving manageability to
+//! RPCs. It contains a frontend shim library that is linked with user apps and a backend service
+//! that runs as a plugin on [`Phoenix`]. This crate is the frontend shim library.
+//!
+//! The API design goal of this crate is to have a very similar developing experience as [`tonic`],
+//! which is a popular [gRPC] implementation in Rust. Migrating applications that are written in [`tonic`] is
+//! expected to require minimal effort.
+//!
+//! # Examples
+//!
+//! Examples can be found in the [`mrpc-examples`].
+//!
+//! # Getting Started
+//!
+//! mRPC service must be used with [`Phoenix`], so follow the instructions in the
+//! [`phoenix-readme`] to set up the pheonix dataplane.
+//!
+//! Follow the instructions in the [`mrpc-tutorial`] to learn how to write applications.
+//!
+//! # Structure
+//! TODO: Describe the code organization.
+//!
+//! # Max Message Size
+//!
+//! Currently, both servers and clients are using a fixed `8MB` as the limit for maximal message size.
+//! This fixed limit will be removed or made configurable in the future.
+//!
+//! [`mRPC`]: https://github.com/phoenix-dataplane/phoenix/tree/main/experimental/mrpc
+//! [`Phoenix`]: https://github.com/phoenix-dataplane/phoenix
+//! [`mrpc-examples`]: https://github.com/phoenix-dataplane/phoenix/tree/main/experimental/mrpc/examples
+//! [`mrpc-tutorial`]: https://phoenix-dataplane.github.io/tutorials/working-with-mrpc-library.html
+//! [`phoenix-readme`]: https://github.com/phoenix-dataplane/phoenix/blob/main/README.md
+//! [`tonic`]: https://github.com/hyperium/tonic
+//! [gRPC]: https://grpc.io
+
+#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
 #![feature(strict_provenance)]
@@ -27,22 +67,35 @@ use phoenix_syscalls::{PHOENIX_CONTROL_SOCK, PHOENIX_PREFIX};
 pub use phoenix_syscalls;
 
 pub mod rheap;
+#[doc(inline)]
 pub use rheap::ReadHeap;
 
 use shmalloc::backend::SA_CTX;
 
+/// Returns the current mRPC [`Setting`].
 pub fn current_setting() -> Setting {
     SETTING.with_borrow(|s| s.clone())
 }
 
+/// Update the current [`Setting`] to the given value.
+///
+/// # Note
+///
+/// This API must be called before any other mRPC APIs to make it effective.
 pub fn set(setting: &Setting) {
     SETTING.with_borrow_mut(|s| *s = setting.clone());
 }
 
+/// Returns the current mRPC [`SchedulingHint`].
 pub fn get_schedulint_hint() -> SchedulingHint {
     SCHEDULING_HINT.with_borrow(|h| *h)
 }
 
+/// Update the current [`SchedulingHint`] to the given value.
+///
+/// # Note
+///
+/// This API must be called before any other phoenix APIs to make it effective.
 pub fn set_schedulint_hint(hint: &SchedulingHint) {
     SCHEDULING_HINT.with_borrow_mut(|h| *h = *hint);
 }
@@ -92,44 +145,53 @@ impl Context {
     }
 }
 
-// Re-exports shared memory collections and data types.
+/// Re-exports shared memory collections and data types.
+#[doc(inline)]
 pub use shm::collections;
+
+/// Re-exports shared memory collections and data types.
 pub mod alloc {
     use shmalloc::SharedHeapAllocator;
+    /// Shared memory Box whose memory is managed by [`SharedHeapAllocator`].
     pub type Box<T> = shm::boxed::Box<T, SharedHeapAllocator>;
+    /// Shared memory Vec whose memory is managed by [`SharedHeapAllocator`].
     pub type Vec<T> = shm::vec::Vec<T, SharedHeapAllocator>;
+    /// Shared memory String whose memory is managed by [`SharedHeapAllocator`].
     pub type String = shm::string::String<SharedHeapAllocator>;
 }
 
 pub mod stub;
-// pub mod stub2;
 
 #[macro_use]
-pub mod macros;
+mod macros;
 
+#[doc(inline)]
 pub use phoenix_api::rpc::Token;
 
 #[doc(hidden)]
 pub use phoenix_api::rpc::MessageErased;
 
-pub mod rref;
+mod rref;
 pub use rref::RRef;
 
-pub mod wref;
+mod wref;
 pub use wref::{IntoWRef, WRef, WRefOpaque};
 
-pub mod status;
+mod status;
+#[doc(inline)]
 pub use status::{Code, Status};
 
 #[cfg(feature = "timing")]
 pub(crate) mod timing;
 
 pub mod sched;
+#[doc(inline)]
 pub use sched::{bind_to_node, num_numa_nodes};
 
 /// A re-export of [`async-trait`](https://docs.rs/async-trait) for use with codegen.
 pub use async_trait::async_trait;
 
+/// The error type for operations interacting with the mRPC service.
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Serde-json: {0:?}")]

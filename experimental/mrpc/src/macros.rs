@@ -1,4 +1,5 @@
-/// This file is adapted from mrpc/src/macros.rs.
+//! This file is adapted from tonic/src/macros.rs.
+
 /// Include generated proto server and client items.
 ///
 /// You must specify the gRPC package name.
