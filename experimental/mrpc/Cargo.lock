@@ -1605,6 +1605,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-logging"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-null"
 version = "0.1.0"
 dependencies = [
@@ -1700,6 +1708,23 @@ dependencies = [
  "serde",
  "serde_json",
  "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "futures",
+ "minstant",
+ "nix",
+ "phoenix-api-policy-logging",
+ "phoenix_common",
+ "serde",
+ "serde_json",
  "thiserror",
  "toml",
 ]
@@ -2277,7 +2302,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpc_hello"
+name = "rpc_echo"
 version = "0.1.0"
 dependencies = [
  "mrpc",

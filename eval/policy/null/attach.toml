@@ -1,8 +1,8 @@
 addon_engine = "NullEngine"
 tx_channels_replacements = [
     ["MrpcEngine", "NullEngine", 0, 0],
-    ["NullEngine", "RpcAdapterEngine", 0, 0],
+    ["NullEngine", "TcpRpcAdapterEngine", 0, 0],
 ]
 rx_channels_replacements = []
-group = ["MrpcEngine", "RpcAdapterEngine"]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "attach"

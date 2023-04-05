@@ -50,7 +50,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Er
 
     // Prepare and send the HTTP response.
     let status_line = "HTTP/1.1 200 OK";
-    let content = String::from_utf8_lossy(&reply.message);
+    let content = String::from_utf8_lossy(&reply.message) + "\n";
     let length = content.len();
 
     let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{content}");
