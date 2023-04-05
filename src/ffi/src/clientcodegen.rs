@@ -122,11 +122,12 @@ impl IncrementerClient {
     ) ->  Result<Box<ValueReply>, ::mrpc::Status>
     {
         let f = self.increment_inner(req);
-        let r = tokio::spawn(f);
-        match r {
-            Ok(val) => Ok( Box::new(*val) ),
-            Err(error) => Err(error),
-        }
+        let r = tokio::task::spawn_local(f);
+        // match r {
+        //     Ok(val) => Ok( Box::new(*val) ),
+        //     Err(error) => Err(error),
+        // }
+        Ok(new_value_reply())
     }
 
     fn increment_inner(
