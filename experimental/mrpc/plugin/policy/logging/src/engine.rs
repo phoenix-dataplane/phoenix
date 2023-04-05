@@ -11,8 +11,8 @@ use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
-use phoenix_common::module::Version;
 use phoenix_common::log;
+use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
@@ -142,7 +142,7 @@ impl LoggingEngine {
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
-        
+
         Ok(Progress(0))
     }
 }
