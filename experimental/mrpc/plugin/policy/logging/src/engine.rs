@@ -4,7 +4,7 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
-use phoenix_api_policy_null::control_plane;
+use phoenix_api_policy_logging::control_plane;
 
 use phoenix_common::engine::datapath::message::EngineTxMessage;
 use phoenix_common::engine::datapath::node::DataPathNode;
@@ -12,16 +12,17 @@ use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator,
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
 use phoenix_common::module::Version;
+use phoenix_common::log;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
-use crate::config::NullConfig;
+use crate::config::LoggingConfig;
 
-pub(crate) struct NullEngine {
+pub(crate) struct LoggingEngine {
     pub(crate) node: DataPathNode,
 
     pub(crate) indicator: Indicator,
-    pub(crate) config: NullConfig,
+    pub(crate) config: LoggingConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,13 +33,13 @@ enum Status {
 
 use Status::Progress;
 
-impl Engine for NullEngine {
+impl Engine for LoggingEngine {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
         Box::pin(async move { self.get_mut().mainloop().await })
     }
 
     fn description(self: Pin<&Self>) -> String {
-        "NullEngine".to_owned()
+        "LoggingEngine".to_owned()
     }
 
     #[inline]
@@ -51,16 +52,16 @@ impl Engine for NullEngine {
 
         match request {
             control_plane::Request::NewConfig() => {
-                self.config = NullConfig {};
+                self.config = LoggingConfig {};
             }
         }
         Ok(())
     }
 }
 
-impl_vertex_for_engine!(NullEngine, node);
+impl_vertex_for_engine!(LoggingEngine, node);
 
-impl Decompose for NullEngine {
+impl Decompose for LoggingEngine {
     fn flush(&mut self) -> Result<()> {
         while !self.tx_inputs()[0].is_empty() {
             self.check_input_queue()?;
@@ -81,7 +82,7 @@ impl Decompose for NullEngine {
     }
 }
 
-impl NullEngine {
+impl LoggingEngine {
     pub(crate) fn restore(
         mut local: ResourceCollection,
         node: DataPathNode,
@@ -90,10 +91,10 @@ impl NullEngine {
         let config = *local
             .remove("config")
             .unwrap()
-            .downcast::<NullConfig>()
+            .downcast::<LoggingConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
-        let engine = NullEngine {
+        let engine = LoggingEngine {
             node,
             indicator: Default::default(),
             config,
@@ -102,7 +103,7 @@ impl NullEngine {
     }
 }
 
-impl NullEngine {
+impl LoggingEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             let mut work = 0;
@@ -122,7 +123,7 @@ impl NullEngine {
     }
 }
 
-impl NullEngine {
+impl LoggingEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 
@@ -130,6 +131,8 @@ impl NullEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
+                        let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
+                        log::info!("Got a message: {:?}", meta_ref);
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     m => self.tx_outputs()[0].send(m)?,
@@ -139,7 +142,7 @@ impl NullEngine {
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
-
+        
         Ok(Progress(0))
     }
 }

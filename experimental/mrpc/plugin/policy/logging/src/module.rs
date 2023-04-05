@@ -6,21 +6,21 @@ use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
-use super::engine::NullEngine;
-use crate::config::NullConfig;
+use super::engine::LoggingEngine;
+use crate::config::LoggingConfig;
 
-pub(crate) struct NullEngineBuilder {
+pub(crate) struct LoggingEngineBuilder {
     node: DataPathNode,
-    config: NullConfig,
+    config: LoggingConfig,
 }
 
-impl NullEngineBuilder {
-    fn new(node: DataPathNode, config: NullConfig) -> Self {
-        NullEngineBuilder { node, config }
+impl LoggingEngineBuilder {
+    fn new(node: DataPathNode, config: LoggingConfig) -> Self {
+        LoggingEngineBuilder { node, config }
     }
 
-    fn build(self) -> Result<NullEngine> {
-        Ok(NullEngine {
+    fn build(self) -> Result<LoggingEngine> {
+        Ok(LoggingEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
@@ -28,22 +28,22 @@ impl NullEngineBuilder {
     }
 }
 
-pub struct NullAddon {
-    config: NullConfig,
+pub struct LoggingAddon {
+    config: LoggingConfig,
 }
 
-impl NullAddon {
-    pub const NULL_ENGINE: EngineType = EngineType("NullEngine");
-    pub const ENGINES: &'static [EngineType] = &[NullAddon::NULL_ENGINE];
+impl LoggingAddon {
+    pub const Logging_ENGINE: EngineType = EngineType("LoggingEngine");
+    pub const ENGINES: &'static [EngineType] = &[LoggingAddon::Logging_ENGINE];
 }
 
-impl NullAddon {
-    pub fn new(config: NullConfig) -> Self {
-        NullAddon { config }
+impl LoggingAddon {
+    pub fn new(config: LoggingConfig) -> Self {
+        LoggingAddon { config }
     }
 }
 
-impl PhoenixAddon for NullAddon {
+impl PhoenixAddon for LoggingAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
         true
     }
@@ -59,7 +59,7 @@ impl PhoenixAddon for NullAddon {
     fn migrate(&mut self, _prev_addon: Box<dyn PhoenixAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
-        NullAddon::ENGINES
+        LoggingAddon::ENGINES
     }
 
     fn update_config(&mut self, config: &str) -> Result<()> {
@@ -73,11 +73,11 @@ impl PhoenixAddon for NullAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != NullAddon::NULL_ENGINE {
+        if ty != LoggingAddon::Logging_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = NullEngineBuilder::new(node, self.config);
+        let builder = LoggingEngineBuilder::new(node, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }
@@ -89,11 +89,11 @@ impl PhoenixAddon for NullAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != NullAddon::NULL_ENGINE {
+        if ty != LoggingAddon::Logging_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let engine = NullEngine::restore(local, node, prev_version)?;
+        let engine = LoggingEngine::restore(local, node, prev_version)?;
         Ok(Box::new(engine))
     }
 }

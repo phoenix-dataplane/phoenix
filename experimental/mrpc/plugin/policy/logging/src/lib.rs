@@ -21,12 +21,12 @@ impl<T> From<SendError<T>> for DatapathError {
     }
 }
 
-use crate::config::NullConfig;
-use crate::module::NullAddon;
+use crate::config::LoggingConfig;
+use crate::module::LoggingAddon;
 
 #[no_mangle]
 pub fn init_addon(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>> {
-    let config = NullConfig::new(config_string)?;
-    let addon = NullAddon::new(config);
+    let config = LoggingConfig::new(config_string)?;
+    let addon = LoggingAddon::new(config);
     Ok(Box::new(addon))
 }
