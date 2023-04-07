@@ -11,7 +11,7 @@ You can customize your own developmenet testing flow.
 Build and deploy mRPC plugins. Build and deploy phoenix plugins. Run phoenix daemon.
 '''
 dependencies = [
-  "build-phoenixos",
+#  "build-phoenixos",
   "build-mrpc-plugins",
   "build-plugins",
   "deploy-mrpc-plugins",
