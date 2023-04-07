@@ -67,6 +67,7 @@ members = [
   # examples
   "examples/rpc_hello",
   "examples/rpc_bench",
+  "examples/rpc_bench_breakwater",
   "examples/rpc_bench_plus",
   "examples/masstree_analytics",
   "examples/hotel_reservation",

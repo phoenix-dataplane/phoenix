@@ -3,7 +3,10 @@ tx_channels_replacements = [
     ["MrpcEngine", "BreakWaterEngine", 0, 0],
     ["BreakWaterEngine", "TcpRpcAdapterEngine", 0, 0],
 ]
-rx_channels_replacements = []
+rx_channels_replacements = [
+    ["TcpRpcAdapterEngine", "BreakWaterEngine", 0, 0],
+    ["BreakWaterEngine", "MrpcEngine", 0, 0],
+]
 group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "attach"
 config_string = '''

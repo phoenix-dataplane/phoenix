@@ -13,12 +13,14 @@ use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::log;
 use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
 use crate::config::BreakWaterConfig;
 
+/// BreakWaterEngine is the engine for the BreakWater policy.
 pub(crate) struct BreakWaterEngine {
     pub(crate) node: DataPathNode,
 
@@ -37,6 +39,7 @@ pub(crate) struct BreakWaterEngine {
     pub(crate) queue: VecDeque<RpcMessageTx>,
 }
 
+// Status is the status of the engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Progress(usize),
@@ -45,11 +48,15 @@ enum Status {
 
 use Status::Progress;
 
+// Check the input queue and send the requests that can be sent.
 impl Engine for BreakWaterEngine {
+
+    // Activate the engine with a mainloop.
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
         Box::pin(async move { self.get_mut().mainloop().await })
     }
 
+    // A description of the engine.
     fn description(self: Pin<&Self>) -> String {
         "BreakWaterEngine".to_owned()
     }
@@ -59,7 +66,9 @@ impl Engine for BreakWaterEngine {
         &mut self.get_mut().indicator
     }
 
+    // Handle only requests of type control_plane::Request::NewConfig.
     fn handle_request(&mut self, request: Vec<u8>, _cred: UCred) -> Result<()> {
+        // Deserialize the request.
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         match request {
@@ -206,16 +215,46 @@ impl BreakWaterEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        if !self.queue.is_empty() || self.num_tokens < 0.1 {
-                            self.queue.push_back(msg);
-                        } else {
-                            self.num_tokens -= 1.0;
-                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-                        }
+                        let meta_ref = unsafe {&*msg.meta_buf_ptr.as_meta_ptr()}
+                        log::info!("Got a TX message: {:?}", meta_ref);
+                        
+                        let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        let rpc_id = RpcId::new(conn_id, call_id);
+
+                        log::info!("RPC ID: {:?}", rpc_id)
+
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
-                    // XXX TODO(cjr): it is best not to reorder the message
+
                     m => self.tx_outputs()[0].send(m)?,
                 }
+                //self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                return Ok(Progress(1));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+
+        match self.rx_inputs()[0].try_recv() {
+            Ok(msg) => {
+                match msg {
+                    EngineTxMessage::RpcMessage(msg) => {
+                        let meta_ref = unsafe {&*msg.meta_buf_ptr.as_meta_ptr()}
+                        log::info!("Got an RX message: {:?}", meta_ref);
+
+                        let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        let rpc_id = RpcId::new(conn_id, call_id);
+
+                        log::info!("RPC ID: {:?}", rpc_id)
+                                                
+                        self.rx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                    }
+
+                    m => self.rx_outputs()[0].send(m)?,
+                }
+                //self.rx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}

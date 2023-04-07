@@ -97,6 +97,10 @@ pub struct MessageMeta {
     pub token: u64,
     /// Whether the message is a request or a response.
     pub msg_type: RpcMsgType,
+    // Request credits and timestamp as used by the BreakWater policy.
+    pub request_credits: u16,
+    pub request_timestamp: u16,
+
 }
 
 #[repr(C)]

@@ -24,6 +24,7 @@ impl<T> From<SendError<T>> for DatapathError {
 use crate::config::BreakWaterConfig;
 use crate::module::BreakWaterAddon;
 
+/// init_addon is the entry point for the BreakWater policy.
 #[no_mangle]
 pub fn init_addon(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixAddon>> {
     let config = BreakWaterConfig::new(config_string)?;
