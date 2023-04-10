@@ -4,16 +4,11 @@ use interface::engine::SchedulingHint;
 use ipc::service::ShmService;
 use ipc::salloc::dp::{WorkRequestSlot,CompletionSlot};
 use ipc::salloc::cmd::{Command,Completion,CompletionKind};
-use salloc::backend::Error;
 use std::cell::RefCell;
-use std::mem;
 use memfd::Memfd;
 use mmap::MmapFixed;
 use std::io;
 use pyo3::exceptions::PyException;
-use slabmalloc::ObjectPage;
-use std::alloc::Layout;
-use slabmalloc::AllocablePage;
 use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 use shm::ptr::ShmPtr;
@@ -21,8 +16,8 @@ use shm::ptr::ShmPtr;
 #[derive(Debug)]
 pub struct WriteRegion {
     mmap: MmapFixed,
-    remote_addr: usize,
-    align: usize,
+    _remote_addr: usize,
+    _align: usize,
     _memfd: Memfd,
 }
 impl WriteRegion {
@@ -39,8 +34,8 @@ impl WriteRegion {
 
         Ok(WriteRegion {
             mmap,
-            remote_addr,
-            align,
+            _remote_addr: remote_addr,
+            _align: align,
             _memfd: memfd,
         })
     }
@@ -57,7 +52,7 @@ pub fn set(setting: &(String,String)) {
 thread_local! {
     /// Initialization is dynamically performed on the first call to with within a thread.
     #[doc(hidden)]
-    pub(crate) static SETTING: RefCell<(String,String)> = RefCell::new(("/tmp/phoenix_eric".to_string(),"control.sock".to_string()));
+    pub(crate) static SETTING: RefCell<(String,String)> = RefCell::new(("/tmp/phoenix_eric_eric".to_string(),"control.sock".to_string()));
     pub static SA_CTX: SAContext = SAContext::register(current_setting()).expect("phoenix salloc register failed");
 }
 
@@ -79,6 +74,10 @@ impl SAContext {
     }
 }
 
+pub fn as_non_null_ptr(a:NonNull<u8>) -> NonNull<u8> {
+    // SAFETY: We know `self` is non-null.
+    unsafe { NonNull::new_unchecked(a.as_ptr() as *mut u8) }
+}
 
 #[pyfunction]
 pub fn allocate_shm(len: usize) -> PyResult<String> {
@@ -101,27 +100,17 @@ pub fn allocate_shm(len: usize) -> PyResult<String> {
         
                     let result = match ctx.service.recv_comp().unwrap().0 {
                         Ok(CompletionKind::AllocShm(remote_addr, file_off)) => {
-                            let addr = WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap().mmap.as_ptr().addr();
-                            let object_page : Option<&mut ObjectPage> = unsafe { mem::transmute(addr) };
-                            
-                            let layout = unsafe{Layout::from_size_align_unchecked(len,align)};
-                            if let Some(page) = object_page {
-                                    let alloc_ptr = page.allocate(layout);
-                                    // let ptr_app = NonNull::<u8>::new(alloc_ptr).ok_or(PyException::new_err("Null pointer returned"))?;
-                                    // let ptr_backend = ptr_app.with_addr(NonZeroUsize::new(alloc_ptr.addr()).unwrap());
-                                    // let ptr = ShmNonNull::slice_from_raw_parts(
-                                    //     nonnullptr,
-                                    //     ptr_backend,
-                                    //     layout.size(),
-                                    // );
-                                    let ptr :ShmPtr<u8> = unsafe {
-                                        ShmPtr::new_unchecked(alloc_ptr.cast(), alloc_ptr.cast())
-                                    };
-                        
-                                    Ok(ptr)                                
-                            } else{
-                                Err(PyException::new_err("Bad Page"))
-                            }
+                            let sr = WriteRegion::new(remote_addr, len, align, file_off, memfd).unwrap();
+                            let _addr = sr.mmap.as_ptr().addr();
+                            let ptr_app = NonNull::new(sr.mmap.as_mut_ptr()).unwrap();
+                            let addr_backend = ptr_app.as_ptr().addr();
+                            let ptr_backend = ptr_app.with_addr(NonZeroUsize::new(addr_backend).unwrap());
+
+                            let ptr = unsafe {
+                                ShmPtr::new_unchecked(as_non_null_ptr(ptr_app).as_ptr(), as_non_null_ptr(ptr_backend).as_ptr())
+                            };
+
+                            Ok(ptr)
                         }
                         Err(_e) => {
                             Err(PyException::new_err("Non AllocShm returned"))
