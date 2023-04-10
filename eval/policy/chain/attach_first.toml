@@ -1,7 +1,17 @@
 addon_engine = "RateLimitEngine"
 tx_channels_replacements = [
-    ["MrpcEngine", "RateLimitEngine", 0, 0],
-    ["RateLimitEngine", "TcpRpcAdapterEngine", 0, 0],
+    [
+        "MrpcEngine",
+        "RateLimitEngine",
+        0,
+        0,
+    ],
+    [
+        "RateLimitEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
 ]
 rx_channels_replacements = []
 group = ["MrpcEngine", "TcpRpcAdapterEngine"]
