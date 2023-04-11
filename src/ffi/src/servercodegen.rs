@@ -4,10 +4,10 @@
 #![no_main]
 
 use cxx::CxxString;
-use mrpc::{WRef, RRef};
-use std::{net::SocketAddr,pin::Pin};
+use mrpc::{RRef, WRef};
+use std::{net::SocketAddr, pin::Pin};
 
-use incrementer_server::{IncrementerServer, Incrementer};
+use incrementer_server::{Incrementer, IncrementerServer};
 
 include!("typescodegen.rs");
 
@@ -24,29 +24,38 @@ mod incrementer_ffi {
         fn key_size(self: &ValueRequest) -> usize;
         fn set_key(self: &mut ValueRequest, index: usize, value: u8);
         fn add_foo(self: &mut ValueRequest, value: u8);
-        
+
         fn new_value_reply() -> Box<ValueReply>;
         fn val(self: &ValueReply) -> u64;
         fn set_val(self: &mut ValueReply, val: u64);
 
-        unsafe fn run<'a>(addr: &CxxString, service: Pin<&'static mut CPPIncrementer<'a>>) -> Result<()>;
+        unsafe fn run<'a>(
+            addr: &CxxString,
+            service: Pin<&'static mut CPPIncrementer<'a>>,
+        ) -> Result<()>;
     }
 
     unsafe extern "C++" {
         type CPPIncrementer<'a>;
 
         include!("ffi/include/increment.h");
-        fn incrementServer<'a>(self: Pin<&mut CPPIncrementer<'a>>, req: &ValueRequest) -> &ValueReply;
+        fn incrementServer<'a>(
+            self: Pin<&mut CPPIncrementer<'a>>,
+            req: &ValueRequest,
+        ) -> &ValueReply;
     }
 }
 
 // SERVER CODE
 
-unsafe impl<'a> Send for incrementer_ffi::CPPIncrementer<'a>{}
-unsafe impl<'a> Sync for incrementer_ffi::CPPIncrementer<'a>{}
+unsafe impl<'a> Send for incrementer_ffi::CPPIncrementer<'a> {}
+unsafe impl<'a> Sync for incrementer_ffi::CPPIncrementer<'a> {}
 
 use incrementer_ffi::CPPIncrementer;
-fn run(addr: &CxxString, service: Pin<&'static mut CPPIncrementer>) -> Result<(), Box<dyn std::error::Error>> {
+fn run(
+    addr: &CxxString,
+    service: Pin<&'static mut CPPIncrementer>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let addr_as_str = match addr.to_str() {
         Ok(s) => s,
         Err(e) => return Err(Box::new(e)),
@@ -56,11 +65,9 @@ fn run(addr: &CxxString, service: Pin<&'static mut CPPIncrementer>) -> Result<()
         Err(e) => return Err(Box::new(e)),
     };
     smol::block_on(async {
-    let mut server = mrpc::stub::LocalServer::bind(server)?;
+        let mut server = mrpc::stub::LocalServer::bind(server)?;
         server
-            .add_service(IncrementerServer::new(MyIncrementer {
-                service: service,
-            }))
+            .add_service(IncrementerServer::new(MyIncrementer { service: service }))
             .serve()
             .await?;
         Ok(())
@@ -110,9 +117,7 @@ pub mod incrementer_server {
                     let req = ::mrpc::RRef::new(&req_opaque, read_heap);
                     let res = self.inner.increment(req).await;
                     match res {
-                        Ok(reply) => {
-                            ::mrpc::stub::service_post_handler(reply, &req_opaque)
-                        }
+                        Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),
                         Err(_status) => {
                             todo!();
                         }
@@ -131,28 +136,28 @@ struct MyIncrementer {
 }
 
 impl Default for MyIncrementer {
-    fn default() -> Self { todo!() }
+    fn default() -> Self {
+        todo!()
+    }
 }
 
-
 #[mrpc::async_trait]
-impl Incrementer for MyIncrementer{
+impl Incrementer for MyIncrementer {
     async fn increment(
         &self,
         request: RRef<ValueRequest>,
     ) -> Result<WRef<ValueReply>, mrpc::Status> {
         // eprintln!("request: {:?}", request);
 
-
         let field_addr = &self.service as *const _ as *const usize;
         let incrmenter_addr = unsafe { *field_addr };
-        let incrementer_mut: &mut CPPIncrementer = unsafe { &mut *(incrmenter_addr as *mut CPPIncrementer) };
+        let incrementer_mut: &mut CPPIncrementer =
+            unsafe { &mut *(incrmenter_addr as *mut CPPIncrementer) };
 
-        // unsafe pointer 
-        let reply = unsafe {Pin::new_unchecked(incrementer_mut).incrementServer(request.as_ref())};
+        // unsafe pointer
+        let reply =
+            unsafe { Pin::new_unchecked(incrementer_mut).incrementServer(request.as_ref()) };
 
-        Ok(WRef::new(ValueReply{
-           val: reply.val,
-        }))
+        Ok(WRef::new(ValueReply { val: reply.val }))
     }
 }

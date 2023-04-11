@@ -1,5 +1,5 @@
 #include "../include/increment.h"
-#include "ffi/src/codegen.rs"
+#include "ffi/src/servercodegen.rs"
 
 void *StartServer(void *args) {
     pthread_detach(pthread_self());

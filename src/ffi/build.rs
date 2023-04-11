@@ -1,7 +1,7 @@
 use std::env::var;
 
 fn main() {
-    let result= match var("CLIENT_SERVER") {
+    let result = match var("CLIENT_SERVER") {
         Ok(v) => v,
         Err(_) => todo!(),
     };
@@ -10,7 +10,7 @@ fn main() {
             .file("src/client.cc")
             .flag_if_supported("-std=c++11")
             .compile("cpp_client");
-    } else if result  == "server" {
+    } else if result == "server" {
         cxx_build::bridge("src/servercodegen.rs") // returns a cc::Build
             .file("src/server.cc")
             .file("src/incrementasync.cc")
@@ -19,5 +19,4 @@ fn main() {
     } else {
         println!("warning={}", result);
     }
-
 }

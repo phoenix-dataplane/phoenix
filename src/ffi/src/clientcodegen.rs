@@ -3,27 +3,25 @@
 
 #![no_main]
 
-use std::future::poll_fn;
+use std::future::{poll_fn, IntoFuture};
 use std::sync::Arc;
 use std::task::Poll;
 use std::thread;
 
-use mrpc::{WRef};
-use mrpc::stub::{ClientStub, NamedService};
-use crossbeam_channel::{unbounded, bounded, Sender, Receiver};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
+use mrpc::stub::{ClientStub, NamedService};
+use mrpc::{WRef, RRef};
 use tokio::runtime::Builder;
 use tokio::task;
+
+use crate::incrementer_ffi::completeIncrement;
 
 include!("typescodegen.rs");
 
 lazy_static! {
-    static ref SEND_CHANNEL:(Sender<ClientWork>, Receiver<ClientWork>)  = {
-        unbounded()
-    };
-    static ref CONNECT_COMPLETE_CHANNEL:(Sender<usize>, Receiver<usize>)  = {
-        bounded(1)
-    };
+    static ref SEND_CHANNEL: (Sender<ClientWork>, Receiver<ClientWork>) = unbounded();
+    static ref CONNECT_COMPLETE_CHANNEL: (Sender<usize>, Receiver<usize>) = bounded(1);
 }
 
 #[cxx::bridge]
@@ -40,7 +38,7 @@ mod incrementer_ffi {
         fn key_size(self: &ValueRequest) -> usize;
         fn set_key(self: &mut ValueRequest, index: usize, value: u8);
         fn add_foo(self: &mut ValueRequest, value: u8);
-        
+
         fn new_value_reply() -> Box<ValueReply>;
         fn val(self: &ValueReply) -> u64;
         fn set_val(self: &mut ValueReply, val: u64);
@@ -49,6 +47,13 @@ mod incrementer_ffi {
 
         fn connect(dst: String) -> Box<IncrementerClient>;
         fn increment(self: &IncrementerClient, req: Box<ValueRequest>);
+
+    }
+
+    // TODO(nikolabo): can we do callbacks through function pointers? current approach seems to couple client and codegen code too much
+    unsafe extern "C++" {
+        include!("ffi/include/receive.h");
+        fn completeIncrement(reply: Box<ValueReply>);
     }
 }
 
@@ -68,9 +73,7 @@ fn initialize() {
     println!("initializing mrpc stub...");
     thread::spawn(|| {
         println!("runtime thread started");
-        let runtime = Builder::new_current_thread()
-            .build()
-            .unwrap();
+        let runtime = Builder::new_current_thread().build().unwrap();
         runtime.block_on(inside_runtime());
     });
 }
@@ -81,37 +84,50 @@ async fn inside_runtime() {
     let mut clients: std::vec::Vec<Arc<ClientStub>> = std::vec::Vec::new();
     println!("tokio current thread runtime starting...");
 
-    local.run_until(async move {
-        poll_fn(|cx| {
-            let v: Vec<ClientWork> = SEND_CHANNEL.1.try_iter().collect();   // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
+    local
+        .run_until(async move {
+            poll_fn(|cx| {
+                let v: Vec<ClientWork> = SEND_CHANNEL.1.try_iter().collect(); // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
 
-            if v.len() > 0 { println!("runtime received something from channel") };
+                if v.len() > 0 {
+                    println!("runtime received something from channel")
+                };
 
-            for i in v {
-                match i {
-                    ClientWork::Connect(dst) => {
-                        clients.push(connect_inner(dst));
-                        CONNECT_COMPLETE_CHANNEL.0.send(clients.len() - 1).unwrap();
-                        println!("runtime sent connect completion");
-                    },
-                    ClientWork::Increment(handle, req) => {
-                        println!("Increment request received by runtime thread");
-                        task::spawn_local(increment_inner(Arc::clone(&clients.get(handle).unwrap()), req));
-                    },
+                for i in v {
+                    match i {
+                        ClientWork::Connect(dst) => {
+                            clients.push(connect_inner(dst));
+                            CONNECT_COMPLETE_CHANNEL.0.send(clients.len() - 1).unwrap();
+                            println!("runtime sent connect completion");
+                        }
+                        ClientWork::Increment(handle, req) => {
+                            println!("Increment request received by runtime thread");
+                            let stub = Arc::clone(&clients.get(handle).unwrap());
+                            task::spawn_local(async move {
+                                let reply = increment_inner(
+                                    stub,
+                                    req,
+                                ).await;
+                                completeIncrement(Box::new(*reply.unwrap()));
+                            });
+                        }
+                    }
                 }
-            }
 
-            cx.waker().wake_by_ref();
-            Poll::Pending
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            })
+            .await
         })
         .await
-    }).await
 }
 
 fn connect(dst: String) -> Box<IncrementerClient> {
     // TODO(nikolabo): connect panics on error
     SEND_CHANNEL.0.send(ClientWork::Connect(dst)).unwrap();
-    Box::new(IncrementerClient { client_handle: CONNECT_COMPLETE_CHANNEL.1.recv().unwrap() })
+    Box::new(IncrementerClient {
+        client_handle: CONNECT_COMPLETE_CHANNEL.1.recv().unwrap(),
+    })
 }
 
 fn connect_inner(dst: String) -> Arc<ClientStub> {
@@ -131,14 +147,12 @@ fn update_protos() -> Result<(), ::mrpc::Error> {
     ::mrpc::stub::update_protos(srcs.as_slice())
 }
 
-
 impl IncrementerClient {
-    fn increment(
-        &self,
-        req: Box<ValueRequest>,
-    )
-    {
-        SEND_CHANNEL.0.send(ClientWork::Increment(self.client_handle, req)).unwrap();
+    fn increment(&self, req: Box<ValueRequest>) {
+        SEND_CHANNEL
+            .0
+            .send(ClientWork::Increment(self.client_handle, req))
+            .unwrap();
         println!("Increment request sent to runtime thread...");
     }
 }
@@ -146,16 +160,14 @@ impl IncrementerClient {
 fn increment_inner(
     stub: Arc<ClientStub>,
     req: Box<ValueRequest>,
-) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>>
-{
+) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>> {
     let call_id = stub.initiate_call();
     // Fill this with the right func_id
     let func_id = 3784353755;
 
-    let r = WRef::new(*req);    // TODO(nikolabo): Rust stub only writes RPC data once, directly to shm heap, we introduce an extra copy here, how to avoid?
+    let r = WRef::new(*req); // TODO(nikolabo): Rust stub only writes RPC data once, directly to shm heap, we introduce an extra copy here, how to avoid?
 
-    stub
-        .unary(IncrementerClient::SERVICE_ID, func_id, call_id, r)
+    stub.unary(IncrementerClient::SERVICE_ID, func_id, call_id, r)
 }
 
 impl NamedService for IncrementerClient {

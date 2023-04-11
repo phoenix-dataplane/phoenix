@@ -6,9 +6,9 @@ void sendRequest(IncrementerClient* client, ValueRequest* req) {
   client->increment(rust::Box<ValueRequest>::from_raw(req));
 }
 
-void receiveReply(rust::Box<ValueReply> reply) {
-  ValueReply* reply = reply.into_raw();
-  std::cout << "response: ValueReply { val: " << reply->val() << " }" << std::endl;
+void completeIncrement(rust::Box<ValueReply> reply) {
+  ValueReply* r = reply.into_raw();
+  std::cout << "response: ValueReply { val: " << r->val() << " }" << std::endl;
 }
 
 int main() {
