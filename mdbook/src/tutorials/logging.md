@@ -21,7 +21,7 @@ cargo run --release --bin addonctl -- --config eval/policy/logging/attach.toml -
 ```bash
 # use two sperate terminal
 # you must run server first, idk why, though.
-# phoenix/
+# /experimental/mrpc
 cargo run --release -p rpc_bench --bin rpc_bench_server -- --transport=tcp
 cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-size 64 -c 127.0.0.1 --transport=tcp
 
@@ -37,6 +37,10 @@ cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-siz
 ```bash
 cargo run --release --bin list
 
-cargo run --release --bin addonctl -- --config eval/policy/chain/attach_first.toml --pid 172569 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/attach_second.toml --pid 172569 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/attach_first.toml --pid 263173 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/attach_second.toml --pid 263173 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/detach_first.toml --pid 263173 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/detach_second.toml --pid 263173 --sid 1
+
+
 ```

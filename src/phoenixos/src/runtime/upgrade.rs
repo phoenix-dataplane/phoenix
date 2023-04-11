@@ -260,19 +260,19 @@ async fn attach_addon<I>(
     // TODO(wyj): determine whether the following check is necessary
     let (addon_group_engines, ..) = containers_resubmit.get(&addon_gid).unwrap();
     for engine in addon_group_engines {
-        let _engine_type = engine.engine_type();
-        // if (engine_type != addon) && !group.contains(&engine_type) {
-        //     log::error!(
-        //         "Scheduling group {:?} to attach addon {:?} to subscription (pid={:?}, sid={:?}) does not contain all engines in the group",
-        //         group,
-        //         addon,
-        //         pid,
-        //         sid,
-        //     );
-        //     rm.global_resource_mgr.register_subscription_shutdown(pid);
-        //     indicator.remove(&pid);
-        //     return;
-        // }
+        let engine_type = engine.engine_type();
+        if (engine_type != addon) && !group.contains(&engine_type) {
+            log::error!(
+                "Scheduling group {:?} to attach addon {:?} to subscription (pid={:?}, sid={:?}) does not contain all engines in the group",
+                group,
+                addon,
+                pid,
+                sid,
+            );
+            rm.global_resource_mgr.register_subscription_shutdown(pid);
+            indicator.remove(&pid);
+            return;
+        }
     }
 
     subscription.addons.push(addon);

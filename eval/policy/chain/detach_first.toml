@@ -1,6 +1,5 @@
 # attach second should be detach first
 addon_engine = "LoggingEngine"
-tx_channels_replacements = [["RateLimitEngine", "RpcAdapterEngine", 0, 0]]
+tx_channels_replacements = [["RateLimitEngine", "TcpRpcAdapterEngine", 0, 0]]
 rx_channels_replacements = []
-group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "detach"

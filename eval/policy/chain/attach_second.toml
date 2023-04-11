@@ -27,5 +27,5 @@ rx_channels_replacements = [
         0,
     ],
 ]
-group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+group = ["MrpcEngine", "RateLimitEngine", "TcpRpcAdapterEngine"]
 op = "attach"
