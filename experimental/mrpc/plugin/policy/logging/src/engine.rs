@@ -1,20 +1,17 @@
+use anyhow::{anyhow, Result};
+use futures::future::BoxFuture;
 use std::io::Write;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
-use std::sync::mpsc::RecvError;
-
-use anyhow::{anyhow, Result};
-use futures::future::BoxFuture;
 
 use phoenix_api_policy_logging::control_plane;
 
-use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
+use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage};
 
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
-use phoenix_common::log;
 use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 

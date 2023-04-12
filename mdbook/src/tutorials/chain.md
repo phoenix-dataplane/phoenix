@@ -21,6 +21,10 @@ cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugin
 cargo run --release -p rpc_bench --bin rpc_bench_server -- --transport=tcp
 cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-size 64 -c 127.0.0.1 --transport=tcp
 
+cargo run --release -p rpc_echo --bin rpc_echo_server
+cargo run --release -p rpc_echo --bin rpc_echo_client
+
+
 ```
 
 ## apply engine
@@ -36,4 +40,23 @@ cargo run --release --bin addonctl -- --config eval/policy/chain/detach_second.t
 
 # if detach ratelimit first
 cargo run --release --bin addonctl -- --config eval/policy/chain/detach_ratelimit.toml --pid 287769 --sid 1
+```
+
+## acl
+
+```bash
+cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 394037 --sid 1
+
+```
+
+
+## notes
+
+```
+edges.push(ChannelDescriptor(
+                sender_engine,
+                receiver_engine,
+                sender_idx,
+                recevier_idx,
+            ));
 ```

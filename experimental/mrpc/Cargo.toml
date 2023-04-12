@@ -52,6 +52,7 @@ members = [
   "phoenix-api/policy/qos",
   "phoenix-api/policy/hotel-acl",
   "phoenix-api/policy/logging",
+  "phoenix-api/policy/hello-acl",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/rpc_adapter",
@@ -62,6 +63,7 @@ members = [
   "plugin/policy/qos",
   "plugin/policy/logging",
   "plugin/policy/hotel-acl",
+  "plugin/policy/hello-acl",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -70,9 +72,7 @@ members = [
   "examples/hotel_reservation",
   # "examples/hotel_microservices",
 ]
-exclude = [
-  "3rdparty/prost",
-]
+exclude = ["3rdparty/prost"]
 
 
 [workspace.dependencies]
@@ -85,6 +85,7 @@ phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
 phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
+phoenix-api-policy-hello-acl = { path = "phoenix-api/policy/hello-acl" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -126,7 +127,7 @@ futures = "0.3.23"
 libnuma = "0.0.4"
 spin = "0.9.3"
 static_assertions = "1.1.0"
-tokio = "1.18.2" # only sync is enabled
+tokio = "1.18.2"            # only sync is enabled
 anyhow = "1.0.58"
 itertools = "0.10.3"
 crc32fast = "1.3.2"
@@ -157,7 +158,6 @@ fasthash = "0.4.0"
 link-cplusplus = "1.0"
 arc-swap = "1.5.0"
 crossbeam-utils = "0.8.12"
-
 
 
 [profile.release]
