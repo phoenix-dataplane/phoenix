@@ -205,6 +205,17 @@ impl HelloAclEngine {
                             Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
                         let req = unsafe { req_ptr.as_ref() };
                         if should_block(req) {
+                            let rpc_id = unsafe {
+                                RpcId::new(msg.meta.as_ref().conn_id, msg.meta.as_ref().call_id)
+                            };
+                            // let error = EngineTxMessage::RpcMessage(
+                            //     rpc_id,
+                            //     TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
+                            // );
+
+                            // self.tx_outputs()[0].send(error).unwrap_or_else(|e| {
+                            //     log::warn!("error when bubbling up the error, send failed e: {}", e)
+                            // });
                             log::warn!("acl denied on rx");
                         } else {
                             self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;

@@ -24,6 +24,8 @@ cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-siz
 cargo run --release -p rpc_echo --bin rpc_echo_server
 cargo run --release -p rpc_echo --bin rpc_echo_client
 
+cargo run --release -p hotel_reservation --bin hotel_reservation_server
+cargo run --release -p hotel_reservation --bin hotel_reservation_client
 
 ```
 
@@ -45,7 +47,7 @@ cargo run --release --bin addonctl -- --config eval/policy/chain/detach_ratelimi
 ## acl
 
 ```bash
-cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 394037 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 449025 --sid 1
 
 ```
 
