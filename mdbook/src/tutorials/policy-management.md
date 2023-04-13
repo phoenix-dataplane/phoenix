@@ -96,3 +96,33 @@ After the following command is executed, rate limit policy is no longer applied.
 ```
 cargo run  --release --bin addonctl -- --config eval/policy/ratelimit/detach.toml --pid 2012290 --sid 1
 ```
+
+# Semantics
+
+The engines can form a graph, and are connected via unidirectional tx/rx channels.
+
+TX/RX represents the direction of message. For example, if a client sends an RPC to a server, the client's tx channel is connected to the server's rx channel. Server's tx channel is connected to the client's rx channel, sending the response of that RPC. 
+
+Currently, for each application, all engine's name must be unique.
+
+## Attach
+
+Attach means inserting a new engine between two existing engines. The new engine will be inserted between the two existing engines, and the two existing engines will be connected to the new engine via tx/rx channels. 
+
+The new engine should be attached to the same group as the two existing engines, as engines in the same group are bound to a single thread.
+
+- addon_engine: the engine to be attached
+- tx_channels_replacements: You need to specify the channel descriptor after addon_engine has been attached. Suppose you want to insert A between B and C, then tx_channels_replacements should be [[B, A, 0, 0], [A, C, 0, 0]].
+- rx_channels_replacements: Similar to tx_channels_replacements, but for rx channels, and the order of the channels should be reversed.
+- group: the group of the *all* existing engines, suppose you want to also insert D between A and B, then the group should be [A, B, C].
+
+## Detach
+
+Detach means removing an existing engine from the graph. The engine will be removed from the graph, and the two existing engines will be connected to each other via tx/rx channels.
+
+- addon_engine: the engine to be detached
+- tx_channels_replacements: You need to specify the channel descriptor after addon_engine has been detached. Suppose you want to remove A between B and C, then tx_channels_replacements should be [[B, C, 0, 0]].
+- rx_channels_replacements: Similar to tx_channels_replacements, but for rx channels, and the order of the channels should be reversed.
+
+
+
