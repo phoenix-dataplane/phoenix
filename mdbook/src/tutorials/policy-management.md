@@ -99,7 +99,7 @@ cargo run  --release --bin addonctl -- --config eval/policy/ratelimit/detach.tom
 
 # Semantics
 
-The engines can form a graph, and is connected via tx/rx channels, which are bidirectional. 
+The engines can form a graph, and are connected via unidirectional tx/rx channels.
 
 TX/RX represents the direction of message. For example, if a client sends an RPC to a server, the client's tx channel is connected to the server's rx channel. Server's tx channel is connected to the client's rx channel, sending the response of that RPC. 
 
