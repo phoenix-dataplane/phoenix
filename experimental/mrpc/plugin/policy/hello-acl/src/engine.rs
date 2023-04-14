@@ -228,11 +228,17 @@ impl HelloAclEngine {
                                 meta_ptr.0.as_mut().num_sge = 0;
                                 meta_ptr.0.as_mut().value_len = 0;
                             }
-                            let new_msg = EngineTxMessage::RpcMessage(RpcMessageTx {
+                            let rpc_msg = RpcMessageTx {
                                 meta_buf_ptr: meta_ptr,
-                                addr_backend: 0usize,
-                            });
+                                addr_backend: msg.addr_backend,
+                            };
+                            let new_meta = unsafe { rpc_msg.meta_buf_ptr.as_meta_ptr().read() };
+                            log::info!("new_meta : {:?}", new_meta);
+                            let new_msg = EngineTxMessage::RpcMessage(rpc_msg);
+
                             log::warn!("acl denied an rpc on rx");
+                            log::info!("new_msg {:?}", new_msg);
+
                             self.tx_outputs()[0]
                                 .send(new_msg)
                                 .expect("send new message error");

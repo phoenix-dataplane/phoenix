@@ -34,11 +34,11 @@ cargo run --release -p hotel_reservation --bin hotel_reservation_client
 ```bash
 cargo run --release --bin list
 
-cargo run --release --bin addonctl -- --config eval/policy/chain/attach_first.toml --pid 287769 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/attach_second.toml --pid 287769 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/attach_first.toml --pid 885670 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/attach_second.toml --pid 885519 --sid 1
 # if detach logging first
-cargo run --release --bin addonctl -- --config eval/policy/chain/detach_first.toml --pid 287769 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/detach_second.toml --pid 287769 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/detach_first.toml --pid 885519 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/detach_second.toml --pid 885519 --sid 1
 
 # if detach ratelimit first
 cargo run --release --bin addonctl -- --config eval/policy/chain/detach_ratelimit.toml --pid 287769 --sid 1
@@ -47,7 +47,7 @@ cargo run --release --bin addonctl -- --config eval/policy/chain/detach_ratelimi
 ## acl
 
 ```bash
-cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 858166 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 961259 --sid 1
 
 ```
 

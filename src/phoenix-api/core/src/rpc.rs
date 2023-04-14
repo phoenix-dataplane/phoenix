@@ -83,9 +83,9 @@ impl TransportStatus {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StatusCode {
-    Success,
-    AccessDenied,
-    Unknown,
+    Success = 0,
+    AccessDenied = 1,
+    Unknown = 2,
 }
 
 #[repr(C)]

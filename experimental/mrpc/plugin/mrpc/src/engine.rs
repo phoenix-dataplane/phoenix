@@ -4,6 +4,7 @@ use std::pin::Pin;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
+use std::num::NonZeroU32;
 
 use phoenix_api::engine::SchedulingMode;
 use phoenix_api::rpc::{MessageErased, RpcId, StatusCode};
@@ -481,24 +482,40 @@ impl MrpcEngine {
                         match meta.status_code {
                             StatusCode::AccessDenied => {
                                 tracing::warn!("Status code: Access denied, meta={:?}", meta);
+                                let mut sent = false;
+                                let rpc_id = RpcId(meta.conn_id, meta.call_id);
+                                let status = phoenix_api::rpc::TransportStatus::Error(unsafe {
+                                    NonZeroU32::new_unchecked(403)
+                                });
+                                while !sent {
+                                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                        // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                        sent = true;
+                                        ptr.cast::<dp::Completion>()
+                                            .write(dp::Completion::Outgoing(rpc_id, status));
+                                        1
+                                    })?;
+                                }
                             }
                             StatusCode::Unknown => {
                                 tracing::error!("Status code: Unknown error, meta={:?}", meta);
                             }
-                            _ => {}
+                            StatusCode::Success => {
+                                let mut sent = false;
+                                while !sent {
+                                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                        // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                        sent = true;
+                                        ptr.cast::<dp::Completion>()
+                                            .write(dp::Completion::Incoming(erased));
+                                        1
+                                    })?;
+                                }
+                            }
                         }
 
                         // the following operation takes around 100ns
-                        let mut sent = false;
-                        while !sent {
-                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                                // self.customer.notify_wc_with(|ptr, _count| unsafe {
-                                sent = true;
-                                ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::Incoming(erased));
-                                1
-                            })?;
-                        }
+
                         // timer.tick();
                         // log::info!("MrpcEngine check_input_queue: {}", timer);
                     }

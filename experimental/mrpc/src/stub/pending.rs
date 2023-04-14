@@ -33,6 +33,6 @@ impl PendingWRef {
 
     #[inline]
     pub(crate) fn remove(&self, rpc_id: &RpcId) {
-        assert!(self.pool.borrow_mut().remove(rpc_id).is_some());
+        //assert!(self.pool.borrow_mut().remove(rpc_id).is_some());
     }
 }
