@@ -117,6 +117,7 @@ impl ClientStub {
             call_id,
             token: req.token().0 as u64,
             msg_type: RpcMsgType::Request,
+            status_code: phoenix_api::rpc::StatusCode::Success,
         };
 
         self.post_request(req, meta).unwrap();

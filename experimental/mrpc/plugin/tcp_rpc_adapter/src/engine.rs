@@ -364,6 +364,7 @@ impl TcpRpcAdapterEngine {
         mut meta_buf_ptr: MetaBufferPtr,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
+        log::debug!("start send_fused!");
         let meta_ref = unsafe { &*meta_buf_ptr.as_meta_ptr() };
         let table = self.state.conn_table.borrow();
         let conn_ctx = table
@@ -415,6 +416,7 @@ impl TcpRpcAdapterEngine {
         meta_ref: &MessageMeta,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
+        log::debug!("start send_standard!");
         let table = self.state.conn_table.borrow();
         let conn_ctx = table
             .get(&meta_ref.conn_id)
@@ -431,6 +433,7 @@ impl TcpRpcAdapterEngine {
             ptr: (meta_ref as *const MessageMeta).expose_addr(),
             len: mem::size_of::<MessageMeta>(),
         };
+        log::debug!("send_standard start! meta_sge: {:?}", meta_sge);
 
         get_ops().post_send(
             sock_handle,
@@ -455,7 +458,7 @@ impl TcpRpcAdapterEngine {
                 (i + 1 == sglist.0.len()) as _,
             )?;
         }
-
+        log::debug!("send_standard finish!");
         Ok(Progress(1))
     }
 
@@ -492,18 +495,24 @@ impl TcpRpcAdapterEngine {
             // let conn_ctx = table
             //     .get(&meta_ref.conn_id)
             //     .ok_or(ResourceError::NotFound)?;
-
+            log::info!("dispatching message: {:?}", meta_ref);
             let sglist = if let Some(ref module) = self.serialization_engine {
-                module.marshal(meta_ref, msg.addr_backend).unwrap()
+                log::info!("before marshal");
+                match module.marshal(meta_ref, msg.addr_backend) {
+                    Ok(sglist) => sglist,
+                    Err(e) => {
+                        panic!("marshal error: {:?}", e);
+                    }
+                }
             } else {
                 panic!("dispatch module not loaded");
             };
-
+            log::info!("success marshal!");
             let status = match Self::choose_strategy(&sglist) {
                 RpcStrategy::Fused => self.send_fused(msg.meta_buf_ptr, &sglist)?,
                 RpcStrategy::Standard => self.send_standard(meta_ref, &sglist)?,
             };
-
+            log::info!("dispatch: {:?}", meta_ref);
             return Ok(status);
         }
 
@@ -545,7 +554,7 @@ impl TcpRpcAdapterEngine {
         meta.conn_id = sock_handle;
 
         let recv_id = RpcId::new(meta.conn_id, meta.call_id);
-
+        log::info!("unmarshalling message: {:?}", meta);
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
             addr_arbiter: &self.state.resource().addr_map,

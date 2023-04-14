@@ -9,12 +9,14 @@ use anyhow::{anyhow, Result};
 use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
-use phoenix_api::rpc::{RpcId, TransportStatus};
+use phoenix_api::rpc::{MessageMeta, RpcId, StatusCode, TransportStatus};
 use phoenix_api_policy_hello_acl::control_plane;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
+use phoenix_common::engine::datapath::meta_pool::MetaBuffer;
+use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
@@ -38,10 +40,8 @@ pub(crate) struct HelloAclEngine {
 
     pub(crate) outstanding_req_pool: HashMap<RpcId, Box<hello::HelloRequest>>,
 
-    // A set of func_ids to apply the rate limit.
-    // TODO(cjr): maybe put this filter in a separate engine like FilterEngine/ClassiferEngine.
-    // pub(crate) filter: FnvHashSet<u32>,
-    // Number of tokens to add for each seconds.
+    pub(crate) meta_buf_pool: MetaBufferPool,
+
     pub(crate) config: HelloAclConfig,
 }
 
@@ -99,6 +99,8 @@ impl Decompose for HelloAclEngine {
             "outstanding_req_pool".to_string(),
             Box::new(engine.outstanding_req_pool),
         );
+        collections.insert("meta_buf_pool".to_string(), Box::new(engine.meta_buf_pool));
+
         collections.insert("config".to_string(), Box::new(engine.config));
         (collections, engine.node)
     }
@@ -120,11 +122,16 @@ impl HelloAclEngine {
             .unwrap()
             .downcast::<HelloAclConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-
+        let meta_buf_pool = *local
+            .remove("meta_buf_pool")
+            .unwrap()
+            .downcast::<MetaBufferPool>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let engine = HelloAclEngine {
             node,
             indicator: Default::default(),
             outstanding_req_pool,
+            meta_buf_pool,
             config,
         };
         Ok(engine)
@@ -197,26 +204,38 @@ impl HelloAclEngine {
             Ok(m) => {
                 match m {
                     EngineRxMessage::Ack(rpc_id, _status) => {
-                        self.outstanding_req_pool.remove(&rpc_id);
-                        self.rx_outputs()[0].send(m)?;
+                        if let Ok(()) = self.meta_buf_pool.release(rpc_id) {
+                            log::info!("access denied ack received: {:?} and removed", rpc_id);
+                        } else {
+                            log::info!("normal ack received: {:?}", rpc_id);
+                            self.rx_outputs()[0].send(m)?;
+                        }
                     }
                     EngineRxMessage::RpcMessage(msg) => {
-                        let req_ptr =
-                            Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
-                        let req = unsafe { req_ptr.as_ref() };
-                        if should_block(req) {
-                            let rpc_id = unsafe {
-                                RpcId::new(msg.meta.as_ref().conn_id, msg.meta.as_ref().call_id)
-                            };
-                            // let error = EngineTxMessage::RpcMessage(
-                            //     rpc_id,
-                            //     TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
-                            // );
-
-                            // self.tx_outputs()[0].send(error).unwrap_or_else(|e| {
-                            //     log::warn!("error when bubbling up the error, send failed e: {}", e)
-                            // });
-                            log::warn!("acl denied on rx");
+                        // check whether the request should be blocked
+                        let private_req = materialize_rx(&msg);
+                        if should_block(&private_req) {
+                            // We need to copy meta, add it to meta_buf_pool, and send it as the tx msg
+                            // Is there better way to do this and avoid unsafe?
+                            let mut meta = unsafe { msg.meta.as_ref().clone() };
+                            meta.status_code = StatusCode::AccessDenied;
+                            let mut meta_ptr = self
+                                .meta_buf_pool
+                                .obtain(RpcId(meta.conn_id, meta.call_id))
+                                .expect("meta_buf_pool is full");
+                            unsafe {
+                                meta_ptr.as_meta_ptr().write(meta);
+                                meta_ptr.0.as_mut().num_sge = 0;
+                                meta_ptr.0.as_mut().value_len = 0;
+                            }
+                            let new_msg = EngineTxMessage::RpcMessage(RpcMessageTx {
+                                meta_buf_ptr: meta_ptr,
+                                addr_backend: 0usize,
+                            });
+                            log::warn!("acl denied an rpc on rx");
+                            self.tx_outputs()[0]
+                                .send(new_msg)
+                                .expect("send new message error");
                         } else {
                             self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                         }

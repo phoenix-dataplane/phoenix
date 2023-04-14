@@ -47,7 +47,7 @@ cargo run --release --bin addonctl -- --config eval/policy/chain/detach_ratelimi
 ## acl
 
 ```bash
-cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 449025 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 858166 --sid 1
 
 ```
 

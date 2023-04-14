@@ -47,6 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .add_service(GreeterServer::new(MyGreeter::default()))
             .serve()
             .await?;
+        eprintln!("server stopped");
         Ok(())
     })
 }

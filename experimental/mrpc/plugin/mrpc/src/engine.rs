@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 
 use phoenix_api::engine::SchedulingMode;
-use phoenix_api::rpc::{MessageErased, RpcId};
+use phoenix_api::rpc::{MessageErased, RpcId, StatusCode};
 use phoenix_api_mrpc::{cmd, control_plane, dp};
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
@@ -478,6 +478,15 @@ impl MrpcEngine {
                             shm_addr_backend: msg.addr_backend,
                         };
                         // timer.tick();
+                        match meta.status_code {
+                            StatusCode::AccessDenied => {
+                                tracing::warn!("Status code: Access denied, meta={:?}", meta);
+                            }
+                            StatusCode::Unknown => {
+                                tracing::error!("Status code: Unknown error, meta={:?}", meta);
+                            }
+                            _ => {}
+                        }
 
                         // the following operation takes around 100ns
                         let mut sent = false;

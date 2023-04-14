@@ -3,6 +3,7 @@ use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
 
 use phoenix_common::addon::{PhoenixAddon, Version};
+use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
@@ -21,10 +22,13 @@ impl HelloAclEngineBuilder {
     }
 
     fn build(self) -> Result<HelloAclEngine> {
+        const META_BUFFER_POOL_CAP: usize = 128;
+
         Ok(HelloAclEngine {
             node: self.node,
             indicator: Default::default(),
             outstanding_req_pool: HashMap::default(),
+            meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             config: self.config,
         })
     }

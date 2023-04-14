@@ -21,6 +21,7 @@ pub struct MetaBuffer {
     pub meta: MessageMeta,
     pub num_sge: u32,
     pub value_len: u32,
+    // !fixme why not use sizeof(MessageMeta) + sizeof(u32) + sizeof(u32) instead of 48?
     pub length_delimited: [u8; META_BUFFER_SIZE - 48],
 }
 
