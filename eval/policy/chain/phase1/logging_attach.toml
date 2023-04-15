@@ -1,7 +1,7 @@
 addon_engine = "LoggingEngine"
 tx_channels_replacements = [
     [
-        "MrpcEngine",
+        "RateLimitEngine",
         "LoggingEngine",
         0,
         0,
@@ -27,5 +27,10 @@ rx_channels_replacements = [
         0,
     ],
 ]
-group = ["MrpcEngine", "HelloAclSenderEngine", "TcpRpcAdapterEngine"]
+group = [
+    "MrpcEngine",
+    "HelloAclSenderEngine",
+    "TcpRpcAdapterEngine",
+    "RateLimitEngine",
+]
 op = "attach"
