@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
 
 use phoenix_common::addon::{PhoenixAddon, Version};
@@ -6,47 +7,45 @@ use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
-use super::engine::LoggingEngine;
-use crate::config::{create_log_file, LoggingConfig};
+use super::engine::HelloAclSenderEngine;
+use crate::config::HelloAclSenderConfig;
 
-pub(crate) struct LoggingEngineBuilder {
+pub(crate) struct HelloAclSenderEngineBuilder {
     node: DataPathNode,
-    config: LoggingConfig,
+    config: HelloAclSenderConfig,
 }
 
-impl LoggingEngineBuilder {
-    fn new(node: DataPathNode, config: LoggingConfig) -> Self {
-        LoggingEngineBuilder { node, config }
+impl HelloAclSenderEngineBuilder {
+    fn new(node: DataPathNode, config: HelloAclSenderConfig) -> Self {
+        HelloAclSenderEngineBuilder { node, config }
     }
 
-    fn build(self) -> Result<LoggingEngine> {
-        let log_file = create_log_file();
-
-        Ok(LoggingEngine {
+    fn build(self) -> Result<HelloAclSenderEngine> {
+        Ok(HelloAclSenderEngine {
             node: self.node,
             indicator: Default::default(),
+            outstanding_req_pool: HashMap::default(),
             config: self.config,
-            log_file,
         })
     }
 }
 
-pub struct LoggingAddon {
-    config: LoggingConfig,
+pub struct HelloAclSenderAddon {
+    config: HelloAclSenderConfig,
 }
 
-impl LoggingAddon {
-    pub const LOGGING_ENGINE: EngineType = EngineType("LoggingEngine");
-    pub const ENGINES: &'static [EngineType] = &[LoggingAddon::LOGGING_ENGINE];
+impl HelloAclSenderAddon {
+    pub const HELLO_ACL_SENDER_ENGINE: EngineType = EngineType("HelloAclSenderEngine");
+    pub const ENGINES: &'static [EngineType] = &[HelloAclSenderAddon::HELLO_ACL_SENDER_ENGINE];
 }
 
-impl LoggingAddon {
-    pub fn new(config: LoggingConfig) -> Self {
-        LoggingAddon { config }
+impl HelloAclSenderAddon {
+    pub fn new(config: HelloAclSenderConfig) -> Self {
+        HelloAclSenderAddon { config }
     }
 }
 
-impl PhoenixAddon for LoggingAddon {
+impl PhoenixAddon for HelloAclSenderAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
         true
     }
@@ -62,7 +61,7 @@ impl PhoenixAddon for LoggingAddon {
     fn migrate(&mut self, _prev_addon: Box<dyn PhoenixAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
-        LoggingAddon::ENGINES
+        HelloAclSenderAddon::ENGINES
     }
 
     fn update_config(&mut self, config: &str) -> Result<()> {
@@ -76,11 +75,11 @@ impl PhoenixAddon for LoggingAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingAddon::LOGGING_ENGINE {
+        if ty != HelloAclSenderAddon::HELLO_ACL_SENDER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = LoggingEngineBuilder::new(node, self.config);
+        let builder = HelloAclSenderEngineBuilder::new(node, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }
@@ -92,11 +91,11 @@ impl PhoenixAddon for LoggingAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingAddon::LOGGING_ENGINE {
+        if ty != HelloAclSenderAddon::HELLO_ACL_SENDER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let engine = LoggingEngine::restore(local, node, prev_version)?;
+        let engine = HelloAclSenderEngine::restore(local, node, prev_version)?;
         Ok(Box::new(engine))
     }
 }

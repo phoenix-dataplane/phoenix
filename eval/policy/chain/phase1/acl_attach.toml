@@ -1,13 +1,13 @@
-addon_engine = "HelloAclReceiverEngine"
+addon_engine = "HelloAclSenderEngine"
 tx_channels_replacements = [
     [
         "MrpcEngine",
-        "HelloAclEngine",
+        "HelloAclSenderEngine",
         0,
         0,
     ],
     [
-        "HelloAclEngine",
+        "HelloAclSenderEngine",
         "TcpRpcAdapterEngine",
         0,
         0,
@@ -16,12 +16,12 @@ tx_channels_replacements = [
 rx_channels_replacements = [
     [
         "TcpRpcAdapterEngine",
-        "HelloAclEngine",
+        "HelloAclSenderEngine",
         0,
         0,
     ],
     [
-        "HelloAclEngine",
+        "HelloAclSenderEngine",
         "MrpcEngine",
         0,
         0,

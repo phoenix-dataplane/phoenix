@@ -60,3 +60,9 @@ name = "HelloAclReceiver"
 lib_path = "plugins/libphoenix_hello_acl_receiver.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "HelloAclSender"
+lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
+config_string = '''
+'''

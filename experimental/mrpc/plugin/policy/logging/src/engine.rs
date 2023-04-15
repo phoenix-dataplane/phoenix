@@ -16,7 +16,7 @@ use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
-use crate::config::LoggingConfig;
+use crate::config::{create_log_file, LoggingConfig};
 
 pub(crate) struct LoggingEngine {
     pub(crate) node: DataPathNode,
@@ -96,8 +96,7 @@ impl LoggingEngine {
             .downcast::<LoggingConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
-        let log_file = std::fs::File::create("/tmp/phoenix/log/logging_engine.log").unwrap();
-
+        let log_file = create_log_file();
         let engine = LoggingEngine {
             node,
             indicator: Default::default(),

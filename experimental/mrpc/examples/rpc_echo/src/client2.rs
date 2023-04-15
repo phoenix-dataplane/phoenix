@@ -6,14 +6,17 @@ pub mod rpc_hello {
 
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
+use std::{thread, time::Duration};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = GreeterClient::connect("localhost:5000")?;
-    for i in 1..5 {
+    let mut i = 0;
+    loop {
+        i = i ^ 1;
         let mut req = HelloRequest {
             name: "mRPC".into(),
         };
-        if i % 2 == 0 {
+        if i == 0 {
             req = HelloRequest {
                 name: "nRPC".into(),
             };
@@ -28,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("error: {}", e);
             }
         }
+        thread::sleep(Duration::from_secs(1));
     }
     Ok(())
 }

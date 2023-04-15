@@ -45,7 +45,7 @@ cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimi
 
 ```bash
 cargo run --release -p rpc_echo --bin rpc_echo_server
-cargo run --release -p rpc_echo --bin rpc_echo_client
+cargo run --release -p rpc_echo --bin rpc_echo_client2
 
 cargo run --release -p hotel_reservation --bin hotel_reservation_server
 cargo run --release -p hotel_reservation --bin hotel_reservation_client
@@ -54,7 +54,13 @@ cargo run --release -p hotel_reservation --bin hotel_reservation_client
 ## acl
 
 ```bash
-cargo run --release --bin addonctl -- --config eval/policy/hello-acl/attach.toml --pid 1022560 --sid 1
+cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugins.toml
+
+cargo run --release --bin list
+
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/acl_attach.toml --pid 1265300 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimit_attach.toml --pid 1265300 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/logging_attach.toml --pid 1265300 --sid 1
 
 ```
 

@@ -364,7 +364,6 @@ impl TcpRpcAdapterEngine {
         mut meta_buf_ptr: MetaBufferPtr,
         sglist: &SgList,
     ) -> Result<Status, DatapathError> {
-        log::debug!("start send_fused!");
         let meta_ref = unsafe { &*meta_buf_ptr.as_meta_ptr() };
         let table = self.state.conn_table.borrow();
         let conn_ctx = table
@@ -495,9 +494,8 @@ impl TcpRpcAdapterEngine {
             // let conn_ctx = table
             //     .get(&meta_ref.conn_id)
             //     .ok_or(ResourceError::NotFound)?;
-            log::info!("dispatching message: {:?}", meta_ref);
+            // log::info!("dispatching message: {:?}", meta_ref);
             let sglist = if let Some(ref module) = self.serialization_engine {
-                log::info!("before marshal");
                 match module.marshal(meta_ref, msg.addr_backend) {
                     Ok(sglist) => sglist,
                     Err(e) => {
@@ -507,12 +505,10 @@ impl TcpRpcAdapterEngine {
             } else {
                 panic!("dispatch module not loaded");
             };
-            log::info!("success marshal!");
             let status = match Self::choose_strategy(&sglist) {
                 RpcStrategy::Fused => self.send_fused(msg.meta_buf_ptr, &sglist)?,
                 RpcStrategy::Standard => self.send_standard(meta_ref, &sglist)?,
             };
-            log::info!("dispatch: {:?}", meta_ref);
             return Ok(status);
         }
 
@@ -554,7 +550,6 @@ impl TcpRpcAdapterEngine {
         meta.conn_id = sock_handle;
 
         let recv_id = RpcId::new(meta.conn_id, meta.call_id);
-        log::info!("unmarshalling message: {:?}", meta);
         let mut excavate_ctx = ExcavateContext {
             sgl: sgl.0[1..].iter(),
             addr_arbiter: &self.state.resource().addr_map,

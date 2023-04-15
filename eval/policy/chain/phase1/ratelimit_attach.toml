@@ -8,13 +8,13 @@ tx_channels_replacements = [
     ],
     [
         "RateLimitEngine",
-        "TcpRpcAdapterEngine",
+        "HelloAclSenderEngine",
         0,
         0,
     ],
 ]
 rx_channels_replacements = []
-group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+group = ["MrpcEngine", "TcpRpcAdapterEngine", "HelloAclSenderEngine"]
 op = "attach"
 config_string = '''
 requests_per_sec = 1000

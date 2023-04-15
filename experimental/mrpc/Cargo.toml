@@ -53,6 +53,7 @@ members = [
   "phoenix-api/policy/hotel-acl",
   "phoenix-api/policy/logging",
   "phoenix-api/policy/hello-acl-receiver",
+  "phoenix-api/policy/hello-acl-sender",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/rpc_adapter",
@@ -64,6 +65,7 @@ members = [
   "plugin/policy/logging",
   "plugin/policy/hotel-acl",
   "plugin/policy/hello-acl-receiver",
+  "plugin/policy/hello-acl-sender",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -86,6 +88,7 @@ phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
 phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
 phoenix-api-policy-hello-acl-receiver = { path = "phoenix-api/policy/hello-acl-receiver" }
+phoenix-api-policy-hello-acl-sender = { path = "phoenix-api/policy/hello-acl-sender" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -158,7 +161,6 @@ fasthash = "0.4.0"
 link-cplusplus = "1.0"
 arc-swap = "1.5.0"
 crossbeam-utils = "0.8.12"
-
 
 [profile.release]
 debug = true
