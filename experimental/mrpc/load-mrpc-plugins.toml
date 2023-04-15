@@ -56,7 +56,7 @@ config_string = '''
 '''
 
 [[addons]]
-name = "HelloAcl"
-lib_path = "plugins/libphoenix_hello_acl.rlib"
+name = "HelloAclReceiver"
+lib_path = "plugins/libphoenix_hello_acl_receiver.rlib"
 config_string = '''
 '''

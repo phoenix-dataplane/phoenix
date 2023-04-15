@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-hello-acl"
+name = "phoenix-hello-acl-receiver"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 
 [dependencies]
-phoenix-api-policy-hello-acl.workspace = true
+phoenix-api-policy-hello-acl-receiver.workspace = true
 mrpc-marshal.workspace = true
 mrpc-derive.workspace = true
 

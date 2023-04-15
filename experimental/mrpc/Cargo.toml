@@ -52,7 +52,7 @@ members = [
   "phoenix-api/policy/qos",
   "phoenix-api/policy/hotel-acl",
   "phoenix-api/policy/logging",
-  "phoenix-api/policy/hello-acl",
+  "phoenix-api/policy/hello-acl-receiver",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/rpc_adapter",
@@ -63,7 +63,7 @@ members = [
   "plugin/policy/qos",
   "plugin/policy/logging",
   "plugin/policy/hotel-acl",
-  "plugin/policy/hello-acl",
+  "plugin/policy/hello-acl-receiver",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -85,7 +85,7 @@ phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
 phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
-phoenix-api-policy-hello-acl = { path = "phoenix-api/policy/hello-acl" }
+phoenix-api-policy-hello-acl-receiver = { path = "phoenix-api/policy/hello-acl-receiver" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }

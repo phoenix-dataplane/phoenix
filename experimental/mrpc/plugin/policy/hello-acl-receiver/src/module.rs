@@ -8,23 +8,23 @@ use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
-use super::engine::HelloAclEngine;
-use crate::config::HelloAclConfig;
+use super::engine::HelloAclReceiverEngine;
+use crate::config::HelloAclReceiverConfig;
 
-pub(crate) struct HelloAclEngineBuilder {
+pub(crate) struct HelloAclReceiverEngineBuilder {
     node: DataPathNode,
-    config: HelloAclConfig,
+    config: HelloAclReceiverConfig,
 }
 
-impl HelloAclEngineBuilder {
-    fn new(node: DataPathNode, config: HelloAclConfig) -> Self {
-        HelloAclEngineBuilder { node, config }
+impl HelloAclReceiverEngineBuilder {
+    fn new(node: DataPathNode, config: HelloAclReceiverConfig) -> Self {
+        HelloAclReceiverEngineBuilder { node, config }
     }
 
-    fn build(self) -> Result<HelloAclEngine> {
+    fn build(self) -> Result<HelloAclReceiverEngine> {
         const META_BUFFER_POOL_CAP: usize = 128;
 
-        Ok(HelloAclEngine {
+        Ok(HelloAclReceiverEngine {
             node: self.node,
             indicator: Default::default(),
             outstanding_req_pool: HashMap::default(),
@@ -34,22 +34,22 @@ impl HelloAclEngineBuilder {
     }
 }
 
-pub struct HelloAclAddon {
-    config: HelloAclConfig,
+pub struct HelloAclReceiverAddon {
+    config: HelloAclReceiverConfig,
 }
 
-impl HelloAclAddon {
-    pub const HELLO_ACL_ENGINE: EngineType = EngineType("HelloAclEngine");
-    pub const ENGINES: &'static [EngineType] = &[HelloAclAddon::HELLO_ACL_ENGINE];
+impl HelloAclReceiverAddon {
+    pub const HELLO_ACL_RECEIVER_ENGINE: EngineType = EngineType("HelloAclReceiverEngine");
+    pub const ENGINES: &'static [EngineType] = &[HelloAclReceiverAddon::HELLO_ACL_RECEIVER_ENGINE];
 }
 
-impl HelloAclAddon {
-    pub fn new(config: HelloAclConfig) -> Self {
-        HelloAclAddon { config }
+impl HelloAclReceiverAddon {
+    pub fn new(config: HelloAclReceiverConfig) -> Self {
+        HelloAclReceiverAddon { config }
     }
 }
 
-impl PhoenixAddon for HelloAclAddon {
+impl PhoenixAddon for HelloAclReceiverAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
         true
     }
@@ -65,7 +65,7 @@ impl PhoenixAddon for HelloAclAddon {
     fn migrate(&mut self, _prev_addon: Box<dyn PhoenixAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
-        HelloAclAddon::ENGINES
+        HelloAclReceiverAddon::ENGINES
     }
 
     fn update_config(&mut self, config: &str) -> Result<()> {
@@ -79,11 +79,11 @@ impl PhoenixAddon for HelloAclAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != HelloAclAddon::HELLO_ACL_ENGINE {
+        if ty != HelloAclReceiverAddon::HELLO_ACL_RECEIVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = HelloAclEngineBuilder::new(node, self.config);
+        let builder = HelloAclReceiverEngineBuilder::new(node, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }
@@ -95,11 +95,11 @@ impl PhoenixAddon for HelloAclAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != HelloAclAddon::HELLO_ACL_ENGINE {
+        if ty != HelloAclReceiverAddon::HELLO_ACL_RECEIVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let engine = HelloAclEngine::restore(local, node, prev_version)?;
+        let engine = HelloAclReceiverEngine::restore(local, node, prev_version)?;
         Ok(Box::new(engine))
     }
 }

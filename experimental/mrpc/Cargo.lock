@@ -1596,7 +1596,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-api-policy-hello-acl"
+name = "phoenix-api-policy-hello-acl-receiver"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
@@ -1698,7 +1698,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-hello-acl"
+name = "phoenix-hello-acl-receiver"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1710,7 +1710,7 @@ dependencies = [
  "mrpc-marshal",
  "nix",
  "phoenix-api",
- "phoenix-api-policy-hello-acl",
+ "phoenix-api-policy-hello-acl-receiver",
  "phoenix_common",
  "serde",
  "serde_json",

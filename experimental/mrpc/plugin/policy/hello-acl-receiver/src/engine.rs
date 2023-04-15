@@ -10,7 +10,7 @@ use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
 use phoenix_api::rpc::{MessageMeta, RpcId, StatusCode, TransportStatus};
-use phoenix_api_policy_hello_acl::control_plane;
+use phoenix_api_policy_hello_acl_receiver::control_plane;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
@@ -26,14 +26,14 @@ use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
-use crate::config::HelloAclConfig;
+use crate::config::HelloAclReceiverConfig;
 
 pub mod hello {
     // The string specified here must match the proto package name
     include!("rpc_hello.rs");
 }
 
-pub(crate) struct HelloAclEngine {
+pub(crate) struct HelloAclReceiverEngine {
     pub(crate) node: DataPathNode,
 
     pub(crate) indicator: Indicator,
@@ -42,7 +42,7 @@ pub(crate) struct HelloAclEngine {
 
     pub(crate) meta_buf_pool: MetaBufferPool,
 
-    pub(crate) config: HelloAclConfig,
+    pub(crate) config: HelloAclReceiverConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,13 +53,13 @@ enum Status {
 
 use Status::Progress;
 
-impl Engine for HelloAclEngine {
+impl Engine for HelloAclReceiverEngine {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
         Box::pin(async move { self.get_mut().mainloop().await })
     }
 
     fn description(self: Pin<&Self>) -> String {
-        "HelloAclEngine".to_owned()
+        "HelloAclReceiverEngine".to_owned()
     }
 
     #[inline]
@@ -73,16 +73,16 @@ impl Engine for HelloAclEngine {
         match request {
             control_plane::Request::NewConfig => {
                 // Update config
-                self.config = HelloAclConfig {};
+                self.config = HelloAclReceiverConfig {};
             }
         }
         Ok(())
     }
 }
 
-impl_vertex_for_engine!(HelloAclEngine, node);
+impl_vertex_for_engine!(HelloAclReceiverEngine, node);
 
-impl Decompose for HelloAclEngine {
+impl Decompose for HelloAclReceiverEngine {
     fn flush(&mut self) -> Result<()> {
         Ok(())
     }
@@ -106,7 +106,7 @@ impl Decompose for HelloAclEngine {
     }
 }
 
-impl HelloAclEngine {
+impl HelloAclReceiverEngine {
     pub(crate) fn restore(
         mut local: ResourceCollection,
         node: DataPathNode,
@@ -120,14 +120,14 @@ impl HelloAclEngine {
         let config = *local
             .remove("config")
             .unwrap()
-            .downcast::<HelloAclConfig>()
+            .downcast::<HelloAclReceiverConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let meta_buf_pool = *local
             .remove("meta_buf_pool")
             .unwrap()
             .downcast::<MetaBufferPool>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let engine = HelloAclEngine {
+        let engine = HelloAclReceiverEngine {
             node,
             indicator: Default::default(),
             outstanding_req_pool,
@@ -138,7 +138,7 @@ impl HelloAclEngine {
     }
 }
 
-impl HelloAclEngine {
+impl HelloAclReceiverEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             let mut work = 0;
@@ -186,7 +186,7 @@ fn should_block(req: &hello::HelloRequest) -> bool {
     name == "mRPC"
 }
 
-impl HelloAclEngine {
+impl HelloAclReceiverEngine {
     fn receiver_check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 

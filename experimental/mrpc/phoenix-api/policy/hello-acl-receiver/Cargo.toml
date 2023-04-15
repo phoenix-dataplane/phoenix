@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-api-policy-hello-acl"
+name = "phoenix-api-policy-hello-acl-receiver"
 version = "0.1.0"
 edition = "2021"
 
