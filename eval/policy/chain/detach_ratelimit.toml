@@ -1,4 +1,0 @@
-addon_engine = "RateLimitEngine"
-tx_channels_replacements = [["MrpcEngine", "LoggingEngine", 0, 0]]
-rx_channels_replacements = []
-op = "detach"
