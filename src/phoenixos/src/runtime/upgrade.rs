@@ -124,28 +124,29 @@ async fn attach_addon<I>(
         detached_engines.insert(engine_type, engine);
         detached_meta.insert(engine_type, (info, version));
     }
-
-    let dataflow_order = subscription.graph.topological_order();
-    for (engine_type, _) in dataflow_order.into_iter() {
-        let engine = detached_engines.get_mut(&engine_type).unwrap();
-        Pin::new(engine.as_mut()).set_els();
-        // DataPathNode may change for any engine
-        // hence we need to flush the queues for all engines in the service subscription
-        if let Err(err) = engine.flush() {
-            log::warn!(
-                "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
+    for _ in 0..1 {
+        let dataflow_order = subscription.graph.topological_order();
+        for (engine_type, _) in dataflow_order.into_iter() {
+            let engine = detached_engines.get_mut(&engine_type).unwrap();
+            Pin::new(engine.as_mut()).set_els();
+            // DataPathNode may change for any engine
+            // hence we need to flush the queues for all engines in the service subscription
+            if let Err(err) = engine.flush() {
+                log::warn!(
+                    "Error in flushing engine (pid={:?}, sid={:?}, type={:?}), error: {:?}",
+                    pid,
+                    sid,
+                    engine_type,
+                    err,
+                );
+            };
+            log::info!(
+                "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
                 pid,
                 sid,
                 engine_type,
-                err,
             );
-        };
-        log::info!(
-            "Engine (pid={:?}, sid={:?}, type={:?}) flushed",
-            pid,
-            sid,
-            engine_type,
-        );
+        }
     }
 
     let node = match refactor_channels_attach_addon(

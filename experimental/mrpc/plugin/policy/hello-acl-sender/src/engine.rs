@@ -81,6 +81,9 @@ impl_vertex_for_engine!(HelloAclSenderEngine, node);
 
 impl Decompose for HelloAclSenderEngine {
     fn flush(&mut self) -> Result<()> {
+        while !self.tx_inputs()[0].is_empty() || !self.rx_inputs()[0].is_empty() {
+            self.check_input_queue()?;
+        }
         Ok(())
     }
 
