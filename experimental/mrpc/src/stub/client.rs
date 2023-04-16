@@ -155,6 +155,11 @@ impl ClientStub {
             }
             dp::Completion::Outgoing(rpc_id, status) => {
                 // Receive an Ack for an previous outgoing RPC.
+                log::warn!(
+                    "Got ack for rpc_id={:?}, status={:?}, trying to remove it!",
+                    rpc_id,
+                    status
+                );
                 self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
 
                 if let TransportStatus::Error(_) = status {
@@ -212,6 +217,10 @@ impl ClientStub {
         // self.conn
         //     .hold_rpc(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg))?;
 
+        log::warn!(
+            "insert pending rpc_id={:?} into alive!",
+            (meta.conn_id, meta.call_id)
+        );
         self.conn.map_alive(|alive| {
             alive
                 .pending

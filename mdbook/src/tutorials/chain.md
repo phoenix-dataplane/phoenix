@@ -55,3 +55,18 @@ If we add logging policy, you can check the log in `/tmp/phoenix/log/..`
 
 Note, in reality, the rate should be much higher.
 
+## notes
+
+```bash
+# use two sperate terminal
+# you must run server first, idk why, though.
+# /experimental/mrpc
+cargo run --release -p rpc_bench --bin rpc_bench_server -- --transport=tcp
+cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-size 64 -c 127.0.0.1 --transport=tcp
+
+cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugins.toml
+cargo run --release --bin list
+cargo run --release --bin addonctl -- --config eval/policy/hello-acl-receiver/attach.toml --pid 1319128 --sid 1
+
+
+```
