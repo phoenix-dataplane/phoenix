@@ -182,7 +182,7 @@ fn should_block(req: &hello::HelloRequest) -> bool {
     let buf = &req.name as &[u8];
     // todo this is O(n)
     let name = String::from_utf8_lossy(buf);
-    log::info!("raw: {:?}, req.name: {:?}", buf, name);
+    //log::info!("raw: {:?}, req.name: {:?}", buf, name);
     name == "mRPC"
 }
 
@@ -205,9 +205,12 @@ impl HelloAclReceiverEngine {
                 match m {
                     EngineRxMessage::Ack(rpc_id, _status) => {
                         if let Ok(()) = self.meta_buf_pool.release(rpc_id) {
-                            log::info!("access denied ack received: {:?} and removed", rpc_id);
+                            log::info!(
+                                "Access denied ack received, rpc_id: {:?} metabuf released",
+                                rpc_id
+                            );
                         } else {
-                            log::info!("normal ack received: {:?}", rpc_id);
+                            //  log::info!("normal ack received: {:?}", rpc_id);
                             self.rx_outputs()[0].send(m)?;
                         }
                     }
@@ -233,11 +236,9 @@ impl HelloAclReceiverEngine {
                                 addr_backend: msg.addr_backend,
                             };
                             let new_meta = unsafe { rpc_msg.meta_buf_ptr.as_meta_ptr().read() };
-                            log::info!("new_meta : {:?}", new_meta);
                             let new_msg = EngineTxMessage::RpcMessage(rpc_msg);
 
-                            log::warn!("acl denied an rpc on rx");
-                            log::info!("new_msg {:?}", new_msg);
+                            log::info!("ACL denied an rpc on rx");
 
                             self.tx_outputs()[0]
                                 .send(new_msg)

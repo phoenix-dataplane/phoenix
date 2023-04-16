@@ -38,9 +38,9 @@ cargo run --release -p rpc_echo --bin rpc_echo_client2
 cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugins.toml
 
 # use the pid of client!
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/acl_attach.toml --pid 1482221 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimit_attach.toml --pid 1482221 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/logging_attach.toml --pid 1482221 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/acl_attach.toml --pid 1590837 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimit_attach.toml --pid 1590837 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/logging_attach.toml --pid 1590837 --sid 1
 ```
 
 ### results
@@ -64,8 +64,8 @@ To preserve the sematics, we need to first add acl policy in server side, then r
 
 ```bash
 # note that pid is different
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/receiver_attach.toml --pid 1358399 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/sender_detach.toml --pid 1358427 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/receiver_attach.toml --pid 1590810 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/sender_detach.toml --pid 1590837 --sid 1
 
 ```
 ## notes
