@@ -63,13 +63,16 @@ impl Engine for LoggingEngine {
 impl_vertex_for_engine!(LoggingEngine, node);
 
 impl Decompose for LoggingEngine {
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> Result<usize> {
+        let mut work = 0;
         while !self.tx_inputs()[0].is_empty() || !self.rx_inputs()[0].is_empty() {
-            self.check_input_queue()?;
+            if let Progress(n) = self.check_input_queue()? {
+                work += n;
+            }
         }
         self.log_file.flush()?;
         // file will automatically be closed when the engine is dropped
-        Ok(())
+        Ok(work)
     }
 
     fn decompose(

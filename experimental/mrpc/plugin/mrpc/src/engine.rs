@@ -54,14 +54,17 @@ impl_vertex_for_engine!(MrpcEngine, node);
 
 impl Decompose for MrpcEngine {
     #[inline]
-    fn flush(&mut self) -> DecomposeResult<()> {
+    fn flush(&mut self) -> DecomposeResult<usize> {
         // mRPC engine has a single receiver on data path,
         // i.e., rx_inputs()[0]
         // each call to `check_input_queue()` processes at most one message
+        let mut work = 0;
         while !self.rx_inputs()[0].is_empty() {
-            self.check_input_queue()?;
+            if let Progress(n) = self.check_input_queue()? {
+                work += n;
+            }
         }
-        Ok(())
+        Ok(work)
     }
 
     fn decompose(

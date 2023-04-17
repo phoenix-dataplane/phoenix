@@ -83,8 +83,14 @@ impl Engine for HelloAclReceiverEngine {
 impl_vertex_for_engine!(HelloAclReceiverEngine, node);
 
 impl Decompose for HelloAclReceiverEngine {
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
+    fn flush(&mut self) -> Result<usize> {
+        let mut work = 0;
+        while !self.tx_inputs()[0].is_empty() || !self.rx_inputs()[0].is_empty() {
+            if let Progress(n) = self.receiver_check_input_queue()? {
+                work += n;
+            }
+        }
+        Ok(work)
     }
 
     fn decompose(

@@ -17,6 +17,10 @@ cargo make build-phoenix-cli
 
 The overall engine chain is like this:
 
+`Client(mrpc)->RateLimit->Logging->TCP=[network]=TCP->ACL->(mrpc)Server`
+
+Then we move the ACL policy to client side, the chain is like this:
+
 `Client(mrpc)->RateLimit->Logging->ACL->TCP=[network]=TCP->(mrpc)Server`
 
 We use `rpc_echo` as application to see the effect of RateLimit.
@@ -32,17 +36,36 @@ cargo run --release -p rpc_echo --bin rpc_echo_server
 cargo run --release -p rpc_echo --bin rpc_echo_client2
 ```
 
-### apply policy
+### init state
 
 ```bash
 cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugins.toml
 
 # use the pid of server!
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/receiver_attach.toml --pid 1636644 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/receiver_attach.toml --pid 1867957 --sid 1
 
 # use the pid of client!
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimit_attach.toml --pid 1636683 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/logging_attach.toml --pid 1636683 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/ratelimit_attach.toml --pid 1867987 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase1/logging_attach.toml --pid 1867987 --sid 1
+
+```
+
+### move acl to client
+
+```bash
+# use proper pid
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/sender_attach.toml --pid 1867987 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/receiver_detach.toml --pid 1867957 --sid 1
+
+```
+
+### detach
+
+```bash
+# use client pid
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/logging_detach.toml --pid 1867987 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/sender_detach.toml --pid 1867987 --sid 1
+cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/ratelimit_detach.toml --pid 1867987 --sid 1
 
 
 ```
@@ -58,44 +81,3 @@ If we add ratelimit policy, the request rate is limited to 1/s, you can perceive
 If we add logging policy, you can check the log in `/tmp/phoenix/log/..`
 
 Note, in reality, the rate should be much higher.
-
-## Move acl to server side
-
-Now we move the acl policy to server side, so that we can see the effect of chain policy.
-
-To preserve the sematics, we need to first add acl policy in server side, then remove it in client side.
-
-
-```bash
-# use proper pid
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/sender_attach.toml --pid 1636683 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase2/receiver_detach.toml --pid 1636644 --sid 1
-
-```
-
-## detach
-
-```bash
-# use client pid
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/logging_detach.toml --pid 1636683 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/sender_detach.toml --pid 1636683 --sid 1
-cargo run --release --bin addonctl -- --config eval/policy/chain/phase3/ratelimit_detach.toml --pid 1636683 --sid 1
-
-
-```
-
-## notes
-
-```bash
-# use two sperate terminal
-# you must run server first, idk why, though.
-# /experimental/mrpc
-cargo run --release -p rpc_bench --bin rpc_bench_server -- --transport=tcp
-cargo run --release -p rpc_bench --bin rpc_bench_client -- -D 600 -i 1 --req-size 64 -c 127.0.0.1 --transport=tcp
-
-cargo run --release --bin upgrade -- --config experimental/mrpc/load-mrpc-plugins.toml
-cargo run --release --bin list
-cargo run --release --bin addonctl -- --config eval/policy/hello-acl-receiver/attach.toml --pid 1319128 --sid 1
-
-
-```

@@ -110,7 +110,7 @@ impl EngineContainer {
         unsafe { Pin::into_inner_unchecked(engine) }
     }
 
-    pub(crate) fn flush(&mut self) -> anyhow::Result<()> {
+    pub(crate) fn flush(&mut self) -> anyhow::Result<usize> {
         self.engine.flush()
     }
 }
