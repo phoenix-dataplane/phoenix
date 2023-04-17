@@ -1,0 +1,4 @@
+addon_engine = "HelloAclSenderEngine"
+tx_channels_replacements = [["RateLimitEngine", "TcpRpcAdapterEngine", 0, 0]]
+rx_channels_replacements = [["TcpRpcAdapterEngine", "MrpcEngine", 0, 0]]
+op = "detach"

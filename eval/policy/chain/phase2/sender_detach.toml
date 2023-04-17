@@ -1,4 +1,0 @@
-addon_engine = "HelloAclSenderEngine"
-tx_channels_replacements = [["LoggingEngine", "TcpRpcAdapterEngine", 0, 0]]
-rx_channels_replacements = [["TcpRpcAdapterEngine", "LoggingEngine", 0, 0]]
-op = "detach"

@@ -8,14 +8,14 @@ tx_channels_replacements = [
     ],
     [
         "LoggingEngine",
-        "HelloAclSenderEngine",
+        "TcpRpcAdapterEngine",
         0,
         0,
     ],
 ]
 rx_channels_replacements = [
     [
-        "HelloAclSenderEngine",
+        "TcpRpcAdapterEngine",
         "LoggingEngine",
         0,
         0,
@@ -27,10 +27,5 @@ rx_channels_replacements = [
         0,
     ],
 ]
-group = [
-    "MrpcEngine",
-    "HelloAclSenderEngine",
-    "TcpRpcAdapterEngine",
-    "RateLimitEngine",
-]
+group = ["MrpcEngine", "TcpRpcAdapterEngine", "RateLimitEngine"]
 op = "attach"
