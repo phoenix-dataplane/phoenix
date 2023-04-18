@@ -23,6 +23,9 @@ use phoenix_common::storage::{ResourceCollection, SharedStorage};
 use super::DatapathError;
 use crate::config::HotelAclConfig;
 
+use minstant::Instant;
+use rand::prelude::*;
+
 pub mod reservation {
     // The string specified here must match the proto package name
     include!("reservation.rs");
@@ -195,9 +198,17 @@ impl HotelAclEngine {
                             // passes us an Ack.
                             let raw_ptr: *const reservation::Request = &*private_req;
                             self.outstanding_req_pool.insert(rpc_id, private_req);
+
+                            let mut rng = rand::thread_rng();
+
+                            let mut request_timestamp = Instant::now();
+                            let mut request_credit = rng.gen_range(1..1000);
+
                             let new_msg = RpcMessageTx {
                                 meta_buf_ptr: msg.meta_buf_ptr,
                                 addr_backend: raw_ptr.addr(),
+                                request_timestamp,
+                                request_credit,
                             };
                             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(new_msg))?;
                         }

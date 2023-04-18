@@ -42,6 +42,9 @@ use super::state::{ConnectionContext, ReqContext, State, WrContext};
 use super::ulib;
 use super::{ControlPathError, DatapathError};
 
+use minstant::Instant;
+use rand::prelude::*;
+
 pub(crate) const MAX_INLINE_DATA: usize = 128;
 
 thread_local! {
@@ -718,10 +721,17 @@ impl RpcAdapterEngine {
         };
         // timer.tick();
 
+        let mut rng = rand::thread_rng();
+
+        let mut request_timestamp = Instant::now();
+        let mut request_credit = rng.gen_range(1..1000);
+
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
             addr_app,
+            request_timestamp,
+            request_credit,
         };
 
         self.rx_outputs()[0]

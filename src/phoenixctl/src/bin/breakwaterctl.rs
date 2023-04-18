@@ -36,14 +36,6 @@ lazy_static::lazy_static! {
 struct Opts {
     #[arg(short, long)]
     eid: u64,
-    #[arg(short, long)]
-    request_per_sec: u64,
-    #[arg(short, long)]
-    bucket_size: u64,
-    #[arg(short, long)]
-    request_credits: u64,
-    #[arg(short, long)]
-    request_timestamp: u64,
 }
 
 fn main() {
@@ -69,7 +61,7 @@ fn main() {
     let sock = DomainSocket::bind(sock_path).unwrap();
 
     // Initialize the request
-    let request = BreakWaterRequest::NewConfig(opts.request_per_sec, opts.bucket_size, opts.request_credits, opts.request_timestamp);
+    let request = BreakWaterRequest::NewConfig();
     
     // Serialize the request
     let request_encoded = bincode::serialize(&request).unwrap();

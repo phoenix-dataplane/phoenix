@@ -26,6 +26,9 @@ use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
 
+use minstant::Instant;
+use rand::prelude::*;
+
 pub struct MrpcEngine {
     pub(crate) _state: State,
 
@@ -431,9 +434,16 @@ impl MrpcEngine {
                     std::ptr::write(meta_buf_ptr.as_meta_ptr(), erased.meta);
                 }
 
+                let mut rng = rand::thread_rng();
+
+                let mut request_timestamp = Instant::now();
+                let mut request_credit = rng.gen_range(1..1000);
+
                 let msg = RpcMessageTx {
                     meta_buf_ptr,
                     addr_backend: erased.shm_addr_backend,
+                    request_timestamp,
+                    request_credit,
                 };
 
                 // timer.tick();

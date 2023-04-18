@@ -5,15 +5,17 @@ use std::pin::Pin;
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 use minstant::Instant;
+use rand::prelude::*;
 
 use phoenix_api_policy_breakwater::control_plane;
 
-use phoenix_common::engine::datapath::message::{EngineTxMessage, RpcMessageTx};
+use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
 use phoenix_common::log;
+use phoenix_api::rpc::RpcId;
 use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
@@ -34,7 +36,7 @@ pub(crate) struct BreakWaterEngine {
     // The most recent timestamp we add the token to the bucket.
     pub(crate) last_ts: Instant,
     // The number of available tokens in the token bucket algorithm.
-    pub(crate) num_tokens: f64,
+    // pub(crate) num_tokens: f64,
     // The queue to buffer the requests that cannot be sent immediately.
     pub(crate) queue: VecDeque<RpcMessageTx>,
 }
@@ -72,12 +74,8 @@ impl Engine for BreakWaterEngine {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         match request {
-            control_plane::Request::NewConfig(requests_per_sec, bucket_size, request_credits, request_timestamp) => {
+            control_plane::Request::NewConfig() => {
                 self.config = BreakWaterConfig {
-                    requests_per_sec,
-                    bucket_size,
-                    request_credits,
-                    request_timestamp,
                 };
             }
         }
@@ -109,7 +107,7 @@ impl Decompose for BreakWaterEngine {
         let mut collections = ResourceCollection::with_capacity(4);
         collections.insert("config".to_string(), Box::new(engine.config));
         collections.insert("last_ts".to_string(), Box::new(engine.last_ts));
-        collections.insert("num_tokens".to_string(), Box::new(engine.num_tokens));
+        //collections.insert("num_tokens".to_string(), Box::new(engine.num_tokens));
         collections.insert("queue".to_string(), Box::new(engine.queue));
         (collections, engine.node)
     }
@@ -131,11 +129,6 @@ impl BreakWaterEngine {
             .unwrap()
             .downcast::<Instant>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let num_tokens = *local
-            .remove("num_tokens")
-            .unwrap()
-            .downcast::<f64>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let queue = *local
             .remove("queue")
             .unwrap()
@@ -147,7 +140,6 @@ impl BreakWaterEngine {
             indicator: Default::default(),
             config,
             last_ts,
-            num_tokens,
             queue,
         };
         Ok(engine)
@@ -157,8 +149,6 @@ impl BreakWaterEngine {
 impl BreakWaterEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
-            self.add_tokens();
-
             let mut work = 0;
             // check input queue, ~100ns
             loop {
@@ -168,10 +158,6 @@ impl BreakWaterEngine {
                     Status::Disconnected => return Ok(()),
                 }
             }
-
-            self.add_tokens();
-
-            self.leak_bucket()?;
 
             // If there's pending receives, there will always be future work to do.
             self.indicator.set_nwork(work);
@@ -183,31 +169,6 @@ impl BreakWaterEngine {
 
 impl BreakWaterEngine {
     #[inline]
-    fn add_tokens(&mut self) {
-        let now = Instant::now();
-        let dura = now - self.last_ts;
-        let config = &self.config;
-        let requests_per_sec = config.requests_per_sec;
-        let bucket_size = config.bucket_size as usize;
-        if dura.as_secs_f64() * requests_per_sec as f64 >= 1.0 {
-            self.num_tokens += dura.as_secs_f64() * requests_per_sec as f64;
-            if self.num_tokens > bucket_size as f64 {
-                self.num_tokens = bucket_size as f64;
-            }
-            self.last_ts = now;
-        }
-    }
-
-    fn leak_bucket(&mut self) -> Result<(), DatapathError> {
-        while self.num_tokens > 0.1 && !self.queue.is_empty() {
-            let msg = self.queue.pop_front().unwrap();
-            self.num_tokens -= 1.0;
-            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-        }
-
-        Ok(())
-    }
-
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 
@@ -215,14 +176,19 @@ impl BreakWaterEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        let meta_ref = unsafe {&*msg.meta_buf_ptr.as_meta_ptr()}
+                        let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
                         log::info!("Got a TX message: {:?}", meta_ref);
                         
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                         let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
                         let rpc_id = RpcId::new(conn_id, call_id);
 
-                        log::info!("RPC ID: {:?}", rpc_id)
+                        let mut rng = rand::thread_rng();
+
+                        let mut request_timestamp = Instant::now();
+                        let mut request_credit = rng.gen_range(1..1000);
+
+                        log::info!("RPC ID: {:?}", rpc_id);
 
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
@@ -239,22 +205,25 @@ impl BreakWaterEngine {
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
-                    EngineTxMessage::RpcMessage(msg) => {
-                        let meta_ref = unsafe {&*msg.meta_buf_ptr.as_meta_ptr()}
-                        log::info!("Got an RX message: {:?}", meta_ref);
+                    EngineRxMessage::RpcMessage(msg) => {
+                        //let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
+                        log::info!("Got an RX message");
 
-                        let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
-                        let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
-                        let rpc_id = RpcId::new(conn_id, call_id);
+                        //let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        //let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        //let rpc_id = RpcId::new(conn_id, call_id);
 
-                        log::info!("RPC ID: {:?}", rpc_id)
+                        //log::info!("RPC ID: {:?}", rpc_id),
+
+                        log::info!("Breakwater Meta: Timestamp  {:?}", msg.request_timestamp);
+                        log::info!("Breakwater Meta: Credit  {:?}", msg.request_credit);
                                                 
-                        self.rx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                     }
 
                     m => self.rx_outputs()[0].send(m)?,
                 }
-                //self.rx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                //self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}

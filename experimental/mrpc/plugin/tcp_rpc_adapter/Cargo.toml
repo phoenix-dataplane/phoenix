@@ -37,3 +37,7 @@ bitvec.workspace = true
 bincode.workspace = true
 socket2.workspace = true
 slab.workspace = true
+
+
+minstant  = "0.1.2"
+rand      = "0.8.5"

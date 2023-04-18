@@ -2099,6 +2099,7 @@ dependencies = [
  "ipc",
  "libnuma",
  "libnuma-sys",
+ "minstant",
  "nix 0.25.1",
  "phoenix-api",
  "phoenix-api-mrpc",

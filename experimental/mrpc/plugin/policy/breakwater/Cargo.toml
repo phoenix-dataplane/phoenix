@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 phoenix_common.workspace = true
 phoenix-api-policy-breakwater.workspace = true
+phoenix-api = { workspace = true, features = ["mrpc"] }
+
+rand      = "0.8.5"
 
 futures.workspace = true
 minstant.workspace = true

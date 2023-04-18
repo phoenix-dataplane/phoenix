@@ -47,8 +47,4 @@ config_string = '''
 name = "BreakWater"
 lib_path = "plugins/libphoenix_breakwater.rlib"
 config_string = '''
-requests_per_sec = 1000
-bucket_size = 1000
-request_credits = 100
-request_timestamp = 10
 '''

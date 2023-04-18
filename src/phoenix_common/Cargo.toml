@@ -30,3 +30,5 @@ semver.workspace = true
 sharded-slab.workspace = true
 libnuma.workspace = true
 libnuma-sys.workspace = true
+
+minstant  = "0.1.2"

@@ -28,7 +28,7 @@ impl BreakWaterEngineBuilder {
             indicator: Default::default(),
             config: self.config,
             last_ts: Instant::now(),
-            num_tokens: self.config.bucket_size as _,
+            //num_tokens: self.config.bucket_size as _,
             queue: VecDeque::new(),
         })
     }

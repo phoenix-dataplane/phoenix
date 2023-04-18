@@ -44,6 +44,9 @@ use super::serialization::SerializationEngine;
 use super::state::{ConnectionContext, State};
 use super::{ControlPathError, DatapathError};
 
+use minstant::Instant;
+use rand::prelude::*;
+
 thread_local! {
     /// To emulate a thread local storage (TLS). This should be called engine-local-storage (ELS).
     pub(crate) static ELS: RefCell<Option<&'static TlStorage>> = RefCell::new(None);
@@ -557,10 +560,17 @@ impl TcpRpcAdapterEngine {
             panic!("dispatch module not loaded");
         };
 
+        let mut rng = rand::thread_rng();
+
+        let mut request_timestamp = Instant::now();
+        let mut request_credit = rng.gen_range(1..1000);
+
         let msg = RpcMessageRx {
             meta: meta_ptr,
             addr_backend,
             addr_app,
+            request_timestamp,
+            request_credit,
         };
 
         self.rx_outputs()[0]

@@ -37,3 +37,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 toml = { workspace = true, features = ["preserve_order"] }
 static_assertions.workspace = true
+
+minstant  = "0.1.2"
+rand      = "0.8.5"

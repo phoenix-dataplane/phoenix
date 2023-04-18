@@ -25,3 +25,5 @@ nix.workspace = true
 toml = { workspace = true, features = ["preserve_order"] }
 bincode.workspace = true
 fnv.workspace = true
+
+rand      = "0.8.5"
