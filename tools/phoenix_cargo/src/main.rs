@@ -1500,13 +1500,34 @@ impl FingerprintDirGuard {
                 format!("Failed to remove .fingerprint directory: {}", to.display(),)
             })?;
         }
-        fs::rename(from, to).with_context(|| {
+        Self::copy_dir_recursively(from, to)?;
+        fs::remove_dir_all(&from).with_context(|| {
             format!(
-                "Failed to move .fingerprint directory from {} to {}",
+                "Failed to remove .fingerprint directory: {}",
                 from.display(),
-                to.display(),
             )
         })?;
+        // fs::rename(from, to).with_context(|| {
+        //     format!(
+        //         "Failed to move .fingerprint directory from {} to {}",
+        //         from.display(),
+        //         to.display(),
+        //     )
+        // })?;
+        Ok(())
+    }
+
+    fn copy_dir_recursively(source: &Path, destination: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(&destination)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            let filetype = entry.file_type()?;
+            if filetype.is_dir() {
+                Self::copy_dir_recursively(&entry.path(), &destination.join(entry.file_name()))?;
+            } else {
+                fs::copy(entry.path(), destination.join(entry.file_name()))?;
+            }
+        }
         Ok(())
     }
 }
