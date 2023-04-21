@@ -27,7 +27,6 @@ impl HelloAclReceiverEngineBuilder {
         Ok(HelloAclReceiverEngine {
             node: self.node,
             indicator: Default::default(),
-            outstanding_req_pool: HashMap::default(),
             meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             config: self.config,
         })

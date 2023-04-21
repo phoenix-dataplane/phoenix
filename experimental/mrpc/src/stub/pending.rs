@@ -33,6 +33,9 @@ impl PendingWRef {
 
     #[inline]
     pub(crate) fn remove(&self, rpc_id: &RpcId) {
-        // assert!(self.pool.borrow_mut().remove(rpc_id).is_some());
+        if self.pool.borrow_mut().remove(rpc_id).is_empty() {
+            // note: we should panic! But for now just ignore the error
+            log::warn!("PendingWRef::remove: rpc_id {:?} not found", rpc_id);
+        }
     }
 }

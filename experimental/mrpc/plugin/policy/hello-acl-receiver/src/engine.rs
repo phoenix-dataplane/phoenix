@@ -38,8 +38,6 @@ pub(crate) struct HelloAclReceiverEngine {
 
     pub(crate) indicator: Indicator,
 
-    pub(crate) outstanding_req_pool: HashMap<RpcId, Box<hello::HelloRequest>>,
-
     pub(crate) meta_buf_pool: MetaBufferPool,
 
     pub(crate) config: HelloAclReceiverConfig,
@@ -101,10 +99,6 @@ impl Decompose for HelloAclReceiverEngine {
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(2);
-        collections.insert(
-            "outstanding_req_pool".to_string(),
-            Box::new(engine.outstanding_req_pool),
-        );
         collections.insert("meta_buf_pool".to_string(), Box::new(engine.meta_buf_pool));
 
         collections.insert("config".to_string(), Box::new(engine.config));
@@ -118,11 +112,6 @@ impl HelloAclReceiverEngine {
         node: DataPathNode,
         _prev_version: Version,
     ) -> Result<Self> {
-        let outstanding_req_pool = *local
-            .remove("outstanding_req_pool")
-            .unwrap()
-            .downcast::<HashMap<RpcId, Box<hello::HelloRequest>>>()
-            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let config = *local
             .remove("config")
             .unwrap()
@@ -136,7 +125,6 @@ impl HelloAclReceiverEngine {
         let engine = HelloAclReceiverEngine {
             node,
             indicator: Default::default(),
-            outstanding_req_pool,
             meta_buf_pool,
             config,
         };
@@ -167,15 +155,6 @@ impl HelloAclReceiverEngine {
 
 /// Copy the RPC request to a private heap and returns the request.
 #[inline]
-fn materialize(msg: &RpcMessageTx) -> Box<hello::HelloRequest> {
-    let req_ptr = Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
-    let req = unsafe { req_ptr.as_ref() };
-    // returns a private_req
-    Box::new(req.clone())
-}
-
-/// Copy the RPC request to a private heap and returns the request.
-#[inline]
 fn materialize_rx(msg: &RpcMessageRx) -> Box<hello::HelloRequest> {
     let req_ptr = Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
     let req = unsafe { req_ptr.as_ref() };
@@ -189,7 +168,7 @@ fn should_block(req: &hello::HelloRequest) -> bool {
     // todo this is O(n)
     let name = String::from_utf8_lossy(buf);
     //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    name == "mRPC"
+    name == "Apple"
 }
 
 impl HelloAclReceiverEngine {
@@ -211,16 +190,17 @@ impl HelloAclReceiverEngine {
                 match m {
                     EngineRxMessage::Ack(rpc_id, _status) => {
                         if let Ok(()) = self.meta_buf_pool.release(rpc_id) {
-                            log::info!(
-                                "Access denied ack received, rpc_id: {:?} metabuf released",
-                                rpc_id
-                            );
+                            // log::info!(
+                            //     "Access denied ack received, rpc_id: {:?} metabuf released",
+                            //     rpc_id
+                            // );
                         } else {
-                            //  log::info!("normal ack received: {:?}", rpc_id);
+                            log::info!("release failed!: {:?}", rpc_id);
                             self.rx_outputs()[0].send(m)?;
                         }
                     }
                     EngineRxMessage::RpcMessage(msg) => {
+                        //log::debug!("HelloAclReceiverEngine: rx msg_meta: {:?}", msg.meta);
                         // check whether the request should be blocked
                         let private_req = materialize_rx(&msg);
                         if should_block(&private_req) {
@@ -232,6 +212,10 @@ impl HelloAclReceiverEngine {
                                 .meta_buf_pool
                                 .obtain(RpcId(meta.conn_id, meta.call_id))
                                 .expect("meta_buf_pool is full");
+                            // log::info!(
+                            //     "meta_buf_pool size after obtain: {}",
+                            //     self.meta_buf_pool.free.len()
+                            // );
                             unsafe {
                                 meta_ptr.as_meta_ptr().write(meta);
                                 meta_ptr.0.as_mut().num_sge = 0;
@@ -243,9 +227,6 @@ impl HelloAclReceiverEngine {
                             };
                             let new_meta = unsafe { rpc_msg.meta_buf_ptr.as_meta_ptr().read() };
                             let new_msg = EngineTxMessage::RpcMessage(rpc_msg);
-
-                            log::info!("ACL denied an rpc on rx");
-
                             self.tx_outputs()[0]
                                 .send(new_msg)
                                 .expect("send new message error");
@@ -263,9 +244,6 @@ impl HelloAclReceiverEngine {
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
 
-        Ok(Progress(0))
-    }
-    fn sender_check_input_queue(&mut self) -> Result<Status, DatapathError> {
         Ok(Progress(0))
     }
 }
