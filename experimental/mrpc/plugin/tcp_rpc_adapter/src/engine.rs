@@ -15,7 +15,7 @@ use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use phoenix_api::buf::Range;
 use phoenix_api::engine::SchedulingMode;
 use phoenix_api::net::{MappedAddrStatus, WcOpcode, WcStatus};
-use phoenix_api::rpc::{MessageMeta, RpcId, TransportStatus};
+use phoenix_api::rpc::{MessageMeta, RpcId, StatusCode, TransportStatus};
 use phoenix_api::transport::tcp::dp::Completion;
 use phoenix_api::{AsHandle, Handle};
 use phoenix_api_mrpc::cmd::{ConnectResponse, ReadHeapRegion};
@@ -498,16 +498,25 @@ impl TcpRpcAdapterEngine {
             //     .get(&meta_ref.conn_id)
             //     .ok_or(ResourceError::NotFound)?;
             // log::info!("dispatching message: {:?}", meta_ref);
-            let sglist = if let Some(ref module) = self.serialization_engine {
-                match module.marshal(meta_ref, msg.addr_backend) {
-                    Ok(sglist) => sglist,
-                    Err(e) => {
-                        panic!("marshal error: {:?}", e);
+            let sglist = match meta_ref.status_code {
+                StatusCode::AccessDenied => SgList { 0: Vec::new() },
+                StatusCode::Success => {
+                    if let Some(ref module) = self.serialization_engine {
+                        match module.marshal(meta_ref, msg.addr_backend) {
+                            Ok(sglist) => sglist,
+                            Err(e) => {
+                                panic!("marshal error: {:?}", e);
+                            }
+                        }
+                    } else {
+                        panic!("dispatch module not loaded");
                     }
                 }
-            } else {
-                panic!("dispatch module not loaded");
+                _ => {
+                    panic!("unexpected status code: {:?}", meta_ref.status_code);
+                }
             };
+
             let status = match Self::choose_strategy(&sglist) {
                 RpcStrategy::Fused => self.send_fused(msg.meta_buf_ptr, &sglist)?,
                 RpcStrategy::Standard => self.send_standard(meta_ref, &sglist)?,
@@ -558,10 +567,18 @@ impl TcpRpcAdapterEngine {
             addr_arbiter: &self.state.resource().addr_map,
         };
 
-        let (addr_app, addr_backend) = if let Some(ref module) = self.serialization_engine {
-            module.unmarshal(meta, &mut excavate_ctx).unwrap()
-        } else {
-            panic!("dispatch module not loaded");
+        let (addr_app, addr_backend) = match meta.status_code {
+            StatusCode::Success => {
+                if let Some(ref module) = self.serialization_engine {
+                    module.unmarshal(meta, &mut excavate_ctx).unwrap()
+                } else {
+                    panic!("dispatch module not loaded");
+                }
+            }
+            StatusCode::AccessDenied => (0usize, 0usize),
+            _ => {
+                panic!("unexpected status code: {:?}", meta.status_code);
+            }
         };
 
         let msg = RpcMessageRx {

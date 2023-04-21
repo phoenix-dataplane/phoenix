@@ -1,5 +1,4 @@
 use anyhow::{bail, Result};
-use fnv::FnvHashMap as HashMap;
 use nix::unistd::Pid;
 
 use phoenix_common::addon::{PhoenixAddon, Version};
@@ -10,6 +9,11 @@ use phoenix_common::storage::ResourceCollection;
 
 use super::engine::HelloAclReceiverEngine;
 use crate::config::HelloAclReceiverConfig;
+
+pub mod hello {
+    // The string specified here must match the proto package name
+    include!("rpc_hello.rs");
+}
 
 pub(crate) struct HelloAclReceiverEngineBuilder {
     node: DataPathNode,
@@ -23,7 +27,6 @@ impl HelloAclReceiverEngineBuilder {
 
     fn build(self) -> Result<HelloAclReceiverEngine> {
         const META_BUFFER_POOL_CAP: usize = 128;
-
         Ok(HelloAclReceiverEngine {
             node: self.node,
             indicator: Default::default(),

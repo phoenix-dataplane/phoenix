@@ -484,11 +484,11 @@ impl MrpcEngine {
                         // timer.tick();
                         match meta.status_code {
                             StatusCode::AccessDenied => {
-                                tracing::warn!("Status code: Access denied, meta={:?}", meta);
+                                tracing::trace!("Status code: Access denied, meta={:?}", meta);
                                 let mut sent = false;
                                 let rpc_id = RpcId(meta.conn_id, meta.call_id);
                                 let status = phoenix_api::rpc::TransportStatus::Error(unsafe {
-                                    NonZeroU32::new_unchecked(403)
+                                    NonZeroU32::new_unchecked(402)
                                 });
                                 while !sent {
                                     self.customer.enqueue_wc_with(|ptr, _count| unsafe {

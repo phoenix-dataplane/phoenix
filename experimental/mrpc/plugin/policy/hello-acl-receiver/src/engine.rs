@@ -39,7 +39,6 @@ pub(crate) struct HelloAclReceiverEngine {
     pub(crate) indicator: Indicator,
 
     pub(crate) meta_buf_pool: MetaBufferPool,
-
     pub(crate) config: HelloAclReceiverConfig,
 }
 
@@ -102,6 +101,7 @@ impl Decompose for HelloAclReceiverEngine {
         collections.insert("meta_buf_pool".to_string(), Box::new(engine.meta_buf_pool));
 
         collections.insert("config".to_string(), Box::new(engine.config));
+
         (collections, engine.node)
     }
 }
@@ -195,7 +195,7 @@ impl HelloAclReceiverEngine {
                             //     rpc_id
                             // );
                         } else {
-                            log::info!("release failed!: {:?}", rpc_id);
+                            // log::info!("release failed!: {:?}", rpc_id);
                             self.rx_outputs()[0].send(m)?;
                         }
                     }
@@ -223,7 +223,7 @@ impl HelloAclReceiverEngine {
                             }
                             let rpc_msg = RpcMessageTx {
                                 meta_buf_ptr: meta_ptr,
-                                addr_backend: msg.addr_backend,
+                                addr_backend: 0,
                             };
                             let new_meta = unsafe { rpc_msg.meta_buf_ptr.as_meta_ptr().read() };
                             let new_msg = EngineTxMessage::RpcMessage(rpc_msg);

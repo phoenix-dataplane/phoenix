@@ -310,7 +310,7 @@ impl Status {
         match transport_status {
             TransportStatus::Success => Status::ok(""),
             TransportStatus::Error(code) => match code.get() {
-                403 => Status::permission_denied("Access Denied from ACL engine"),
+                402 => Status::permission_denied("Access Denied from server ACL engine"),
                 _ => Status::data_loss(format!("receiving wc error: {code}")),
             },
         }
