@@ -499,6 +499,12 @@ impl MrpcEngine {
                                         1
                                     })?;
                                 }
+                                let msg_call_ids =
+                                    [meta.call_id, meta.call_id, meta.call_id, meta.call_id];
+                                self.tx_outputs()[0].send(EngineTxMessage::ReclaimRecvBuf(
+                                    meta.conn_id,
+                                    msg_call_ids,
+                                ))?;
                             }
                             StatusCode::Unknown => {
                                 tracing::error!("Status code: Unknown error, meta={:?}", meta);

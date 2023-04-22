@@ -212,10 +212,6 @@ impl HelloAclReceiverEngine {
                                 .meta_buf_pool
                                 .obtain(RpcId(meta.conn_id, meta.call_id))
                                 .expect("meta_buf_pool is full");
-                            // log::info!(
-                            //     "meta_buf_pool size after obtain: {}",
-                            //     self.meta_buf_pool.free.len()
-                            // );
                             unsafe {
                                 meta_ptr.as_meta_ptr().write(meta);
                                 meta_ptr.0.as_mut().num_sge = 0;
@@ -230,6 +226,12 @@ impl HelloAclReceiverEngine {
                             self.tx_outputs()[0]
                                 .send(new_msg)
                                 .expect("send new message error");
+                            let msg_call_ids =
+                                [meta.call_id, meta.call_id, meta.call_id, meta.call_id];
+                            self.tx_outputs()[0].send(EngineTxMessage::ReclaimRecvBuf(
+                                meta.conn_id,
+                                msg_call_ids,
+                            ))?;
                         } else {
                             self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                         }
