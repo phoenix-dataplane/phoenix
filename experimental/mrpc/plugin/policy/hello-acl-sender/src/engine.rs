@@ -170,7 +170,7 @@ fn should_block(req: &hello::HelloRequest) -> bool {
     // todo this is O(n)
     let name = String::from_utf8_lossy(buf);
     //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    name == "mRPC"
+    name == "Apple"
 }
 impl HelloAclSenderEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
