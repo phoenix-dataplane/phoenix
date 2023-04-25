@@ -1,9 +1,8 @@
 #include "ffi/src/clientcodegen.rs"
 #include <iostream>
 
-void completeIncrement(rust::Box<ValueReply> reply) { // take raw valreply pointer not rust box wrapper
-  ValueReply* r = reply.into_raw();
-  std::cout << "response: ValueReply { val: " << r->val() << " }" << std::endl;
+void completeIncrement(ValueReply* reply) { // take raw valreply pointer not rust box wrapper
+  std::cout << "response: ValueReply { val: " << reply->val() << " }" << std::endl;
 }
 
 void sendRequest(IncrementerClient* client, ValueRequest* req) {

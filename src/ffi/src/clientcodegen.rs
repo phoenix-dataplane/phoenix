@@ -15,12 +15,11 @@ use mrpc::{WRef, RRef};
 use tokio::runtime::Builder;
 use tokio::task;
 
-use crate::incrementer_ffi::completeIncrement;
 
 include!("typescodegen.rs");
 
 lazy_static! {
-    static ref SEND_CHANNEL: (Sender<ClientWork>, Receiver<ClientWork>) = unbounded();
+    static ref SEND_CHANNEL: (Sender<ClientWork>, Receiver<ClientWork>) = unbounded();  // wrap in oncelock
     static ref CONNECT_COMPLETE_CHANNEL: (Sender<usize>, Receiver<usize>) = bounded(1);
 }
 
@@ -48,12 +47,6 @@ mod incrementer_ffi {
         fn connect(dst: String) -> Box<IncrementerClient>;
         unsafe fn increment(self: &IncrementerClient, req: Box<ValueRequest>, callback: *mut i32);
     }
-
-    // TODO(nikolabo): can we do callbacks through function pointers? current approach seems to couple client and codegen code too much
-    unsafe extern "C++" {
-        include!("ffi/include/receive.h");
-        fn completeIncrement(reply: Box<ValueReply>);
-    }
 }
 
 // CLIENT CODE
@@ -65,8 +58,7 @@ pub struct IncrementerClient {
 
 enum ClientWork {
     Connect(String),
-    Increment(usize, Box<ValueRequest>, extern "C" fn(Box<ValueReply>)),
-    // Increment(usize, Box<ValueRequest>)
+    Increment(usize, Box<ValueRequest>, extern "C" fn(*const ValueReply)),
 }
 
 fn initialize() {
@@ -107,8 +99,7 @@ async fn inside_runtime() {
                                     req,
                                 ).await;
                                 
-                                (callback)(Box::new(*(reply.unwrap())));        // pass a reference count to rref or expect user to only use reference inside callback
-                                // completeIncrement(Box::new(*reply.unwrap()));
+                                (callback)((reply.unwrap()).as_ref());        // expects user to only use reference inside callback, TODO(nikolabo): try passing a reference count to rref instead
                             });
                         }
                     }
@@ -150,7 +141,7 @@ fn update_protos() -> Result<(), ::mrpc::Error> {
 impl IncrementerClient {
     fn increment(&self, req: Box<ValueRequest>, callback: *mut i32) {
         let intermediate = callback as *const ();
-        let callbackfn: extern "C" fn(Box<ValueReply>) = unsafe { std::mem::transmute(intermediate) };
+        let callbackfn: extern "C" fn(*const ValueReply) = unsafe { std::mem::transmute(intermediate) };
         SEND_CHANNEL
             .0
             .send(ClientWork::Increment(self.client_handle, req, callbackfn))
