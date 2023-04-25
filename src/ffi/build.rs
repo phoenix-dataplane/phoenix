@@ -9,6 +9,7 @@ fn main() {
         cxx_build::bridge("src/clientcodegen.rs") // returns a cc::Build
             .file("src/client.cc")
             .flag_if_supported("-std=c++11")
+            .flag_if_supported("-g")
             .compile("cpp_client");
     } else if result == "server" {
         cxx_build::bridge("src/servercodegen.rs") // returns a cc::Build

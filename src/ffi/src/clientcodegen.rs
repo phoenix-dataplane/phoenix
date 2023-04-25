@@ -46,8 +46,7 @@ mod incrementer_ffi {
         fn initialize();
 
         fn connect(dst: String) -> Box<IncrementerClient>;
-        fn increment(self: &IncrementerClient, req: Box<ValueRequest>);
-
+        unsafe fn increment(self: &IncrementerClient, req: Box<ValueRequest>, callback: *mut i32);
     }
 
     // TODO(nikolabo): can we do callbacks through function pointers? current approach seems to couple client and codegen code too much
@@ -66,7 +65,8 @@ pub struct IncrementerClient {
 
 enum ClientWork {
     Connect(String),
-    Increment(usize, Box<ValueRequest>),
+    Increment(usize, Box<ValueRequest>, extern "C" fn(Box<ValueReply>)),
+    // Increment(usize, Box<ValueRequest>)
 }
 
 fn initialize() {
@@ -79,12 +79,10 @@ fn initialize() {
 }
 
 async fn inside_runtime() {
-    let local = task::LocalSet::new();
-
     let mut clients: std::vec::Vec<Arc<ClientStub>> = std::vec::Vec::new();
     println!("tokio current thread runtime starting...");
 
-    local
+    task::LocalSet::new()
         .run_until(async move {
             poll_fn(|cx| {
                 let v: Vec<ClientWork> = SEND_CHANNEL.1.try_iter().collect(); // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
@@ -100,7 +98,7 @@ async fn inside_runtime() {
                             CONNECT_COMPLETE_CHANNEL.0.send(clients.len() - 1).unwrap();
                             println!("runtime sent connect completion");
                         }
-                        ClientWork::Increment(handle, req) => {
+                        ClientWork::Increment(handle, req, callback) => {
                             println!("Increment request received by runtime thread");
                             let stub = Arc::clone(&clients.get(handle).unwrap());
                             task::spawn_local(async move {
@@ -108,7 +106,9 @@ async fn inside_runtime() {
                                     stub,
                                     req,
                                 ).await;
-                                completeIncrement(Box::new(*reply.unwrap()));
+                                
+                                (callback)(Box::new(*(reply.unwrap())));        // pass a reference count to rref or expect user to only use reference inside callback
+                                // completeIncrement(Box::new(*reply.unwrap()));
                             });
                         }
                     }
@@ -148,10 +148,12 @@ fn update_protos() -> Result<(), ::mrpc::Error> {
 }
 
 impl IncrementerClient {
-    fn increment(&self, req: Box<ValueRequest>) {
+    fn increment(&self, req: Box<ValueRequest>, callback: *mut i32) {
+        let intermediate = callback as *const ();
+        let callbackfn: extern "C" fn(Box<ValueReply>) = unsafe { std::mem::transmute(intermediate) };
         SEND_CHANNEL
             .0
-            .send(ClientWork::Increment(self.client_handle, req))
+            .send(ClientWork::Increment(self.client_handle, req, callbackfn))
             .unwrap();
         println!("Increment request sent to runtime thread...");
     }
