@@ -49,7 +49,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 apple_count, banana_count
             );
             last_print_time = Instant::now();
-            println!("Now: {:?}", last_print_time)
         }
     }
 }

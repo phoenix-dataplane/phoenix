@@ -167,10 +167,9 @@ fn materialize(msg: &RpcMessageTx) -> Box<hello::HelloRequest> {
 #[inline]
 fn should_block(req: &hello::HelloRequest) -> bool {
     let buf = &req.name as &[u8];
-    // todo this is O(n)
-    let name = String::from_utf8_lossy(buf);
+    //let name = String::from_utf8_lossy(buf);
     //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    name == "Apple"
+    buf == b"Apple"
 }
 impl HelloAclSenderEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {

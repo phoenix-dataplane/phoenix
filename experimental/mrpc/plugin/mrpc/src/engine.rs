@@ -484,7 +484,7 @@ impl MrpcEngine {
                         // timer.tick();
                         match meta.status_code {
                             StatusCode::AccessDenied => {
-                                tracing::trace!("Status code: Access denied, meta={:?}", meta);
+                                tracing::debug!("Status code: Access denied, meta={:?}", meta);
                                 let mut sent = false;
                                 let rpc_id = RpcId(meta.conn_id, meta.call_id);
                                 let status = phoenix_api::rpc::TransportStatus::Error(unsafe {
@@ -510,6 +510,7 @@ impl MrpcEngine {
                                 tracing::error!("Status code: Unknown error, meta={:?}", meta);
                             }
                             StatusCode::Success => {
+                                // the following operation takes around 100ns
                                 let mut sent = false;
                                 while !sent {
                                     self.customer.enqueue_wc_with(|ptr, _count| unsafe {
@@ -522,8 +523,6 @@ impl MrpcEngine {
                                 }
                             }
                         }
-
-                        // the following operation takes around 100ns
 
                         // timer.tick();
                         // log::info!("MrpcEngine check_input_queue: {}", timer);

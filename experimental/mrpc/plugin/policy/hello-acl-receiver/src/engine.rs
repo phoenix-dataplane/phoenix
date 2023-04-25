@@ -1,27 +1,22 @@
 //! This engine can only be placed at the sender side for now.
-use std::num::NonZeroU32;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
 use std::ptr::Unique;
-use std::sync::mpsc::RecvError;
 
 use anyhow::{anyhow, Result};
-use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
-use phoenix_api::rpc::{MessageMeta, RpcId, StatusCode, TransportStatus};
+use phoenix_api::rpc::{RpcId, StatusCode};
 use phoenix_api_policy_hello_acl_receiver::control_plane;
 
 use phoenix_common::engine::datapath::message::{
     EngineRxMessage, EngineTxMessage, RpcMessageRx, RpcMessageTx,
 };
-use phoenix_common::engine::datapath::meta_pool::MetaBuffer;
 use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
-use phoenix_common::log;
 use phoenix_common::module::Version;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
@@ -165,10 +160,9 @@ fn materialize_rx(msg: &RpcMessageRx) -> Box<hello::HelloRequest> {
 #[inline]
 fn should_block(req: &hello::HelloRequest) -> bool {
     let buf = &req.name as &[u8];
-    // todo this is O(n)
-    let name = String::from_utf8_lossy(buf);
+    return buf == b"Apple";
+    //let name = String::from_utf8_lossy(buf);
     //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    name == "Apple"
 }
 
 impl HelloAclReceiverEngine {
@@ -221,7 +215,6 @@ impl HelloAclReceiverEngine {
                                 meta_buf_ptr: meta_ptr,
                                 addr_backend: 0,
                             };
-                            let new_meta = unsafe { rpc_msg.meta_buf_ptr.as_meta_ptr().read() };
                             let new_msg = EngineTxMessage::RpcMessage(rpc_msg);
                             self.tx_outputs()[0]
                                 .send(new_msg)
