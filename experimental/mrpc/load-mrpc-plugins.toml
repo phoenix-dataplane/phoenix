@@ -54,3 +54,15 @@ name = "logging"
 lib_path = "plugins/libphoenix_logging.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "HelloAclReceiver"
+lib_path = "plugins/libphoenix_hello_acl_receiver.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "HelloAclSender"
+lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
+config_string = '''
+'''

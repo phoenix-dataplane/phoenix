@@ -37,8 +37,8 @@ impl AcceptorEngine {
 
 impl Decompose for AcceptorEngine {
     #[inline]
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
+    fn flush(&mut self) -> Result<usize> {
+        Ok(0)
     }
 
     fn decompose(

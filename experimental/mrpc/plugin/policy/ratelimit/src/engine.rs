@@ -77,15 +77,19 @@ impl Engine for RateLimitEngine {
 impl_vertex_for_engine!(RateLimitEngine, node);
 
 impl Decompose for RateLimitEngine {
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> Result<usize> {
+        let mut work = 0;
         while !self.tx_inputs()[0].is_empty() {
-            self.check_input_queue()?;
+            if let Progress(n) = self.check_input_queue()? {
+                work += n;
+            }
         }
         while !self.queue.is_empty() {
             let msg = self.queue.pop_front().unwrap();
             self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+            work += 1;
         }
-        Ok(())
+        Ok(work)
     }
 
     fn decompose(

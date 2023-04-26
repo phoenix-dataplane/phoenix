@@ -27,3 +27,7 @@ path = "src/server.rs"
 [[bin]]
 name = "rpc_echo_client"
 path = "src/client.rs"
+
+[[bin]]
+name = "rpc_echo_client2"
+path = "src/client2.rs"

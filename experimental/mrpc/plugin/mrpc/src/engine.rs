@@ -4,9 +4,10 @@ use std::pin::Pin;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
+use std::num::NonZeroU32;
 
 use phoenix_api::engine::SchedulingMode;
-use phoenix_api::rpc::{MessageErased, RpcId};
+use phoenix_api::rpc::{MessageErased, RpcId, StatusCode};
 use phoenix_api_mrpc::{cmd, control_plane, dp};
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
@@ -53,14 +54,17 @@ impl_vertex_for_engine!(MrpcEngine, node);
 
 impl Decompose for MrpcEngine {
     #[inline]
-    fn flush(&mut self) -> DecomposeResult<()> {
+    fn flush(&mut self) -> DecomposeResult<usize> {
         // mRPC engine has a single receiver on data path,
         // i.e., rx_inputs()[0]
         // each call to `check_input_queue()` processes at most one message
+        let mut work = 0;
         while !self.rx_inputs()[0].is_empty() {
-            self.check_input_queue()?;
+            if let Progress(n) = self.check_input_queue()? {
+                work += n;
+            }
         }
-        Ok(())
+        Ok(work)
     }
 
     fn decompose(
@@ -478,18 +482,48 @@ impl MrpcEngine {
                             shm_addr_backend: msg.addr_backend,
                         };
                         // timer.tick();
-
-                        // the following operation takes around 100ns
-                        let mut sent = false;
-                        while !sent {
-                            self.customer.enqueue_wc_with(|ptr, _count| unsafe {
-                                // self.customer.notify_wc_with(|ptr, _count| unsafe {
-                                sent = true;
-                                ptr.cast::<dp::Completion>()
-                                    .write(dp::Completion::Incoming(erased));
-                                1
-                            })?;
+                        match meta.status_code {
+                            StatusCode::AccessDenied => {
+                                tracing::debug!("Status code: Access denied, meta={:?}", meta);
+                                let mut sent = false;
+                                let rpc_id = RpcId(meta.conn_id, meta.call_id);
+                                let status = phoenix_api::rpc::TransportStatus::Error(unsafe {
+                                    NonZeroU32::new_unchecked(402)
+                                });
+                                while !sent {
+                                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                        // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                        sent = true;
+                                        ptr.cast::<dp::Completion>()
+                                            .write(dp::Completion::Outgoing(rpc_id, status));
+                                        1
+                                    })?;
+                                }
+                                let msg_call_ids =
+                                    [meta.call_id, meta.call_id, meta.call_id, meta.call_id];
+                                self.tx_outputs()[0].send(EngineTxMessage::ReclaimRecvBuf(
+                                    meta.conn_id,
+                                    msg_call_ids,
+                                ))?;
+                            }
+                            StatusCode::Unknown => {
+                                tracing::error!("Status code: Unknown error, meta={:?}", meta);
+                            }
+                            StatusCode::Success => {
+                                // the following operation takes around 100ns
+                                let mut sent = false;
+                                while !sent {
+                                    self.customer.enqueue_wc_with(|ptr, _count| unsafe {
+                                        // self.customer.notify_wc_with(|ptr, _count| unsafe {
+                                        sent = true;
+                                        ptr.cast::<dp::Completion>()
+                                            .write(dp::Completion::Incoming(erased));
+                                        1
+                                    })?;
+                                }
+                            }
                         }
+
                         // timer.tick();
                         // log::info!("MrpcEngine check_input_queue: {}", timer);
                     }

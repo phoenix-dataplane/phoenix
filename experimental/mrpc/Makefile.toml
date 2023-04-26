@@ -11,12 +11,12 @@ You can customize your own developmenet testing flow.
 Build and deploy mRPC plugins. Build and deploy phoenix plugins. Run phoenix daemon.
 '''
 dependencies = [
-  "build-phoenixos",
-  "build-mrpc-plugins",
-  "build-plugins",
-  "deploy-mrpc-plugins",
-  "build-mrpc-examples",
-  "run-phoenixos",
+    "build-phoenixos",
+    "build-mrpc-plugins",
+    "build-plugins",
+    "deploy-mrpc-plugins",
+    "build-mrpc-examples",
+    "run-phoenixos",
 ]
 
 [tasks.build-mrpc-plugins]
@@ -27,11 +27,19 @@ If no argument is provided, build all plugins in this workspace.
 # cargo make build-plugins [package-name]*
 command = "${TARGET_DIR}/release/phoenix_cargo"
 args = [
-    "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
+    "--compile-log",
+    "${PHOENIX_COMPILE_LOG}",
+    "--host-dep",
+    "${HOST_DEP}",
     "--",
-    "build", "--release", "--target-dir", "${PHOENIX_TARGET_DIR}",
-    "--manifest-path", "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
-    "-p", "phoenix-*",
+    "build",
+    "--release",
+    "--target-dir",
+    "${PHOENIX_TARGET_DIR}",
+    "--manifest-path",
+    "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
+    "-p",
+    "phoenix-*",
 ]
 # dependencies = ["remove-fingerprint4"]
 

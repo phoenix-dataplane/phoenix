@@ -1,0 +1,38 @@
+addon_engine = "HelloAclSenderEngine"
+tx_channels_replacements = [
+    [
+        "LoggingEngine",
+        "HelloAclSenderEngine",
+        0,
+        0,
+    ],
+    [
+        "HelloAclSenderEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "HelloAclSenderEngine",
+        0,
+        0,
+    ],
+    [
+        "HelloAclSenderEngine",
+        "LoggingEngine",
+        0,
+        0,
+    ],
+]
+group = [
+    "MrpcEngine",
+    "TcpRpcAdapterEngine",
+    "LoggingEngine",
+    "RateLimitEngine",
+]
+op = "attach"
+config_string = '''
+'''

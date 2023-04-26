@@ -1,0 +1,33 @@
+addon_engine = "HelloAclReceiverEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "HelloAclReceiverEngine",
+        0,
+        0,
+    ],
+    [
+        "HelloAclReceiverEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "HelloAclReceiverEngine",
+        0,
+        0,
+    ],
+    [
+        "HelloAclReceiverEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"
+config_string = '''
+'''

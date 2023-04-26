@@ -117,6 +117,7 @@ impl ClientStub {
             call_id,
             token: req.token().0 as u64,
             msg_type: RpcMsgType::Request,
+            status_code: phoenix_api::rpc::StatusCode::Success,
         };
 
         self.post_request(req, meta).unwrap();
@@ -154,7 +155,23 @@ impl ClientStub {
             }
             dp::Completion::Outgoing(rpc_id, status) => {
                 // Receive an Ack for an previous outgoing RPC.
-                self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
+
+                // Some status are used to indicate other information
+                // Like 402 is for server side acl, so in that case
+                // A success ack is returned by when the request is sent
+                // and 402 is returned when ACL denies the request
+                // in that case we must not remove the pending request twice!
+                match status {
+                    TransportStatus::Error(code) => match code.get() {
+                        402 => {}
+                        _ => {
+                            self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
+                        }
+                    },
+                    _ => {
+                        self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
+                    }
+                }
 
                 if let TransportStatus::Error(_) = status {
                     // Update the ReplyCache with error

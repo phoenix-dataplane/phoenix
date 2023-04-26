@@ -1,5 +1,7 @@
 [env]
-PHOENIX_PREFIX = { value = "/tmp/phoenix", condition.env_not_set = ["PHOENIX_PREFIX"] }
+PHOENIX_PREFIX = { value = "/tmp/phoenix", condition.env_not_set = [
+  "PHOENIX_PREFIX",
+] }
 PROJECT_ROOT = { script = ["pwd"] }
 TARGET_DIR = "${PROJECT_ROOT}/target"
 PHOENIX_TARGET_DIR = "${PROJECT_ROOT}/target/phoenix"
@@ -81,10 +83,16 @@ If no argument is provided, build all plugins in this workspace.
 cwd = "${PROJECT_ROOT}"
 command = "${TARGET_DIR}/release/phoenix_cargo"
 args = [
-    "--compile-log", "${PHOENIX_COMPILE_LOG}", "--host-dep", "${HOST_DEP}",
-    "--",
-    "build", "--release", "--target-dir", "${PHOENIX_TARGET_DIR}",
-    "-p ${@}"
+  "--compile-log",
+  "${PHOENIX_COMPILE_LOG}",
+  "--host-dep",
+  "${HOST_DEP}",
+  "--",
+  "build",
+  "--release",
+  "--target-dir",
+  "${PHOENIX_TARGET_DIR}",
+  "-p ${@}",
 ]
 # dependencies = ["remove-fingerprint3"]
 

@@ -36,8 +36,8 @@ impl_vertex_for_engine!(TransportEngine, node);
 
 impl Decompose for TransportEngine {
     #[inline]
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
+    fn flush(&mut self) -> Result<usize> {
+        Ok(0)
     }
 
     fn decompose(

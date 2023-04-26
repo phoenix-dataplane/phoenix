@@ -32,10 +32,10 @@ impl_vertex_for_engine!(SallocEngine, node);
 
 impl Decompose for SallocEngine {
     #[inline]
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> Result<usize> {
         // NOTE(wyj): nothing need to be done
         // in current implementation
-        Ok(())
+        Ok(0)
     }
 
     fn decompose(

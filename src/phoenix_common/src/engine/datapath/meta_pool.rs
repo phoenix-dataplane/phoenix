@@ -21,7 +21,7 @@ pub struct MetaBuffer {
     pub meta: MessageMeta,
     pub num_sge: u32,
     pub value_len: u32,
-    pub length_delimited: [u8; META_BUFFER_SIZE - 48],
+    pub length_delimited: [u8; META_BUFFER_SIZE - (mem::size_of::<MessageMeta>() + 8)],
 }
 
 mod sa {

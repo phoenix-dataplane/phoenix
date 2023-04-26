@@ -7,7 +7,7 @@ use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
 use super::engine::LoggingEngine;
-use crate::config::LoggingConfig;
+use crate::config::{create_log_file, LoggingConfig};
 
 pub(crate) struct LoggingEngineBuilder {
     node: DataPathNode,
@@ -20,10 +20,13 @@ impl LoggingEngineBuilder {
     }
 
     fn build(self) -> Result<LoggingEngine> {
+        let log_file = create_log_file();
+
         Ok(LoggingEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
+            log_file,
         })
     }
 }
@@ -33,8 +36,8 @@ pub struct LoggingAddon {
 }
 
 impl LoggingAddon {
-    pub const Logging_ENGINE: EngineType = EngineType("LoggingEngine");
-    pub const ENGINES: &'static [EngineType] = &[LoggingAddon::Logging_ENGINE];
+    pub const LOGGING_ENGINE: EngineType = EngineType("LoggingEngine");
+    pub const ENGINES: &'static [EngineType] = &[LoggingAddon::LOGGING_ENGINE];
 }
 
 impl LoggingAddon {
@@ -73,7 +76,7 @@ impl PhoenixAddon for LoggingAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingAddon::Logging_ENGINE {
+        if ty != LoggingAddon::LOGGING_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -89,7 +92,7 @@ impl PhoenixAddon for LoggingAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingAddon::Logging_ENGINE {
+        if ty != LoggingAddon::LOGGING_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 

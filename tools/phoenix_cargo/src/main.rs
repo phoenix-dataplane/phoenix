@@ -1497,16 +1497,53 @@ impl FingerprintDirGuard {
         );
         if to.exists() && to.is_dir() {
             fs::remove_dir_all(&to).with_context(|| {
-                format!("Failed to remove .fingerprint directory: {}", to.display(),)
+                format!("Failed to remove .fingerprint directory: {}", to.display())
             })?;
         }
-        fs::rename(from, to).with_context(|| {
-            format!(
-                "Failed to move .fingerprint directory from {} to {}",
-                from.display(),
-                to.display(),
-            )
-        })?;
+        let result = fs::rename(from, to);
+        match result {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                // If the error is `Invalid cross-device link (os error 18)`, we fallback to copy and delete
+                if let Some(18) = err.raw_os_error() {
+                    Self::copy_dir_recursively(from, to).with_context(|| {
+                        format!(
+                            "Failed to copy .fingerprint directory recursively from {} to {}",
+                            from.display(),
+                            to.display(),
+                        )
+                    })?;
+                    fs::remove_dir_all(&from).with_context(|| {
+                        format!(
+                            "Failed to remove .fingerprint directory: {}",
+                            from.display(),
+                        )
+                    })?;
+                    Ok(())
+                } else {
+                    Err(err).with_context(|| {
+                        format!(
+                            "Failed to move .fingerprint directory from {} to {}",
+                            from.display(),
+                            to.display(),
+                        )
+                    })
+                }
+            }
+        }
+    }
+
+    fn copy_dir_recursively(source: &Path, destination: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(&destination)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            let filetype = entry.file_type()?;
+            if filetype.is_dir() {
+                Self::copy_dir_recursively(&entry.path(), &destination.join(entry.file_name()))?;
+            } else {
+                fs::copy(entry.path(), destination.join(entry.file_name()))?;
+            }
+        }
         Ok(())
     }
 }

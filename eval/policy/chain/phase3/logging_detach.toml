@@ -1,0 +1,4 @@
+addon_engine = "LoggingEngine"
+tx_channels_replacements = [["RateLimitEngine", "HelloAclSenderEngine", 0, 0]]
+rx_channels_replacements = [["HelloAclSenderEngine", "MrpcEngine", 0, 0]]
+op = "detach"

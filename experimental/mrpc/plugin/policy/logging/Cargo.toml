@@ -18,3 +18,4 @@ anyhow.workspace = true
 nix.workspace = true
 toml = { workspace = true, features = ["preserve_order"] }
 bincode.workspace = true
+chrono.workspace = true

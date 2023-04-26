@@ -309,9 +309,10 @@ impl Status {
     pub(crate) fn from_incoming_transport(transport_status: TransportStatus) -> Status {
         match transport_status {
             TransportStatus::Success => Status::ok(""),
-            TransportStatus::Error(code) => {
-                Status::data_loss(format!("receiving wc error: {code}"))
-            }
+            TransportStatus::Error(code) => match code.get() {
+                402 => Status::permission_denied("Access Denied from server ACL engine"),
+                _ => Status::data_loss(format!("receiving wc error: {code}")),
+            },
         }
     }
 

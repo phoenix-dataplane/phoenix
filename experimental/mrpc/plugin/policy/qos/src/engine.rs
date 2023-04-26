@@ -114,11 +114,13 @@ impl Engine for QosEngine {
 }
 
 impl Decompose for QosEngine {
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> Result<usize> {
+        let mut work = 0;
         while let Ok(m) = self.tx_inputs()[0].try_recv() {
             self.tx_outputs()[0].send(m)?;
+            work += 1;
         }
-        Ok(())
+        Ok(work)
     }
 
     fn decompose(

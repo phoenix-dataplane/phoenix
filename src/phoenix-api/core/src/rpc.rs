@@ -82,6 +82,14 @@ impl TransportStatus {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StatusCode {
+    Success = 0,
+    AccessDenied = 1,
+    Unknown = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MessageMeta {
     /// Connection handle.
     pub conn_id: Handle,
@@ -97,6 +105,8 @@ pub struct MessageMeta {
     pub token: u64,
     /// Whether the message is a request or a response.
     pub msg_type: RpcMsgType,
+    /// Plugin specific status code.
+    pub status_code: StatusCode,
 }
 
 #[repr(C)]
@@ -113,6 +123,7 @@ mod sa {
     use static_assertions::const_assert_eq;
     use std::mem::size_of;
 
+    const_assert_eq!(size_of::<StatusCode>(), 4);
     const_assert_eq!(size_of::<Token>(), size_of::<usize>());
     const_assert_eq!(size_of::<TransportStatus>(), 4);
     const_assert_eq!(size_of::<RpcId>(), 16);
