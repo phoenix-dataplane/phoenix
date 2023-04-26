@@ -1,11 +1,12 @@
-//! Inspired by Theseus cargo.
-//! https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
+//! Inspired by [Theseus cargo].
 //!
 //! Different than theseus_cargo, phoenix_cargo
 //! + supports dylib and proc_macro
 //! + supports choosing a crate among multiple builds (with different versions or features)
 //! of the same dependency crate.
 //! - it does not currenlty handle cross-compiling
+//!
+//! [Theseus cargo]: https://github.com/theseus-os/Theseus/blob/89489db4a11f2b0ea398d72740a0258111390f5f/tools/theseus_cargo/src/main.rs
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fmt;

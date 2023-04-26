@@ -14,7 +14,7 @@ pub const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 /// A buffer that holds the room for [`MessageMeta`] and optionally the body of the message.
 ///
 /// Format:
-/// ```
+/// ```text
 /// | meta | num_sge | value_len | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
 /// |  40  |    4    |     4     |                 META_BUFFER_SIZE - 48               |
 /// ```
