@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-RUN apt update
+# RUN mkdir -p /tmp && chmod 777 /tmp && apt update
 
 RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         --allow-unauthenticated --allow-downgrades --allow-change-held-packages --no-install-recommends \
@@ -19,7 +19,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         cmake \
         git \
         lsb-release \
-        numactl
+        numactl \
+	vim
 
 RUN DEBIAN_FRONTEND=noninteractive apt install -y \
         --allow-unauthenticated --allow-downgrades --allow-change-held-packages --no-install-recommends \
