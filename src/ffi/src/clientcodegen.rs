@@ -95,7 +95,7 @@ async fn inside_runtime() {
                             let stub = Arc::clone(&clients.get(handle).unwrap());
                             task::spawn_local(async move {
                                 let reply = increment_inner(
-                                    stub,
+                                    &stub,
                                     req,
                                 ).await;
                                 
@@ -128,7 +128,7 @@ fn connect_inner(dst: String) -> Arc<ClientStub> {
 
     let stub = ClientStub::connect(dst).unwrap();
     println!("phoenix backend connection established");
-    Arc::clone(&stub)
+    Arc::new(stub)
 }
 
 fn update_protos() -> Result<(), ::mrpc::Error> {
@@ -151,9 +151,9 @@ impl IncrementerClient {
 }
 
 fn increment_inner(
-    stub: Arc<ClientStub>,
+    stub: &Arc<ClientStub>,
     req: Box<ValueRequest>,
-) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>> {
+) -> impl std::future::Future<Output = Result<mrpc::RRef<ValueReply>, ::mrpc::Status>> + '_ {
     let call_id = stub.initiate_call();
     // Fill this with the right func_id
     let func_id = 3784353755;

@@ -27,13 +27,13 @@ thread_local! {
     static TIMER: std::cell::RefCell<Timer> = std::cell::RefCell::new(Timer::new());
 }
 
-pub struct ReqFuture<T> {
+pub struct ReqFuture<'a, T> {
     rpc_id: RpcId,
-    client: Arc<ClientStub>,
+    client: &'a ClientStub,
     _marker: PhantomData<T>,
 }
 
-impl<T: Unpin> Future for ReqFuture<T> {
+impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
     type Output = Result<RRef<T>, Status>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -97,12 +97,12 @@ struct Inner {
 
 impl ClientStub {
     pub fn unary<Req, Res>(
-        self: &Arc<Self>,
+        &self,
         service_id: u32,
         func_id: u32,
         call_id: CallId,
         req: WRef<Req>,
-    ) -> impl Future<Output = Result<RRef<Res>, Status>>
+    ) -> impl Future<Output = Result<RRef<Res>, Status>> + '_
     where
         Req: RpcData,
         Res: Unpin + RpcData,
@@ -123,7 +123,7 @@ impl ClientStub {
 
         ReqFuture {
             rpc_id: RpcId(conn_id, call_id),
-            client: Arc::clone(self),
+            client: self,
             _marker: PhantomData,
         }
     }
@@ -251,7 +251,7 @@ impl ClientStub {
 
     /// Create an RPC client by connecting to a given socket address.
     // TODO(cjr): Change this to async too
-    pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Arc<Self>, Error> {
+    pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
         let connect_addr = addr
             .to_socket_addrs()?
             .next()
@@ -285,14 +285,14 @@ impl ClientStub {
                 let (stub_id, receiver) = LOCAL_REACTOR.with_borrow_mut(|r| r.register_stub());
                 LOCAL_REACTOR.with_borrow_mut(|r| r.register_connection(stub_id, &conn));
 
-                Ok(Arc::new(Self {
+                Ok(Self {
                     conn,
                     // inner: RefCell::new(Inner {
                     inner: spin::Mutex::new(Inner {
                         receiver,
                         reply_cache: ReplyCache::new(),
                     }),
-                }))
+                })
             })
         })
     }
