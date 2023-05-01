@@ -2,9 +2,10 @@
 // Manually writing all the generated code.
 
 #![no_main]
+#![feature(once_cell)]
 
 use std::future::{poll_fn, IntoFuture};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::task::Poll;
 use std::thread;
 
@@ -18,10 +19,8 @@ use tokio::task;
 
 include!("typescodegen.rs");
 
-lazy_static! {
-    static ref SEND_CHANNEL: (Sender<ClientWork>, Receiver<ClientWork>) = unbounded();  // wrap in oncelock
-    static ref CONNECT_COMPLETE_CHANNEL: (Sender<usize>, Receiver<usize>) = bounded(1);
-}
+static  SEND_CHANNEL: OnceLock<(Sender<ClientWork>, Receiver<ClientWork>)>  = OnceLock::new();  // wrap in oncelock
+static  CONNECT_COMPLETE_CHANNEL: OnceLock<(Sender<usize>, Receiver<usize>)> = OnceLock::new();
 
 #[cxx::bridge]
 mod incrementer_ffi {
@@ -77,7 +76,7 @@ async fn inside_runtime() {
     task::LocalSet::new()
         .run_until(async move {
             poll_fn(|cx| {
-                let v: Vec<ClientWork> = SEND_CHANNEL.1.try_iter().collect(); // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
+                let v: Vec<ClientWork> = SEND_CHANNEL.get().unwrap().1.try_iter().collect(); // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
 
                 if v.len() > 0 {
                     println!("runtime received something from channel")
@@ -87,7 +86,7 @@ async fn inside_runtime() {
                     match i {
                         ClientWork::Connect(dst) => {
                             clients.push(connect_inner(dst));
-                            CONNECT_COMPLETE_CHANNEL.0.send(clients.len() - 1).unwrap();
+                            CONNECT_COMPLETE_CHANNEL.get().unwrap().0.send(clients.len() - 1).unwrap();
                             println!("runtime sent connect completion");
                         }
                         ClientWork::Increment(handle, req, callback) => {
@@ -115,9 +114,10 @@ async fn inside_runtime() {
 
 fn connect(dst: String) -> Box<IncrementerClient> {
     // TODO(nikolabo): connect panics on error
-    SEND_CHANNEL.0.send(ClientWork::Connect(dst)).unwrap();
+    CONNECT_COMPLETE_CHANNEL.get_or_init(|| bounded(1));
+    SEND_CHANNEL.get_or_init(|| unbounded()).0.send(ClientWork::Connect(dst)).unwrap();
     Box::new(IncrementerClient {
-        client_handle: CONNECT_COMPLETE_CHANNEL.1.recv().unwrap(),
+        client_handle: CONNECT_COMPLETE_CHANNEL.get().unwrap().1.recv().unwrap(),
     })
 }
 
@@ -142,7 +142,7 @@ impl IncrementerClient {
     fn increment(&self, req: Box<ValueRequest>, callback: *mut i32) {
         let intermediate = callback as *const ();
         let callbackfn: extern "C" fn(*const ValueReply) = unsafe { std::mem::transmute(intermediate) };
-        SEND_CHANNEL
+        SEND_CHANNEL.get().unwrap()
             .0
             .send(ClientWork::Increment(self.client_handle, req, callbackfn))
             .unwrap();
