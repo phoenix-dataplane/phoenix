@@ -91,7 +91,7 @@ pub mod incrementer_server {
     impl<T: Incrementer> IncrementerServer<T> {
         fn update_protos() -> Result<(), ::mrpc::Error> {
             let srcs = [include_str!(
-                "../../../src/phoenix_examples/proto/rpc_int/rpc_int.proto"
+                "../../../../src/phoenix_examples/proto/rpc_int/rpc_int.proto"
             )];
             ::mrpc::stub::update_protos(srcs.as_slice())
         }

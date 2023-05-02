@@ -36,7 +36,6 @@ members = [
 ]
 exclude = [
   "experimental/mrpc",
-  "src/ffi",
 ]
 
 [workspace.dependencies]

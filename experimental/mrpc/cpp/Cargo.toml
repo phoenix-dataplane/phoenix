@@ -19,7 +19,7 @@ path = "src/servercodegen.rs"
 
 [dependencies]
 cxx = "1.0"
-mrpc = { path = "../../experimental/mrpc" }
+mrpc = { path = ".." }
 memfd = "0.4.1"
 libc = "0.2"
 raw-parts = "1.1.2"

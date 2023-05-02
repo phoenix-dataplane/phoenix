@@ -133,7 +133,7 @@ fn connect_inner(dst: String) -> Arc<ClientStub> {
 
 fn update_protos() -> Result<(), ::mrpc::Error> {
     let srcs = [include_str!(
-        "../../../src/phoenix_examples/proto/rpc_int/rpc_int.proto"
+        "../../../../src/phoenix_examples/proto/rpc_int/rpc_int.proto"
     )];
     ::mrpc::stub::update_protos(srcs.as_slice())
 }
