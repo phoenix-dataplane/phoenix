@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::{FusedIterator, Iterator};
 use std::marker::Unpin;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr;
@@ -40,18 +41,18 @@ impl<T, A: ShmAllocator + Default> Box<T, A> {
     }
 
     #[inline]
-    pub fn new_uninit() -> Box<mem::MaybeUninit<T>, A> {
+    pub fn new_uninit() -> Box<MaybeUninit<T>, A> {
         Box::new_uninit_in(A::default())
     }
 
     #[inline]
-    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+    pub fn try_new_uninit() -> Result<Box<MaybeUninit<T>, A>, AllocError> {
         Box::try_new_uninit_in(A::default())
     }
 
     #[inline]
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>, A> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
+    pub fn new_zeroed() -> Box<MaybeUninit<T>, A> {
+        let layout = Layout::new::<MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
         match Box::try_new_zeroed() {
@@ -61,7 +62,7 @@ impl<T, A: ShmAllocator + Default> Box<T, A> {
     }
 
     #[inline]
-    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+    pub fn try_new_zeroed() -> Result<Box<MaybeUninit<T>, A>, AllocError> {
         Box::try_new_zeroed_in(A::default())
     }
 
@@ -76,7 +77,7 @@ impl<T, A: ShmAllocator + Default> Box<T, A> {
     }
 }
 
-impl<T, A: ShmAllocator> Box<mem::MaybeUninit<T>, A> {
+impl<T, A: ShmAllocator> Box<MaybeUninit<T>, A> {
     /// Converts to `Box<T, A>`.
     ///
     /// # Safety
@@ -101,7 +102,7 @@ impl<T, A: ShmAllocator> Box<mem::MaybeUninit<T>, A> {
     }
 }
 
-impl<T, A: ShmAllocator> Box<[mem::MaybeUninit<T>], A> {
+impl<T, A: ShmAllocator> Box<[MaybeUninit<T>], A> {
     /// Converts to `Box<[T], A>`.
     ///
     /// # Safety
@@ -158,8 +159,8 @@ impl<T, A: ShmAllocator> Box<T, A> {
     }
 
     #[inline]
-    pub fn try_new_zeroed_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
+    pub fn try_new_zeroed_in(alloc: A) -> Result<Box<MaybeUninit<T>, A>, AllocError> {
+        let layout = Layout::new::<MaybeUninit<T>>();
         let ptr = System.allocate_zeroed(layout)?.cast();
         let (ptr_app, ptr_backend) = ptr.to_raw_parts();
         unsafe {
@@ -172,8 +173,8 @@ impl<T, A: ShmAllocator> Box<T, A> {
     }
 
     #[inline]
-    pub fn new_uninit_in(alloc: A) -> Box<mem::MaybeUninit<T>, A> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
+    pub fn new_uninit_in(alloc: A) -> Box<MaybeUninit<T>, A> {
+        let layout = Layout::new::<MaybeUninit<T>>();
         // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
         // That would make code size bigger.
         match Box::try_new_uninit_in(alloc) {
@@ -186,8 +187,8 @@ impl<T, A: ShmAllocator> Box<T, A> {
     }
 
     #[inline]
-    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
+    pub fn try_new_uninit_in(alloc: A) -> Result<Box<MaybeUninit<T>, A>, AllocError> {
+        let layout = Layout::new::<MaybeUninit<T>>();
         let ptr = alloc.allocate(layout)?.cast();
         let (ptr_app, ptr_backend) = ptr.to_raw_parts();
         unsafe {
@@ -204,7 +205,7 @@ impl<T, A: ShmAllocator> Box<T, A> {
     where
         Self: Drop,
     {
-        let mut dst = mem::MaybeUninit::uninit();
+        let mut dst = MaybeUninit::uninit();
         let non_null: ShmNonNull<T> = boxed.0.into();
         let alloc = unsafe { ptr::read(&boxed.1) };
         let src = non_null.as_ptr_app();

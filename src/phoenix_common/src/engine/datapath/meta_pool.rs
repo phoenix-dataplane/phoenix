@@ -8,19 +8,26 @@ use phoenix_api::rpc::{MessageMeta, RpcId};
 
 use crate::resource::Error as ResourceError;
 
+/// The size of the [`MetaBuffer`] struct.
 pub const META_BUFFER_SIZE: usize = 16384; // TODO(cjr): try 4096 or 256
 
-/// A buffer holds the room for MessageMeta and optionally an entire message.
+/// A buffer that holds the room for [`MessageMeta`] and optionally the body of the message.
 ///
 /// Format:
+/// ```text
 /// | meta | num_sge | value_len | lens[0] | lens[1] | ... | value[0] | value[1] | ... |
-/// |  40  |    4    |     4     |                 EAGER_BUFFER_SIZE - 48              |
+/// |  40  |    4    |     4     |                 META_BUFFER_SIZE - 48               |
+/// ```
 #[repr(C)]
 #[derive(Clone)]
 pub struct MetaBuffer {
+    /// The metadata of an RPC message.
     pub meta: MessageMeta,
+    /// The number of disaggregated segments (or scatter-gather elements) the RPC message has.
     pub num_sge: u32,
+    /// The length of the body of the RPC message inside this `MetaBuffer`.
     pub value_len: u32,
+    /// The remaining raw bytes of the struct.
     pub length_delimited: [u8; META_BUFFER_SIZE - (mem::size_of::<MessageMeta>() + 8)],
 }
 
@@ -47,6 +54,7 @@ impl fmt::Debug for MetaBuffer {
 }
 
 impl MetaBuffer {
+    /// Returns the number of bytes contained in this `MetaBuffer`.
     #[inline]
     pub fn len(&self) -> usize {
         mem::size_of::<MessageMeta>()
@@ -56,11 +64,17 @@ impl MetaBuffer {
             + self.value_len as usize
     }
 
+    /// Returns the number of bytes the `MetaBuffer` can hold.
     #[inline]
     pub const fn capacity() -> usize {
         META_BUFFER_SIZE - 40
     }
 
+    /// Returns the offset in bytes of the message to the beginning of `length_delimited`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting offset of the message exceeds the end of the buffer.
     #[inline]
     pub const fn value_start(&self) -> usize {
         let start = self.num_sge as usize * mem::size_of::<u32>();
@@ -68,11 +82,14 @@ impl MetaBuffer {
         start
     }
 
+    /// Returns a slice of u8 that represents the lengths of the segregated segments within the RPC
+    /// message.
     #[inline]
     pub fn lens_buffer(&self) -> &[u8] {
         &self.length_delimited[..self.value_start()]
     }
 
+    /// Returns a byte slice that represents buffer to the RPC message.
     #[inline]
     pub fn value_buffer(&self) -> &[u8] {
         let base = self.value_start();
@@ -90,6 +107,7 @@ impl MetaBuffer {
     }
 }
 
+/// A `Unique` pointer to the a [`MetaBuffer`].
 // Must be Send
 #[derive(Debug, Clone, Copy)]
 pub struct MetaBufferPtr(pub Unique<MetaBuffer>);
@@ -100,12 +118,14 @@ impl MetaBufferPtr {
         MetaBufferPtr(ptr)
     }
 
+    /// Returns an unsafe mutable pointer to the [RPC descriptor][`MessageMeta`].
     #[inline]
     pub fn as_meta_ptr(&self) -> *mut MessageMeta {
         self.0.as_ptr().cast()
     }
 }
 
+/// A pool of [`MetaBuffer`]s.
 pub struct MetaBufferPool {
     #[allow(unused_variables)]
     buffer: Vec<MetaBuffer>,
@@ -114,6 +134,7 @@ pub struct MetaBufferPool {
 }
 
 impl MetaBufferPool {
+    /// Creates a `MetaBufferPool` with `cap` free [`MetaBuffer`]s allocated.
     pub fn new(cap: usize) -> Self {
         let mut buffer = Vec::with_capacity(cap);
 
@@ -132,11 +153,15 @@ impl MetaBufferPool {
         }
     }
 
+    /// Returns `true` if the [`MetaBufferPool`] has no free buffers to obtain.
     #[inline]
     pub fn is_full(&self) -> bool {
         self.free.len() == self.buffer.capacity()
     }
 
+    /// Attempt to obtain a free [`MetaBuffer`] for a given `rpc_id`.
+    ///
+    /// Returns a [`MetaBufferPtr`] on success. Returns [`None`] if there is no free slots.
     #[inline]
     pub fn obtain(&mut self, rpc_id: RpcId) -> Option<MetaBufferPtr> {
         self.free.pop().map(|buf| {
@@ -145,6 +170,8 @@ impl MetaBufferPool {
         })
     }
 
+    /// Release the [`MetaBuffer`] allocated for the `rpc_id`, making it available for
+    /// future allocations.
     #[inline]
     pub fn release(&mut self, rpc_id: RpcId) -> Result<(), ResourceError> {
         let buf = self.used.remove(&rpc_id).ok_or(ResourceError::NotFound)?;

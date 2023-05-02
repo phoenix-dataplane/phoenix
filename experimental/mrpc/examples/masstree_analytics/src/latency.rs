@@ -1,5 +1,6 @@
-//! A Rust re-implementation of eRPC's latency tool.
-//! https://github.com/erpc-io/eRPC/blob/v0.2/src/util/latency.h
+//! A Rust re-implementation of [eRPC's latency tool][1].
+//!
+//! [1]: https://github.com/erpc-io/eRPC/blob/v0.2/src/util/latency.h
 
 use std::fmt;
 use std::ops::{Index, IndexMut};

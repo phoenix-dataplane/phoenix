@@ -4,6 +4,8 @@ use std::ops::{Deref, DerefMut};
 use std::os::unix::io::AsRawFd;
 use std::slice;
 
+const PRE_POPULATE_THRESHOLD: usize = 8 * 4096;
+
 pub struct MmapFixed {
     ptr: *mut libc::c_void,
     len: usize,
@@ -39,16 +41,20 @@ impl MmapFixed {
         // };
         let hugetlb = 0;
 
+        let mut flags =
+            libc::MAP_SHARED | libc::MAP_NORESERVE | libc::MAP_FIXED_NOREPLACE | hugetlb;
+
+        // Pre-populate if the map size is only a few pages.
+        if map_len <= PRE_POPULATE_THRESHOLD || hugetlb != 0 {
+            flags |= libc::MAP_POPULATE;
+        }
+
         let ptr = unsafe {
             libc::mmap(
                 target_addr as *mut libc::c_void,
                 map_len,
                 libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED
-                    | libc::MAP_NORESERVE
-                    | libc::MAP_POPULATE
-                    | libc::MAP_FIXED_NOREPLACE
-                    | hugetlb,
+                flags,
                 memfile.as_raw_fd(),
                 file_off,
             )

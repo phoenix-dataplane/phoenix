@@ -735,7 +735,7 @@ impl TcpRpcAdapterEngine {
             8 * 1024 * 1024,
             &self.salloc.addr_mediator,
         )?;
-        // create 128 receive mrs, post recv requestse and
+        // create 128 receive mrs and post recv requests
         for _ in 0..128 {
             let recv_buffer = slab.obtain().unwrap();
             let wr_id = recv_buffer.as_handle().0 as u64;
