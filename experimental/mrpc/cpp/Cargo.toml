@@ -1,5 +1,5 @@
 [package]
-name = "ffi"
+name = "cpp"
 version = "0.1.0"
 edition = "2021"
 
@@ -31,3 +31,8 @@ futures = "0.3.28"
 
 [build-dependencies]
 cxx-build = "1.0"
+
+[workspace]
+exclude = [
+  "cpp-build",
+]

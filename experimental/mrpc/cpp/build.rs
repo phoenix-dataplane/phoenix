@@ -3,10 +3,10 @@ use std::env::var;
 fn main() {
     let result = match var("CLIENT_SERVER") {
         Ok(v) => v,
-        Err(_) => todo!(),
+        Err(_) => String::new(),
     };
     if result == "client" {
-        cxx_build::bridge("src/clientcodegen.rs") // returns a cc::Build
+        cxx_build::bridges(vec!["src/clientcodegen.rs", "src/types.rs"]) // returns a cc::Build
             .file("src/client.cc")
             .flag_if_supported("-std=c++11")
             .flag_if_supported("-g")
