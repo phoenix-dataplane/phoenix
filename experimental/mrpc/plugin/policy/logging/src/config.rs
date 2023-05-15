@@ -6,6 +6,7 @@ use chrono::{Datelike, Timelike, Utc};
 use phoenix_common::log;
 use serde::{Deserialize, Serialize};
 
+/// currently, logging engine does not need a config
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {}

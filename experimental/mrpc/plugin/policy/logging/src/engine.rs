@@ -19,11 +19,16 @@ use phoenix_common::storage::{ResourceCollection, SharedStorage};
 use super::DatapathError;
 use crate::config::{create_log_file, LoggingConfig};
 
+/// The internal state of an logging engine,
+/// it contains some template fields like `node`, `indicator`,
+/// a config field, in that case `LoggingConfig`
+/// and other custome fields like `log_file
 pub(crate) struct LoggingEngine {
     pub(crate) node: DataPathNode,
     pub(crate) indicator: Indicator,
     pub(crate) config: LoggingConfig,
-    /// The file which the log will be written into
+    /// log_file is where the log will be written into
+    /// it is temperoray, i.e. we don't store it when restart
     pub(crate) log_file: std::fs::File,
 }
 
