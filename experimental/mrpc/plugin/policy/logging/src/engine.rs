@@ -1,3 +1,4 @@
+//! main logic happens here
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 use std::io::Write;
@@ -20,9 +21,9 @@ use crate::config::{create_log_file, LoggingConfig};
 
 pub(crate) struct LoggingEngine {
     pub(crate) node: DataPathNode,
-
     pub(crate) indicator: Indicator,
     pub(crate) config: LoggingConfig,
+    /// The file which the log will be written into
     pub(crate) log_file: std::fs::File,
 }
 
@@ -34,6 +35,7 @@ enum Status {
 
 use Status::Progress;
 
+/// template
 impl Engine for LoggingEngine {
     fn activate<'a>(self: Pin<&'a mut Self>) -> BoxFuture<'a, EngineResult> {
         Box::pin(async move { self.get_mut().mainloop().await })
@@ -63,8 +65,12 @@ impl Engine for LoggingEngine {
 impl_vertex_for_engine!(LoggingEngine, node);
 
 impl Decompose for LoggingEngine {
+    /// flush will be called when we need to clean the transient state before decompose
+    /// # return 
+    /// * `Result<usize>` - number of work drained from tx & rx queue 
     fn flush(&mut self) -> Result<usize> {
         let mut work = 0;
+        /// drain the rx & tx queue
         while !self.tx_inputs()[0].is_empty() || !self.rx_inputs()[0].is_empty() {
             if let Progress(n) = self.check_input_queue()? {
                 work += n;
@@ -75,6 +81,7 @@ impl Decompose for LoggingEngine {
         Ok(work)
     }
 
+    /// template 
     fn decompose(
         self: Box<Self>,
         _shared: &mut SharedStorage,
@@ -132,35 +139,58 @@ impl LoggingEngine {
 }
 
 impl LoggingEngine {
+    /// main logic about handling rx & tx input messages
+    /// note that a logging engine can be deployed in client-side or server-side
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 
+        // tx logic
+        // For server it is `On-Response` logic, when sending  response to network
+        // For client it is `On-Request` logic, when sending request to network
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
+                    // we care only log RPCs
+                    // other types like ACK should not be logged since they are not 
+                    // ACKs between Client/Server, but communication between engines
+                    // "Real" ACKs are logged in rx logic
                     EngineTxMessage::RpcMessage(msg) => {
+                        
+                        // we get the metadata of RPC from the shared memory
                         let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-                        //log::info!("Got message on tx queue: {:?}", meta_ref);
+
+                        // write the metadata into the file
+                        // since meta_ref implements Debug, we can use {:?}  
+                        // rather than manully parse the metadata struct
                         self.log_file
                             .write(format!("Got message on tx queue: {:?}", meta_ref).as_bytes())
                             .expect("error writing to log file");
+                        
+                        // after logging, we forward the message to the next engine
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
+                    // if received message is not RPC, we simple forward it
                     m => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
-                // log::info!("Disconnected!");
                 return Ok(Status::Disconnected);
             }
         }
 
+        // tx logic
+        // For server it is `On-Request` logic, when recving request from network
+        // For client it is `On-Response` logic, when recving response from network
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
+                    // ACK means that 
+                    // If I am client: server received my request
+                    // If I am server: client recevied my response 
                     EngineRxMessage::Ack(rpc_id, status) => {
+                        // log the info to the file
                         self.log_file
                             .write(
                                 format!(
@@ -170,21 +200,22 @@ impl LoggingEngine {
                                 .as_bytes(),
                             )
                             .expect("error writing to log file");
+                        // forward the message
                         self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
                     }
                     EngineRxMessage::RpcMessage(msg) => {
-                        //log::info!("Got msg on rx queue: {:?}", msg);
+                        // forward the message
+                        // again, this RpcMessage is not the application-level rpc
+                        // so we don log them
                         self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                     }
+                    // forward other unknown msg
                     m => self.rx_outputs()[0].send(m)?,
                 }
-                //log::info!("Send msg in rx queue");
-                //self.rx_outputs()[0].send(msg)?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
-                // log::info!("Disconnected!");
                 return Ok(Status::Disconnected);
             }
         }

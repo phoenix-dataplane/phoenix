@@ -1,3 +1,6 @@
+//! template file for an engine
+//! we only need to change the args in config and engine constructor
+
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
 

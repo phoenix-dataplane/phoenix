@@ -1,3 +1,7 @@
+//! template file for engine config
+//! we can add custome functions here
+//! so that the whole crate can import the function
+
 use chrono::{Datelike, Timelike, Utc};
 use phoenix_common::log;
 use serde::{Deserialize, Serialize};
@@ -6,13 +10,18 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {}
 
+
 impl LoggingConfig {
+    /// Get config from toml file
     pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
         let config = toml::from_str(config.unwrap_or(""))?;
         Ok(config)
     }
 }
 
+/// Create a log file in `/tmp/phoenix/log`
+/// This function will be called every time 
+/// a logging engine is started or restored
 pub fn create_log_file() -> std::fs::File {
     std::fs::create_dir_all("/tmp/phoenix/log").expect("mkdir failed");
     let now = Utc::now();

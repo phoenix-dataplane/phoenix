@@ -1,5 +1,6 @@
-#![feature(peer_credentials_unix_socket)]
+//! template file for export
 
+#![feature(peer_credentials_unix_socket)]
 use thiserror::Error;
 
 pub use phoenix_common::{InitFnResult, PhoenixAddon};
