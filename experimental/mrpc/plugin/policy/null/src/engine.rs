@@ -22,6 +22,7 @@ pub(crate) struct NullEngine {
 
     pub(crate) indicator: Indicator,
     pub(crate) config: NullConfig,
+    // TODO Add you own internal state here
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +82,8 @@ impl Decompose for NullEngine {
         let mut collections = ResourceCollection::with_capacity(4);
         collections.insert("config".to_string(), Box::new(engine.config));
         (collections, engine.node)
+        // TODO if you have internal state that need to be stored
+        // add it to collections
     }
 }
 
@@ -95,7 +98,8 @@ impl NullEngine {
             .unwrap()
             .downcast::<NullConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-
+        // TODO if you have stored internal state
+        // load it from collection here
         let engine = NullEngine {
             node,
             indicator: Default::default(),
@@ -128,15 +132,26 @@ impl NullEngine {
 impl NullEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
-
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
+                        // TODO Add logic for tx input  here
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     m => self.tx_outputs()[0].send(m)?,
                 }
+                return Ok(Progress(1));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+
+        match self.rx_inputs()[0].try_recv() {
+            Ok(m) => {
+                // TODO Add logic for rx input here
+                // use match statement like tx
+                self.rx_outputs()[0].send(m)?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
