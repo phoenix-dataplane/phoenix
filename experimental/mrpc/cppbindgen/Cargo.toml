@@ -1,0 +1,20 @@
+[package]
+name = "cppbindgen"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mrpc = { path = ".." }
+memfd = "0.4.1"
+libc = "0.2"
+raw-parts = "1.1.2"
+smol = "1.2.5"
+tokio = {version = "1.18.2", features = ["rt"]}
+crossbeam-channel = "0.5.8"
+lazy_static = "1.4.0"
+futures = "0.3.28"
