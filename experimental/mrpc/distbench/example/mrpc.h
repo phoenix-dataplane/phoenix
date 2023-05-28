@@ -27,8 +27,7 @@ using WValueRequest = WRef<ValueRequest>;
 using RValueRequest = RRef<ValueRequest>;
 
 struct CPPIncrementer {
-  void *state;
-  WValueReply *(*increment_impl)(void*, RValueRequest*);
+  WValueReply *(*increment_impl)(RValueRequest*);
 };
 
 extern "C" {

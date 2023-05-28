@@ -257,6 +257,9 @@ pub mod incrementer_client {
 
         connect_receiver.recv().unwrap();
 
+        // error checking - if connect did not succeed then we need to retry for after some timeout?
+        // can't control when prot driver will call connect (i.e. before or after server has connected)
+
         Box::into_raw(Box::new(IncrementerClient {
             client_sender: work_sender,
         }))
@@ -428,8 +431,7 @@ pub mod incrementer_server {
 
     #[repr(C)]
     pub struct CPPIncrementer {
-        pub state: *mut std::ffi::c_void,
-        pub increment_impl: extern "C" fn(*mut std::ffi::c_void, *mut RValueRequest) -> *mut WValueReply,
+        pub increment_impl: extern "C" fn(*mut RValueRequest) -> *mut WValueReply,
     }
 
     // The mut pointer is an opaque reference to the state of an incrementer service, 
@@ -451,7 +453,7 @@ pub mod incrementer_server {
         ) -> Result<WRef<ValueReply>, mrpc::Status> {
 
             let req = Box::into_raw(Box::new(RValueRequest { inner: request}));
-            let rep = (self.increment_impl)(self.state, req);
+            let rep = (self.increment_impl)(req);
 
             Ok( unsafe { (*rep).inner.clone() })
         }
