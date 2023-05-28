@@ -52,7 +52,7 @@ script = '''
 mkdir -p ${PHOENIX_TARGET_DIR}
 ${TARGET_DIR}/release/phoenix_cargo \
   --compile-log ${PHOENIX_COMPILE_LOG} --host-dep ${HOST_DEP} -- \
-  build --release --target-dir ${PHOENIX_TARGET_DIR} -p phoenixos
+  build -vv --release --target-dir ${PHOENIX_TARGET_DIR} -p phoenixos
 '''
 dependencies = [
   "phoenix_common",
