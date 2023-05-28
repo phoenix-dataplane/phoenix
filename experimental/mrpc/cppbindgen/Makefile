@@ -1,5 +1,18 @@
-client: src/lib.rs example/client.cc
-	cargo build && cbindgen --output mrpc.h && mv mrpc.h example/mrpc.h && g++ -o ./target/client example/client.cc target/debug/libcppbindgen.so
+client: lib bindings example/client.cc
+	g++ -o target/client example/client.cc target/debug/libcppbindgen.so
 
-bindgen: src/lib.rs
-	cbindgen --output mrpc.h && mv mrpc.h example/mrpc.h
+server: lib bindings example/server.cc
+	g++ -o target/server example/server.cc target/debug/libcppbindgen.so
+
+bindings: src/lib.rs
+	cbindgen --output mrpc.h .
+	mv mrpc.h example/mrpc.h
+
+lib: src/lib.rs
+	cargo build
+
+clean:
+	cargo clean
+	rm example/mrpc.h
+
+.PHONY: client server bindings lib clean

@@ -4,6 +4,7 @@
 #![no_main]
 #![feature(once_cell)]
 use mrpc::alloc::Vec;
+use mrpc::stub::LocalServer;
 use mrpc::{WRef, RRef};
 
 // TYPES
@@ -14,12 +15,14 @@ pub struct ValueRequest {
     pub key: ::mrpc::alloc::Vec<u8>,
 }
 
+#[repr(transparent)]
 pub struct RValueRequest {
     inner: RRef<ValueRequest>,
 }
 
 // Is there a good way to expose a general WRef API across FFI rather than
 // generating a wrapper per message type?
+#[repr(transparent)]
 pub struct WValueRequest {
     inner: WRef<ValueRequest>,
 }
@@ -181,69 +184,41 @@ pub mod incrementer_client {
     use std::ffi::CStr;
     use std::future::poll_fn;
     use std::os::raw::c_char;
-    use std::sync::{Arc, OnceLock};
+    use std::sync::{Arc};
     use std::task::Poll;
     use std::thread;
 
-    use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
     use mrpc::stub::{ClientStub, NamedService};
     use mrpc::WRef;
     use tokio::runtime::Builder;
     use tokio::task;
 
-    static SEND_CHANNEL: OnceLock<(Sender<ClientWork>, Receiver<ClientWork>)> = OnceLock::new();
-    static CONNECT_COMPLETE_CHANNEL: OnceLock<(Sender<usize>, Receiver<usize>)> = OnceLock::new();
-
-    // TODO:(nikolabo) How to share runtime thread between different client instances
     pub enum ClientWork {
-        Connect(String),
+        // Connect(String),
         Increment(
-            usize,
             WRef<ValueRequest>,
             extern "C" fn(*const RValueReply),
         ),
     }
 
-    #[no_mangle]
-    pub extern fn initialize() {
-        println!("initializing mrpc stub...");
-        thread::spawn(|| {
-            println!("runtime thread started");
-            let runtime = Builder::new_current_thread().build().unwrap();
-            runtime.block_on(inside_runtime());
-        });
-    }
-
-    async fn inside_runtime() {
-        let mut clients: std::vec::Vec<Arc<ClientStub>> = std::vec::Vec::new();
-        println!("tokio current thread runtime starting...");
+    async fn inside_runtime(work_receiver: crossbeam_channel::Receiver<ClientWork>, connect_sender: crossbeam_channel::Sender<usize>, dest: String) {
+        let stub = connect_inner(dest);
+        connect_sender
+            .send(0)
+            .unwrap();
 
         task::LocalSet::new()
             .run_until(async move {
                 poll_fn(|cx| {
-                    let v: Vec<ClientWork> = SEND_CHANNEL.get().unwrap().1.try_iter().collect(); // TODO(nikolabo): client mapping stored in vector, handle is vector index, needs to be updated so clients can be deallocated
+                    let v: Vec<ClientWork> = work_receiver.try_iter().collect(); 
 
-                    if v.len() > 0 {
-                        println!("runtime received something from channel")
-                    };
-
-                    for i in v {
-                        match i {
-                            ClientWork::Connect(dst) => {
-                                clients.push(connect_inner(dst));
-                                CONNECT_COMPLETE_CHANNEL
-                                    .get()
-                                    .unwrap()
-                                    .0
-                                    .send(clients.len() - 1)
-                                    .unwrap();
-                                println!("runtime sent connect completion");
-                            }
-                            ClientWork::Increment(handle, req, callback) => {
+                    for c_work in v {
+                        match c_work {
+                            ClientWork::Increment(req, callback) => {
                                 println!("Increment request received by runtime thread");
-                                let stub = Arc::clone(&clients.get(handle).unwrap());
+                                let s = Arc::clone(&stub);
                                 task::spawn_local(async move {
-                                    let reply = increment_inner(&stub, req).await;
+                                    let reply = increment_inner(&s, req).await;
 
                                     let r = Box::new(RValueReply { inner: reply.unwrap() });        // put rref on heap and call callback with rref pointer as param
                                     (callback)(Box::into_raw(r));
@@ -262,7 +237,7 @@ pub mod incrementer_client {
 
     #[derive(Debug)]
     pub struct IncrementerClient {
-        client_handle: usize,
+        client_sender: crossbeam_channel::Sender<ClientWork>,
     }
 
     #[no_mangle]
@@ -272,25 +247,27 @@ pub mod incrementer_client {
         unsafe {
             dest = CStr::from_ptr(dst).to_string_lossy().into_owned();
         }
-        CONNECT_COMPLETE_CHANNEL.get_or_init(|| bounded(1));
-        SEND_CHANNEL
-            .get_or_init(|| unbounded())
-            .0
-            .send(ClientWork::Connect(dest))
-            .unwrap();
+        let (work_sender, work_receiver) = crossbeam_channel::unbounded::<ClientWork>();
+        let (connect_sender, connect_receiver) = crossbeam_channel::bounded::<usize>(1);
+
+        thread::spawn(|| {
+            let runtime = Builder::new_current_thread().build().unwrap();
+            runtime.block_on(inside_runtime(work_receiver, connect_sender, dest));
+        });
+
+        connect_receiver.recv().unwrap();
+
         Box::into_raw(Box::new(IncrementerClient {
-            client_handle: CONNECT_COMPLETE_CHANNEL.get().unwrap().1.recv().unwrap(),
+            client_sender: work_sender,
         }))
     }
 
     fn connect_inner(dst: String) -> Arc<ClientStub> {
         // Force loading/reloading protos at the backend
-        println!("connection starting...");
         update_protos().unwrap();
 
         let stub = ClientStub::connect(dst).unwrap();
-        println!("phoenix backend connection established");
-        Arc::new(stub)          // does this need to be in an ARC?
+        Arc::new(stub)
     }
 
     fn update_protos() -> Result<(), ::mrpc::Error> {
@@ -303,11 +280,8 @@ pub mod incrementer_client {
     impl IncrementerClient {
         #[no_mangle]
         pub extern fn increment(&self, req: &WValueRequest, callback: extern "C" fn(*const RValueReply)) {
-            SEND_CHANNEL
-                .get()
-                .unwrap()
-                .0
-                .send(ClientWork::Increment(self.client_handle, req.inner.clone(), callback))
+            self.client_sender
+                .send(ClientWork::Increment(req.inner.clone(), callback))
                 .unwrap();
             println!("Increment request sent to runtime thread...");
         }
@@ -328,5 +302,158 @@ pub mod incrementer_client {
     impl NamedService for IncrementerClient {
         const SERVICE_ID: u32 = 2056765301;
         const NAME: &'static str = "rpc_int.Incrementer";
+    }
+}
+
+#[no_mangle] 
+pub extern "C" fn bind_mrpc_server(addr: *const std::os::raw::c_char) -> *mut LocalServer {
+    let address;
+        unsafe {
+        address = std::ffi::CStr::from_ptr(addr).to_string_lossy().into_owned();
+    }
+    let server: std::net::SocketAddr = match address.parse() {
+        Ok(s) => s,
+        Err(_) => panic!("failed to connect"),
+    };
+    Box::into_raw(
+        Box::new(
+            mrpc::stub::LocalServer::bind(server).unwrap()
+        )
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn local_server_serve(l: &mut LocalServer) {
+    smol::block_on(async {
+        l.serve().await.unwrap();
+    });
+}
+
+// INCREMENTER SERVER
+
+pub mod incrementer_server {
+    use super::*;
+    use std::{net::SocketAddr, os::raw::c_char, ffi::CStr};
+    use ::mrpc::stub::{NamedService, Service};
+
+    // in original
+
+    #[mrpc::async_trait]
+    pub trait Incrementer: Send + Sync + 'static {
+        /// increments an int
+        async fn increment(
+            &self,
+            request: ::mrpc::RRef<super::ValueRequest>,
+        ) -> Result<::mrpc::WRef<super::ValueReply>, ::mrpc::Status>;
+    }
+
+    #[derive(Debug)]
+    pub struct IncrementerServer<T: Incrementer> {
+        inner: T,
+    }
+
+    impl<T: Incrementer> IncrementerServer<T> {
+        fn update_protos() -> Result<(), ::mrpc::Error> {
+            let srcs = [include_str!(
+                "../../../../src/phoenix_examples/proto/rpc_int/rpc_int.proto"
+            )];
+            ::mrpc::stub::update_protos(srcs.as_slice())
+        }
+        pub fn new(inner: T) -> Self {
+            Self::update_protos().unwrap();
+            Self { inner }
+        }
+    }
+
+    impl<T: Incrementer> NamedService for IncrementerServer<T> {
+        const SERVICE_ID: u32 = 2056765301u32;
+        const NAME: &'static str = "rpc_int.Incrementer";
+    }
+
+    #[mrpc::async_trait]
+    impl<T: Incrementer> Service for IncrementerServer<T> {
+        async fn call(
+            &self,
+            req_opaque: ::mrpc::MessageErased,
+            read_heap: std::sync::Arc<::mrpc::ReadHeap>,
+        ) -> (::mrpc::WRefOpaque, ::mrpc::MessageErased) {
+            let func_id = req_opaque.meta.func_id;
+            match func_id {
+                3784353755u32 => {
+                    let req = ::mrpc::RRef::new(&req_opaque, read_heap);
+                    let res = self.inner.increment(req).await;
+                    match res {
+                        Ok(reply) => ::mrpc::stub::service_post_handler(reply, &req_opaque),
+                        Err(_status) => {
+                            todo!();
+                        }
+                    }
+                }
+                _ => {
+                    todo!("error handling for unknown func_id: {}", func_id);
+                }
+            }
+        }
+    }
+    // fn add_service<S>(server: LocalServer, S)
+
+    // #[no_mangle]
+    // pub extern "C" fn run(
+    //     addr: *const c_char,
+    //     service: CPPIncrementer,
+    // ) -> u64 {
+    //     let address;
+    //     unsafe {
+    //         address = CStr::from_ptr(addr).to_string_lossy().into_owned();
+    //     }
+    //     let server: SocketAddr = match address.parse() {
+    //         Ok(s) => s,
+    //         Err(_) => return 1,
+    //     };
+    //     smol::block_on(async {
+    //         let mut server = mrpc::stub::LocalServer::bind(server).unwrap();
+    //         server
+    //             .add_service(IncrementerServer::new(service))
+    //             .serve()
+    //             .await
+    //             .unwrap();
+    //         0
+    //     })
+    // }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn add_incrementer_service(l: &mut LocalServer, service: CPPIncrementer) {
+        l.add_service(IncrementerServer::new(service));
+    }
+
+    #[repr(C)]
+    pub struct CPPIncrementer {
+        pub state: *mut std::ffi::c_void,
+        pub increment_impl: extern "C" fn(*mut std::ffi::c_void, *mut RValueRequest) -> *mut WValueReply,
+    }
+
+    // The mut pointer is an opaque reference to the state of an incrementer service, 
+    // and the service implementation is expected to synchronize access to this state
+    unsafe impl Send for CPPIncrementer {}
+    unsafe impl Sync for CPPIncrementer {}
+
+    impl Default for CPPIncrementer {
+        fn default() -> Self {
+            todo!()
+        }
+    }
+
+    #[mrpc::async_trait]
+    impl Incrementer for CPPIncrementer {
+        async fn increment(
+            &self,
+            request: RRef<ValueRequest>,
+        ) -> Result<WRef<ValueReply>, mrpc::Status> {
+
+            let req = Box::into_raw(Box::new(RValueRequest { inner: request}));
+            let rep = (self.increment_impl)(self.state, req);
+
+            Ok( unsafe { (*rep).inner.clone() })
+        }
     }
 }

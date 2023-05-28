@@ -6,7 +6,6 @@ void complete_increment(const RValueReply *reply) {
 }
 
 int main() {
-  initialize();
   IncrementerClient* client = incrementer_client_connect("127.0.0.1:5000");
 
   for (int i = 0; i < 5; i++) {

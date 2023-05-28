@@ -70,7 +70,8 @@ members = [
 ]
 exclude = [
   "3rdparty/prost",
-  "cpp"
+  "cpp",
+  "cppbindgen"
 ]
 
 
