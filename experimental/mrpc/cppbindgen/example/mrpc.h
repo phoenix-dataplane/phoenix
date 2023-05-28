@@ -6,13 +6,30 @@
 
 struct IncrementerClient;
 
+struct LocalServer;
+
+/// A thread-safe reference-counting pointer to the read-only shared memory heap.
+template<typename T = void>
+struct RRef;
+
 struct RValueReply;
 
-struct RValueRequest;
+struct ValueRequest;
+
+/// A thread-safe reference-couting pointer to the writable shared memory heap.
+template<typename T = void>
+struct WRef;
 
 struct WValueReply;
 
-struct WValueRequest;
+using WValueRequest = WRef<ValueRequest>;
+
+using RValueRequest = RRef<ValueRequest>;
+
+struct CPPIncrementer {
+  void *state;
+  WValueReply *(*increment_impl)(void*, RValueRequest*);
+};
 
 extern "C" {
 
@@ -52,12 +69,16 @@ void wvaluereply_set_val(WValueReply *self, uint64_t val);
 
 void wvaluereply_drop(WValueReply *self);
 
-void initialize();
+LocalServer *bind_mrpc_server(const char *addr);
+
+void local_server_serve(LocalServer *l);
 
 IncrementerClient *incrementer_client_connect(const char *dst);
 
 void increment(const IncrementerClient *self,
                const WValueRequest *req,
                void (*callback)(const RValueReply*));
+
+void add_incrementer_service(LocalServer *l, CPPIncrementer service);
 
 } // extern "C"

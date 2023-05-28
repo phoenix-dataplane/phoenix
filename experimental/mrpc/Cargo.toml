@@ -72,6 +72,7 @@ exclude = [
   "3rdparty/prost",
   "cpp",
   "distbenchcpp",
+  "cppbindgen"
 ]
 
 
