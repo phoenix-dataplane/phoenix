@@ -12,7 +12,7 @@ struct LocalServer;
 template<typename T = void>
 struct RRef;
 
-struct RValueReply;
+struct ValueReply;
 
 struct ValueRequest;
 
@@ -20,11 +20,13 @@ struct ValueRequest;
 template<typename T = void>
 struct WRef;
 
-struct WValueReply;
-
 using WValueRequest = WRef<ValueRequest>;
 
 using RValueRequest = RRef<ValueRequest>;
+
+using WValueReply = WRef<ValueReply>;
+
+using RValueReply = RRef<ValueReply>;
 
 struct CPPIncrementer {
   WValueReply *(*increment_impl)(RValueRequest*);
@@ -56,17 +58,23 @@ void wvaluerequest_key_add_byte(WValueRequest *self, uint8_t value);
 
 void wvaluerequest_drop(WValueRequest *self);
 
-WValueReply *new_wvaluereply();
+WValueReply *new_wvalueresponse();
 
-uint64_t rvaluereply_val(const RValueReply *self);
+uint8_t rvalueresponse_key(const RValueReply *self, uintptr_t index);
 
-void rvaluereply_drop(RValueReply *self);
+uintptr_t rvalueresponse_key_size(const RValueReply *self);
 
-uint64_t wvaluereply_val(const WValueReply *self);
+void rvalueresponse_drop(RValueReply *self);
 
-void wvaluereply_set_val(WValueReply *self, uint64_t val);
+uint8_t wvalueresponse_key(const WValueReply *self, uintptr_t index);
 
-void wvaluereply_drop(WValueReply *self);
+uintptr_t wvalueresponse_key_size(const WValueReply *self);
+
+void wvalueresponse_set_key(WValueReply *self, uintptr_t index, uint8_t value);
+
+void wvalueresponse_key_add_byte(WValueReply *self, uint8_t value);
+
+void wvalueresponse_drop(WValueReply *self);
 
 LocalServer *bind_mrpc_server(const char *addr);
 

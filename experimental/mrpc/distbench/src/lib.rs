@@ -118,23 +118,31 @@ impl WValueRequest {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+
+#[derive(Debug, Default, Clone)]
 pub struct ValueReply {
-    pub val: u64,
+    pub response: ::mrpc::alloc::Vec<u8>
 }
 
+#[repr(transparent)]
 pub struct RValueReply {
     inner: RRef<ValueReply>,
 }
 
+// Is there a good way to expose a general WRef API across FFI rather than
+// generating a wrapper per message type?
+#[repr(transparent)]
 pub struct WValueReply {
     inner: WRef<ValueReply>,
 }
 
 #[no_mangle]
-pub extern "C" fn new_wvaluereply() -> *mut WValueReply {
+pub extern "C" fn new_wvalueresponse() -> *mut WValueReply {
+    // wrap wref in box return raw pointer (should later Box::from_raw to drop)
     let res = Box::new(WValueReply {
-        inner: WRef::new(ValueReply { val: 0 }),
+        inner: WRef::new(ValueReply {
+            response: Vec::new(),
+        }),
     });
 
     Box::into_raw(res)
@@ -142,12 +150,17 @@ pub extern "C" fn new_wvaluereply() -> *mut WValueReply {
 
 impl RValueReply {
     #[no_mangle]
-    pub extern "C" fn rvaluereply_val(&self) -> u64 {
-        self.inner.val
+    pub extern "C" fn rvalueresponse_key(&self, index: usize) -> u8 {
+        self.inner.response[index]
     }
 
     #[no_mangle]
-    pub extern "C" fn rvaluereply_drop(&mut self) {
+    pub extern "C" fn rvalueresponse_key_size(&self) -> usize {
+        self.inner.response.len()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn rvalueresponse_drop(&mut self) {
         unsafe {
             drop(Box::from_raw(self));
         }
@@ -156,21 +169,35 @@ impl RValueReply {
 
 impl WValueReply {
     #[no_mangle]
-    pub extern "C" fn wvaluereply_val(&self) -> u64 {
-        self.inner.val
+    pub extern "C" fn wvalueresponse_key(&self, index: usize) -> u8 {
+        self.inner.response[index]
     }
 
     #[no_mangle]
-    pub extern "C" fn wvaluereply_set_val(&mut self, val: u64) {
-        let wr_mut = WRef::<ValueReply>::get_mut(&mut self.inner);
+    pub extern "C" fn wvalueresponse_key_size(&self) -> usize {
+        self.inner.response.len()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn wvalueresponse_set_key(&mut self, index: usize, value: u8) {
+        let wr_mut = WRef::<ValueResponse>::get_mut(&mut self.inner);
         match wr_mut {
-            Some(wr) => wr.val = val,
+            Some(wr) => wr.response[index] = value,
             None => panic!("failed to get mutable wref"),
         }
     }
 
     #[no_mangle]
-    pub extern "C" fn wvaluereply_drop(&mut self) {
+    pub extern "C" fn wvalueresponse_key_add_byte(&mut self, value: u8) {
+        let wr_mut = WRef::<ValueResponse>::get_mut(&mut self.inner);
+        match wr_mut {
+            Some(wr) => wr.response.push(value),
+            None => panic!("failed to get mutable wref"),
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn wvalueresponse_drop(&mut self) {
         unsafe {
             drop(Box::from_raw(self));
         }

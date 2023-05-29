@@ -13,5 +13,5 @@ message ValueRequest {
 }
 
 message ValueReply {
-  uint64 val = 1;
+  bytes response = 1;
 }
