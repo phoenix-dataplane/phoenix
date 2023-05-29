@@ -180,7 +180,7 @@ impl WValueReply {
 
     #[no_mangle]
     pub extern "C" fn wvalueresponse_set_key(&mut self, index: usize, value: u8) {
-        let wr_mut = WRef::<ValueResponse>::get_mut(&mut self.inner);
+        let wr_mut = WRef::<ValueReply>::get_mut(&mut self.inner);
         match wr_mut {
             Some(wr) => wr.response[index] = value,
             None => panic!("failed to get mutable wref"),
@@ -189,7 +189,7 @@ impl WValueReply {
 
     #[no_mangle]
     pub extern "C" fn wvalueresponse_key_add_byte(&mut self, value: u8) {
-        let wr_mut = WRef::<ValueResponse>::get_mut(&mut self.inner);
+        let wr_mut = WRef::<ValueReply>::get_mut(&mut self.inner);
         match wr_mut {
             Some(wr) => wr.response.push(value),
             None => panic!("failed to get mutable wref"),
