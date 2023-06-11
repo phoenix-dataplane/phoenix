@@ -1628,6 +1628,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-nofile-logging"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-null"
 version = "0.1.0"
 dependencies = [
@@ -1819,6 +1827,24 @@ dependencies = [
  "toml",
  "utils",
  "uuid",
+]
+
+[[package]]
+name = "phoenix-nofile-logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "minstant",
+ "nix",
+ "phoenix-api-policy-nofile-logging",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

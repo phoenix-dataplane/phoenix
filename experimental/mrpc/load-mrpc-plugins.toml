@@ -66,3 +66,9 @@ name = "HelloAclSender"
 lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "NofileLogging"
+lib_path = "plugins/libphoenix_nofile_logging.rlib"
+config_string = '''
+'''
