@@ -16,6 +16,15 @@ pub struct RpcMessageTx {
     pub addr_backend: usize,
 }
 
+impl RpcMessageTx {
+    pub fn new(meta_buf_ptr: MetaBufferPtr, addr_backend: usize) -> RpcMessageTx {
+        RpcMessageTx {
+            meta_buf_ptr,
+            addr_backend,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum EngineTxMessage {
     RpcMessage(RpcMessageTx),
