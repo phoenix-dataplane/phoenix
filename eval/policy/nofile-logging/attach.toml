@@ -1,0 +1,31 @@
+addon_engine = "NofileLoggingEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "NofileLoggingEngine",
+        0,
+        0,
+    ],
+    [
+        "NofileLoggingEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "NofileLoggingEngine",
+        0,
+        0,
+    ],
+    [
+        "NofileLoggingEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"
