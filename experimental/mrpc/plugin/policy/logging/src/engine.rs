@@ -202,15 +202,6 @@ impl LoggingEngine {
                     // If I am server: client recevied my response
                     EngineRxMessage::Ack(rpc_id, status) => {
                         // log the info to the file
-                        self.log_file
-                            .write(
-                                format!(
-                                    "Got ack on rx queue, rpc_id {:?}, status: {:?}",
-                                    rpc_id, status
-                                )
-                                .as_bytes(),
-                            )
-                            .expect("error writing to log file");
                         // forward the message
                         self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
                     }
