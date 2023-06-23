@@ -1,11 +1,11 @@
 //! main logic happens here
 use anyhow::{anyhow, Result};
+use chrono::Utc;
 use futures::future::BoxFuture;
+use phoenix_api_policy_logging::control_plane;
 use std::io::Write;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
-
-use phoenix_api_policy_logging::control_plane;
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage};
 
@@ -71,8 +71,8 @@ impl_vertex_for_engine!(LoggingEngine, node);
 
 impl Decompose for LoggingEngine {
     /// flush will be called when we need to clean the transient state before decompose
-    /// # return 
-    /// * `Result<usize>` - number of work drained from tx & rx queue 
+    /// # return
+    /// * `Result<usize>` - number of work drained from tx & rx queue
     fn flush(&mut self) -> Result<usize> {
         let mut work = 0;
         /// drain the rx & tx queue
@@ -86,7 +86,7 @@ impl Decompose for LoggingEngine {
         Ok(work)
     }
 
-    /// template 
+    /// template
     fn decompose(
         self: Box<Self>,
         _shared: &mut SharedStorage,
@@ -156,21 +156,27 @@ impl LoggingEngine {
             Ok(msg) => {
                 match msg {
                     // we care only log RPCs
-                    // other types like ACK should not be logged since they are not 
+                    // other types like ACK should not be logged since they are not
                     // ACKs between Client/Server, but communication between engines
                     // "Real" ACKs are logged in rx logic
                     EngineTxMessage::RpcMessage(msg) => {
-                        
                         // we get the metadata of RPC from the shared memory
                         let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
 
                         // write the metadata into the file
-                        // since meta_ref implements Debug, we can use {:?}  
+                        // since meta_ref implements Debug, we can use {:?}
                         // rather than manully parse the metadata struct
-                        self.log_file
-                            .write(format!("Got message on tx queue: {:?}", meta_ref).as_bytes())
-                            .expect("error writing to log file");
-                        
+                        write!(
+                            self.log_file,
+                            "{}{}{}{}{}\n",
+                            Utc::now(),
+                            format!("{:?}", meta_ref.msg_type),
+                            format!("{:?}", meta_ref.conn_id),
+                            format!("{:?}", meta_ref.conn_id),
+                            format!("{:?}", msg.addr_backend),
+                        )
+                        .unwrap();
+
                         // after logging, we forward the message to the next engine
                         self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
@@ -191,9 +197,9 @@ impl LoggingEngine {
         match self.rx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
-                    // ACK means that 
+                    // ACK means that
                     // If I am client: server received my request
-                    // If I am server: client recevied my response 
+                    // If I am server: client recevied my response
                     EngineRxMessage::Ack(rpc_id, status) => {
                         // log the info to the file
                         self.log_file
