@@ -227,10 +227,6 @@ impl HelloAclSenderEngine {
         // forward all rx msgs
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
-                if let EngineRxMessage::Ack(rpc_id, _status) = m {
-                    // remove private_req
-                    self.outstanding_req_pool.remove(&rpc_id);
-                }
                 self.rx_outputs()[0].send(m)?;
                 return Ok(Progress(1));
             }

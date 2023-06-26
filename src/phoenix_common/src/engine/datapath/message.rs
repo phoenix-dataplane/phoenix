@@ -10,6 +10,13 @@ use super::meta_pool::MetaBufferPtr;
 // TODO(cjr): Should be repr(C)
 
 #[derive(Debug)]
+pub enum RpcMessageGeneral {
+    TxMessage(EngineTxMessage),
+    RxMessage(EngineRxMessage),
+    Pass,
+}
+
+#[derive(Debug)]
 pub struct RpcMessageTx {
     // Each RPC message is assigned a buffer for meta and optionally for its data
     pub meta_buf_ptr: MetaBufferPtr,
