@@ -1596,6 +1596,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-hello-acl"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-hello-acl-receiver"
 version = "0.1.0"
 dependencies = [
@@ -1711,6 +1720,29 @@ dependencies = [
  "phoenix-api",
  "tokio",
  "tracing-core",
+]
+
+[[package]]
+name = "phoenix-hello-acl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-hello-acl",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

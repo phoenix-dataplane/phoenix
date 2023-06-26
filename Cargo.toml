@@ -34,9 +34,7 @@ members = [
   # tools
   "tools/phoenix_cargo",
 ]
-exclude = [
-  "experimental/mrpc",
-]
+exclude = ["experimental/mrpc"]
 
 [workspace.dependencies]
 phoenix-api = { path = "src/phoenix-api" }

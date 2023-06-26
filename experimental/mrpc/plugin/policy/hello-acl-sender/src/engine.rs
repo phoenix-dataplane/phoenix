@@ -165,6 +165,19 @@ fn materialize(msg: &RpcMessageTx) -> Box<hello::HelloRequest> {
 }
 
 #[inline]
+fn nocopy_materialize(msg: &RpcMessageTx) -> &hello::HelloRequest {
+    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
+    let req = unsafe { req_ptr.as_ref().unwrap() };
+    // returns a private_req
+    return req;
+}
+
+fn hello_request_name_readonly(req: &hello::HelloRequest) -> &[u8] {
+    let buf = &req.name as &[u8];
+    buf
+}
+
+#[inline]
 fn should_block(req: &hello::HelloRequest) -> bool {
     let buf = &req.name as &[u8];
     //let name = String::from_utf8_lossy(buf);
@@ -179,16 +192,11 @@ impl HelloAclSenderEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        // 1 clone
-                        let private_req = materialize(&msg);
-                        // 2 check should block
-                        // yes: ACK with error, drop the data
-                        // no: pass the cloned msg to the next engine, who drops the data?
-                        // Should we Ack right after clone?
+                        let req = nocopy_materialize(&msg);
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                         let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
                         let rpc_id = RpcId::new(conn_id, call_id);
-                        if should_block(&private_req) {
+                        if should_block(req) {
                             let error = EngineRxMessage::Ack(
                                 rpc_id,
                                 TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
@@ -196,12 +204,10 @@ impl HelloAclSenderEngine {
                             self.rx_outputs()[0].send(error).unwrap_or_else(|e| {
                                 log::warn!("error when bubbling up the error, send failed e: {}", e)
                             });
-                            drop(private_req);
                         } else {
                             // We will release the request on private heap after the RPC adapter
                             // passes us an Ack.
-                            let raw_ptr: *const hello::HelloRequest = &*private_req;
-                            self.outstanding_req_pool.insert(rpc_id, private_req);
+                            let raw_ptr: *const hello::HelloRequest = req;
                             let new_msg = RpcMessageTx {
                                 meta_buf_ptr: msg.meta_buf_ptr,
                                 addr_backend: raw_ptr.addr(),
