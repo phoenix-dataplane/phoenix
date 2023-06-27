@@ -1,4 +1,5 @@
 //! This engine can only be placed at the sender side for now.
+use std::f32::consts::E;
 use std::num::NonZeroU32;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
@@ -28,6 +29,11 @@ pub mod hello {
     include!("rpc_hello.rs");
 }
 
+pub struct AclTable {
+    pub name: String,
+    pub permission: String,
+}
+
 pub(crate) struct HelloAclSenderEngine {
     pub(crate) node: DataPathNode,
 
@@ -40,6 +46,7 @@ pub(crate) struct HelloAclSenderEngine {
     // pub(crate) filter: FnvHashSet<u32>,
     // Number of tokens to add for each seconds.
     pub(crate) config: HelloAclSenderConfig,
+    pub(crate) acl_table: Vec<AclTable>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,11 +131,22 @@ impl HelloAclSenderEngine {
             .downcast::<HelloAclSenderConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
+        let acl_table = vec![
+            AclTable {
+                name: "Apple".to_string(),
+                permission: "N".to_string(),
+            },
+            AclTable {
+                name: "Banana".to_string(),
+                permission: "Y".to_string(),
+            },
+        ];
         let engine = HelloAclSenderEngine {
             node,
             indicator: Default::default(),
             outstanding_req_pool,
             config,
+            acl_table,
         };
         Ok(engine)
     }
@@ -177,13 +195,6 @@ fn hello_request_name_readonly(req: &hello::HelloRequest) -> &[u8] {
     buf
 }
 
-#[inline]
-fn should_block(req: &hello::HelloRequest) -> bool {
-    let buf = &req.name as &[u8];
-    //let name = String::from_utf8_lossy(buf);
-    //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    buf == b"Apple"
-}
 impl HelloAclSenderEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
@@ -196,23 +207,27 @@ impl HelloAclSenderEngine {
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                         let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
                         let rpc_id = RpcId::new(conn_id, call_id);
-                        if should_block(req) {
-                            let error = EngineRxMessage::Ack(
-                                rpc_id,
-                                TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
-                            );
-                            self.rx_outputs()[0].send(error).unwrap_or_else(|e| {
-                                log::warn!("error when bubbling up the error, send failed e: {}", e)
-                            });
-                        } else {
-                            // We will release the request on private heap after the RPC adapter
-                            // passes us an Ack.
-                            let raw_ptr: *const hello::HelloRequest = req;
-                            let new_msg = RpcMessageTx {
-                                meta_buf_ptr: msg.meta_buf_ptr,
-                                addr_backend: raw_ptr.addr(),
-                            };
-                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(new_msg))?;
+                        for acl_rec in &self.acl_table {
+                            if String::from_utf8_lossy(&req.name) == acl_rec.name {
+                                if acl_rec.permission == "N" {
+                                    let error = EngineRxMessage::Ack(
+                                        rpc_id,
+                                        TransportStatus::Error(unsafe {
+                                            NonZeroU32::new_unchecked(403)
+                                        }),
+                                    );
+                                    self.rx_outputs()[0].send(error)?;
+                                } else {
+                                    let raw_ptr: *const hello::HelloRequest = req;
+                                    let new_msg = RpcMessageTx {
+                                        meta_buf_ptr: msg.meta_buf_ptr,
+                                        addr_backend: raw_ptr.addr(),
+                                    };
+                                    self.tx_outputs()[0]
+                                        .send(EngineTxMessage::RpcMessage(new_msg))?;
+                                }
+                                break;
+                            }
                         }
                     }
                     // XXX TODO(cjr): it is best not to reorder the message
