@@ -78,3 +78,9 @@ name = "NofileLogging"
 lib_path = "plugins/libphoenix_nofile_logging.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "Fault"
+lib_path = "plugins/libphoenix_fault.rlib"
+config_string = '''
+'''
