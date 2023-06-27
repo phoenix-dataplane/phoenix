@@ -84,3 +84,9 @@ name = "Fault"
 lib_path = "plugins/libphoenix_fault.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "Fault2"
+lib_path = "plugins/libphoenix_fault2.rlib"
+config_string = '''
+'''
