@@ -1,6 +1,6 @@
-name = "policy/ratelimit/rpc_bench_tput_32b"
+name = "policy/fault2/rpc_bench_tput_32b"
 description = "Run rpc_bench benchmark"
-group = "ratelimit"
+group = "fault2"
 timeout_secs = 70
 
 [[worker]]
@@ -11,5 +11,5 @@ args = "--port 5002 -l info --transport tcp"
 [[worker]]
 host = "danyang-04"
 bin = "rpc_bench_client"
-args = "--transport tcp -c rdma0.danyang-06 --concurrency 128 --req-size 32 --duration 65 -i 1 --port 5002 -l info"
+args = "--transport tcp -c rdma0.danyang-06 --concurrency 128 --req-size 32 --duration 65 -i 1 --port 5002 -l error"
 dependencies = [0]

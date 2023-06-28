@@ -1,6 +1,6 @@
-name = "policy/ratelimit/rpc_bench_tput_32b"
+name = "policy/logging/rpc_bench_tput_32b"
 description = "Run rpc_bench benchmark"
-group = "ratelimit"
+group = "logging"
 timeout_secs = 70
 
 [[worker]]
