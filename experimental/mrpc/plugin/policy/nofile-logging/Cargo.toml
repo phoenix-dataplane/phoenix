@@ -9,6 +9,10 @@ edition = "2021"
 [dependencies]
 phoenix_common.workspace = true
 phoenix-api-policy-nofile-logging.workspace = true
+mrpc-marshal.workspace = true
+mrpc-derive.workspace = true
+shm.workspace = true
+phoenix-api = { workspace = true, features = ["mrpc"] }
 
 futures.workspace = true
 minstant.workspace = true
@@ -20,3 +24,5 @@ nix.workspace = true
 toml = { workspace = true, features = ["preserve_order"] }
 bincode.workspace = true
 chrono.workspace = true
+itertools.workspace = true
+rand.workspace = true

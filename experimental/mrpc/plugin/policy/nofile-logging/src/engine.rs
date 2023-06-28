@@ -1,28 +1,44 @@
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
+use phoenix_api::rpc::{RpcId, TransportStatus};
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
+use std::num::NonZeroU32;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
 
 use phoenix_api_policy_nofile_logging::control_plane;
 
-use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage};
+use phoenix_common::engine::datapath::message::{
+    EngineRxMessage, EngineTxMessage, RpcMessageGeneral,
+};
 
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
+use phoenix_common::log;
 use phoenix_common::module::Version;
+
+use phoenix_common::engine::datapath::RpcMessageTx;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
 use crate::config::{create_log_file, NofileLoggingConfig};
 
 use chrono::prelude::*;
-use phoenix_common::engine::datapath::RpcMessageTx;
-///use itertools::iproduct;
+use itertools::iproduct;
+use rand::Rng;
+
+pub mod hello {
+    include!("proto.rs");
+}
+
+fn hello_request_name_readonly(req: &hello::HelloRequest) -> String {
+    let buf = &req.name as &[u8];
+    String::from_utf8_lossy(buf).to_string().clone()
+}
 
 pub struct struct_rpc_events_file {
     pub timestamp: DateTime<Utc>,
@@ -165,6 +181,13 @@ impl NofileLoggingEngine {
     }
 }
 
+#[inline]
+fn materialize_nocopy(msg: &RpcMessageTx) -> &hello::HelloRequest {
+    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
+    let req = unsafe { req_ptr.as_ref().unwrap() };
+    return req;
+}
+
 impl NofileLoggingEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
@@ -174,18 +197,18 @@ impl NofileLoggingEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-                        // TODO! write to file
                         let mut input = Vec::new();
                         input.push(msg);
                         for event in input
                             .iter()
                             .map(|req| {
+                                let rpc_message = materialize_nocopy(req);
                                 struct_rpc_events_file::new(
                                     Utc::now(),
                                     format!("{:?}", meta_ref.msg_type),
                                     format!("{:?}", meta_ref.conn_id),
                                     format!("{:?}", meta_ref.conn_id),
-                                    format!("{}", req.addr_backend.clone()),
+                                    format!("{}", hello_request_name_readonly(rpc_message)),
                                 )
                             })
                             .collect::<Vec<_>>()
@@ -195,15 +218,25 @@ impl NofileLoggingEngine {
                         let output: Vec<_> = input
                             .iter()
                             .map(|req| {
-                                RpcMessageTx::new(
-                                    req.meta_buf_ptr.clone(),
-                                    req.addr_backend.clone(),
-                                )
+                                RpcMessageGeneral::TxMessage(EngineTxMessage::RpcMessage(
+                                    RpcMessageTx::new(
+                                        req.meta_buf_ptr.clone(),
+                                        req.addr_backend.clone(),
+                                    ),
+                                ))
                             })
                             .collect::<Vec<_>>();
 
                         for msg in output {
-                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                            match msg {
+                                RpcMessageGeneral::TxMessage(msg) => {
+                                    self.tx_outputs()[0].send(msg)?;
+                                }
+                                RpcMessageGeneral::RxMessage(msg) => {
+                                    self.rx_outputs()[0].send(msg)?;
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     m => self.tx_outputs()[0].send(m)?,
@@ -220,7 +253,6 @@ impl NofileLoggingEngine {
             Ok(msg) => {
                 match msg {
                     EngineRxMessage::Ack(rpc_id, status) => {
-                        // TODO! write to file
                         // todo
                         self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
                     }

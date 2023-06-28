@@ -8,10 +8,11 @@ use phoenix_common::storage::ResourceCollection;
 
 use super::engine::NofileLoggingEngine;
 use crate::config::{create_log_file, NofileLoggingConfig};
+use crate::engine::struct_rpc_events_file;
 
 use chrono::prelude::*;
-use phoenix_common::engine::datapath::RpcMessageTx;
-///use itertools::iproduct;
+use itertools::iproduct;
+use rand::Rng;
 
 pub(crate) struct NofileLoggingEngineBuilder {
     node: DataPathNode,

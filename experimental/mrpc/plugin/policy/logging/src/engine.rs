@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use futures::future::BoxFuture;
 use phoenix_api_policy_logging::control_plane;
+use phoenix_common::engine::datapath::RpcMessageTx;
 use std::io::Write;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
@@ -18,6 +19,10 @@ use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
 use crate::config::{create_log_file, LoggingConfig};
+
+pub mod hello {
+    include!("proto.rs");
+}
 
 /// The internal state of an logging engine,
 /// it contains some template fields like `node`, `indicator`,
@@ -143,6 +148,13 @@ impl LoggingEngine {
     }
 }
 
+#[inline]
+fn materialize_nocopy(msg: &RpcMessageTx) -> &hello::HelloRequest {
+    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
+    let req = unsafe { req_ptr.as_ref().unwrap() };
+    return req;
+}
+
 impl LoggingEngine {
     /// main logic about handling rx & tx input messages
     /// note that a logging engine can be deployed in client-side or server-side
@@ -162,7 +174,7 @@ impl LoggingEngine {
                     EngineTxMessage::RpcMessage(msg) => {
                         // we get the metadata of RPC from the shared memory
                         let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-
+                        let rpc_message = materialize_nocopy(&msg);
                         // write the metadata into the file
                         // since meta_ref implements Debug, we can use {:?}
                         // rather than manully parse the metadata struct
@@ -173,7 +185,7 @@ impl LoggingEngine {
                             format!("{:?}", meta_ref.msg_type),
                             format!("{:?}", meta_ref.conn_id),
                             format!("{:?}", meta_ref.conn_id),
-                            format!("{:?}", msg.addr_backend),
+                            format!("{}", String::from_utf8_lossy(&rpc_message.name)),
                         )
                         .unwrap();
 

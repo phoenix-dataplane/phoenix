@@ -168,9 +168,9 @@ async fn run_bench(
                 }
 
                 let Call { ts, req_size, result: resp } = resp.unwrap();
-                if let Err(status) = resp {
-                    tracing::warn!("failed request with: {}", status);
-                }
+                // if let Err(status) = resp {
+                //     tracing::warn!("failed request with: {}", status);
+                // }
 
                 if rcnt >= args.warmup {
                     let dura = ts.elapsed();

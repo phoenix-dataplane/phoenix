@@ -10,3 +10,5 @@ edition = "2021"
 phoenix-api.workspace = true
 
 serde.workspace = true
+itertools.workspace = true
+rand.workspace = true
