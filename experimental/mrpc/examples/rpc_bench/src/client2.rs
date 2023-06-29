@@ -196,10 +196,12 @@ async fn run_bench(
                     if rcnt>args.warmup{
                         if args.log_latency {
                             my_print!(
-                                "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                "Thread {}, {} rps, {} Gb/s, avg: {:?}, median: {:?}, p95: {:?}, p99: {:?}",
                                 tid,
                                 rps,
                                 bw,
+                                Duration::from_nanos(hist.mean() as u64),
+                                Duration::from_nanos(hist.value_at_percentile(50.0)),
                                 Duration::from_nanos(hist.value_at_percentile(95.0)),
                                 Duration::from_nanos(hist.value_at_percentile(99.0)),
                             );
@@ -226,10 +228,12 @@ async fn run_bench(
                     if rcnt>args.warmup{
                         if args.log_latency {
                             my_print!(
-                                "Thread {}, {} rps, {} Gb/s, p95: {:?}, p99: {:?}",
+                                "Thread {}, {} rps, {} Gb/s, avg: {:?}, median: {:?}, p95: {:?}, p99: {:?}",
                                 tid,
                                 rps,
                                 bw,
+                                Duration::from_nanos(hist.mean() as u64),
+                                Duration::from_nanos(hist.value_at_percentile(50.0)),
                                 Duration::from_nanos(hist.value_at_percentile(95.0)),
                                 Duration::from_nanos(hist.value_at_percentile(99.0)),
                             );
@@ -256,7 +260,7 @@ struct Workload {
 }
 
 impl Workload {
-    fn new(args: &Args) -> Self {
+    fn new(_args: &Args) -> Self {
         let req1 = HelloRequest {
             name: "Apple".into(),
         };
@@ -272,7 +276,9 @@ impl Workload {
     }
 
     fn next_request(&self, scnt: usize) -> (WRef<HelloRequest>, usize) {
-        let index = scnt % self.reqs.len();
+        // 1% Apple, 99% Banana
+        let index = (scnt % 100 >= 1) as usize;
+        // let index = scnt % self.reqs.len();
         (WRef::clone(&self.reqs[index]), self.req_sizes[index])
     }
 }

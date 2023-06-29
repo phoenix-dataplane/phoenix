@@ -24,7 +24,7 @@ impl FaultEngineBuilder {
     }
     // TODO! LogFile
     fn build(self) -> Result<FaultEngine> {
-        let mut var_probability = 0.2;
+        let var_probability = 0.01;
 
         Ok(FaultEngine {
             node: self.node,
