@@ -58,6 +58,7 @@ members = [
   "phoenix-api/policy/nofile-logging",
   "phoenix-api/policy/fault",
   "phoenix-api/policy/fault2",
+  "phoenix-api/policy/delay",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/rpc_adapter",
@@ -74,6 +75,7 @@ members = [
   "plugin/policy/nofile-logging",
   "plugin/policy/fault",
   "plugin/policy/fault2",
+  "plugin/policy/delay",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -101,6 +103,7 @@ phoenix-api-policy-hello-acl = { path = "phoenix-api/policy/hello-acl" }
 phoenix-api-policy-nofile-logging = { path = "phoenix-api/policy/nofile-logging" }
 phoenix-api-policy-fault = { path = "phoenix-api/policy/fault" }
 phoenix-api-policy-fault2 = { path = "phoenix-api/policy/fault2" }
+phoenix-api-policy-delay = { path = "phoenix-api/policy/delay" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }

@@ -1596,6 +1596,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-delay"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-fault"
 version = "0.1.0"
 dependencies = [
@@ -1742,6 +1752,30 @@ dependencies = [
  "phoenix-api",
  "tokio",
  "tracing-core",
+]
+
+[[package]]
+name = "phoenix-delay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-delay",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
