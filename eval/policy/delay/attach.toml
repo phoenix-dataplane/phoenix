@@ -1,32 +1,9 @@
 addon_engine = "DelayEngine"
 tx_channels_replacements = [
-    [
-        "MrpcEngine",
-        "DelayEngine",
-        0,
-        0,
-    ],
-    [
-        "DelayEngine",
-        "TcpRpcAdapterEngine",
-        0,
-        0,
-    ],
+    ["MrpcEngine", "DelayEngine", 0, 0],
+    ["DelayEngine", "TcpRpcAdapterEngine", 0, 0],
 ]
-rx_channels_replacements = [
-    [
-        "TcpRpcAdapterEngine",
-        "DelayEngine",
-        0,
-        0,
-    ],
-    [
-        "DelayEngine",
-        "MrpcEngine",
-        0,
-        0,
-    ],
-]
+rx_channels_replacements = []
 group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "attach"
 config_string = '''

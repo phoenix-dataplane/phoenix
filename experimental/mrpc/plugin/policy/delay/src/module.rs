@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
 
@@ -7,11 +9,7 @@ use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
 use super::engine::DelayEngine;
-use crate::config::{create_log_file, DelayConfig};
-
-use chrono::prelude::*;
-use itertools::iproduct;
-use rand::Rng;
+use crate::config::DelayConfig;
 
 pub(crate) struct DelayEngineBuilder {
     node: DataPathNode,
@@ -24,13 +22,13 @@ impl DelayEngineBuilder {
     }
     // TODO! LogFile
     fn build(self) -> Result<DelayEngine> {
-        let mut var_probability = 0.2;
-
+        let var_probability = 0.2;
         Ok(DelayEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
             var_probability,
+            queue: VecDeque::new(),
         })
     }
 }

@@ -1,44 +1,27 @@
-use anyhow::{anyhow, Result};
-use futures::future::BoxFuture;
-use phoenix_api::rpc::{RpcId, TransportStatus};
-use std::fmt;
-use std::fs::File;
-use std::io::Write;
-use std::num::NonZeroU32;
+use std::collections::VecDeque;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
-use std::{thread, time};
+
+use anyhow::{anyhow, Result};
+use futures::future::BoxFuture;
+use minstant::Instant;
 
 use phoenix_api_policy_delay::control_plane;
 
-use phoenix_common::engine::datapath::message::{
-    EngineRxMessage, EngineTxMessage, RpcMessageGeneral,
-};
-
+use phoenix_common::engine::datapath::message::{EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
-use phoenix_common::log;
 use phoenix_common::module::Version;
-
-use phoenix_common::engine::datapath::RpcMessageTx;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::DatapathError;
-use crate::config::{create_log_file, DelayConfig};
+use crate::config::DelayConfig;
 
-use chrono::prelude::*;
-use itertools::iproduct;
-use rand::Rng;
-
-pub mod hello {
-    include!("proto.rs");
-}
-
-fn hello_request_name_readonly(req: &hello::HelloRequest) -> String {
-    let buf = &req.name as &[u8];
-    String::from_utf8_lossy(buf).to_string().clone()
+pub(crate) struct DelayRpcInfo {
+    pub(crate) msg: RpcMessageTx,
+    pub(crate) timestamp: Instant,
 }
 
 pub(crate) struct DelayEngine {
@@ -46,6 +29,8 @@ pub(crate) struct DelayEngine {
     pub(crate) indicator: Indicator,
     pub(crate) config: DelayConfig,
     pub(crate) var_probability: f32,
+    // The queue to buffer delayed requests.
+    pub(crate) queue: VecDeque<DelayRpcInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,10 +72,15 @@ impl_vertex_for_engine!(DelayEngine, node);
 impl Decompose for DelayEngine {
     fn flush(&mut self) -> Result<usize> {
         let mut work = 0;
-        while !self.tx_inputs()[0].is_empty() || !self.rx_inputs()[0].is_empty() {
+        while !self.tx_inputs()[0].is_empty() {
             if let Progress(n) = self.check_input_queue()? {
                 work += n;
             }
+        }
+        while !self.queue.is_empty() {
+            let DelayRpcInfo { msg, .. } = self.queue.pop_front().unwrap();
+            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+            work += 1;
         }
         Ok(work)
     }
@@ -103,6 +93,11 @@ impl Decompose for DelayEngine {
         let engine = *self;
         let mut collections = ResourceCollection::with_capacity(4);
         collections.insert("config".to_string(), Box::new(engine.config));
+        collections.insert(
+            "var_probability".to_string(),
+            Box::new(engine.var_probability),
+        );
+        collections.insert("queue".to_string(), Box::new(engine.queue));
         (collections, engine.node)
     }
 }
@@ -118,13 +113,19 @@ impl DelayEngine {
             .unwrap()
             .downcast::<DelayConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let mut var_probability = 0.2;
+        let var_probability = 0.2;
+        let queue = *local
+            .remove("queue")
+            .unwrap()
+            .downcast::<VecDeque<DelayRpcInfo>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = DelayEngine {
             node,
             indicator: Default::default(),
             config,
             var_probability,
+            queue,
         };
         Ok(engine)
     }
@@ -141,20 +142,27 @@ impl DelayEngine {
                     Status::Disconnected => return Ok(()),
                 }
             }
+            self.check_delay_buffer()?;
             self.indicator.set_nwork(work);
             future::yield_now().await;
         }
     }
 }
 
-#[inline]
-fn materialize_nocopy(msg: &RpcMessageTx) -> &hello::HelloRequest {
-    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
-    let req = unsafe { req_ptr.as_ref().unwrap() };
-    return req;
-}
-
 impl DelayEngine {
+    fn check_delay_buffer(&mut self) -> Result<(), DatapathError> {
+        while !self.queue.is_empty() {
+            let oldest_msg = self.queue.pop_front().unwrap();
+            if oldest_msg.timestamp.elapsed().as_millis() > 100 {
+                self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(oldest_msg.msg))?;
+            } else {
+                self.queue.push_front(oldest_msg);
+                break;
+            }
+        }
+        Ok(())
+    }
+
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 
@@ -163,10 +171,14 @@ impl DelayEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         if rand::random::<f32>() < self.var_probability {
-                            let duration = time::Duration::from_millis(100);
-                            thread::sleep(duration);
+                            let delay_msg = DelayRpcInfo {
+                                msg: msg,
+                                timestamp: Instant::now(),
+                            };
+                            self.queue.push_back(delay_msg);
+                        } else {
+                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                         }
-                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
                     m => self.tx_outputs()[0].send(m)?,
                 }
@@ -178,25 +190,6 @@ impl DelayEngine {
             }
         }
 
-        match self.rx_inputs()[0].try_recv() {
-            Ok(msg) => {
-                match msg {
-                    EngineRxMessage::Ack(rpc_id, status) => {
-                        // todo
-                        self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
-                    }
-                    EngineRxMessage::RpcMessage(msg) => {
-                        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
-                    }
-                    m => self.rx_outputs()[0].send(m)?,
-                }
-                return Ok(Progress(1));
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                return Ok(Status::Disconnected);
-            }
-        }
         Ok(Progress(0))
     }
 }
