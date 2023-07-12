@@ -95,4 +95,6 @@ config_string = '''
 name = "Delay"
 lib_path = "plugins/libphoenix_delay.rlib"
 config_string = '''
+delay_probability = 0.2
+delay_ms = 100
 '''

@@ -28,7 +28,10 @@ pub(crate) struct DelayEngine {
     pub(crate) node: DataPathNode,
     pub(crate) indicator: Indicator,
     pub(crate) config: DelayConfig,
-    pub(crate) var_probability: f32,
+    // The probability of delaying an RPC.
+    pub(crate) delay_probability: f32,
+    // Delaying time (in ms).
+    pub(crate) delay_ms: u64,
     // The queue to buffer delayed requests.
     pub(crate) queue: VecDeque<DelayRpcInfo>,
 }
@@ -59,8 +62,11 @@ impl Engine for DelayEngine {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         match request {
-            control_plane::Request::NewConfig() => {
-                self.config = DelayConfig {};
+            control_plane::Request::NewConfig(delay_probability, delay_ms) => {
+                self.config = DelayConfig {
+                    delay_probability,
+                    delay_ms,
+                };
             }
         }
         Ok(())
@@ -94,9 +100,10 @@ impl Decompose for DelayEngine {
         let mut collections = ResourceCollection::with_capacity(4);
         collections.insert("config".to_string(), Box::new(engine.config));
         collections.insert(
-            "var_probability".to_string(),
-            Box::new(engine.var_probability),
+            "delay_probability".to_string(),
+            Box::new(engine.delay_probability),
         );
+        collections.insert("delay_ms".to_string(), Box::new(engine.delay_ms));
         collections.insert("queue".to_string(), Box::new(engine.queue));
         (collections, engine.node)
     }
@@ -113,7 +120,16 @@ impl DelayEngine {
             .unwrap()
             .downcast::<DelayConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let var_probability = 0.2;
+        let delay_probability = *local
+            .remove("delay_probability")
+            .unwrap()
+            .downcast::<f32>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+        let delay_ms = *local
+            .remove("delay_ms")
+            .unwrap()
+            .downcast::<u64>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
         let queue = *local
             .remove("queue")
             .unwrap()
@@ -124,7 +140,8 @@ impl DelayEngine {
             node,
             indicator: Default::default(),
             config,
-            var_probability,
+            delay_probability,
+            delay_ms,
             queue,
         };
         Ok(engine)
@@ -153,7 +170,7 @@ impl DelayEngine {
     fn check_delay_buffer(&mut self) -> Result<(), DatapathError> {
         while !self.queue.is_empty() {
             let oldest_msg = self.queue.pop_front().unwrap();
-            if oldest_msg.timestamp.elapsed().as_millis() > 100 {
+            if oldest_msg.timestamp.elapsed().as_millis() as u64 > self.delay_ms {
                 self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(oldest_msg.msg))?;
             } else {
                 self.queue.push_front(oldest_msg);
@@ -170,7 +187,7 @@ impl DelayEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        if rand::random::<f32>() < self.var_probability {
+                        if rand::random::<f32>() < self.delay_probability {
                             let delay_msg = DelayRpcInfo {
                                 msg: msg,
                                 timestamp: Instant::now(),

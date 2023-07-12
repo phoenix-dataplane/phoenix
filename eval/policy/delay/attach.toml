@@ -7,4 +7,6 @@ rx_channels_replacements = []
 group = ["MrpcEngine", "TcpRpcAdapterEngine"]
 op = "attach"
 config_string = '''
+delay_probability = 0.2
+delay_ms = 100
 '''

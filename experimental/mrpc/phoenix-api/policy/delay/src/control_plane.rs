@@ -4,7 +4,7 @@ type IResult<T> = Result<T, phoenix_api::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
-    NewConfig(),
+    NewConfig(f32, u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

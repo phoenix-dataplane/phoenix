@@ -1,8 +1,20 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct DelayConfig {}
+pub struct DelayConfig {
+    pub delay_probability: f32,
+    pub delay_ms: u64,
+}
+
+impl Default for DelayConfig {
+    fn default() -> Self {
+        DelayConfig {
+            delay_probability: 0.2,
+            delay_ms: 100,
+        }
+    }
+}
 
 impl DelayConfig {
     /// Get config from toml file

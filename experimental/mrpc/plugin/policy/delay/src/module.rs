@@ -22,12 +22,12 @@ impl DelayEngineBuilder {
     }
     // TODO! LogFile
     fn build(self) -> Result<DelayEngine> {
-        let var_probability = 0.2;
         Ok(DelayEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
-            var_probability,
+            delay_probability: self.config.delay_probability as _,
+            delay_ms: self.config.delay_ms as _,
             queue: VecDeque::new(),
         })
     }
