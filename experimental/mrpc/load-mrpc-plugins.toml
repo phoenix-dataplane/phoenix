@@ -90,3 +90,11 @@ name = "Fault2"
 lib_path = "plugins/libphoenix_fault2.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "Delay"
+lib_path = "plugins/libphoenix_delay.rlib"
+config_string = '''
+delay_probability = 0.2
+delay_ms = 100
+'''
