@@ -24,7 +24,7 @@ impl Fault2EngineBuilder {
     }
     // TODO! LogFile
     fn build(self) -> Result<Fault2Engine> {
-        let mut var_probability = 0.2;
+        let var_probability = 0.01;
 
         Ok(Fault2Engine {
             node: self.node,

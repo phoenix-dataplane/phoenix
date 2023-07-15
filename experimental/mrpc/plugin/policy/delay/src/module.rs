@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
 
@@ -6,51 +8,47 @@ use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
-use super::engine::FaultEngine;
-use crate::config::{create_log_file, FaultConfig};
+use super::engine::DelayEngine;
+use crate::config::DelayConfig;
 
-use chrono::prelude::*;
-use itertools::iproduct;
-use rand::Rng;
-
-pub(crate) struct FaultEngineBuilder {
+pub(crate) struct DelayEngineBuilder {
     node: DataPathNode,
-    config: FaultConfig,
+    config: DelayConfig,
 }
 
-impl FaultEngineBuilder {
-    fn new(node: DataPathNode, config: FaultConfig) -> Self {
-        FaultEngineBuilder { node, config }
+impl DelayEngineBuilder {
+    fn new(node: DataPathNode, config: DelayConfig) -> Self {
+        DelayEngineBuilder { node, config }
     }
     // TODO! LogFile
-    fn build(self) -> Result<FaultEngine> {
-        let var_probability = 0.01;
-
-        Ok(FaultEngine {
+    fn build(self) -> Result<DelayEngine> {
+        Ok(DelayEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
-            var_probability,
+            delay_probability: self.config.delay_probability as _,
+            delay_ms: self.config.delay_ms as _,
+            queue: VecDeque::new(),
         })
     }
 }
 
-pub struct FaultAddon {
-    config: FaultConfig,
+pub struct DelayAddon {
+    config: DelayConfig,
 }
 
-impl FaultAddon {
-    pub const FAULT_ENGINE: EngineType = EngineType("FaultEngine");
-    pub const ENGINES: &'static [EngineType] = &[FaultAddon::FAULT_ENGINE];
+impl DelayAddon {
+    pub const DELAY_ENGINE: EngineType = EngineType("DelayEngine");
+    pub const ENGINES: &'static [EngineType] = &[DelayAddon::DELAY_ENGINE];
 }
 
-impl FaultAddon {
-    pub fn new(config: FaultConfig) -> Self {
-        FaultAddon { config }
+impl DelayAddon {
+    pub fn new(config: DelayConfig) -> Self {
+        DelayAddon { config }
     }
 }
 
-impl PhoenixAddon for FaultAddon {
+impl PhoenixAddon for DelayAddon {
     fn check_compatibility(&self, _prev: Option<&Version>) -> bool {
         true
     }
@@ -66,7 +64,7 @@ impl PhoenixAddon for FaultAddon {
     fn migrate(&mut self, _prev_addon: Box<dyn PhoenixAddon>) {}
 
     fn engines(&self) -> &[EngineType] {
-        FaultAddon::ENGINES
+        DelayAddon::ENGINES
     }
 
     fn update_config(&mut self, config: &str) -> Result<()> {
@@ -80,11 +78,11 @@ impl PhoenixAddon for FaultAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != FaultAddon::FAULT_ENGINE {
+        if ty != DelayAddon::DELAY_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let builder = FaultEngineBuilder::new(node, self.config);
+        let builder = DelayEngineBuilder::new(node, self.config);
         let engine = builder.build()?;
         Ok(Box::new(engine))
     }
@@ -96,11 +94,11 @@ impl PhoenixAddon for FaultAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != FaultAddon::FAULT_ENGINE {
+        if ty != DelayAddon::DELAY_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
-        let engine = FaultEngine::restore(local, node, prev_version)?;
+        let engine = DelayEngine::restore(local, node, prev_version)?;
         Ok(Box::new(engine))
     }
 }

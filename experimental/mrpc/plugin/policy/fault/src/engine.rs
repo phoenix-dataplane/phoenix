@@ -117,7 +117,7 @@ impl FaultEngine {
             .unwrap()
             .downcast::<FaultConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
-        let mut var_probability = 0.2;
+        let var_probability = 0.01;
 
         let engine = FaultEngine {
             node,

@@ -191,7 +191,7 @@ impl HelloAclEngine {
                                 let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
                                 let rpc_id = RpcId::new(conn_id, call_id);
                                 if hello_request_name_readonly(rpc_message) == join.name {
-                                    if join.permission == "Y" {
+                                    if join.permission == "N" {
                                         let error = EngineRxMessage::Ack(
                                             rpc_id,
                                             TransportStatus::Error(unsafe {
