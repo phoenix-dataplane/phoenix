@@ -18,6 +18,28 @@ dependencies = [
     "build-mrpc-examples",
     "run-phoenixos",
 ]
+[tasks.build-mrpc-plugin-single]
+description = '''
+Build specified plugins by package name.
+If no argument is provided, build all plugins in this workspace.
+'''
+# cargo make build-plugins [package-name]*
+command = "${TARGET_DIR}/release/phoenix_cargo"
+args = [
+    "--compile-log",
+    "${PHOENIX_COMPILE_LOG}",
+    "--host-dep",
+    "${HOST_DEP}",
+    "--",
+    "build",
+    "--release",
+    "--target-dir",
+    "${PHOENIX_TARGET_DIR}",
+    "--manifest-path",
+    "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
+    "-p",
+    "phoenix-${@}",
+]
 
 [tasks.build-mrpc-plugins]
 description = '''
@@ -39,7 +61,7 @@ args = [
     "--manifest-path",
     "${PROJECT_ROOT}/experimental/mrpc/Cargo.toml",
     "-p",
-    "phoenix-${@}",
+    "phoenix-*",
 ]
 # dependencies = ["remove-fingerprint4"]
 
