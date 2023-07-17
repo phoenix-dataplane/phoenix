@@ -55,3 +55,103 @@ lib_path = "plugins/libphoenix_salloc.rlib"
 # requests_per_sec = 1000
 # bucket_size = 1000
 # '''
+[[modules]]
+name = "Mrpc"
+lib_path = "plugins/libphoenix_mrpc.rlib"
+config_string = '''
+prefix = "/tmp/phoenix"
+engine_basename = "mrpc-engine"
+build_cache = "/tmp/phoenix/build-cache"
+transport = "Rdma"
+nic_index = 0
+'''
+
+[[modules]]
+name = "RpcAdapter"
+lib_path = "plugins/libphoenix_rpc_adapter.rlib"
+config_string = '''
+enable_scheduler = false
+'''
+
+
+[[modules]]
+name = "TcpRpcAdapter"
+lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
+
+
+[[addons]]
+name = "RateLimit"
+lib_path = "plugins/libphoenix_ratelimit.rlib"
+config_string = '''
+requests_per_sec = 1000
+bucket_size = 1000
+'''
+
+[[addons]]
+name = "Qos"
+lib_path = "plugins/libphoenix_qos.rlib"
+config_string = '''
+latency_budget_microsecs = 10
+'''
+
+[[addons]]
+name = "HotelAcl"
+lib_path = "plugins/libphoenix_hotel_acl.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Null"
+lib_path = "plugins/libphoenix_null.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "logging"
+lib_path = "plugins/libphoenix_logging.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "HelloAclReceiver"
+lib_path = "plugins/libphoenix_hello_acl_receiver.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "HelloAclSender"
+lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "HelloAcl"
+lib_path = "plugins/libphoenix_hello_acl.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "NofileLogging"
+lib_path = "plugins/libphoenix_nofile_logging.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Fault"
+lib_path = "plugins/libphoenix_fault.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Fault2"
+lib_path = "plugins/libphoenix_fault2.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Delay"
+lib_path = "plugins/libphoenix_delay.rlib"
+config_string = '''
+delay_probability = 0.2
+delay_ms = 100
+'''
