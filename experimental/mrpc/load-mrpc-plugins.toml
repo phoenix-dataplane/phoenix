@@ -98,3 +98,11 @@ config_string = '''
 delay_probability = 0.2
 delay_ms = 100
 '''
+
+[[addons]]
+name = "RateLimitDrop"
+lib_path = "plugins/libphoenix_ratelimit_drop.rlib"
+config_string = '''
+requests_per_sec = 4
+bucket_size = 1000
+'''

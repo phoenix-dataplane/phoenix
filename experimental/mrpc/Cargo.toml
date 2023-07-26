@@ -49,6 +49,7 @@ members = [
   "phoenix-api/tcp_rpc_adapter",
   "phoenix-api/policy/null",
   "phoenix-api/policy/ratelimit",
+  "phoenix-api/policy/ratelimit-drop",
   "phoenix-api/policy/qos",
   "phoenix-api/policy/hotel-acl",
   "phoenix-api/policy/logging",
@@ -66,6 +67,7 @@ members = [
   # TODO(cjr): Add them back
   "plugin/policy/null",
   "plugin/policy/ratelimit",
+  "plugin/policy/ratelimit-drop",
   "plugin/policy/qos",
   "plugin/policy/logging",
   "plugin/policy/hotel-acl",
@@ -94,6 +96,7 @@ phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
 phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
 phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
 phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
+phoenix-api-policy-ratelimit-drop = { path = "phoenix-api/policy/ratelimit-drop" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
 phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
