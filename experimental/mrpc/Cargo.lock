@@ -1598,6 +1598,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-mrpc"
 version = "0.1.0"
 dependencies = [
@@ -1778,6 +1786,24 @@ dependencies = [
  "serde",
  "serde_json",
  "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "minstant",
+ "nix",
+ "phoenix-api-policy-logging",
+ "phoenix_common",
+ "serde",
+ "serde_json",
  "thiserror",
  "toml",
 ]

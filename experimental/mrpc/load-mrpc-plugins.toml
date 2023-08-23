@@ -66,3 +66,7 @@ name = "HelloAclSender"
 lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "LoadBalancer"
+lib_path = "plugins/libphoenix_load_balancer.rlib"

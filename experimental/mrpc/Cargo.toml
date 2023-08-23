@@ -47,6 +47,7 @@ members = [
   "phoenix-api/mrpc",
   "phoenix-api/rpc_adapter",
   "phoenix-api/tcp_rpc_adapter",
+  "phoenix-api/policy/load-balancer",
   "phoenix-api/policy/null",
   "phoenix-api/policy/ratelimit",
   "phoenix-api/policy/qos",
@@ -59,6 +60,7 @@ members = [
   "plugin/rpc_adapter",
   "plugin/tcp_rpc_adapter",
   # TODO(cjr): Add them back
+  "plugin/policy/load-balancer",
   "plugin/policy/null",
   "plugin/policy/ratelimit",
   "plugin/policy/qos",
@@ -83,6 +85,7 @@ mrpc = { path = "." }
 phoenix-api-mrpc = { path = "phoenix-api/mrpc" }
 phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
 phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
+phoenix-api-policy-load-balancer = { path = "phoenix-api/policy/load-balancer" }
 phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
 phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }
