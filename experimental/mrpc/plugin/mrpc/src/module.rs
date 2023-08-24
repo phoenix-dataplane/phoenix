@@ -95,38 +95,45 @@ pub struct MrpcModule {
 
 impl MrpcModule {
     pub const MRPC_ENGINE: EngineType = EngineType("MrpcEngine");
+    pub const LB_ENGINE: EngineType = EngineType("LoadBalancerEngine");
     pub const ENGINES: &'static [EngineType] = &[MrpcModule::MRPC_ENGINE];
-    pub const DEPENDENCIES: &'static [EnginePair] =
-        &[(MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine"))];
+    pub const DEPENDENCIES: &'static [EnginePair] = &[
+        (MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine")),
+        (MrpcModule::MRPC_ENGINE, EngineType("LoadBalancerEngine")),
+    ];
 
     pub const SERVICE: Service = Service("Mrpc");
-    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        MrpcModule::MRPC_ENGINE,
-        EngineType("RpcAdapterEngine"),
-        0,
-        0,
-    )];
-    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        EngineType("RpcAdapterEngine"),
-        MrpcModule::MRPC_ENGINE,
-        0,
-        0,
-    )];
+    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(MrpcModule::MRPC_ENGINE, MrpcModule::LB_ENGINE, 0, 0),
+        ChannelDescriptor(MrpcModule::LB_ENGINE, EngineType("RpcAdapterEngine"), 0, 0),
+    ];
+    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(EngineType("RpcAdapterEngine"), MrpcModule::LB_ENGINE, 0, 0),
+        ChannelDescriptor(MrpcModule::LB_ENGINE, MrpcModule::MRPC_ENGINE, 0, 0),
+    ];
 
-    pub const TCP_DEPENDENCIES: &'static [EnginePair] =
-        &[(MrpcModule::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine"))];
-    pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        MrpcModule::MRPC_ENGINE,
-        EngineType("TcpRpcAdapterEngine"),
-        0,
-        0,
-    )];
-    pub const TCP_RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        EngineType("TcpRpcAdapterEngine"),
-        MrpcModule::MRPC_ENGINE,
-        0,
-        0,
-    )];
+    pub const TCP_DEPENDENCIES: &'static [EnginePair] = &[
+        (MrpcModule::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine")),
+        (MrpcModule::MRPC_ENGINE, EngineType("LoadBalancerEngine")),
+    ];
+    pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(MrpcModule::MRPC_ENGINE, MrpcModule::LB_ENGINE, 0, 0),
+        ChannelDescriptor(
+            MrpcModule::LB_ENGINE,
+            EngineType("TcpRpcAdapterEngine"),
+            0,
+            0,
+        ),
+    ];
+    pub const TCP_RX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(
+            EngineType("TcpRpcAdapterEngine"),
+            MrpcModule::LB_ENGINE,
+            0,
+            0,
+        ),
+        ChannelDescriptor(MrpcModule::LB_ENGINE, MrpcModule::MRPC_ENGINE, 0, 0),
+    ];
 }
 
 impl MrpcModule {
@@ -152,7 +159,11 @@ impl MrpcModule {
 impl PhoenixModule for MrpcModule {
     fn service(&self) -> Option<ServiceInfo> {
         let service = if self.config.transport == TransportType::Tcp {
-            let group = vec![Self::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine")];
+            let group = vec![
+                Self::MRPC_ENGINE,
+                Self::LB_ENGINE,
+                EngineType("TcpRpcAdapterEngine"),
+            ];
             ServiceInfo {
                 service: MrpcModule::SERVICE,
                 engine: MrpcModule::MRPC_ENGINE,
@@ -161,7 +172,11 @@ impl PhoenixModule for MrpcModule {
                 scheduling_groups: vec![group],
             }
         } else {
-            let group = vec![Self::MRPC_ENGINE, EngineType("RpcAdapterEngine")];
+            let group = vec![
+                Self::MRPC_ENGINE,
+                Self::LB_ENGINE,
+                EngineType("RpcAdapterEngine"),
+            ];
             ServiceInfo {
                 service: MrpcModule::SERVICE,
                 engine: MrpcModule::MRPC_ENGINE,
