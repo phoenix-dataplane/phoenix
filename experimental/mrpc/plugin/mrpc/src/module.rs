@@ -98,8 +98,11 @@ impl MrpcModule {
     pub const LB_ENGINE: EngineType = EngineType("LoadBalancerEngine");
     pub const ENGINES: &'static [EngineType] = &[MrpcModule::MRPC_ENGINE];
     pub const DEPENDENCIES: &'static [EnginePair] = &[
-        (MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine")),
         (MrpcModule::MRPC_ENGINE, EngineType("LoadBalancerEngine")),
+        (
+            EngineType("LoadBalancerEngine"),
+            EngineType("RpcAdapterEngine"),
+        ),
     ];
 
     pub const SERVICE: Service = Service("Mrpc");
@@ -113,8 +116,11 @@ impl MrpcModule {
     ];
 
     pub const TCP_DEPENDENCIES: &'static [EnginePair] = &[
-        (MrpcModule::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine")),
         (MrpcModule::MRPC_ENGINE, EngineType("LoadBalancerEngine")),
+        (
+            EngineType("LoadBalancerEngine"),
+            EngineType("TcpRpcAdapterEngine"),
+        ),
     ];
     pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[
         ChannelDescriptor(MrpcModule::MRPC_ENGINE, MrpcModule::LB_ENGINE, 0, 0),
@@ -276,8 +282,9 @@ impl PhoenixModule for MrpcModule {
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let cmd_tx = shared.command_path.get_sender(&engine_type)?;
-            let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
+            let cmd_tx = shared.command_path.get_sender(&MrpcModule::LB_ENGINE)?;
+            let cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion> =
+                shared.command_path.get_receiver(&MrpcModule::LB_ENGINE)?;
 
             let builder = MrpcEngineBuilder::new(
                 customer,

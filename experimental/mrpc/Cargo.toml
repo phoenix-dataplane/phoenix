@@ -47,6 +47,7 @@ members = [
   "phoenix-api/mrpc",
   "phoenix-api/rpc_adapter",
   "phoenix-api/tcp_rpc_adapter",
+  "phoenix-api/load_balancer",
   "phoenix-api/policy/null",
   "phoenix-api/policy/ratelimit",
   "phoenix-api/policy/qos",
@@ -58,6 +59,7 @@ members = [
   "plugin/mrpc",
   "plugin/rpc_adapter",
   "plugin/tcp_rpc_adapter",
+  "plugin/load_balancer",
   # TODO(cjr): Add them back
   "plugin/policy/null",
   "plugin/policy/ratelimit",
@@ -72,6 +74,7 @@ members = [
   "examples/rpc_bench_plus",
   "examples/masstree_analytics",
   "examples/hotel_reservation",
+  "examples/load_balancer",
   # "examples/hotel_microservices",
 ]
 exclude = ["3rdparty/prost"]
@@ -82,6 +85,7 @@ mrpc = { path = "." }
 phoenix-api-mrpc = { path = "phoenix-api/mrpc" }
 phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
 phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
+phoenix-api-load-balancer = { path = "phoenix-api/load_balancer" }
 phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
 phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-qos = { path = "phoenix-api/policy/qos" }

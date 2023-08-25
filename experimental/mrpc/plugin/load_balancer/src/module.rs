@@ -21,94 +21,77 @@ use phoenix_common::module::{
 use phoenix_common::state_mgr::SharedStateManager;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
-use crate::engine::{TcpRpcAdapterEngine, TlStorage};
-use crate::state::{Shared, State};
+use crate::engine::{LoadBalancerEngine, TlStorage};
 
-pub(crate) struct RpcAdapterEngineBuilder {
+pub(crate) struct LoadBalancerEngineBuilder {
     _client_pid: Pid,
     mode: SchedulingMode,
-    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
-    cmd_tx: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
+    cmd_rx_upstream: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
+    cmd_tx_upstream: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
+    cmd_rx_downstream: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Completion>,
+    cmd_tx_downstream: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Command>,
     node: DataPathNode,
-    ops: Ops,
-    shared: Arc<Shared>,
-    salloc_shared: Arc<SallocShared>,
-    addr_mediator: Arc<AddressMediator>,
 }
 
-impl RpcAdapterEngineBuilder {
+impl LoadBalancerEngineBuilder {
     #[allow(clippy::too_many_arguments)]
     fn new(
         client_pid: Pid,
         mode: SchedulingMode,
-        cmd_tx: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
+        cmd_tx_upstream: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Completion>,
+        cmd_rx_upstream: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
+        cmd_tx_downstream: tokio::sync::mpsc::UnboundedSender<phoenix_api_mrpc::cmd::Command>,
+        cmd_rx_downstream: tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Completion>,
+
         node: DataPathNode,
-        ops: Ops,
-        shared: Arc<Shared>,
-        salloc_shared: Arc<SallocShared>,
-        addr_mediator: Arc<AddressMediator>,
     ) -> Self {
-        RpcAdapterEngineBuilder {
+        LoadBalancerEngineBuilder {
             _client_pid: client_pid,
             mode,
-            cmd_tx,
-            cmd_rx,
+            cmd_tx_upstream,
+            cmd_rx_upstream,
+            cmd_tx_downstream,
+            cmd_rx_downstream,
             node,
-            ops,
-            shared,
-            salloc_shared,
-            addr_mediator,
         }
     }
 
-    fn build(self) -> Result<TcpRpcAdapterEngine> {
-        let state = State::new(self.shared);
-        let salloc_state = SallocState::new(self.salloc_shared, self.addr_mediator);
-
-        Ok(TcpRpcAdapterEngine {
-            state,
-            tls: Box::new(TlStorage { ops: self.ops }),
-            local_buffer: VecDeque::new(),
-            cmd_tx: self.cmd_tx,
-            cmd_rx: self.cmd_rx,
+    fn build(self) -> Result<LoadBalancerEngine> {
+        Ok(LoadBalancerEngine {
+            cmd_tx_upstream: self.cmd_tx_upstream,
+            cmd_rx_upstream: self.cmd_rx_upstream,
+            cmd_tx_downstream: self.cmd_tx_downstream,
+            cmd_rx_downstream: self.cmd_rx_downstream,
             node: self.node,
             _mode: self.mode,
             indicator: Default::default(),
-            recv_mr_usage: fnv::FnvHashMap::default(),
-            serialization_engine: None,
-            salloc: salloc_state,
             // start: std::time::Instant::now(),
             rpc_ctx: Default::default(),
         })
     }
 }
 
-pub struct TcpRpcAdapterModule {
-    pub state_mgr: SharedStateManager<Shared>,
-}
+pub struct LoadBalancerModule {}
 
-impl TcpRpcAdapterModule {
-    pub const TCP_RPC_ADAPTER_ENGINE: EngineType = EngineType("TcpRpcAdapterEngine");
-    pub const ENGINES: &'static [EngineType] = &[TcpRpcAdapterModule::TCP_RPC_ADAPTER_ENGINE];
+impl LoadBalancerModule {
+    pub const LOAD_BALANCER_ENGINE: EngineType = EngineType("LoadBalancerEngine");
+    pub const ENGINES: &'static [EngineType] = &[LoadBalancerModule::LOAD_BALANCER_ENGINE];
     pub const DEPENDENCIES: &'static [EnginePair] = &[];
 }
 
-impl Default for TcpRpcAdapterModule {
+impl Default for LoadBalancerModule {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TcpRpcAdapterModule {
+impl LoadBalancerModule {
     pub fn new() -> Self {
-        TcpRpcAdapterModule {
-            state_mgr: SharedStateManager::new(),
-        }
+        LoadBalancerModule {}
     }
 }
 
-impl PhoenixModule for TcpRpcAdapterModule {
+impl PhoenixModule for LoadBalancerModule {
     fn service(&self) -> Option<ServiceInfo> {
         None
     }
@@ -128,14 +111,12 @@ impl PhoenixModule for TcpRpcAdapterModule {
     fn decompose(self: Box<Self>) -> ResourceCollection {
         let module = *self;
         let mut collections = ResourceCollection::new();
-        collections.insert("state_mgr".to_string(), Box::new(module.state_mgr));
         collections
     }
 
     fn migrate(&mut self, prev_module: Box<dyn PhoenixModule>) {
         // NOTE(wyj): we may better call decompose here
         let prev_concrete = unsafe { *prev_module.downcast_unchecked::<Self>() };
-        self.state_mgr = prev_concrete.state_mgr;
     }
 
     fn create_engine(
@@ -147,21 +128,9 @@ impl PhoenixModule for TcpRpcAdapterModule {
         node: DataPathNode,
         plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
-        let mut tcp_transport_module = plugged
-            .get_mut("TcpTransport")
-            .ok_or_else(|| anyhow!("fail to get TcpTransport module"))?;
-        let tcp_transport = tcp_transport_module
-            .downcast_mut()
-            .ok_or_else(|| anyhow!("fail to downcast TcpTransport module"))?;
-        let mut salloc_module = plugged
-            .get_mut("Salloc")
-            .ok_or_else(|| anyhow!("fail to get Salloc module"))?;
-        let salloc = salloc_module
-            .downcast_mut()
-            .ok_or_else(|| anyhow!("fail to downcast Salloc module"))?;
-
+        println!("create_engine: {:?}", ty);
         match ty {
-            Self::TCP_RPC_ADAPTER_ENGINE => {
+            Self::LOAD_BALANCER_ENGINE => {
                 if let NewEngineRequest::Auxiliary {
                     pid: client_pid,
                     mode,
@@ -172,22 +141,30 @@ impl PhoenixModule for TcpRpcAdapterModule {
 
                     shared
                         .command_path
-                        .put_sender(Self::TCP_RPC_ADAPTER_ENGINE, cmd_sender)?;
+                        .put_sender(Self::LOAD_BALANCER_ENGINE, cmd_sender)?;
 
                     let (comp_sender, comp_receiver) = tokio::sync::mpsc::unbounded_channel();
 
                     shared
                         .command_path
-                        .put_receiver(Self::TCP_RPC_ADAPTER_ENGINE, comp_receiver)?;
+                        .put_receiver(Self::LOAD_BALANCER_ENGINE, comp_receiver)?;
 
-                    let engine = self.create_rpc_adapter_engine(
+                    let tx_down = shared
+                        .command_path
+                        .get_sender(&EngineType("TcpRpcAdapterEngine"))?;
+
+                    let rx_down = shared
+                        .command_path
+                        .get_receiver(&EngineType("TcpRpcAdapterEngine"))?;
+
+                    let engine = self.create_load_balancer_engine(
                         mode,
                         client_pid,
                         comp_sender,
                         cmd_receiver,
+                        tx_down,
+                        rx_down,
                         node,
-                        salloc,
-                        tcp_transport,
                     )?;
                     Ok(Some(Box::new(engine)))
                 } else {
@@ -209,8 +186,8 @@ impl PhoenixModule for TcpRpcAdapterModule {
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
         match ty {
-            Self::TCP_RPC_ADAPTER_ENGINE => {
-                let engine = TcpRpcAdapterEngine::restore(
+            Self::LOAD_BALANCER_ENGINE => {
+                let engine = LoadBalancerEngine::restore(
                     local,
                     shared,
                     global,
@@ -225,39 +202,30 @@ impl PhoenixModule for TcpRpcAdapterModule {
     }
 }
 
-impl TcpRpcAdapterModule {
+impl LoadBalancerModule {
     #[allow(clippy::too_many_arguments)]
-    fn create_rpc_adapter_engine(
+    fn create_load_balancer_engine(
         &mut self,
         mode: SchedulingMode,
         client_pid: Pid,
-        cmd_tx: tokio::sync::mpsc::UnboundedSender<cmd::Completion>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Command>,
+        cmd_tx_upstream: tokio::sync::mpsc::UnboundedSender<cmd::Completion>,
+        cmd_rx_upstream: tokio::sync::mpsc::UnboundedReceiver<cmd::Command>,
+        cmd_tx_downstream: tokio::sync::mpsc::UnboundedSender<cmd::Command>,
+        cmd_rx_downstream: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion>,
         node: DataPathNode,
-        salloc: &mut SallocModule,
-        tcp_transport: &mut TcpTransportModule,
-    ) -> Result<TcpRpcAdapterEngine> {
-        // Acceptor engine should already been created at this moment
-        let ops = tcp_transport.create_ops(client_pid)?;
-        // Get salloc state
-        let addr_mediator = salloc.get_addr_mediator();
-        let addr_mediator_clone = Arc::clone(&addr_mediator);
-        let shared = self.state_mgr.get_or_create_with(client_pid, move || {
-            Shared::new_from_addr_mediator(client_pid, addr_mediator_clone).unwrap()
-        })?;
-        let salloc_shared = salloc.state_mgr.get_or_create(client_pid)?;
+    ) -> Result<LoadBalancerEngine> {
+        // Acceptor engine should already been created at this momen
 
-        let builder = RpcAdapterEngineBuilder::new(
+        let builder = LoadBalancerEngineBuilder::new(
             client_pid,
             mode,
-            cmd_tx,
-            cmd_rx,
+            cmd_tx_upstream,
+            cmd_rx_upstream,
+            cmd_tx_downstream,
+            cmd_rx_downstream,
             node,
-            ops,
-            shared,
-            salloc_shared,
-            addr_mediator,
         );
+        println!("before build");
         let engine = builder.build()?;
         Ok(engine)
     }

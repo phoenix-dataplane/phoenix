@@ -21,6 +21,9 @@ enable_scheduler = false
 name = "TcpRpcAdapter"
 lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
 
+[[modules]]
+name = "LoadBalancer"
+lib_path = "plugins/libphoenix_load_balancer.rlib"
 
 [[addons]]
 name = "RateLimit"
@@ -66,7 +69,3 @@ name = "HelloAclSender"
 lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
 config_string = '''
 '''
-
-[[addons]]
-name = "LoadBalancer"
-lib_path = "plugins/libphoenix_load_balancer.rlib"
