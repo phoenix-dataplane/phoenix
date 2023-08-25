@@ -146,11 +146,11 @@ impl Control {
                 service,
                 pid
             );
-            let node = nodes
+            let node: DataPathNode = nodes
                 .remove(aux_engine_type)
                 .unwrap_or_else(DataPathNode::new);
             let specified_mode = specified_mode.unwrap_or(service_mode);
-            let request = NewEngineRequest::Auxiliary {
+            let request: NewEngineRequest<'_> = NewEngineRequest::Auxiliary {
                 pid,
                 mode: specified_mode,
                 config_string: config_string.clone(),

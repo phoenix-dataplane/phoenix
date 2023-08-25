@@ -276,6 +276,14 @@ impl LoadBalancerEngine {
                 Status::Disconnected => return Ok(()),
             }
 
+            match self.check_input_comp_queue()? {
+                Progress(n) => {
+                    work += n;
+                    // nums.push(n)
+                }
+                Status::Disconnected => return Ok(()),
+            }
+
             self.indicator.set_nwork(work);
 
             // timer.tick();
@@ -318,8 +326,29 @@ impl LoadBalancerEngine {
     }
 
     fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
+        use phoenix_api_mrpc::cmd::{Completion, CompletionKind};
         use tokio::sync::mpsc::error::TryRecvError;
-        unimplemented!()
+        match self.cmd_rx_upstream.try_recv() {
+            Ok(req) => {
+                self.cmd_tx_downstream.send(req)?;
+                Ok(Status::Progress(1))
+            }
+            Err(TryRecvError::Empty) => Ok(Status::Progress(0)),
+            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
+        }
+    }
+    fn check_input_comp_queue(&mut self) -> Result<Status, ControlPathError> {
+        use phoenix_api_mrpc::cmd::{Completion, CompletionKind};
+        use tokio::sync::mpsc::error::TryRecvError;
+
+        match self.cmd_rx_downstream.try_recv() {
+            Ok(Completion(comp)) => {
+                self.cmd_tx_upstream.send(Completion(comp))?;
+                Ok(Status::Progress(1))
+            }
+            Err(TryRecvError::Empty) => Ok(Status::Progress(0)),
+            Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
+        }
     }
 
     fn process_cmd(
