@@ -128,7 +128,6 @@ impl PhoenixModule for LoadBalancerModule {
         node: DataPathNode,
         plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
-        println!("create_engine: {:?}", ty);
         match ty {
             Self::LOAD_BALANCER_ENGINE => {
                 if let NewEngineRequest::Auxiliary {
@@ -225,7 +224,6 @@ impl LoadBalancerModule {
             cmd_rx_downstream,
             node,
         );
-        println!("before build");
         let engine = builder.build()?;
         Ok(engine)
     }

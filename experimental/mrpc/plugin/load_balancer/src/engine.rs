@@ -322,6 +322,16 @@ impl LoadBalancerEngine {
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
+
+        match self.rx_inputs()[0].try_recv() {
+            Ok(m) => {
+                self.rx_outputs()[0].send(m).unwrap();
+                return Ok(Progress(1));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+
         Ok(Progress(0))
     }
 
