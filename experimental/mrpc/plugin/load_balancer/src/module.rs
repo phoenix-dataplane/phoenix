@@ -58,6 +58,8 @@ impl LoadBalancerEngineBuilder {
 
     fn build(self) -> Result<LoadBalancerEngine> {
         Ok(LoadBalancerEngine {
+            p2v: Default::default(),
+            v2p: Default::default(),
             cmd_tx_upstream: self.cmd_tx_upstream,
             cmd_rx_upstream: self.cmd_rx_upstream,
             cmd_tx_downstream: self.cmd_tx_downstream,

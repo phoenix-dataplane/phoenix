@@ -832,6 +832,7 @@ impl TcpRpcAdapterEngine {
                 };
                 Ok(CompletionKind::ConnectInternal(conn_resp, fds))
             }
+
             Command::Bind(addr) => {
                 log::debug!("Bind, addr: {:?}", addr);
                 let handle = get_ops().bind(addr)?;
@@ -844,6 +845,9 @@ impl TcpRpcAdapterEngine {
                 Ok(CompletionKind::UpdateProtos)
             }
             Command::UpdateProtos(_) => {
+                unreachable!();
+            }
+            Command::VConnect(_) => {
                 unreachable!();
             }
         }

@@ -52,6 +52,13 @@ impl ReadHeap {
         }
     }
 
+    pub fn default() -> Self {
+        ReadHeap {
+            rref_cnt: AtomicUsize::new(0),
+            rbufs: Vec::new(),
+        }
+    }
+
     #[inline]
     pub(crate) fn increment_refcnt(&self) {
         self.rref_cnt.fetch_add(1, Ordering::Release);

@@ -9,7 +9,8 @@ use rpc_hello::HelloRequest;
 use std::{thread, time::Duration, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = GreeterClient::connect("localhost:5000")?;
+    let client = GreeterClient::multi_connect(vec!["localhost:5000", "localhost:5001"])?;
+    println!("Connected to server!");
     let mut apple_count = 0;
     let mut banana_count = 0;
     let mut last_print_time = Instant::now();

@@ -54,6 +54,8 @@ pub(crate) struct TlStorage {
 
 pub(crate) struct LoadBalancerEngine {
     pub(crate) node: DataPathNode,
+    pub(crate) p2v: FnvHashMap<Handle, Handle>,
+    pub(crate) v2p: FnvHashMap<Handle, Vec<Handle>>,
     pub(crate) cmd_rx_upstream:
         tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
     pub(crate) cmd_tx_upstream:
@@ -141,6 +143,18 @@ impl LoadBalancerEngine {
             .downcast::<SchedulingMode>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
+        let p2v = *local
+            .remove("p2v")
+            .unwrap()
+            .downcast::<FnvHashMap<Handle, Handle>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+
+        let v2p = *local
+            .remove("v2p")
+            .unwrap()
+            .downcast::<FnvHashMap<Handle, Vec<Handle>>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+
         let cmd_tx_upstream = *local
             .remove("cmd_tx_upstream")
             .unwrap()
@@ -172,6 +186,8 @@ impl LoadBalancerEngine {
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
         let engine = LoadBalancerEngine {
+            p2v,
+            v2p,
             cmd_tx_upstream,
             cmd_rx_upstream,
             cmd_tx_downstream,
@@ -336,11 +352,25 @@ impl LoadBalancerEngine {
     }
 
     fn check_input_cmd_queue(&mut self) -> Result<Status, ControlPathError> {
-        use phoenix_api_mrpc::cmd::{Completion, CompletionKind};
+        use phoenix_api_mrpc::cmd::{Command, Completion, CompletionKind};
+
         use tokio::sync::mpsc::error::TryRecvError;
         match self.cmd_rx_upstream.try_recv() {
             Ok(req) => {
-                self.cmd_tx_downstream.send(req)?;
+                match req {
+                    Command::VConnect(handles) => {
+                        let vid = self.gen_vconn_num();
+                        self.v2p.insert(vid, handles.clone());
+                        for handle in handles {
+                            self.p2v.insert(handle, vid);
+                        }
+                        let comp = CompletionKind::VConnect(vid);
+                        self.cmd_tx_upstream.send(Completion(Ok(comp)))?;
+                    }
+                    _ => {
+                        self.cmd_tx_downstream.send(req)?;
+                    }
+                }
                 Ok(Status::Progress(1))
             }
             Err(TryRecvError::Empty) => Ok(Status::Progress(0)),
@@ -361,11 +391,7 @@ impl LoadBalancerEngine {
         }
     }
 
-    fn process_cmd(
-        &mut self,
-        req: &phoenix_api_mrpc::cmd::Command,
-    ) -> Result<phoenix_api_mrpc::cmd::CompletionKind, ControlPathError> {
-        use phoenix_api_mrpc::cmd::{Command, CompletionKind};
-        unimplemented!()
+    fn gen_vconn_num(&self) -> Handle {
+        return Handle(u64::MAX);
     }
 }
