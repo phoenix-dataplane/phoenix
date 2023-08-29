@@ -10,6 +10,17 @@ nic_index = 0
 '''
 
 [[modules]]
+name = "MrpcLB"
+lib_path = "plugins/libphoenix_mrpclb.rlib"
+config_string = '''
+prefix = "/tmp/phoenix"
+engine_basename = "mrpclb-engine"
+build_cache = "/tmp/phoenix/build-cache"
+transport = "Rdma"
+nic_index = 0
+'''
+
+[[modules]]
 name = "RpcAdapter"
 lib_path = "plugins/libphoenix_rpc_adapter.rlib"
 config_string = '''

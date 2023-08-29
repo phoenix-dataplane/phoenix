@@ -1615,6 +1615,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-mrpclb"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "phoenix-api-policy-hello-acl-receiver"
 version = "0.1.0"
 dependencies = [
@@ -1842,6 +1851,38 @@ dependencies = [
 
 [[package]]
 name = "phoenix-mrpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "fastrand",
+ "fnv",
+ "futures",
+ "ipc",
+ "itertools",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "phoenix-api",
+ "phoenix-api-mrpc",
+ "phoenix_common",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "utils",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-mrpclb"
 version = "0.1.0"
 dependencies = [
  "anyhow",

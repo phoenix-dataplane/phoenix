@@ -118,7 +118,7 @@ impl ClientStub {
         Req: RpcData,
         Res: Unpin + RpcData,
     {
-        let conn_id = self.vconn.handle();
+        let conn_id = self.master_conn().handle();
 
         // construct meta
         let meta = MessageMeta {
@@ -179,12 +179,12 @@ impl ClientStub {
                     TransportStatus::Error(code) => match code.get() {
                         402 => {}
                         _ => {
-                            self.vconn
+                            self.master_conn()
                                 .map_alive(|alive| alive.pending.remove(&rpc_id))?;
                         }
                     },
                     _ => {
-                        self.vconn
+                        self.master_conn()
                             .map_alive(|alive| alive.pending.remove(&rpc_id))?;
                     }
                 }
@@ -203,7 +203,7 @@ impl ClientStub {
                     conn_id,
                     status
                 );
-                self.vconn.close();
+                self.master_conn().close();
             }
         }
 
@@ -244,7 +244,7 @@ impl ClientStub {
         // self.conn
         //     .hold_rpc(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg))?;
 
-        self.vconn
+        self.master_conn()
             .map_alive(|alive: &crate::stub::conn::AliveConnection| {
                 alive
                     .pending
@@ -283,6 +283,13 @@ impl ClientStub {
         })
     }
 
+    fn master_conn(&self) -> &Connection {
+        if self.vconn.handle().is_master() {
+            &self.vconn
+        } else {
+            self.conns.get(&self.vconn.handle()).unwrap()
+        }
+    }
     /// Creates an RPC client by connecting to a given socket address.
     // TODO(cjr): Change this to async too
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
@@ -319,9 +326,11 @@ impl ClientStub {
                 let (stub_id, receiver) = LOCAL_REACTOR.with_borrow_mut(|r| r.register_stub());
                 LOCAL_REACTOR.with_borrow_mut(|r| r.register_connection(stub_id, &conn));
 
+                let mut conns = HashMap::new();
+                conns.insert(conn.handle().clone(), conn);
                 Ok(Self {
-                    vconn: conn,
-                    conns: HashMap::new(),
+                    vconn: Connection::vconn(conn_handle),
+                    conns: conns,
                     // inner: RefCell::new(Inner {
                     inner: spin::Mutex::new(Inner {
                         receiver,
@@ -389,8 +398,8 @@ impl ClientStub {
             ctx.service.send_cmd(cmd).unwrap();
             match ctx.service.recv_comp().unwrap().0 {
                 Ok(CompletionKind::VConnect(handle)) => {
-                    let vheap = ReadHeap::default();
-                    _ = vconn.insert(Connection::new(handle, vheap));
+                    assert!(handle == Handle::MASTER);
+                    _ = vconn.insert(Connection::vconn(handle));
                 }
                 Err(e) => panic!("{:?}", e),
                 _ => panic!("unmatched branch"),

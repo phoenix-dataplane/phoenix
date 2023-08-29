@@ -67,12 +67,12 @@ impl<T> From<SendError<T>> for DatapathError {
     }
 }
 
-use crate::config::MrpcConfig;
-use crate::module::MrpcModule;
+use crate::config::MrpcLBConfig;
+use crate::module::MrpcLBModule;
 
 #[no_mangle]
 pub fn init_module(config_string: Option<&str>) -> InitFnResult<Box<dyn PhoenixModule>> {
-    let config = MrpcConfig::new(config_string)?;
-    let module = MrpcModule::new(config);
+    let config = MrpcLBConfig::new(config_string)?;
+    let module = MrpcLBModule::new(config);
     Ok(Box::new(module))
 }

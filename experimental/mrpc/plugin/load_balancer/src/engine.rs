@@ -364,8 +364,8 @@ impl LoadBalancerEngine {
                 match m {
                     EngineRxMessage::Ack(rpc_id, status) => {
                         let call_id = rpc_id.1;
-                        if let Some(x) = self.buffer.get(&call_id) {
-                            let new_rpc_id = RpcId(Handle(u64::MAX), call_id);
+                        if let Some(_) = self.buffer.get(&call_id) {
+                            let new_rpc_id = RpcId(Handle(u64::MAX - 1), call_id);
                             self.buffer.remove(&call_id);
                             self.rx_outputs()[0]
                                 .send(EngineRxMessage::Ack(new_rpc_id, status))

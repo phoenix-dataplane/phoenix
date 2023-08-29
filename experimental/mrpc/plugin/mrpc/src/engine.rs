@@ -4,7 +4,6 @@ use std::pin::Pin;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
-use itertools::Itertools;
 use std::num::NonZeroU32;
 
 use phoenix_api::engine::SchedulingMode;
@@ -320,11 +319,6 @@ impl MrpcEngine {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 Ok(None)
             }
-            Command::VConnect(handles) => {
-                let copy_handle = handles.clone();
-                self.cmd_tx.send(Command::VConnect(copy_handle)).unwrap();
-                Ok(None)
-            }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
                 Ok(None)
@@ -342,6 +336,9 @@ impl MrpcEngine {
                     .send(Command::UpdateProtosInner(dylib_path))
                     .unwrap();
                 Ok(None)
+            }
+            Command::VConnect(_) => {
+                panic!("VConnect is only used in mrpclb")
             }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
@@ -421,9 +418,8 @@ impl MrpcEngine {
 
                 // 1300ns, even if the tracing level is filtered shit!!!!!!
                 tracing::trace!(
-                    "mRPC engine got a message from App, call_id: {:?}, conn_id: {:?}",
-                    erased.meta.call_id,
-                    erased.meta.conn_id,
+                    "mRPC engine got a message from App, call_id: {}",
+                    erased.meta.call_id
                 );
 
                 // timer.tick();
@@ -479,9 +475,8 @@ impl MrpcEngine {
                         // let mut timer = crate::timer::Timer::new();
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
-                            "mRPC engine send message to App, call_id={:?}, conn_id={:?}",
-                            meta.call_id,
-                            meta.conn_id
+                            "mRPC engine send message to App, call_id={}",
+                            meta.call_id
                         );
 
                         let erased = MessageErased {
@@ -587,11 +582,6 @@ impl MrpcEngine {
                     Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::Connect(conn_resp);
-                        self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
-                        Ok(Status::Progress(1))
-                    }
-                    Ok(CompletionKind::VConnect(handle)) => {
-                        let comp_kind = CompletionKind::VConnect(handle);
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))
                     }

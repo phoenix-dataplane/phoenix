@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MrpcConfig {
+pub struct MrpcLBConfig {
     /// Prefix for the control socket
     #[serde(default)]
     pub prefix: Option<PathBuf>,
@@ -22,7 +22,7 @@ pub struct MrpcConfig {
     pub nic_index: usize,
 }
 
-impl MrpcConfig {
+impl MrpcLBConfig {
     pub fn new(config: Option<&str>) -> anyhow::Result<Self> {
         let config = toml::from_str(config.unwrap_or(""))?;
         Ok(config)
@@ -35,5 +35,5 @@ fn default_build_cache() -> PathBuf {
 }
 
 fn default_engine_basename() -> String {
-    "mrpc-engine".to_owned()
+    "mrpclb-engine".to_owned()
 }

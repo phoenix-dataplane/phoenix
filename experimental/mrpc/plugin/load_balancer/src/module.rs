@@ -15,6 +15,7 @@ use transport_tcp::ops::Ops;
 
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EnginePair, EngineType};
+use phoenix_common::log;
 use phoenix_common::module::{
     ModuleCollection, ModuleDowncast, NewEngineRequest, PhoenixModule, ServiceInfo, Version,
 };
@@ -131,6 +132,7 @@ impl PhoenixModule for LoadBalancerModule {
         node: DataPathNode,
         plugged: &ModuleCollection,
     ) -> Result<Option<Box<dyn Engine>>> {
+        log::info!("create_engine: mrpc lb engine");
         match ty {
             Self::LOAD_BALANCER_ENGINE => {
                 if let NewEngineRequest::Auxiliary {

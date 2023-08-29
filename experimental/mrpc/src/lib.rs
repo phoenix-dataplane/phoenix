@@ -119,6 +119,7 @@ pub(crate) struct Context {
 impl Context {
     fn register(setting: &Setting) -> Result<Context, Error> {
         let protos = RefCell::new(BTreeSet::new());
+        println!("mrpc register: {:?}", setting);
         let setting_str = serde_json::to_string(setting)?;
         let service = ShmService::register(
             &*PHOENIX_PREFIX,

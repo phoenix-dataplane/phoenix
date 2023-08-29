@@ -45,6 +45,7 @@ members = [
   "mrpc-marshal",
   # extension to phoenix-api
   "phoenix-api/mrpc",
+  "phoenix-api/mrpclb",
   "phoenix-api/rpc_adapter",
   "phoenix-api/tcp_rpc_adapter",
   "phoenix-api/load_balancer",
@@ -57,6 +58,7 @@ members = [
   "phoenix-api/policy/hello-acl-sender",
   # the pheonix plugins
   "plugin/mrpc",
+  "plugin/mrpclb",
   "plugin/rpc_adapter",
   "plugin/tcp_rpc_adapter",
   "plugin/load_balancer",
@@ -83,6 +85,7 @@ exclude = ["3rdparty/prost"]
 [workspace.dependencies]
 mrpc = { path = "." }
 phoenix-api-mrpc = { path = "phoenix-api/mrpc" }
+phoenix-api-mrpclb = { path = "phoenix-api/mrpclb" }
 phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
 phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
 phoenix-api-load-balancer = { path = "phoenix-api/load_balancer" }
@@ -100,6 +103,7 @@ mrpc-marshal = { path = "mrpc-marshal" }
 prost = { path = "3rdparty/prost" }
 prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
+phoenix-mrpclb = { path = "plugin/mrpclb" }
 
 phoenix-syscalls = { path = "../../src/phoenix-syscalls" }
 phoenix-api = { path = "../../src/phoenix-api" }

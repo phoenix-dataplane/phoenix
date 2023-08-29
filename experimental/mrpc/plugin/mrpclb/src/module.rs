@@ -23,15 +23,15 @@ use phoenix_common::state_mgr::{Pid, SharedStateManager};
 use phoenix_common::storage::{get_default_prefix, ResourceCollection, SharedStorage};
 use phoenix_common::PhoenixResult;
 
-use crate::config::MrpcConfig;
+use crate::config::MrpcLBConfig;
 
-use super::engine::MrpcEngine;
+use super::engine::MrpcLBEngine;
 use super::state::{Shared, State};
 
 pub type CustomerType =
     ShmCustomer<cmd::Command, cmd::Completion, dp::WorkRequestSlot, dp::CompletionSlot>;
 
-pub(crate) struct MrpcEngineBuilder {
+pub(crate) struct MrpcLBEngineBuilder {
     customer: CustomerType,
     _client_pid: Pid,
     mode: SchedulingMode,
@@ -42,7 +42,7 @@ pub(crate) struct MrpcEngineBuilder {
     shared: Arc<Shared>,
 }
 
-impl MrpcEngineBuilder {
+impl MrpcLBEngineBuilder {
     #[allow(clippy::too_many_arguments)]
     fn new(
         customer: CustomerType,
@@ -54,7 +54,7 @@ impl MrpcEngineBuilder {
         serializer_build_cache: PathBuf,
         shared: Arc<Shared>,
     ) -> Self {
-        MrpcEngineBuilder {
+        MrpcLBEngineBuilder {
             customer,
             cmd_tx,
             cmd_rx,
@@ -66,13 +66,13 @@ impl MrpcEngineBuilder {
         }
     }
 
-    fn build(self) -> Result<MrpcEngine> {
+    fn build(self) -> Result<MrpcLBEngine> {
         const META_BUFFER_POOL_CAP: usize = 128;
         const BUF_LEN: usize = 32;
 
         let state = State::new(self.shared);
 
-        Ok(MrpcEngine {
+        Ok(MrpcLBEngine {
             _state: state,
             customer: self.customer,
             cmd_tx: self.cmd_tx,
@@ -88,50 +88,79 @@ impl MrpcEngineBuilder {
     }
 }
 
-pub struct MrpcModule {
-    config: MrpcConfig,
+pub struct MrpcLBModule {
+    config: MrpcLBConfig,
     pub state_mgr: SharedStateManager<Shared>,
 }
 
-impl MrpcModule {
-    pub const MRPC_ENGINE: EngineType = EngineType("MrpcEngine");
-    pub const ENGINES: &'static [EngineType] = &[MrpcModule::MRPC_ENGINE];
-    pub const DEPENDENCIES: &'static [EnginePair] =
-        &[(MrpcModule::MRPC_ENGINE, EngineType("RpcAdapterEngine"))];
+impl MrpcLBModule {
+    pub const MRPCLB_ENGINE: EngineType = EngineType("MrpcLBEngine");
+    pub const LB_ENGINE: EngineType = EngineType("LoadBalancerEngine");
+    pub const ENGINES: &'static [EngineType] = &[MrpcLBModule::MRPCLB_ENGINE];
+    pub const DEPENDENCIES: &'static [EnginePair] = &[
+        (
+            MrpcLBModule::MRPCLB_ENGINE,
+            EngineType("LoadBalancerEngine"),
+        ),
+        (
+            EngineType("LoadBalancerEngine"),
+            EngineType("RpcAdapterEngine"),
+        ),
+    ];
 
-    pub const SERVICE: Service = Service("Mrpc");
-    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        MrpcModule::MRPC_ENGINE,
-        EngineType("RpcAdapterEngine"),
-        0,
-        0,
-    )];
-    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        EngineType("RpcAdapterEngine"),
-        MrpcModule::MRPC_ENGINE,
-        0,
-        0,
-    )];
+    pub const SERVICE: Service = Service("MrpcLB");
+    pub const TX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(MrpcLBModule::MRPCLB_ENGINE, MrpcLBModule::LB_ENGINE, 0, 0),
+        ChannelDescriptor(
+            MrpcLBModule::LB_ENGINE,
+            EngineType("RpcAdapterEngine"),
+            0,
+            0,
+        ),
+    ];
+    pub const RX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(
+            EngineType("RpcAdapterEngine"),
+            MrpcLBModule::LB_ENGINE,
+            0,
+            0,
+        ),
+        ChannelDescriptor(MrpcLBModule::LB_ENGINE, MrpcLBModule::MRPCLB_ENGINE, 0, 0),
+    ];
 
-    pub const TCP_DEPENDENCIES: &'static [EnginePair] =
-        &[(MrpcModule::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine"))];
-    pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        MrpcModule::MRPC_ENGINE,
-        EngineType("TcpRpcAdapterEngine"),
-        0,
-        0,
-    )];
-    pub const TCP_RX_CHANNELS: &'static [ChannelDescriptor] = &[ChannelDescriptor(
-        EngineType("TcpRpcAdapterEngine"),
-        MrpcModule::MRPC_ENGINE,
-        0,
-        0,
-    )];
+    pub const TCP_DEPENDENCIES: &'static [EnginePair] = &[
+        (
+            MrpcLBModule::MRPCLB_ENGINE,
+            EngineType("LoadBalancerEngine"),
+        ),
+        (
+            EngineType("LoadBalancerEngine"),
+            EngineType("TcpRpcAdapterEngine"),
+        ),
+    ];
+    pub const TCP_TX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(MrpcLBModule::MRPCLB_ENGINE, MrpcLBModule::LB_ENGINE, 0, 0),
+        ChannelDescriptor(
+            MrpcLBModule::LB_ENGINE,
+            EngineType("TcpRpcAdapterEngine"),
+            0,
+            0,
+        ),
+    ];
+    pub const TCP_RX_CHANNELS: &'static [ChannelDescriptor] = &[
+        ChannelDescriptor(
+            EngineType("TcpRpcAdapterEngine"),
+            MrpcLBModule::LB_ENGINE,
+            0,
+            0,
+        ),
+        ChannelDescriptor(MrpcLBModule::LB_ENGINE, MrpcLBModule::MRPCLB_ENGINE, 0, 0),
+    ];
 }
 
-impl MrpcModule {
-    pub fn new(config: MrpcConfig) -> Self {
-        MrpcModule {
+impl MrpcLBModule {
+    pub fn new(config: MrpcLBConfig) -> Self {
+        MrpcLBModule {
             config,
             state_mgr: SharedStateManager::new(),
         }
@@ -149,24 +178,32 @@ impl MrpcModule {
     }
 }
 
-impl PhoenixModule for MrpcModule {
+impl PhoenixModule for MrpcLBModule {
     fn service(&self) -> Option<ServiceInfo> {
         let service = if self.config.transport == TransportType::Tcp {
-            let group = vec![Self::MRPC_ENGINE, EngineType("TcpRpcAdapterEngine")];
+            let group = vec![
+                Self::MRPCLB_ENGINE,
+                Self::LB_ENGINE,
+                EngineType("TcpRpcAdapterEngine"),
+            ];
             ServiceInfo {
-                service: MrpcModule::SERVICE,
-                engine: MrpcModule::MRPC_ENGINE,
-                tx_channels: MrpcModule::TCP_TX_CHANNELS,
-                rx_channels: MrpcModule::TCP_RX_CHANNELS,
+                service: MrpcLBModule::SERVICE,
+                engine: MrpcLBModule::MRPCLB_ENGINE,
+                tx_channels: MrpcLBModule::TCP_TX_CHANNELS,
+                rx_channels: MrpcLBModule::TCP_RX_CHANNELS,
                 scheduling_groups: vec![group],
             }
         } else {
-            let group = vec![Self::MRPC_ENGINE, EngineType("RpcAdapterEngine")];
+            let group = vec![
+                Self::MRPCLB_ENGINE,
+                Self::LB_ENGINE,
+                EngineType("RpcAdapterEngine"),
+            ];
             ServiceInfo {
-                service: MrpcModule::SERVICE,
-                engine: MrpcModule::MRPC_ENGINE,
-                tx_channels: MrpcModule::TX_CHANNELS,
-                rx_channels: MrpcModule::RX_CHANNELS,
+                service: MrpcLBModule::SERVICE,
+                engine: MrpcLBModule::MRPCLB_ENGINE,
+                tx_channels: MrpcLBModule::TX_CHANNELS,
+                rx_channels: MrpcLBModule::RX_CHANNELS,
                 scheduling_groups: vec![group],
             }
         };
@@ -174,14 +211,14 @@ impl PhoenixModule for MrpcModule {
     }
 
     fn engines(&self) -> &[EngineType] {
-        MrpcModule::ENGINES
+        MrpcLBModule::ENGINES
     }
 
     fn dependencies(&self) -> &[EnginePair] {
         if self.config.transport == TransportType::Tcp {
-            MrpcModule::TCP_DEPENDENCIES
+            MrpcLBModule::TCP_DEPENDENCIES
         } else {
-            MrpcModule::DEPENDENCIES
+            MrpcLBModule::DEPENDENCIES
         }
     }
 
@@ -212,7 +249,7 @@ impl PhoenixModule for MrpcModule {
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> PhoenixResult<Option<Box<dyn Engine>>> {
-        if ty != MrpcModule::MRPC_ENGINE {
+        if ty != MrpcLBModule::MRPCLB_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
         if let NewEngineRequest::Service {
@@ -250,7 +287,7 @@ impl PhoenixModule for MrpcModule {
                     core_id: None,
                 }
             };
-            log::debug!("mRPC service setting: {:?}", setting);
+            log::debug!("mRPCLB service setting: {:?}", setting);
 
             let engine_type = match setting.transport {
                 TransportType::Tcp => EngineType("TcpRpcAdapterEngine"),
@@ -261,10 +298,11 @@ impl PhoenixModule for MrpcModule {
             // the sender/receiver ends are already created,
             // as the RpcAdapterEngine is built first
             // according to the topological order
-            let cmd_tx = shared.command_path.get_sender(&engine_type)?;
-            let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
+            let cmd_tx = shared.command_path.get_sender(&MrpcLBModule::LB_ENGINE)?;
+            let cmd_rx: tokio::sync::mpsc::UnboundedReceiver<cmd::Completion> =
+                shared.command_path.get_receiver(&MrpcLBModule::LB_ENGINE)?;
 
-            let builder = MrpcEngineBuilder::new(
+            let builder = MrpcLBEngineBuilder::new(
                 customer,
                 client_pid,
                 mode,
@@ -293,10 +331,10 @@ impl PhoenixModule for MrpcModule {
         plugged: &ModuleCollection,
         prev_version: Version,
     ) -> PhoenixResult<Box<dyn Engine>> {
-        if ty != MrpcModule::MRPC_ENGINE {
+        if ty != MrpcLBModule::MRPCLB_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
-        let engine = MrpcEngine::restore(local, shared, global, node, plugged, prev_version)?;
+        let engine = MrpcLBEngine::restore(local, shared, global, node, plugged, prev_version)?;
         Ok(Box::new(engine))
     }
 }
