@@ -4,11 +4,16 @@ pub mod rpc_hello {
     // include!("../../../mrpc/src/codegen.rs");
 }
 
+use mrpc::stub::TransportType;
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
 use std::{thread, time::Duration, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut setting = mrpc::current_setting();
+    setting.module_config = Some("MrpcLB".into());
+    setting.transport = TransportType::Tcp;
+    mrpc::set(&setting);
     let client = GreeterClient::multi_connect(vec!["localhost:5000", "localhost:5001"])?;
     println!("Connected to server!");
     let mut apple_count = 0;

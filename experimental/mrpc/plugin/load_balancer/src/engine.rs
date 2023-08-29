@@ -336,9 +336,9 @@ impl LoadBalancerEngine {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        let call_id: CallId = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
 
-                        if conn_id.0 == u64::MAX {
-                            let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        if conn_id == Handle::MASTER {
                             self.buffer.insert(call_id, 0);
                             let rconns = self.v2p.get(&conn_id).unwrap();
                             let new_conn_id = rconns[call_id.0 as usize % rconns.len()];
@@ -365,7 +365,7 @@ impl LoadBalancerEngine {
                     EngineRxMessage::Ack(rpc_id, status) => {
                         let call_id = rpc_id.1;
                         if let Some(_) = self.buffer.get(&call_id) {
-                            let new_rpc_id = RpcId(Handle(u64::MAX - 1), call_id);
+                            let new_rpc_id = RpcId(Handle::MASTER, call_id);
                             self.buffer.remove(&call_id);
                             self.rx_outputs()[0]
                                 .send(EngineRxMessage::Ack(new_rpc_id, status))
@@ -397,7 +397,7 @@ impl LoadBalancerEngine {
             Ok(req) => {
                 match req {
                     Command::VConnect(handles) => {
-                        let vid = self.gen_vconn_num();
+                        let vid = Handle::MASTER;
                         log::info!("build conn mapping: {:?} -> {:?}", handles, vid);
                         self.v2p.insert(vid, handles.clone());
                         for handle in handles {
@@ -428,9 +428,5 @@ impl LoadBalancerEngine {
             Err(TryRecvError::Empty) => Ok(Status::Progress(0)),
             Err(TryRecvError::Disconnected) => Ok(Status::Disconnected),
         }
-    }
-
-    fn gen_vconn_num(&self) -> Handle {
-        return Handle(u64::MAX);
     }
 }

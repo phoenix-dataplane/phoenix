@@ -5,7 +5,7 @@ config_string = '''
 prefix = "/tmp/phoenix"
 engine_basename = "mrpc-engine"
 build_cache = "/tmp/phoenix/build-cache"
-transport = "Rdma"
+transport = "Tcp"
 nic_index = 0
 '''
 
@@ -16,7 +16,7 @@ config_string = '''
 prefix = "/tmp/phoenix"
 engine_basename = "mrpclb-engine"
 build_cache = "/tmp/phoenix/build-cache"
-transport = "Rdma"
+transport = "Tcp"
 nic_index = 0
 '''
 

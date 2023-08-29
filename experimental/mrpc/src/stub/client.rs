@@ -398,7 +398,7 @@ impl ClientStub {
             ctx.service.send_cmd(cmd).unwrap();
             match ctx.service.recv_comp().unwrap().0 {
                 Ok(CompletionKind::VConnect(handle)) => {
-                    assert!(handle == Handle::MASTER);
+                    //assert!(handle == Handle::MASTER);
                     _ = vconn.insert(Connection::vconn(handle));
                 }
                 Err(e) => panic!("{:?}", e),

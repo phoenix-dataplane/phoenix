@@ -121,10 +121,14 @@ impl Context {
         let protos = RefCell::new(BTreeSet::new());
         println!("mrpc register: {:?}", setting);
         let setting_str = serde_json::to_string(setting)?;
+        let mut service = "Mrpc".to_string();
+        if let Some(name) = &setting.module_config {
+            service = name.clone();
+        }
         let service = ShmService::register(
             &*PHOENIX_PREFIX,
             &*PHOENIX_CONTROL_SOCK,
-            "Mrpc".to_string(),
+            service,
             SCHEDULING_HINT.with_borrow(|h| *h),
             Some(&setting_str),
         )?;

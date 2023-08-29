@@ -81,7 +81,7 @@ impl MrpcLBEngineBuilder {
             meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             _mode: self.mode,
             dispatch_build_cache: self.serializer_build_cache,
-            transport_type: None,
+            transport_type: Some(TransportType::Tcp),
             indicator: Default::default(),
             wr_read_buffer: Vec::with_capacity(BUF_LEN),
         })
@@ -285,6 +285,7 @@ impl PhoenixModule for MrpcLBModule {
                     transport: self.config.transport,
                     nic_index: self.config.nic_index,
                     core_id: None,
+                    module_config: None,
                 }
             };
             log::debug!("mRPCLB service setting: {:?}", setting);

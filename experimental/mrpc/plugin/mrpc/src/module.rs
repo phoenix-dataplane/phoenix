@@ -249,6 +249,7 @@ impl PhoenixModule for MrpcModule {
                     transport: self.config.transport,
                     nic_index: self.config.nic_index,
                     core_id: None,
+                    module_config: None,
                 }
             };
             log::debug!("mRPC service setting: {:?}", setting);
