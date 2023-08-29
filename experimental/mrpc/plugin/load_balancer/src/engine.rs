@@ -15,7 +15,7 @@ use mrpc_marshal::{ExcavateContext, SgE, SgList};
 use phoenix_api::buf::Range;
 use phoenix_api::engine::SchedulingMode;
 use phoenix_api::net::{MappedAddrStatus, WcOpcode, WcStatus};
-use phoenix_api::rpc::{MessageMeta, RpcId, StatusCode, TransportStatus};
+use phoenix_api::rpc::{CallId, MessageMeta, RpcId, StatusCode, TransportStatus};
 use phoenix_api::transport::tcp::dp::Completion;
 use phoenix_api::{AsHandle, Handle};
 use phoenix_api_load_balancer::control_plane;
@@ -56,6 +56,7 @@ pub(crate) struct LoadBalancerEngine {
     pub(crate) node: DataPathNode,
     pub(crate) p2v: FnvHashMap<Handle, Handle>,
     pub(crate) v2p: FnvHashMap<Handle, Vec<Handle>>,
+    pub(crate) buffer: FnvHashMap<CallId, i32>,
     pub(crate) cmd_rx_upstream:
         tokio::sync::mpsc::UnboundedReceiver<phoenix_api_mrpc::cmd::Command>,
     pub(crate) cmd_tx_upstream:
@@ -155,6 +156,12 @@ impl LoadBalancerEngine {
             .downcast::<FnvHashMap<Handle, Vec<Handle>>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
+        let buffer = *local
+            .remove("buffer")
+            .unwrap()
+            .downcast::<FnvHashMap<CallId, i32>>()
+            .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
+
         let cmd_tx_upstream = *local
             .remove("cmd_tx_upstream")
             .unwrap()
@@ -188,6 +195,7 @@ impl LoadBalancerEngine {
         let engine = LoadBalancerEngine {
             p2v,
             v2p,
+            buffer,
             cmd_tx_upstream,
             cmd_rx_upstream,
             cmd_tx_downstream,
@@ -327,6 +335,18 @@ impl LoadBalancerEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
+                        let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
+
+                        if conn_id.0 == u64::MAX {
+                            let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
+                            self.buffer.insert(call_id, 0);
+                            let rconns = self.v2p.get(&conn_id).unwrap();
+                            let new_conn_id = rconns[call_id.0 as usize % rconns.len()];
+
+                            unsafe {
+                                (*msg.meta_buf_ptr.as_meta_ptr()).conn_id = new_conn_id;
+                            };
+                        }
                         self.tx_outputs()[0]
                             .send(EngineTxMessage::RpcMessage(msg))
                             .unwrap();
@@ -341,7 +361,25 @@ impl LoadBalancerEngine {
 
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
-                self.rx_outputs()[0].send(m).unwrap();
+                match m {
+                    EngineRxMessage::Ack(rpc_id, status) => {
+                        let call_id = rpc_id.1;
+                        if let Some(x) = self.buffer.get(&call_id) {
+                            let new_rpc_id = RpcId(Handle(u64::MAX), call_id);
+                            self.buffer.remove(&call_id);
+                            self.rx_outputs()[0]
+                                .send(EngineRxMessage::Ack(new_rpc_id, status))
+                                .unwrap();
+                        } else {
+                            self.rx_outputs()[0]
+                                .send(EngineRxMessage::Ack(rpc_id, status))
+                                .unwrap();
+                        }
+                    }
+                    _ => {
+                        self.rx_outputs()[0].send(m).unwrap();
+                    }
+                }
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
@@ -360,6 +398,7 @@ impl LoadBalancerEngine {
                 match req {
                     Command::VConnect(handles) => {
                         let vid = self.gen_vconn_num();
+                        log::info!("build conn mapping: {:?} -> {:?}", handles, vid);
                         self.v2p.insert(vid, handles.clone());
                         for handle in handles {
                             self.p2v.insert(handle, vid);

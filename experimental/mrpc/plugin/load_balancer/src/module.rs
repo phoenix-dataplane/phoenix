@@ -60,6 +60,7 @@ impl LoadBalancerEngineBuilder {
         Ok(LoadBalancerEngine {
             p2v: Default::default(),
             v2p: Default::default(),
+            buffer: Default::default(),
             cmd_tx_upstream: self.cmd_tx_upstream,
             cmd_rx_upstream: self.cmd_rx_upstream,
             cmd_tx_downstream: self.cmd_tx_downstream,

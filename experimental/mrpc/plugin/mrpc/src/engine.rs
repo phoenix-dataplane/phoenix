@@ -421,8 +421,9 @@ impl MrpcEngine {
 
                 // 1300ns, even if the tracing level is filtered shit!!!!!!
                 tracing::trace!(
-                    "mRPC engine got a message from App, call_id: {}",
-                    erased.meta.call_id
+                    "mRPC engine got a message from App, call_id: {:?}, conn_id: {:?}",
+                    erased.meta.call_id,
+                    erased.meta.conn_id,
                 );
 
                 // timer.tick();
@@ -478,8 +479,9 @@ impl MrpcEngine {
                         // let mut timer = crate::timer::Timer::new();
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
-                            "mRPC engine send message to App, call_id={}",
-                            meta.call_id
+                            "mRPC engine send message to App, call_id={:?}, conn_id={:?}",
+                            meta.call_id,
+                            meta.conn_id
                         );
 
                         let erased = MessageErased {
