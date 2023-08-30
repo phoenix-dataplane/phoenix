@@ -39,7 +39,6 @@ use phoenix_common::resource::Error as ResourceError;
 use phoenix_common::storage::{ResourceCollection, SharedStorage};
 
 use super::get_ops;
-use super::pool::BufferSlab;
 
 use super::{ControlPathError, DatapathError};
 
@@ -340,18 +339,19 @@ impl LoadBalancerEngine {
 
                         if conn_id == Handle::MASTER {
                             self.buffer.insert(call_id, 0);
-                            let rconns = self.v2p.get(&conn_id).unwrap();
+                            let rconns = self
+                                .v2p
+                                .get(&conn_id)
+                                .ok_or(DatapathError::Resource(ResourceError::NotFound))?;
                             let new_conn_id = rconns[call_id.0 as usize % rconns.len()];
 
                             unsafe {
                                 (*msg.meta_buf_ptr.as_meta_ptr()).conn_id = new_conn_id;
                             };
                         }
-                        self.tx_outputs()[0]
-                            .send(EngineTxMessage::RpcMessage(msg))
-                            .unwrap();
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
                     }
-                    m => self.tx_outputs()[0].send(m).unwrap(),
+                    m => self.tx_outputs()[0].send(m)?,
                 }
                 return Ok(Progress(1));
             }
@@ -367,17 +367,13 @@ impl LoadBalancerEngine {
                         if let Some(_) = self.buffer.get(&call_id) {
                             let new_rpc_id = RpcId(Handle::MASTER, call_id);
                             self.buffer.remove(&call_id);
-                            self.rx_outputs()[0]
-                                .send(EngineRxMessage::Ack(new_rpc_id, status))
-                                .unwrap();
+                            self.rx_outputs()[0].send(EngineRxMessage::Ack(new_rpc_id, status))?;
                         } else {
-                            self.rx_outputs()[0]
-                                .send(EngineRxMessage::Ack(rpc_id, status))
-                                .unwrap();
+                            self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
                         }
                     }
                     _ => {
-                        self.rx_outputs()[0].send(m).unwrap();
+                        self.rx_outputs()[0].send(m)?;
                     }
                 }
                 return Ok(Progress(1));

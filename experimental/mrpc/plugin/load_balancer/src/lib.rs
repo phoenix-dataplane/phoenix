@@ -5,6 +5,8 @@
 
 use std::alloc::LayoutError;
 
+use phoenix_common::engine::datapath::EngineRxMessage;
+use phoenix_common::engine::datapath::EngineTxMessage;
 use phoenix_salloc::region;
 use phoenix_salloc::ControlPathError as SallocError;
 use thiserror::Error;
@@ -16,8 +18,7 @@ pub use phoenix_common::{InitFnResult, PhoenixModule};
 pub mod module;
 
 pub(crate) mod engine;
-#[allow(unused)]
-pub(crate) mod pool;
+
 #[inline]
 fn get_ops() -> &'static ops::Ops {
     use crate::engine::ELS;
@@ -75,6 +76,12 @@ impl<T> From<SendError<T>> for DatapathError {
 pub(crate) enum DatapathError {
     #[error("Internal queue send error")]
     InternalQueueSend,
+    #[error("Resource error: {0}")]
+    Resource(#[from] ResourceError),
+    #[error("Tx queue send error: {0}")]
+    Tx(#[from] phoenix_common::engine::datapath::SendError<EngineTxMessage>),
+    #[error("Rx queue send error: {0}")]
+    Rx(#[from] phoenix_common::engine::datapath::SendError<EngineRxMessage>),
 }
 
 use crate::module::LoadBalancerModule;
