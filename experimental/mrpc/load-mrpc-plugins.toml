@@ -5,7 +5,18 @@ config_string = '''
 prefix = "/tmp/phoenix"
 engine_basename = "mrpc-engine"
 build_cache = "/tmp/phoenix/build-cache"
-transport = "Rdma"
+transport = "Tcp"
+nic_index = 0
+'''
+
+[[modules]]
+name = "MrpcLB"
+lib_path = "plugins/libphoenix_mrpclb.rlib"
+config_string = '''
+prefix = "/tmp/phoenix"
+engine_basename = "mrpclb-engine"
+build_cache = "/tmp/phoenix/build-cache"
+transport = "Tcp"
 nic_index = 0
 '''
 
@@ -21,6 +32,9 @@ enable_scheduler = false
 name = "TcpRpcAdapter"
 lib_path = "plugins/libphoenix_tcp_rpc_adapter.rlib"
 
+[[modules]]
+name = "LoadBalancer"
+lib_path = "plugins/libphoenix_load_balancer.rlib"
 
 [[addons]]
 name = "RateLimit"

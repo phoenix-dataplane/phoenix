@@ -8,6 +8,10 @@ pub struct Handle(pub u64);
 
 impl Handle {
     pub const INVALID: Handle = Handle(u64::MAX);
+    pub const MASTER: Handle = Handle(u64::MAX - 1);
+    pub fn is_master(&self) -> bool {
+        self.0 == Self::MASTER.0
+    }
 }
 
 pub trait AsHandle {

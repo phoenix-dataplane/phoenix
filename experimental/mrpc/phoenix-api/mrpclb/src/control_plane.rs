@@ -46,6 +46,4 @@ pub struct Setting {
     /// The core index the user binds to. [`None`] if the user thread does not explicit set a
     /// scheduling affinity.
     pub core_id: Option<usize>,
-
-    pub module_config: Option<String>,
 }
