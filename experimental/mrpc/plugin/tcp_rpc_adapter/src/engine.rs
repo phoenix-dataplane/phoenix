@@ -847,7 +847,7 @@ impl TcpRpcAdapterEngine {
             Command::UpdateProtos(_) => {
                 unreachable!();
             }
-            Command::VConnect(_) => {
+            Command::MultiConnect(_) => {
                 unreachable!();
             }
         }

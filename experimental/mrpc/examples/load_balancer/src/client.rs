@@ -7,15 +7,18 @@ pub mod rpc_hello {
 use mrpc::stub::TransportType;
 use rpc_hello::greeter_client::GreeterClient;
 use rpc_hello::HelloRequest;
-use std::{thread, time::Duration, time::Instant};
+use std::{env, thread, time::Duration, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = env::args().collect();
+    let addrs = args[1..].to_vec();
+    println!("MultiConnect to {:?}", addrs);
     let mut setting = mrpc::current_setting();
     setting.module_config = Some("MrpcLB".into());
     setting.transport = TransportType::Tcp;
     mrpc::set(&setting);
-    let client = GreeterClient::multi_connect(vec!["localhost:5000", "localhost:5001"])?;
-    println!("Connected to server!");
+    let client = GreeterClient::multi_connect(addrs)?;
+    println!("Connected to servers!");
     let mut apple_count = 0;
     let mut banana_count = 0;
     let mut last_print_time = Instant::now();

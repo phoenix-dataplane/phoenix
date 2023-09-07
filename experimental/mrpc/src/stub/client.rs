@@ -394,10 +394,10 @@ impl ClientStub {
             });
         }
         MRPC_CTX.with(|ctx| {
-            let cmd = Command::VConnect(handles);
+            let cmd = Command::MultiConnect(handles);
             ctx.service.send_cmd(cmd).unwrap();
             match ctx.service.recv_comp().unwrap().0 {
-                Ok(CompletionKind::VConnect(handle)) => {
+                Ok(CompletionKind::MultiConnect(handle)) => {
                     //assert!(handle == Handle::MASTER);
                     _ = vconn.insert(Connection::vconn(handle));
                 }

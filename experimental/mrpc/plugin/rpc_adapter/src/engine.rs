@@ -1081,7 +1081,7 @@ impl RpcAdapterEngine {
             cmd::Command::UpdateProtos(_) => {
                 unreachable!();
             }
-            cmd::Command::VConnect(_) => {
+            cmd::Command::MultiConnect(_) => {
                 unreachable!();
             }
         }

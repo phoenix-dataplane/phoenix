@@ -17,12 +17,8 @@ smol.workspace = true
 
 
 [[bin]]
-name = "server1"
-path = "src/server1.rs"
-
-[[bin]]
-name = "server2"
-path = "src/server2.rs"
+name = "server"
+path = "src/server.rs"
 
 [[bin]]
 name = "client"

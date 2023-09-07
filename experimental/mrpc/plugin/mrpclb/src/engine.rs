@@ -320,9 +320,11 @@ impl MrpcLBEngine {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 Ok(None)
             }
-            Command::VConnect(handles) => {
+            Command::MultiConnect(handles) => {
                 let copy_handle = handles.clone();
-                self.cmd_tx.send(Command::VConnect(copy_handle)).unwrap();
+                self.cmd_tx
+                    .send(Command::MultiConnect(copy_handle))
+                    .unwrap();
                 Ok(None)
             }
             Command::Bind(addr) => {
@@ -590,8 +592,8 @@ impl MrpcLBEngine {
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))
                     }
-                    Ok(CompletionKind::VConnect(handle)) => {
-                        let comp_kind = CompletionKind::VConnect(handle);
+                    Ok(CompletionKind::MultiConnect(handle)) => {
+                        let comp_kind = CompletionKind::MultiConnect(handle);
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))
                     }

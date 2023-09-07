@@ -9,6 +9,7 @@ pub mod rpc_echo {
 
 use rpc_echo::greeter_server::{Greeter, GreeterServer};
 use rpc_echo::{HelloReply, HelloRequest};
+use std::env;
 
 use mrpc::{RRef, WRef};
 
@@ -38,9 +39,13 @@ impl Greeter for MyGreeter {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = env::args().collect();
+    assert!(args.len() == 2, "Usage: <addr>");
+    let addr = args[1].clone();
+    println!("Serve on {}", addr);
     // Start the server, binding it to port 5000.
     smol::block_on(async {
-        let mut server = mrpc::stub::LocalServer::bind("0.0.0.0:5000")?;
+        let mut server = mrpc::stub::LocalServer::bind(addr)?;
 
         // Add the Greeter service to the server using the custom MyGreeter implementation.
         server

@@ -392,14 +392,14 @@ impl LoadBalancerEngine {
         match self.cmd_rx_upstream.try_recv() {
             Ok(req) => {
                 match req {
-                    Command::VConnect(handles) => {
+                    Command::MultiConnect(handles) => {
                         let vid = Handle::MASTER;
                         log::info!("build conn mapping: {:?} -> {:?}", handles, vid);
                         self.v2p.insert(vid, handles.clone());
                         for handle in handles {
                             self.p2v.insert(handle, vid);
                         }
-                        let comp = CompletionKind::VConnect(vid);
+                        let comp = CompletionKind::MultiConnect(vid);
                         self.cmd_tx_upstream.send(Completion(Ok(comp)))?;
                     }
                     _ => {
