@@ -80,3 +80,23 @@ name = "HelloAclSender"
 lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "AdmissionControl"
+lib_path = "plugins/libphoenix_admission_control.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Metrics"
+lib_path = "plugins/libphoenix_metrics.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Mutation"
+lib_path = "plugins/libphoenix_mutation.rlib"
+config_string = '''
+'''
+
+[[addons]]

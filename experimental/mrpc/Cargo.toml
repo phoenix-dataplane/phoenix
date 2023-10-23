@@ -56,6 +56,9 @@ members = [
   "phoenix-api/policy/logging",
   "phoenix-api/policy/hello-acl-receiver",
   "phoenix-api/policy/hello-acl-sender",
+  "phoenix-api/policy/admission-control",
+  "phoenix-api/policy/metrics",
+  "phoenix-api/policy/mutation",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/mrpclb",
@@ -70,6 +73,9 @@ members = [
   "plugin/policy/hotel-acl",
   "plugin/policy/hello-acl-receiver",
   "plugin/policy/hello-acl-sender",
+  "plugin/policy/admission-control",
+  "plugin/policy/metrics",
+  "plugin/policy/mutation",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -96,6 +102,9 @@ phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
 phoenix-api-policy-hello-acl-receiver = { path = "phoenix-api/policy/hello-acl-receiver" }
 phoenix-api-policy-hello-acl-sender = { path = "phoenix-api/policy/hello-acl-sender" }
+phoenix-api-policy-admission-control = { path = "phoenix-api/policy/admission-control" }
+phoenix-api-policy-metrics = { path = "phoenix-api/policy/metrics" }
+phoenix-api-policy-mutation = { path = "phoenix-api/policy/mutation" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -169,6 +178,7 @@ fasthash = "0.4.0"
 link-cplusplus = "1.0"
 arc-swap = "1.5.0"
 crossbeam-utils = "0.8.12"
+rand = "0.8"
 
 [profile.release]
 debug = true
