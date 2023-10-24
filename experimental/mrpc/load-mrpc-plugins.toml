@@ -98,5 +98,3 @@ name = "Mutation"
 lib_path = "plugins/libphoenix_mutation.rlib"
 config_string = '''
 '''
-
-[[addons]]
