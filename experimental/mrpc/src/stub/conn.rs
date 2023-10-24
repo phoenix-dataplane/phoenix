@@ -54,6 +54,15 @@ impl Connection {
         }
     }
 
+    pub(crate) fn vconn(handle: Handle) -> Self {
+        Connection {
+            inner: RefCell::new(Inner::Alive(AliveConnection::new(
+                handle,
+                ReadHeap::default(),
+            ))),
+        }
+    }
+
     pub(crate) fn close(&self) {
         let mut inner = self.inner.borrow_mut();
         match &mut *inner {

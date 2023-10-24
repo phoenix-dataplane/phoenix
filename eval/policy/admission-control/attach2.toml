@@ -1,0 +1,33 @@
+addon_engine = "AdmissionControlEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "AdmissionControlEngine",
+        0,
+        0,
+    ],
+    [
+        "AdmissionControlEngine",
+        "HelloAclSenderEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "HelloAclSenderEngine",
+        "AdmissionControlEngine",
+        0,
+        0,
+    ],
+    [
+        "AdmissionControlEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "HelloAclSenderEngine", "TcpRpcAdapterEngine"]
+op = "attach"
+config_string = '''
+'''

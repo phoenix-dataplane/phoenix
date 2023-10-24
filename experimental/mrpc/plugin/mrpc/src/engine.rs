@@ -337,6 +337,9 @@ impl MrpcEngine {
                     .unwrap();
                 Ok(None)
             }
+            Command::MultiConnect(_) => {
+                panic!("MultiConnect is only used in mrpclb")
+            }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
             }

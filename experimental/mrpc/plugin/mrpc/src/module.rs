@@ -212,6 +212,7 @@ impl PhoenixModule for MrpcModule {
         node: DataPathNode,
         _plugged: &ModuleCollection,
     ) -> PhoenixResult<Option<Box<dyn Engine>>> {
+        log::info!("create_engine mrpc module!");
         if ty != MrpcModule::MRPC_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
@@ -248,6 +249,7 @@ impl PhoenixModule for MrpcModule {
                     transport: self.config.transport,
                     nic_index: self.config.nic_index,
                     core_id: None,
+                    module_config: None,
                 }
             };
             log::debug!("mRPC service setting: {:?}", setting);
@@ -262,7 +264,7 @@ impl PhoenixModule for MrpcModule {
             // as the RpcAdapterEngine is built first
             // according to the topological order
             let cmd_tx = shared.command_path.get_sender(&engine_type)?;
-            let cmd_rx = shared.command_path.get_receiver(&MrpcModule::MRPC_ENGINE)?;
+            let cmd_rx = shared.command_path.get_receiver(&engine_type)?;
 
             let builder = MrpcEngineBuilder::new(
                 customer,

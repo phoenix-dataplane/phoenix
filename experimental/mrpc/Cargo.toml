@@ -45,8 +45,10 @@ members = [
   "mrpc-marshal",
   # extension to phoenix-api
   "phoenix-api/mrpc",
+  "phoenix-api/mrpclb",
   "phoenix-api/rpc_adapter",
   "phoenix-api/tcp_rpc_adapter",
+  "phoenix-api/load_balancer",
   "phoenix-api/policy/null",
   "phoenix-api/policy/ratelimit",
   "phoenix-api/policy/ratelimit-drop",
@@ -60,10 +62,15 @@ members = [
   "phoenix-api/policy/fault",
   "phoenix-api/policy/fault2",
   "phoenix-api/policy/delay",
+  "phoenix-api/policy/admission-control",
+  "phoenix-api/policy/metrics",
+  "phoenix-api/policy/mutation",
   # the pheonix plugins
   "plugin/mrpc",
+  "plugin/mrpclb",
   "plugin/rpc_adapter",
   "plugin/tcp_rpc_adapter",
+  "plugin/load_balancer",
   # TODO(cjr): Add them back
   "plugin/policy/null",
   "plugin/policy/ratelimit",
@@ -78,12 +85,16 @@ members = [
   "plugin/policy/fault",
   "plugin/policy/fault2",
   "plugin/policy/delay",
+  "plugin/policy/admission-control",
+  "plugin/policy/metrics",
+  "plugin/policy/mutation",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
   "examples/rpc_bench_plus",
   "examples/masstree_analytics",
   "examples/hotel_reservation",
+  "examples/load_balancer",
   # "examples/hotel_microservices",
 ]
 exclude = ["3rdparty/prost"]
@@ -92,8 +103,10 @@ exclude = ["3rdparty/prost"]
 [workspace.dependencies]
 mrpc = { path = "." }
 phoenix-api-mrpc = { path = "phoenix-api/mrpc" }
+phoenix-api-mrpclb = { path = "phoenix-api/mrpclb" }
 phoenix-api-tcp-rpc-adapter = { path = "phoenix-api/tcp_rpc_adapter" }
 phoenix-api-rpc-adapter = { path = "phoenix-api/rpc_adapter" }
+phoenix-api-load-balancer = { path = "phoenix-api/load_balancer" }
 phoenix-api-policy-null = { path = "phoenix-api/policy/null" }
 phoenix-api-policy-ratelimit = { path = "phoenix-api/policy/ratelimit" }
 phoenix-api-policy-ratelimit-drop = { path = "phoenix-api/policy/ratelimit-drop" }
@@ -107,6 +120,9 @@ phoenix-api-policy-nofile-logging = { path = "phoenix-api/policy/nofile-logging"
 phoenix-api-policy-fault = { path = "phoenix-api/policy/fault" }
 phoenix-api-policy-fault2 = { path = "phoenix-api/policy/fault2" }
 phoenix-api-policy-delay = { path = "phoenix-api/policy/delay" }
+phoenix-api-policy-admission-control = { path = "phoenix-api/policy/admission-control" }
+phoenix-api-policy-metrics = { path = "phoenix-api/policy/metrics" }
+phoenix-api-policy-mutation = { path = "phoenix-api/policy/mutation" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -114,6 +130,7 @@ mrpc-marshal = { path = "mrpc-marshal" }
 prost = { path = "3rdparty/prost" }
 prost-build = { path = "3rdparty/prost/prost-build" }
 phoenix-mrpc = { path = "plugin/mrpc" }
+phoenix-mrpclb = { path = "plugin/mrpclb" }
 
 phoenix-syscalls = { path = "../../src/phoenix-syscalls" }
 phoenix-api = { path = "../../src/phoenix-api" }

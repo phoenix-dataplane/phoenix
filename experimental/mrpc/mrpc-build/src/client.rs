@@ -67,7 +67,19 @@ pub fn generate<T: Service>(
                         stub,
                     })
                 }
-
+                pub fn multi_connect<A: std::net::ToSocketAddrs>(dsts: impl IntoIterator<Item=A>) -> Result<Self, ::mrpc::Error> {
+                    // use the cmid builder to create a CmId.
+                    // no you shouldn't rely on cmid here anymore. you should have your own rpc endpoint
+                    // cmid communicates directly to the transport engine. you need to pass your raw rpc
+                    // request/response to/from the rpc engine rather than the transport engine.
+                    // let stub = phoenix_syscalls::mrpc::cm::MrpcStub::set_transport(phoenix_syscalls::mrpc::cm::TransportType::Rdma)?;
+                    Self::update_protos()?;
+                    let dsts = dsts.into_iter().collect();
+                    let stub = ClientStub::multi_connect(dsts).unwrap();
+                    Ok(Self {
+                        stub,
+                    })
+                }
                 #methods
             }
 

@@ -12,6 +12,8 @@ type IResult<T> = Result<T, phoenix_api::Error>;
 pub enum Command {
     SetTransport(TransportType),
     Connect(SocketAddr),
+    // MultiConnect tells lb to map a vector of connections to a virtual connection
+    MultiConnect(Vec<Handle>),
     Bind(SocketAddr),
     // The app notifies the backend with its mapped addresses
     // conn_handle, [mr_handle, addr]
@@ -40,6 +42,8 @@ pub enum CompletionKind {
     // connection handle, receive mrs
     ConnectInternal(ConnectResponse, Vec<RawFd>),
     Connect(ConnectResponse),
+    // v connect returns the virtual connection handle
+    MultiConnect(Handle),
     Bind(Handle),
     // These are actually commands which go by a reverse direction.
     // conn_handle, (mr_handle, kaddr, len, file_off)

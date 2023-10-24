@@ -1065,6 +1065,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
+name = "lb"
+version = "0.1.0"
+dependencies = [
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1566,6 +1577,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-admission-control"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-admission-control",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "phoenix-api"
 version = "0.1.0"
 dependencies = [
@@ -1587,12 +1621,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-mrpc"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
  "serde",
  "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-mrpclb"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-policy-admission-control"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
 ]
 
 [[package]]
@@ -1924,6 +1983,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "ipc",
+ "libloading",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-load-balancer",
+ "phoenix-api-mrpc",
+ "phoenix-mrpc",
+ "phoenix-salloc",
+ "phoenix-transport-tcp",
+ "phoenix_common",
+ "serde",
+ "slab",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "utils",
+]
+
+[[package]]
 name = "phoenix-logging"
 version = "0.1.0"
 dependencies = [
@@ -1977,6 +2068,60 @@ dependencies = [
  "toml",
  "utils",
  "uuid",
+]
+
+[[package]]
+name = "phoenix-mrpclb"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "fastrand",
+ "fnv",
+ "futures",
+ "ipc",
+ "itertools",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "phoenix-api",
+ "phoenix-api-mrpc",
+ "phoenix_common",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "utils",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-mutation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-mutation",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -2409,8 +2554,20 @@ dependencies = [
  "getrandom 0.1.16",
  "libc",
  "rand_chacha 0.2.2",
+ "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rand_hc",
+]
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "libc",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2445,6 +2602,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2466,6 +2633,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
 dependencies = [
  "getrandom 0.1.16",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.8",
 ]
 
 [[package]]

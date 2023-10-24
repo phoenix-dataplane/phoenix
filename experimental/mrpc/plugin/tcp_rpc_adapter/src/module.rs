@@ -169,13 +169,16 @@ impl PhoenixModule for TcpRpcAdapterModule {
                 } = request
                 {
                     let (cmd_sender, cmd_receiver) = tokio::sync::mpsc::unbounded_channel();
+
                     shared
                         .command_path
                         .put_sender(Self::TCP_RPC_ADAPTER_ENGINE, cmd_sender)?;
+
                     let (comp_sender, comp_receiver) = tokio::sync::mpsc::unbounded_channel();
+
                     shared
                         .command_path
-                        .put_receiver(EngineType("MrpcEngine"), comp_receiver)?;
+                        .put_receiver(Self::TCP_RPC_ADAPTER_ENGINE, comp_receiver)?;
 
                     let engine = self.create_rpc_adapter_engine(
                         mode,

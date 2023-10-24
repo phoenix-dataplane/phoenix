@@ -248,7 +248,7 @@ impl PhoenixModule for RpcAdapterModule {
                     let (comp_sender, comp_receiver) = tokio::sync::mpsc::unbounded_channel();
                     shared
                         .command_path
-                        .put_receiver(EngineType("MrpcEngine"), comp_receiver)?;
+                        .put_receiver(Self::RPC_ADAPTER_ENGINE, comp_receiver)?;
 
                     let engine = self.create_rpc_adapter_engine(
                         mode,
