@@ -1,4 +1,4 @@
-//! mRPC control path commands.
+//! mRPClb control path commands.
 use std::{net::SocketAddr, os::unix::prelude::RawFd, path::PathBuf};
 
 use serde::{Deserialize, Serialize};

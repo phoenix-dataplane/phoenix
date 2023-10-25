@@ -4,6 +4,7 @@ use std::pin::Pin;
 
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
+use itertools::Itertools;
 use std::num::NonZeroU32;
 
 use phoenix_api::engine::SchedulingMode;
@@ -27,7 +28,7 @@ use super::module::CustomerType;
 use super::state::State;
 use super::{DatapathError, Error};
 
-pub struct MrpcEngine {
+pub struct MrpcLBEngine {
     pub(crate) _state: State,
 
     pub(crate) customer: CustomerType,
@@ -50,9 +51,9 @@ pub struct MrpcEngine {
     pub(crate) wr_read_buffer: Vec<dp::WorkRequest>,
 }
 
-impl_vertex_for_engine!(MrpcEngine, node);
+impl_vertex_for_engine!(MrpcLBEngine, node);
 
-impl Decompose for MrpcEngine {
+impl Decompose for MrpcLBEngine {
     #[inline]
     fn flush(&mut self) -> DecomposeResult<usize> {
         // mRPC engine has a single receiver on data path,
@@ -79,7 +80,7 @@ impl Decompose for MrpcEngine {
         let engine = *self;
 
         let mut collections = ResourceCollection::with_capacity(10);
-        log::debug!("dumping MrpcEngine states...");
+        log::debug!("dumping MrpcLBEngine states...");
         collections.insert("customer".to_string(), Box::new(engine.customer));
         collections.insert("mode".to_string(), Box::new(engine._mode));
         collections.insert("state".to_string(), Box::new(engine._state));
@@ -102,7 +103,7 @@ impl Decompose for MrpcEngine {
     }
 }
 
-impl MrpcEngine {
+impl MrpcLBEngine {
     pub(crate) fn restore(
         mut local: ResourceCollection,
         _shared: &mut SharedStorage,
@@ -111,7 +112,7 @@ impl MrpcEngine {
         _plugged: &ModuleCollection,
         _prev_version: Version,
     ) -> Result<Self> {
-        log::debug!("restoring MrpcEngine states...");
+        log::debug!("restoring MrpcLBEngine states...");
 
         let customer = *local
             .remove("customer")
@@ -159,7 +160,7 @@ impl MrpcEngine {
             .downcast::<Vec<dp::WorkRequest>>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
-        let engine = MrpcEngine {
+        let engine = MrpcLBEngine {
             _state: state,
             customer,
             cmd_tx,
@@ -184,7 +185,7 @@ enum Status {
 
 use Status::Progress;
 
-impl Engine for MrpcEngine {
+impl Engine for MrpcLBEngine {
     fn description(self: Pin<&Self>) -> String {
         "MrpcEngine, todo show more information".to_string()
     }
@@ -199,7 +200,7 @@ impl Engine for MrpcEngine {
     }
 }
 
-impl MrpcEngine {
+impl MrpcLBEngine {
     async fn mainloop(&mut self) -> EngineResult {
         loop {
             // let mut timer = utils::timer::Timer::new();
@@ -252,7 +253,7 @@ impl MrpcEngine {
     }
 }
 
-impl MrpcEngine {
+impl MrpcLBEngine {
     // we need to wait for RpcAdapter engine to finish outstanding send requests
     // (whether successful or not), to release message meta pool and shutdown mRPC engine.
     // However, we cannot indefinitely wait for it in case of wc errors.
@@ -319,6 +320,13 @@ impl MrpcEngine {
                 self.cmd_tx.send(Command::Connect(*addr)).unwrap();
                 Ok(None)
             }
+            Command::MultiConnect(handles) => {
+                let copy_handle = handles.clone();
+                self.cmd_tx
+                    .send(Command::MultiConnect(copy_handle))
+                    .unwrap();
+                Ok(None)
+            }
             Command::Bind(addr) => {
                 self.cmd_tx.send(Command::Bind(*addr)).unwrap();
                 Ok(None)
@@ -336,9 +344,6 @@ impl MrpcEngine {
                     .send(Command::UpdateProtosInner(dylib_path))
                     .unwrap();
                 Ok(None)
-            }
-            Command::MultiConnect(_) => {
-                panic!("MultiConnect is only used in mrpclb")
             }
             Command::UpdateProtosInner(_) => {
                 panic!("UpdateProtosInner is only used in backend")
@@ -418,8 +423,9 @@ impl MrpcEngine {
 
                 // 1300ns, even if the tracing level is filtered shit!!!!!!
                 tracing::trace!(
-                    "mRPC engine got a message from App, call_id: {}",
-                    erased.meta.call_id
+                    "mRPC LB engine got a message from App, call_id: {:?}, conn_id: {:?}",
+                    erased.meta.call_id,
+                    erased.meta.conn_id,
                 );
 
                 // timer.tick();
@@ -475,8 +481,9 @@ impl MrpcEngine {
                         // let mut timer = crate::timer::Timer::new();
                         let meta = unsafe { *msg.meta.as_ref() };
                         tracing::trace!(
-                            "mRPC engine send message to App, call_id={}",
-                            meta.call_id
+                            "mRPC LB engine send message to App, call_id={:?}, conn_id={:?}",
+                            meta.call_id,
+                            meta.conn_id
                         );
 
                         let erased = MessageErased {
@@ -582,6 +589,11 @@ impl MrpcEngine {
                     Ok(CompletionKind::ConnectInternal(conn_resp, fds)) => {
                         self.customer.send_fd(&fds).unwrap();
                         let comp_kind = CompletionKind::Connect(conn_resp);
+                        self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
+                        Ok(Status::Progress(1))
+                    }
+                    Ok(CompletionKind::MultiConnect(handle)) => {
+                        let comp_kind = CompletionKind::MultiConnect(handle);
                         self.customer.send_comp(cmd::Completion(Ok(comp_kind)))?;
                         Ok(Status::Progress(1))
                     }

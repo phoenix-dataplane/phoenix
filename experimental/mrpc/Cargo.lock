@@ -1065,6 +1065,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
+name = "lb"
+version = "0.1.0"
+dependencies = [
+ "mrpc",
+ "mrpc-build",
+ "prost",
+ "smol",
+ "structopt",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1587,7 +1598,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-mrpc"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "phoenix-api-mrpclb"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
@@ -1916,6 +1944,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-load-balancer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitvec",
+ "dashmap",
+ "fastrand",
+ "fnv",
+ "futures",
+ "ipc",
+ "libloading",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-load-balancer",
+ "phoenix-api-mrpc",
+ "phoenix-mrpc",
+ "phoenix-salloc",
+ "phoenix-transport-tcp",
+ "phoenix_common",
+ "serde",
+ "slab",
+ "socket2",
+ "spin",
+ "thiserror",
+ "tokio",
+ "toml",
+ "utils",
+]
+
+[[package]]
 name = "phoenix-logging"
 version = "0.1.0"
 dependencies = [
@@ -1941,6 +2001,38 @@ dependencies = [
 
 [[package]]
 name = "phoenix-mrpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "fastrand",
+ "fnv",
+ "futures",
+ "ipc",
+ "itertools",
+ "lazy_static",
+ "md5",
+ "mrpc-marshal",
+ "phoenix-api",
+ "phoenix-api-mrpc",
+ "phoenix_common",
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "syn",
+ "thiserror",
+ "tokio",
+ "toml",
+ "utils",
+ "uuid",
+]
+
+[[package]]
+name = "phoenix-mrpclb"
 version = "0.1.0"
 dependencies = [
  "anyhow",

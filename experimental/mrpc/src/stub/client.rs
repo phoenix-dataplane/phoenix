@@ -1,14 +1,16 @@
 //! Client implementation.
+use std::collections::HashMap;
 use std::future::Future;
+use std::hash::Hash;
 use std::marker::PhantomData;
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use ipc::channel::{Receiver, TryRecvError};
 use phoenix_api::rpc::{CallId, MessageErased, MessageMeta, RpcId, RpcMsgType, TransportStatus};
-use phoenix_api::AsHandle;
+use phoenix_api::{AsHandle, Handle};
 use phoenix_api_mrpc::cmd::{Command, CompletionKind};
 use phoenix_api_mrpc::dp;
 use phoenix_syscalls::_rx_recv_impl as rx_recv_impl;
@@ -61,7 +63,9 @@ impl<'a, T: Unpin> Future for ReqFuture<'a, T> {
                     );
                     let read_heap = this
                         .client
-                        .conn
+                        .conns
+                        .get(&reply.meta.conn_id)
+                        .unwrap()
                         .map_alive(|alive| Arc::clone(&alive.read_heap))
                         .expect("TODO: return an error when connection is dead rather than panic");
                     Ok(RRef::new(reply, read_heap))
@@ -84,9 +88,10 @@ impl !Sync for ClientStub {}
 /// [`mrpc-build`]: ../../../doc/mrpc_build/index.html
 #[derive(Debug)]
 pub struct ClientStub {
+    vconn: Connection,
     // A connection could go into error state, in that case, all subsequent operations over this
     // connection would return an error.
-    conn: Connection,
+    conns: HashMap<Handle, Connection>,
     // inner: RefCell<Inner>,
     inner: spin::Mutex<Inner>,
 }
@@ -113,7 +118,7 @@ impl ClientStub {
         Req: RpcData,
         Res: Unpin + RpcData,
     {
-        let conn_id = self.conn.handle();
+        let conn_id = self.master_conn().handle();
 
         // construct meta
         let meta = MessageMeta {
@@ -174,11 +179,13 @@ impl ClientStub {
                     TransportStatus::Error(code) => match code.get() {
                         402 => {}
                         _ => {
-                            self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
+                            self.master_conn()
+                                .map_alive(|alive| alive.pending.remove(&rpc_id))?;
                         }
                     },
                     _ => {
-                        self.conn.map_alive(|alive| alive.pending.remove(&rpc_id))?;
+                        self.master_conn()
+                            .map_alive(|alive| alive.pending.remove(&rpc_id))?;
                     }
                 }
 
@@ -196,7 +203,7 @@ impl ClientStub {
                     conn_id,
                     status
                 );
-                self.conn.close();
+                self.master_conn().close();
             }
         }
 
@@ -237,11 +244,12 @@ impl ClientStub {
         // self.conn
         //     .hold_rpc(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg))?;
 
-        self.conn.map_alive(|alive| {
-            alive
-                .pending
-                .insert(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg))
-        })?;
+        self.master_conn()
+            .map_alive(|alive: &crate::stub::conn::AliveConnection| {
+                alive
+                    .pending
+                    .insert(RpcId::new(meta.conn_id, meta.call_id), WRef::clone(&msg))
+            })?;
 
         // construct the request
         let (ptr_app, ptr_backend) = msg.into_shmptr().to_raw_parts();
@@ -275,6 +283,13 @@ impl ClientStub {
         })
     }
 
+    fn master_conn(&self) -> &Connection {
+        if self.vconn.handle().is_master() {
+            &self.vconn
+        } else {
+            self.conns.get(&self.vconn.handle()).unwrap()
+        }
+    }
     /// Creates an RPC client by connecting to a given socket address.
     // TODO(cjr): Change this to async too
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, Error> {
@@ -311,8 +326,11 @@ impl ClientStub {
                 let (stub_id, receiver) = LOCAL_REACTOR.with_borrow_mut(|r| r.register_stub());
                 LOCAL_REACTOR.with_borrow_mut(|r| r.register_connection(stub_id, &conn));
 
+                let mut conns = HashMap::new();
+                conns.insert(conn.handle().clone(), conn);
                 Ok(Self {
-                    conn,
+                    vconn: Connection::vconn(conn_handle),
+                    conns: conns,
                     // inner: RefCell::new(Inner {
                     inner: spin::Mutex::new(Inner {
                         receiver,
@@ -320,6 +338,90 @@ impl ClientStub {
                     }),
                 })
             })
+        })
+    }
+
+    /// Creates an RPC client by connecting to multiple socket address.
+    pub fn multi_connect<A: ToSocketAddrs>(addrs: Vec<A>) -> Result<Self, Error> {
+        let connect_addrs: Vec<SocketAddr> = addrs
+            .iter()
+            .map(|addr| addr.to_socket_addrs())
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        let mut conns = Vec::new();
+        let mut handles = Vec::new();
+        let mut vconn = None;
+        for addr in connect_addrs {
+            let cmd = Command::Connect(addr);
+            MRPC_CTX.with(|ctx| {
+                ctx.service.send_cmd(cmd).unwrap();
+                let fds = ctx.service.recv_fd().unwrap();
+                match ctx.service.recv_comp().unwrap().0 {
+                    Ok(CompletionKind::Connect(conn_resp)) => {
+                        assert_eq!(fds.len(), conn_resp.read_regions.len());
+
+                        let conn_handle = conn_resp.conn_handle;
+
+                        let read_heap = ReadHeap::new(&conn_resp, &fds);
+                        let vaddrs = read_heap
+                            .rbufs
+                            .iter()
+                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                            .collect();
+
+                        // return the mapped addr back
+                        let req = Command::NewMappedAddrs(conn_handle, vaddrs);
+                        ctx.service.send_cmd(req).unwrap();
+                        // wait for the reply!
+                        match ctx.service.recv_comp().unwrap().0 {
+                            Ok(CompletionKind::NewMappedAddrs) => {}
+                            Err(e) => panic!("{:?}", e),
+                            _ => panic!("unmatched branch"),
+                        }
+
+                        // register the stub with the reactor
+                        let conn = Connection::new(conn_handle, read_heap);
+                        handles.push(conn.handle().clone());
+                        conns.push(conn);
+                    }
+                    Err(e) => {
+                        panic!("{:?}", e)
+                    }
+                    _ => panic!("unmatched branch"),
+                }
+            });
+        }
+        MRPC_CTX.with(|ctx| {
+            let cmd = Command::MultiConnect(handles);
+            ctx.service.send_cmd(cmd).unwrap();
+            match ctx.service.recv_comp().unwrap().0 {
+                Ok(CompletionKind::MultiConnect(handle)) => {
+                    //assert!(handle == Handle::MASTER);
+                    _ = vconn.insert(Connection::vconn(handle));
+                }
+                Err(e) => panic!("{:?}", e),
+                _ => panic!("unmatched branch"),
+            }
+        });
+        let (stub_id, receiver) = LOCAL_REACTOR.with_borrow_mut(|r| r.register_stub());
+        for conn in &conns {
+            LOCAL_REACTOR.with_borrow_mut(|r| r.register_connection(stub_id, conn));
+        }
+        let rv = vconn.as_ref().unwrap();
+        LOCAL_REACTOR.with_borrow_mut(|r| r.register_connection(stub_id, rv));
+        let mut conn_map = HashMap::new();
+        for conn in conns {
+            conn_map.insert(conn.handle().clone(), conn);
+        }
+        Ok(Self {
+            vconn: vconn.unwrap(),
+            conns: conn_map,
+            inner: spin::Mutex::new(Inner {
+                receiver,
+                reply_cache: ReplyCache::new(),
+            }),
         })
     }
 }
