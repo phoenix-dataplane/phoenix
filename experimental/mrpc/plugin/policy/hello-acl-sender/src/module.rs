@@ -9,6 +9,7 @@ use phoenix_common::storage::ResourceCollection;
 
 use super::engine::HelloAclSenderEngine;
 use crate::config::HelloAclSenderConfig;
+use crate::engine::AclTable;
 
 pub(crate) struct HelloAclSenderEngineBuilder {
     node: DataPathNode,
@@ -21,11 +22,22 @@ impl HelloAclSenderEngineBuilder {
     }
 
     fn build(self) -> Result<HelloAclSenderEngine> {
+        let acl_table = vec![
+            AclTable {
+                name: "Apple".to_string(),
+                permission: "N".to_string(),
+            },
+            AclTable {
+                name: "Banana".to_string(),
+                permission: "Y".to_string(),
+            },
+        ];
         Ok(HelloAclSenderEngine {
             node: self.node,
             indicator: Default::default(),
             outstanding_req_pool: HashMap::default(),
             config: self.config,
+            acl_table,
         })
     }
 }

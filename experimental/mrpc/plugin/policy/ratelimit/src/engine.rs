@@ -34,6 +34,7 @@ pub(crate) struct RateLimitEngine {
     // The number of available tokens in the token bucket algorithm.
     pub(crate) num_tokens: f64,
     // The queue to buffer the requests that cannot be sent immediately.
+    // This is RPC buffer
     pub(crate) queue: VecDeque<RpcMessageTx>,
 }
 

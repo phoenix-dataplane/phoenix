@@ -80,3 +80,35 @@ name = "HelloAclSender"
 lib_path = "plugins/libphoenix_hello_acl_sender.rlib"
 config_string = '''
 '''
+
+[[addons]]
+name = "HelloAcl"
+lib_path = "plugins/libphoenix_hello_acl.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "NofileLogging"
+lib_path = "plugins/libphoenix_nofile_logging.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Fault"
+lib_path = "plugins/libphoenix_fault.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Fault2"
+lib_path = "plugins/libphoenix_fault2.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Delay"
+lib_path = "plugins/libphoenix_delay.rlib"
+config_string = '''
+delay_probability = 0.2
+delay_ms = 100
+'''

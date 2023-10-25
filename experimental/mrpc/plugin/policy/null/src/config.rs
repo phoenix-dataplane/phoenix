@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// TODO Add your own config(parameter) here
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NullConfig {}

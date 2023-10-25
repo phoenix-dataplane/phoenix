@@ -1623,6 +1623,44 @@ dependencies = [
  "static_assertions",
 ]
 
+name = "phoenix-api-policy-delay"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-fault"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-fault2"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-hello-acl"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "serde",
+]
+
 [[package]]
 name = "phoenix-api-policy-hello-acl-receiver"
 version = "0.1.0"
@@ -1652,6 +1690,16 @@ name = "phoenix-api-policy-logging"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-nofile-logging"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
  "serde",
 ]
 
@@ -1731,6 +1779,101 @@ dependencies = [
  "phoenix-api",
  "tokio",
  "tracing-core",
+]
+
+[[package]]
+name = "phoenix-delay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-delay",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-fault"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-fault",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-fault2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-fault2",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-hello-acl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-hello-acl",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -1839,12 +1982,18 @@ dependencies = [
  "bincode",
  "chrono",
  "futures",
+ "itertools",
  "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
  "nix",
+ "phoenix-api",
  "phoenix-api-policy-logging",
  "phoenix_common",
+ "rand 0.8.5",
  "serde",
  "serde_json",
+ "shm",
  "thiserror",
  "toml",
 ]
@@ -1911,6 +2060,29 @@ dependencies = [
  "toml",
  "utils",
  "uuid",
+]
+
+name = "phoenix-nofile-logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-nofile-logging",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -2295,9 +2467,20 @@ checksum = "6a6b1679d49b24bbfe0c803429aa1874472f50d9b363131f0e89fc356b544d03"
 dependencies = [
  "getrandom 0.1.16",
  "libc",
- "rand_chacha",
+ "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rand_hc",
+]
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "libc",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2308,6 +2491,16 @@ checksum = "f4c8ed856279c9737206bf725bf36935d8666ead7aa69b52be55af369d193402"
 dependencies = [
  "ppv-lite86",
  "rand_core 0.5.1",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2332,6 +2525,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
 dependencies = [
  "getrandom 0.1.16",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.8",
 ]
 
 [[package]]

@@ -1,4 +1,5 @@
 //! This engine can only be placed at the sender side for now.
+use std::f32::consts::E;
 use std::num::NonZeroU32;
 use std::os::unix::ucred::UCred;
 use std::pin::Pin;
@@ -28,6 +29,11 @@ pub mod hello {
     include!("rpc_hello.rs");
 }
 
+pub struct AclTable {
+    pub name: String,
+    pub permission: String,
+}
+
 pub(crate) struct HelloAclSenderEngine {
     pub(crate) node: DataPathNode,
 
@@ -40,6 +46,7 @@ pub(crate) struct HelloAclSenderEngine {
     // pub(crate) filter: FnvHashSet<u32>,
     // Number of tokens to add for each seconds.
     pub(crate) config: HelloAclSenderConfig,
+    pub(crate) acl_table: Vec<AclTable>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,11 +131,22 @@ impl HelloAclSenderEngine {
             .downcast::<HelloAclSenderConfig>()
             .map_err(|x| anyhow!("fail to downcast, type_name={:?}", x.type_name()))?;
 
+        let acl_table = vec![
+            AclTable {
+                name: "Apple".to_string(),
+                permission: "N".to_string(),
+            },
+            AclTable {
+                name: "Banana".to_string(),
+                permission: "Y".to_string(),
+            },
+        ];
         let engine = HelloAclSenderEngine {
             node,
             indicator: Default::default(),
             outstanding_req_pool,
             config,
+            acl_table,
         };
         Ok(engine)
     }
@@ -165,12 +183,18 @@ fn materialize(msg: &RpcMessageTx) -> Box<hello::HelloRequest> {
 }
 
 #[inline]
-fn should_block(req: &hello::HelloRequest) -> bool {
-    let buf = &req.name as &[u8];
-    //let name = String::from_utf8_lossy(buf);
-    //log::info!("raw: {:?}, req.name: {:?}", buf, name);
-    buf == b"Apple"
+fn nocopy_materialize(msg: &RpcMessageTx) -> &hello::HelloRequest {
+    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
+    let req = unsafe { req_ptr.as_ref().unwrap() };
+    // returns a private_req
+    return req;
 }
+
+fn hello_request_name_readonly(req: &hello::HelloRequest) -> &[u8] {
+    let buf = &req.name as &[u8];
+    buf
+}
+
 impl HelloAclSenderEngine {
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
@@ -179,34 +203,31 @@ impl HelloAclSenderEngine {
             Ok(msg) => {
                 match msg {
                     EngineTxMessage::RpcMessage(msg) => {
-                        // 1 clone
-                        let private_req = materialize(&msg);
-                        // 2 check should block
-                        // yes: ACK with error, drop the data
-                        // no: pass the cloned msg to the next engine, who drops the data?
-                        // Should we Ack right after clone?
+                        let req = nocopy_materialize(&msg);
                         let conn_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.conn_id;
                         let call_id = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() }.call_id;
                         let rpc_id = RpcId::new(conn_id, call_id);
-                        if should_block(&private_req) {
-                            let error = EngineRxMessage::Ack(
-                                rpc_id,
-                                TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
-                            );
-                            self.rx_outputs()[0].send(error).unwrap_or_else(|e| {
-                                log::warn!("error when bubbling up the error, send failed e: {}", e)
-                            });
-                            drop(private_req);
-                        } else {
-                            // We will release the request on private heap after the RPC adapter
-                            // passes us an Ack.
-                            let raw_ptr: *const hello::HelloRequest = &*private_req;
-                            self.outstanding_req_pool.insert(rpc_id, private_req);
-                            let new_msg = RpcMessageTx {
-                                meta_buf_ptr: msg.meta_buf_ptr,
-                                addr_backend: raw_ptr.addr(),
-                            };
-                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(new_msg))?;
+                        for acl_rec in &self.acl_table {
+                            if String::from_utf8_lossy(&req.name) == acl_rec.name {
+                                if acl_rec.permission == "N" {
+                                    let error = EngineRxMessage::Ack(
+                                        rpc_id,
+                                        TransportStatus::Error(unsafe {
+                                            NonZeroU32::new_unchecked(403)
+                                        }),
+                                    );
+                                    self.rx_outputs()[0].send(error)?;
+                                } else {
+                                    let raw_ptr: *const hello::HelloRequest = req;
+                                    let new_msg = RpcMessageTx {
+                                        meta_buf_ptr: msg.meta_buf_ptr,
+                                        addr_backend: raw_ptr.addr(),
+                                    };
+                                    self.tx_outputs()[0]
+                                        .send(EngineTxMessage::RpcMessage(new_msg))?;
+                                }
+                                break;
+                            }
                         }
                     }
                     // XXX TODO(cjr): it is best not to reorder the message
@@ -221,10 +242,6 @@ impl HelloAclSenderEngine {
         // forward all rx msgs
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
-                if let EngineRxMessage::Ack(rpc_id, _status) = m {
-                    // remove private_req
-                    self.outstanding_req_pool.remove(&rpc_id);
-                }
                 self.rx_outputs()[0].send(m)?;
                 return Ok(Progress(1));
             }

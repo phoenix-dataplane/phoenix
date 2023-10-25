@@ -1,6 +1,4 @@
 addon_engine = "LoggingEngine"
-tx_channels_replacements = [
-    ["MrpcEngine", "RpcAdapterEngine", 0, 0],
-]
-rx_channels_replacements = []
+tx_channels_replacements = [["MrpcEngine", "TcpRpcAdapterEngine", 0, 0]]
+rx_channels_replacements = [["TcpRpcAdapterEngine", "MrpcEngine", 0, 0]]
 op = "detach"

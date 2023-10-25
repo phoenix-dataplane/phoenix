@@ -1,0 +1,9 @@
+workdir = "~/nfs/Developing/livingshade/phoenix/experimental/mrpc"
+
+[env]
+RUST_BACKTRACE = "1"
+RUST_LOG_STYLE = "never"
+CARGO_TERM_COLOR = "never"
+PHOENIX_LOG = "info"
+PROTOC = "/usr/bin/protoc"
+PHOENIX_PREFIX = "/tmp/phoenix"

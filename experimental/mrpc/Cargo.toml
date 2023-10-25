@@ -56,6 +56,11 @@ members = [
   "phoenix-api/policy/logging",
   "phoenix-api/policy/hello-acl-receiver",
   "phoenix-api/policy/hello-acl-sender",
+  "phoenix-api/policy/hello-acl",
+  "phoenix-api/policy/nofile-logging",
+  "phoenix-api/policy/fault",
+  "phoenix-api/policy/fault2",
+  "phoenix-api/policy/delay",
   # the pheonix plugins
   "plugin/mrpc",
   "plugin/mrpclb",
@@ -70,6 +75,11 @@ members = [
   "plugin/policy/hotel-acl",
   "plugin/policy/hello-acl-receiver",
   "plugin/policy/hello-acl-sender",
+  "plugin/policy/hello-acl",
+  "plugin/policy/nofile-logging",
+  "plugin/policy/fault",
+  "plugin/policy/fault2",
+  "plugin/policy/delay",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -96,6 +106,11 @@ phoenix-api-policy-hotel-acl = { path = "phoenix-api/policy/hotel-acl" }
 phoenix-api-policy-logging = { path = "phoenix-api/policy/logging" }
 phoenix-api-policy-hello-acl-receiver = { path = "phoenix-api/policy/hello-acl-receiver" }
 phoenix-api-policy-hello-acl-sender = { path = "phoenix-api/policy/hello-acl-sender" }
+phoenix-api-policy-hello-acl = { path = "phoenix-api/policy/hello-acl" }
+phoenix-api-policy-nofile-logging = { path = "phoenix-api/policy/nofile-logging" }
+phoenix-api-policy-fault = { path = "phoenix-api/policy/fault" }
+phoenix-api-policy-fault2 = { path = "phoenix-api/policy/fault2" }
+phoenix-api-policy-delay = { path = "phoenix-api/policy/delay" }
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }
@@ -169,6 +184,7 @@ fasthash = "0.4.0"
 link-cplusplus = "1.0"
 arc-swap = "1.5.0"
 crossbeam-utils = "0.8.12"
+rand = "0.8"
 
 [profile.release]
 debug = true
