@@ -65,7 +65,12 @@ members = [
   "phoenix-api/policy/admission-control",
   "phoenix-api/policy/metrics",
   "phoenix-api/policy/mutation",
-  # the pheonix plugins
+  "phoenix-api/policy/fault-server",
+  "phoenix-api/policy/logging-server",
+  "phoenix-api/policy/metrics-server",
+  "phoenix-api/policy/mutation-server",
+  "phoenix-api/policy/ratelimit-drop-server",
+  # the phoenix plugins
   "plugin/mrpc",
   "plugin/mrpclb",
   "plugin/rpc_adapter",
@@ -88,6 +93,11 @@ members = [
   "plugin/policy/admission-control",
   "plugin/policy/metrics",
   "plugin/policy/mutation",
+  "plugin/policy/fault-server",
+  "plugin/policy/logging-server",
+  "plugin/policy/metrics-server",
+  "plugin/policy/mutation-server",
+  "plugin/policy/ratelimit-drop-server",
   # examples
   "examples/rpc_echo",
   "examples/rpc_bench",
@@ -123,6 +133,12 @@ phoenix-api-policy-delay = { path = "phoenix-api/policy/delay" }
 phoenix-api-policy-admission-control = { path = "phoenix-api/policy/admission-control" }
 phoenix-api-policy-metrics = { path = "phoenix-api/policy/metrics" }
 phoenix-api-policy-mutation = { path = "phoenix-api/policy/mutation" }
+phoenix-api-policy-fault-server = { path = "phoenix-api/policy/fault-server" }
+phoenix-api-policy-logging-server = { path = "phoenix-api/policy/logging-server" }
+phoenix-api-policy-metrics-server = { path = "phoenix-api/policy/metrics-server" }
+phoenix-api-policy-mutation-server = { path = "phoenix-api/policy/mutation-server" }
+phoenix-api-policy-ratelimit-drop-server = { path = "phoenix-api/policy/ratelimit-drop-server" }
+
 
 mrpc-build = { path = "mrpc-build" }
 mrpc-derive = { path = "mrpc-derive" }

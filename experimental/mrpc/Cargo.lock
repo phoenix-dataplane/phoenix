@@ -1675,6 +1675,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-fault-server"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-fault2"
 version = "0.1.0"
 dependencies = [
@@ -1726,6 +1736,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-logging-server"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-metrics"
 version = "0.1.0"
 dependencies = [
@@ -1734,7 +1752,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-metrics-server"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-mutation"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-mutation-server"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
@@ -1777,6 +1811,14 @@ dependencies = [
 
 [[package]]
 name = "phoenix-api-policy-ratelimit-drop"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-ratelimit-drop-server"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
