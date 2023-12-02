@@ -1,13 +1,13 @@
 use anyhow::{bail, Result};
 use nix::unistd::Pid;
 
+use super::engine::FaultServerEngine;
+use crate::config::{create_log_file, FaultServerConfig};
 use phoenix_common::addon::{PhoenixAddon, Version};
+use phoenix_common::engine::datapath::meta_pool::MetaBufferPool;
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
-
-use super::engine::FaultServerEngine;
-use crate::config::{create_log_file, FaultServerConfig};
 
 use chrono::prelude::*;
 use itertools::iproduct;
@@ -25,11 +25,12 @@ impl FaultServerEngineBuilder {
     // TODO! LogFile
     fn build(self) -> Result<FaultServerEngine> {
         let var_probability = 0.01;
-
+        const META_BUFFER_POOL_CAP: usize = 128;
         Ok(FaultServerEngine {
             node: self.node,
-            indicator: DeFaultServer::deFaultServer(),
+            indicator: Default::default(),
             config: self.config,
+            meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             var_probability,
         })
     }
@@ -40,8 +41,8 @@ pub struct FaultServerAddon {
 }
 
 impl FaultServerAddon {
-    pub const FaultServer_ENGINE: EngineType = EngineType("FaultServerEngine");
-    pub const ENGINES: &'static [EngineType] = &[FaultServerAddon::FaultServer_ENGINE];
+    pub const FAULT_SERVER_ENGINE: EngineType = EngineType("FaultServerEngine");
+    pub const ENGINES: &'static [EngineType] = &[FaultServerAddon::FAULT_SERVER_ENGINE];
 }
 
 impl FaultServerAddon {
@@ -80,7 +81,7 @@ impl PhoenixAddon for FaultServerAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != FaultServerAddon::FaultServer_ENGINE {
+        if ty != FaultServerAddon::FAULT_SERVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -96,7 +97,7 @@ impl PhoenixAddon for FaultServerAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != FaultServerAddon::FaultServer_ENGINE {
+        if ty != FaultServerAddon::FAULT_SERVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 

@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-LoggingServer"
+name = "phoenix-logging-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 phoenix_common.workspace = true
-phoenix-api-policy-LoggingServer.workspace = true
+phoenix-api-policy-logging-server.workspace = true
 mrpc-marshal.workspace = true
 mrpc-derive.workspace = true
 shm.workspace = true

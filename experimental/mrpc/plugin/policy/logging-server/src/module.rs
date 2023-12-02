@@ -39,8 +39,8 @@ pub struct LoggingServerAddon {
 }
 
 impl LoggingServerAddon {
-    pub const LoggingServer_ENGINE: EngineType = EngineType("LoggingServerEngine");
-    pub const ENGINES: &'static [EngineType] = &[LoggingServerAddon::LoggingServer_ENGINE];
+    pub const LOGGING_ENGINE: EngineType = EngineType("LoggingServerEngine");
+    pub const ENGINES: &'static [EngineType] = &[LoggingServerAddon::LOGGING_ENGINE];
 }
 
 impl LoggingServerAddon {
@@ -79,7 +79,7 @@ impl PhoenixAddon for LoggingServerAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingServerAddon::LoggingServer_ENGINE {
+        if ty != LoggingServerAddon::LOGGING_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -95,7 +95,7 @@ impl PhoenixAddon for LoggingServerAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != LoggingServerAddon::LoggingServer_ENGINE {
+        if ty != LoggingServerAddon::LOGGING_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 

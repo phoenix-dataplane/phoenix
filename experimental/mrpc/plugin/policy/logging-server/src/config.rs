@@ -6,7 +6,7 @@ use chrono::{Datelike, Timelike, Utc};
 use phoenix_common::log;
 use serde::{Deserialize, Serialize};
 
-/// currently, LoggingServer engine does not need a config
+/// currently, logging engine does not need a config
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingServerConfig {}
@@ -21,7 +21,7 @@ impl LoggingServerConfig {
 
 /// Create a log file in `/tmp/phoenix/log`
 /// This function will be called every time
-/// a LoggingServer engine is started or restored
+/// a logging engine is started or restored
 pub fn create_log_file() -> std::fs::File {
     std::fs::create_dir_all("/tmp/phoenix/log").expect("mkdir failed");
     let now = Utc::now();
@@ -34,7 +34,7 @@ pub fn create_log_file() -> std::fs::File {
         now.minute(),
         now.second()
     );
-    let file_name = format!("/tmp/phoenix/log/LoggingServer_engine_{}.log", date_string);
+    let file_name = format!("/tmp/phoenix/log/logging_engine_{}.log", date_string);
     log::info!("create log file {}", file_name);
     let log_file = std::fs::File::create(file_name).expect("create file failed");
     log_file

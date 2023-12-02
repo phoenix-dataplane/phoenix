@@ -9,10 +9,11 @@ use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
 use phoenix_api::rpc::{RpcId, TransportStatus};
-use phoenix_api_policy_MutationServer::control_plane;
+use phoenix_api_policy_mutation_server::control_plane;
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;
+use phoenix_common::engine::datapath::RpcMessageRx;
 use phoenix_common::engine::{future, Decompose, Engine, EngineResult, Indicator, Vertex};
 use phoenix_common::envelop::ResourceDowncast;
 use phoenix_common::impl_vertex_for_engine;
@@ -147,13 +148,11 @@ impl MutationServerEngine {
     }
 }
 
-/// Copy the RPC request to a private heap and returns the request.
 #[inline]
-fn materialize(msg: &RpcMessageTx) -> Box<hello::HelloRequest> {
-    let req_ptr = Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
-    let req = unsafe { req_ptr.as_ref() };
-    // returns a private_req
-    Box::new(req.clone())
+fn materialize_nocopy(msg: &RpcMessageRx) -> &mut hello::HelloRequest {
+    let req_ptr = msg.addr_backend as *mut hello::HelloRequest;
+    let req = unsafe { req_ptr.as_mut().unwrap() };
+    return req;
 }
 
 impl MutationServerEngine {
@@ -162,28 +161,30 @@ impl MutationServerEngine {
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
-                match msg {
-                    EngineTxMessage::RpcMessage(msg) => {
-                        let mut req_ptr =
-                            Unique::new(msg.addr_backend as *mut hello::HelloRequest).unwrap();
-                        let req = unsafe { req_ptr.as_mut() };
-                        for i in 0..req.name.len() {
-                            req.name[i] = 'a' as u8;
-                        }
-                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-                    }
-                    m => self.tx_outputs()[0].send(m)?,
-                }
+                self.tx_outputs()[0].send(msg)?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
 
-        // forward all rx msgs
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
-                self.rx_outputs()[0].send(m)?;
+                match m {
+                    EngineRxMessage::Ack(rpc_id, _status) => {
+                        self.rx_outputs()[0].send(m)?;
+                    }
+                    EngineRxMessage::RpcMessage(msg) => {
+                        let mut req = materialize_nocopy(&msg);
+                        for i in 0..req.name.len() {
+                            req.name[i] = 'a' as u8;
+                        }
+                        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
+                    }
+                    EngineRxMessage::RecvError(_, _) => {
+                        self.rx_outputs()[0].send(m)?;
+                    }
+                }
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}

@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-metrics"
+name = "phoenix-metrics-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 
 [dependencies]
-phoenix-api-policy-metrics.workspace = true
+phoenix-api-policy-metrics-server.workspace = true
 mrpc-marshal.workspace = true
 mrpc-derive.workspace = true
 

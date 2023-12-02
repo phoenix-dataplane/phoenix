@@ -1,6 +1,6 @@
 
 [package]
-name = "phoenix-FaultServer-server"
+name = "phoenix-fault-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 phoenix_common.workspace = true
-phoenix-api-policy-FaultServer.workspace = true
+phoenix-api-policy-fault-server.workspace = true
 mrpc-marshal.workspace = true
 mrpc-derive.workspace = true
 shm.workspace = true

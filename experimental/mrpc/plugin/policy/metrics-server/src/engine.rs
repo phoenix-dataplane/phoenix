@@ -9,7 +9,7 @@ use fnv::FnvHashMap as HashMap;
 use futures::future::BoxFuture;
 
 use phoenix_api::rpc::{RpcId, StatusCode, TransportStatus};
-use phoenix_api_policy_MetricsServer::control_plane;
+use phoenix_api_policy_metrics_server::control_plane;
 
 use phoenix_common::engine::datapath::message::{EngineRxMessage, EngineTxMessage, RpcMessageTx};
 use phoenix_common::engine::datapath::node::DataPathNode;
@@ -156,7 +156,20 @@ impl MetricsServerEngine {
 
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
-                self.tx_outputs()[0].send(msg)?;
+                match msg {
+                    EngineTxMessage::RpcMessage(msg) => {
+                        let meta = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
+                        if meta.status_code == StatusCode::Success {
+                            self.num_succ += 1;
+                        } else {
+                            self.num_rej += 1;
+                        }
+                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
+                    }
+                    m => {
+                        self.tx_outputs()[0].send(m)?;
+                    }
+                }
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
@@ -166,20 +179,7 @@ impl MetricsServerEngine {
         // forward all rx msgs
         match self.rx_inputs()[0].try_recv() {
             Ok(m) => {
-                match m {
-                    EngineRxMessage::RpcMessage(msg) => {
-                        let meta = unsafe { &*msg.meta.as_ptr() };
-                        if meta.status_code == StatusCode::Success {
-                            self.num_succ += 1;
-                        } else {
-                            self.num_rej += 1;
-                        }
-                        self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
-                    }
-                    m => {
-                        self.rx_outputs()[0].send(m)?;
-                    }
-                };
+                self.rx_outputs()[0].send(m)?;
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}

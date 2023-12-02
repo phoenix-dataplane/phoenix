@@ -1,16 +1,18 @@
-use std::collections::VecDeque;
-
 use anyhow::{bail, Result};
 use minstant::Instant;
 use nix::unistd::Pid;
 
+use super::engine::RateLimitDropServerEngine;
+use crate::config::{create_log_file, RateLimitDropServerConfig};
 use phoenix_common::addon::{PhoenixAddon, Version};
+use phoenix_common::engine::datapath::meta_pool::{MetaBufferPool, META_BUFFER_SIZE};
 use phoenix_common::engine::datapath::DataPathNode;
 use phoenix_common::engine::{Engine, EngineType};
 use phoenix_common::storage::ResourceCollection;
 
-use super::engine::RateLimitDropServerEngine;
-use crate::config::RateLimitDropServerConfig;
+use chrono::prelude::*;
+use itertools::iproduct;
+use rand::Rng;
 
 pub(crate) struct RateLimitDropServerEngineBuilder {
     node: DataPathNode,
@@ -21,12 +23,14 @@ impl RateLimitDropServerEngineBuilder {
     fn new(node: DataPathNode, config: RateLimitDropServerConfig) -> Self {
         RateLimitDropServerEngineBuilder { node, config }
     }
-
+    // TODO! LogFile
     fn build(self) -> Result<RateLimitDropServerEngine> {
+        let META_BUFFER_POOL_CAP = 200;
         Ok(RateLimitDropServerEngine {
             node: self.node,
             indicator: Default::default(),
             config: self.config,
+            meta_buf_pool: MetaBufferPool::new(META_BUFFER_POOL_CAP),
             last_ts: Instant::now(),
             num_tokens: self.config.bucket_size as _,
         })
@@ -38,8 +42,9 @@ pub struct RateLimitDropServerAddon {
 }
 
 impl RateLimitDropServerAddon {
-    pub const RATE_LIMIT_DROP_ENGINE: EngineType = EngineType("RateLimitDropServerEngine");
-    pub const ENGINES: &'static [EngineType] = &[RateLimitDropServerAddon::RATE_LIMIT_DROP_ENGINE];
+    pub const RATELIMIT_DROP_SERVER_ENGINE: EngineType = EngineType("RateLimitDropServerEngine");
+    pub const ENGINES: &'static [EngineType] =
+        &[RateLimitDropServerAddon::RATELIMIT_DROP_SERVER_ENGINE];
 }
 
 impl RateLimitDropServerAddon {
@@ -78,7 +83,7 @@ impl PhoenixAddon for RateLimitDropServerAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != RateLimitDropServerAddon::RATE_LIMIT_DROP_ENGINE {
+        if ty != RateLimitDropServerAddon::RATELIMIT_DROP_SERVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -94,7 +99,7 @@ impl PhoenixAddon for RateLimitDropServerAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != RateLimitDropServerAddon::RATE_LIMIT_DROP_ENGINE {
+        if ty != RateLimitDropServerAddon::RATELIMIT_DROP_SERVER_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 

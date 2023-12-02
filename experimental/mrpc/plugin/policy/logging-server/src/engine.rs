@@ -2,7 +2,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use futures::future::BoxFuture;
-use phoenix_api_policy_LoggingServer::control_plane;
+use phoenix_api_policy_logging_server::control_plane;
 use phoenix_common::engine::datapath::RpcMessageTx;
 use std::io::Write;
 use std::os::unix::ucred::UCred;
@@ -24,7 +24,7 @@ pub mod hello {
     include!("proto.rs");
 }
 
-/// The internal state of an LoggingServer engine,
+/// The internal state of an logging engine,
 /// it contains some template fields like `node`, `indicator`,
 /// a config field, in that case `LoggingServerConfig`
 /// and other custome fields like `log_file
@@ -157,81 +157,49 @@ fn materialize_nocopy(msg: &RpcMessageTx) -> &hello::HelloRequest {
 
 impl LoggingServerEngine {
     /// main logic about handling rx & tx input messages
-    /// note that a LoggingServer engine can be deployed in client-side or server-side
+    /// note that a logging engine can be deployed in client-side or server-side
     fn check_input_queue(&mut self) -> Result<Status, DatapathError> {
         use phoenix_common::engine::datapath::TryRecvError;
 
-        // tx logic
-        // For server it is `On-Response` logic, when sending  response to network
-        // For client it is `On-Request` logic, when sending request to network
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
-                match msg {
-                    // we care only log RPCs
-                    // other types like ACK should not be logged since they are not
-                    // ACKs between Client/Server, but communication between engines
-                    // "Real" ACKs are logged in rx logic
-                    EngineTxMessage::RpcMessage(msg) => {
-                        // we get the metadata of RPC from the shared memory
-                        let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-                        let rpc_message = materialize_nocopy(&msg);
+                self.tx_outputs()[0].send(msg)?;
+                return Ok(Progress(1));
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
+        }
+
+        match self.rx_inputs()[0].try_recv() {
+            Ok(m) => {
+                match m {
+                    EngineRxMessage::Ack(rpc_id, _status) => {
+                        self.rx_outputs()[0].send(m)?;
+                    }
+                    EngineRxMessage::RpcMessage(msg) => {
+                        let meta_ref = unsafe { msg.meta.as_ref() };
                         // write the metadata into the file
                         // since meta_ref implements Debug, we can use {:?}
                         // rather than manully parse the metadata struct
                         write!(
                             self.log_file,
-                            "{}{}{}{}{}\n",
+                            "{}{}{}{}\n",
                             Utc::now(),
                             format!("{:?}", meta_ref.msg_type),
                             format!("{:?}", meta_ref.conn_id),
                             format!("{:?}", meta_ref.conn_id),
-                            format!("{}", String::from_utf8_lossy(&rpc_message.name)),
                         )
                         .unwrap();
-
-                        // after LoggingServer, we forward the message to the next engine
-                        self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(msg))?;
-                    }
-                    // if received message is not RPC, we simple forward it
-                    m => self.tx_outputs()[0].send(m)?,
-                }
-                return Ok(Progress(1));
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                return Ok(Status::Disconnected);
-            }
-        }
-
-        // tx logic
-        // For server it is `On-Request` logic, when recving request from network
-        // For client it is `On-Response` logic, when recving response from network
-        match self.rx_inputs()[0].try_recv() {
-            Ok(msg) => {
-                match msg {
-                    // ACK means that
-                    // If I am client: server received my request
-                    // If I am server: client recevied my response
-                    EngineRxMessage::Ack(rpc_id, status) => {
-                        // log the info to the file
-                        // forward the message
-                        self.rx_outputs()[0].send(EngineRxMessage::Ack(rpc_id, status))?;
-                    }
-                    EngineRxMessage::RpcMessage(msg) => {
-                        // forward the message
-                        // again, this RpcMessage is not the application-level rpc
-                        // so we don log them
                         self.rx_outputs()[0].send(EngineRxMessage::RpcMessage(msg))?;
                     }
-                    // forward other unknown msg
-                    m => self.rx_outputs()[0].send(m)?,
+                    EngineRxMessage::RecvError(_, _) => {
+                        self.rx_outputs()[0].send(m)?;
+                    }
                 }
                 return Ok(Progress(1));
             }
             Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                return Ok(Status::Disconnected);
-            }
+            Err(TryRecvError::Disconnected) => return Ok(Status::Disconnected),
         }
 
         Ok(Progress(0))

@@ -6,7 +6,7 @@ use chrono::prelude::*;
 use itertools::iproduct;
 use rand::Rng;
 
-#[derive(Debug, Clone, Copy, DeFaultServer, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FaultServerConfig {}
 

@@ -35,8 +35,8 @@ pub struct MutationServerAddon {
 }
 
 impl MutationServerAddon {
-    pub const MutationServer_ENGINE: EngineType = EngineType("MutationServerEngine");
-    pub const ENGINES: &'static [EngineType] = &[MutationServerAddon::MutationServer_ENGINE];
+    pub const MUTATION_ENGINE: EngineType = EngineType("MutationServerEngine");
+    pub const ENGINES: &'static [EngineType] = &[MutationServerAddon::MUTATION_ENGINE];
 }
 
 impl MutationServerAddon {
@@ -75,7 +75,7 @@ impl PhoenixAddon for MutationServerAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != MutationServerAddon::MutationServer_ENGINE {
+        if ty != MutationServerAddon::MUTATION_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -91,7 +91,7 @@ impl PhoenixAddon for MutationServerAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != MutationServerAddon::MutationServer_ENGINE {
+        if ty != MutationServerAddon::MUTATION_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 

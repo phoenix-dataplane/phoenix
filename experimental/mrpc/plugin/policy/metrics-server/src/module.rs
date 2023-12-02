@@ -36,8 +36,8 @@ pub struct MetricsServerAddon {
 }
 
 impl MetricsServerAddon {
-    pub const MetricsServer_ENGINE: EngineType = EngineType("MetricsServerEngine");
-    pub const ENGINES: &'static [EngineType] = &[MetricsServerAddon::MetricsServer_ENGINE];
+    pub const METRICS_ENGINE: EngineType = EngineType("MetricsServerEngine");
+    pub const ENGINES: &'static [EngineType] = &[MetricsServerAddon::METRICS_ENGINE];
 }
 
 impl MetricsServerAddon {
@@ -76,7 +76,7 @@ impl PhoenixAddon for MetricsServerAddon {
         _pid: Pid,
         node: DataPathNode,
     ) -> Result<Box<dyn Engine>> {
-        if ty != MetricsServerAddon::MetricsServer_ENGINE {
+        if ty != MetricsServerAddon::METRICS_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
@@ -92,7 +92,7 @@ impl PhoenixAddon for MetricsServerAddon {
         node: DataPathNode,
         prev_version: Version,
     ) -> Result<Box<dyn Engine>> {
-        if ty != MetricsServerAddon::MetricsServer_ENGINE {
+        if ty != MetricsServerAddon::METRICS_ENGINE {
             bail!("invalid engine type {:?}", ty)
         }
 
