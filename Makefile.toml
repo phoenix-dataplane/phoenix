@@ -22,7 +22,7 @@ dependencies = [
   "build-phoenixos",
   "build-plugins",
   "deploy-plugins",
-  # "run-phoenixos",
+  "run-phoenixos",
 ]
 
 [tasks.phoenix_common]

@@ -4,30 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-timing = [
-    "dep:minstant",
-]
+timing = ["dep:minstant"]
 
 [dependencies.phoenix-api-mrpc]
 workspace = true
 
 [dependencies.phoenix-api]
 workspace = true
-features = [
-    "mrpc",
-]
+features = ["mrpc"]
 
 [dependencies.ipc]
 workspace = true
-features = [
-    "customer",
-]
+features = ["customer"]
 
 [dependencies.shm]
 workspace = true
-features = [
-    "mrpc",
-]
+features = ["mrpc"]
 
 [dependencies.mmap]
 workspace = true
@@ -156,12 +148,8 @@ members = [
     "examples/masstree_analytics",
     "examples/hotel_reservation",
     "examples/load_balancer",
-    "generated/api/genaclserver",
-    "generated/plugin/genaclserver",
 ]
-exclude = [
-    "3rdparty/prost",
-]
+exclude = ["3rdparty/prost"]
 
 [workspace.dependencies]
 thiserror = "1.0.31"
@@ -356,8 +344,6 @@ package = "phoenix-salloc"
 [workspace.dependencies.utils]
 path = "../../src/utils"
 
-[workspace.dependencies.phoenix-api-policy-genaclserver]
-path = "generated/api/genaclserver"
 
 [profile.release]
 debug = true
