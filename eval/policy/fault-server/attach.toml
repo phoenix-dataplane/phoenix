@@ -1,0 +1,33 @@
+addon_engine = "FaultServerEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "FaultServerEngine",
+        0,
+        0,
+    ],
+    [
+        "FaultServerEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "FaultServerEngine",
+        0,
+        0,
+    ],
+    [
+        "FaultServerEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"
+config_string = '''
+'''

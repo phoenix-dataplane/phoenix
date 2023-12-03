@@ -1,0 +1,35 @@
+addon_engine = "RateLimitDropEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "RateLimitDropServerEngine",
+        0,
+        0,
+    ],
+    [
+        "RateLimitDropServerEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "RateLimitDropServerEngine",
+        0,
+        0,
+    ],
+    [
+        "RateLimitDropServerEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"
+config_string = '''
+requests_per_sec = 1
+bucket_size = 2
+'''
