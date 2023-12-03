@@ -1,4 +1,4 @@
-addon_engine = "RateLimitDropEngine"
+addon_engine = "RateLimitDropServerEngine"
 tx_channels_replacements = [
     [
         "MrpcEngine",
