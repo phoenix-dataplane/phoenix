@@ -1577,6 +1577,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-admission-control"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-admission-control",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "phoenix-api"
 version = "0.1.0"
 dependencies = [
@@ -1624,6 +1647,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-admission-control"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-delay"
 version = "0.1.0"
 dependencies = [
@@ -1635,6 +1666,16 @@ dependencies = [
 
 [[package]]
 name = "phoenix-api-policy-fault"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "phoenix-api",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-fault-server"
 version = "0.1.0"
 dependencies = [
  "itertools",
@@ -1695,6 +1736,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-api-policy-logging-server"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-metrics"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-metrics-server"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-mutation"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-mutation-server"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
 name = "phoenix-api-policy-nofile-logging"
 version = "0.1.0"
 dependencies = [
@@ -1722,6 +1803,22 @@ dependencies = [
 
 [[package]]
 name = "phoenix-api-policy-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-ratelimit-drop"
+version = "0.1.0"
+dependencies = [
+ "phoenix-api",
+ "serde",
+]
+
+[[package]]
+name = "phoenix-api-policy-ratelimit-drop-server"
 version = "0.1.0"
 dependencies = [
  "phoenix-api",
@@ -1821,6 +1918,30 @@ dependencies = [
  "nix",
  "phoenix-api",
  "phoenix-api-policy-fault",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-fault-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-fault-server",
  "phoenix_common",
  "rand 0.8.5",
  "serde",
@@ -2000,6 +2121,74 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix-logging-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-logging-server",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-metrics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-metrics",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-metrics-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-metrics-server",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "phoenix-mrpc"
 version = "0.1.0"
 dependencies = [
@@ -2061,6 +2250,50 @@ dependencies = [
  "toml",
  "utils",
  "uuid",
+]
+
+[[package]]
+name = "phoenix-mutation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-mutation",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-mutation-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "fnv",
+ "futures",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-mutation-server",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -2133,6 +2366,53 @@ dependencies = [
  "phoenix_common",
  "serde",
  "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-ratelimit-drop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-ratelimit-drop",
+ "phoenix_common",
+ "serde",
+ "serde_json",
+ "shm",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "phoenix-ratelimit-drop-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "futures",
+ "itertools",
+ "minstant",
+ "mrpc-derive",
+ "mrpc-marshal",
+ "nix",
+ "phoenix-api",
+ "phoenix-api-policy-ratelimit-drop-server",
+ "phoenix_common",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shm",
  "thiserror",
  "toml",
 ]

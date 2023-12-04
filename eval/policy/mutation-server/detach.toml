@@ -1,0 +1,6 @@
+addon_engine = "MutationServerEngine"
+tx_channels_replacements = [
+    ["MrpcEngine", "RpcAdapterEngine", 0, 0],
+]
+rx_channels_replacements = []
+op = "detach"

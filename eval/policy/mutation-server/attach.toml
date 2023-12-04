@@ -1,0 +1,31 @@
+addon_engine = "MutationServerEngine"
+tx_channels_replacements = [
+    [
+        "MrpcEngine",
+        "MutationServerEngine",
+        0,
+        0,
+    ],
+    [
+        "MutationServerEngine",
+        "TcpRpcAdapterEngine",
+        0,
+        0,
+    ],
+]
+rx_channels_replacements = [
+    [
+        "TcpRpcAdapterEngine",
+        "MutationServerEngine",
+        0,
+        0,
+    ],
+    [
+        "MutationServerEngine",
+        "MrpcEngine",
+        0,
+        0,
+    ],
+]
+group = ["MrpcEngine", "TcpRpcAdapterEngine"]
+op = "attach"

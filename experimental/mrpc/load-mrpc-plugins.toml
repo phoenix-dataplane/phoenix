@@ -82,6 +82,24 @@ config_string = '''
 '''
 
 [[addons]]
+name = "AdmissionControl"
+lib_path = "plugins/libphoenix_admission_control.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Metrics"
+lib_path = "plugins/libphoenix_metrics.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "Mutation"
+lib_path = "plugins/libphoenix_mutation.rlib"
+config_string = '''
+'''
+
+[[addons]]
 name = "HelloAcl"
 lib_path = "plugins/libphoenix_hello_acl.rlib"
 config_string = '''
@@ -111,4 +129,44 @@ lib_path = "plugins/libphoenix_delay.rlib"
 config_string = '''
 delay_probability = 0.2
 delay_ms = 100
+'''
+
+[[addons]]
+name = "RateLimitDrop"
+lib_path = "plugins/libphoenix_ratelimit_drop.rlib"
+config_string = '''
+requests_per_sec = 4
+bucket_size = 1000
+'''
+
+[[addons]]
+name = "FaultServer"
+lib_path = "plugins/libphoenix_fault_server.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "LoggingServer"
+lib_path = "plugins/libphoenix_logging_server.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "MutationServer"
+lib_path = "plugins/libphoenix_mutation_server.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "MetricsServer"
+lib_path = "plugins/libphoenix_metrics_server.rlib"
+config_string = '''
+'''
+
+[[addons]]
+name = "RateLimitDropServer"
+lib_path = "plugins/libphoenix_ratelimit_drop_server.rlib"
+config_string = '''
+requests_per_sec = 4
+bucket_size = 1000
 '''
