@@ -4,30 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-timing = [
-    "dep:minstant",
-]
+timing = ["dep:minstant"]
 
 [dependencies.phoenix-api-mrpc]
 workspace = true
 
 [dependencies.phoenix-api]
 workspace = true
-features = [
-    "mrpc",
-]
+features = ["mrpc"]
 
 [dependencies.ipc]
 workspace = true
-features = [
-    "customer",
-]
+features = ["customer"]
 
 [dependencies.shm]
 workspace = true
-features = [
-    "mrpc",
-]
+features = ["mrpc"]
 
 [dependencies.mmap]
 workspace = true
@@ -156,62 +148,8 @@ members = [
     "examples/masstree_analytics",
     "examples/hotel_reservation",
     "examples/load_balancer",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitclient",
-    "generated/plugin/genratelimitclient",
-    "generated/api/genratelimitserver",
-    "generated/plugin/genratelimitserver",
-    "generated/api/genloggingserver",
-    "generated/plugin/genloggingserver",
-    "generated/api/genloggingserver",
-    "generated/plugin/genloggingserver",
-    "generated/api/genmutationserver",
-    "generated/plugin/genmutationserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genmetricsserver",
-    "generated/plugin/genmetricsserver",
-    "generated/api/genfaultserver",
-    "generated/plugin/genfaultserver",
-    "generated/api/genfaultserver",
-    "generated/plugin/genfaultserver",
-    "generated/api/genfaultserver",
-    "generated/plugin/genfaultserver",
-    "generated/api/genfaultserver",
-    "generated/plugin/genfaultserver",
-    "generated/api/genfaultserver",
-    "generated/plugin/genfaultserver",
-    "generated/api/genaclserver",
-    "generated/plugin/genaclserver",
 ]
-exclude = [
-    "3rdparty/prost",
-]
+exclude = ["3rdparty/prost"]
 
 [workspace.dependencies]
 thiserror = "1.0.31"
@@ -405,27 +343,6 @@ package = "phoenix-salloc"
 
 [workspace.dependencies.utils]
 path = "../../src/utils"
-
-[workspace.dependencies.phoenix-api-policy-genratelimitclient]
-path = "generated/api/genratelimitclient"
-
-[workspace.dependencies.phoenix-api-policy-genratelimitserver]
-path = "generated/api/genratelimitserver"
-
-[workspace.dependencies.phoenix-api-policy-genloggingserver]
-path = "generated/api/genloggingserver"
-
-[workspace.dependencies.phoenix-api-policy-genmutationserver]
-path = "generated/api/genmutationserver"
-
-[workspace.dependencies.phoenix-api-policy-genmetricsserver]
-path = "generated/api/genmetricsserver"
-
-[workspace.dependencies.phoenix-api-policy-genfaultserver]
-path = "generated/api/genfaultserver"
-
-[workspace.dependencies.phoenix-api-policy-genaclserver]
-path = "generated/api/genaclserver"
 
 [profile.release]
 debug = true
