@@ -183,53 +183,34 @@ impl RateLimitDropEngine {
         match self.tx_inputs()[0].try_recv() {
             Ok(msg) => {
                 match msg {
-                    EngineTxMessage::RpcMessage(msg) => {
-                        let meta_ref = unsafe { &*msg.meta_buf_ptr.as_meta_ptr() };
-                        let mut input = Vec::new();
-                        input.push(msg);
+                    EngineTxMessage::RpcMessage(req) => {
                         self.num_tokens = self.num_tokens
                             + (current_timestamp() - self.last_ts).as_secs_f64()
                                 * self.config.requests_per_sec as f64;
                         self.last_ts = current_timestamp();
-                        log::debug!("num_tokens: {}", self.num_tokens);
-                        let limit = std::cmp::min(input.len() as i64, self.num_tokens as i64);
-                        self.num_tokens = self.num_tokens - limit as f64;
-
-                        let output = input.iter().enumerate().map(|(index, req)| {
-                            let rpc_message = materialize_nocopy(&req);
-                            let conn_id = unsafe { &*req.meta_buf_ptr.as_meta_ptr() }.conn_id;
-                            let call_id = unsafe { &*req.meta_buf_ptr.as_meta_ptr() }.call_id;
-                            let rpc_id = RpcId::new(conn_id, call_id);
-                            if index < limit as usize {
-                                let raw_ptr: *const hello::HelloRequest = rpc_message;
-                                let new_msg = RpcMessageTx {
-                                    meta_buf_ptr: req.meta_buf_ptr.clone(),
-                                    addr_backend: req.addr_backend,
-                                };
-                                RpcMessageGeneral::TxMessage(EngineTxMessage::RpcMessage(new_msg))
-                            } else {
-                                let error = EngineRxMessage::Ack(
-                                    rpc_id,
-                                    TransportStatus::Error(unsafe {
-                                        NonZeroU32::new_unchecked(403)
-                                    }),
-                                );
-                                RpcMessageGeneral::RxMessage(error)
-                            }
-                        });
-                        for msg in output {
-                            match msg {
-                                RpcMessageGeneral::TxMessage(msg) => {
-                                    self.tx_outputs()[0].send(msg)?;
-                                }
-                                RpcMessageGeneral::RxMessage(msg) => {
-                                    self.rx_outputs()[0].send(msg)?;
-                                }
-                                _ => {}
-                            }
+                        let rpc_message = materialize_nocopy(&req);
+                        let conn_id = unsafe { &*req.meta_buf_ptr.as_meta_ptr() }.conn_id;
+                        let call_id = unsafe { &*req.meta_buf_ptr.as_meta_ptr() }.call_id;
+                        let rpc_id = RpcId::new(conn_id, call_id);
+                        if self.num_tokens > 1.0 {
+                            let raw_ptr: *const hello::HelloRequest = rpc_message;
+                            let new_msg = RpcMessageTx {
+                                meta_buf_ptr: req.meta_buf_ptr.clone(),
+                                addr_backend: req.addr_backend,
+                            };
+                            self.tx_outputs()[0].send(EngineTxMessage::RpcMessage(new_msg))?;
+                        } else {
+                            self.num_tokens = self.num_tokens - 1.0;
+                            let error = EngineRxMessage::Ack(
+                                rpc_id,
+                                TransportStatus::Error(unsafe { NonZeroU32::new_unchecked(403) }),
+                            );
+                            self.rx_outputs()[0].send(error)?;
                         }
                     }
-                    m => self.tx_outputs()[0].send(m)?,
+                    m => {
+                        self.tx_outputs()[0].send(m)?;
+                    }
                 }
                 return Ok(Progress(1));
             }
