@@ -198,6 +198,17 @@ impl<T: ?Sized> ShmPtr<T> {
     pub const fn cast<U>(self) -> ShmPtr<U> {
         ShmPtr::from(self.pointer.cast())
     }
+
+    /// Converts a `ShmNonNull<T>` to a `ShmPtr<T>`.
+    ///
+    /// This conversion is infallible since `ShmNonNull` cannot be null.
+    #[inline]
+    pub const fn from(pointer: ShmNonNull<T>) -> Self {
+        ShmPtr {
+            pointer,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<T: ?Sized> Clone for ShmPtr<T> {

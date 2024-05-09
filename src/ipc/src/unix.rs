@@ -3,9 +3,11 @@ use std::io;
 use std::io::{IoSlice, IoSliceMut};
 use std::mem;
 use std::num::TryFromIntError;
+use std::os::linux::net::UnixSocketExt;
 use std::os::unix::io::RawFd;
-use std::os::unix::net::{AncillaryData, SocketAddr, SocketAncillary, SocketCred, UnixDatagram};
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::{
+    AncillaryData, SocketAddr, SocketAncillary, SocketCred, UCred, UnixDatagram,
+};
 use std::path::Path;
 use std::time;
 

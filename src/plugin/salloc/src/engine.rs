@@ -163,7 +163,7 @@ impl SallocEngine {
                 let layout = Layout::from_size_align(size, align)?;
                 let region = SharedRegion::new(layout, &self.state.addr_mediator)?;
                 // mr's addr on backend side
-                let local_addr = region.as_ptr().expose_addr();
+                let local_addr = region.as_ptr().addr();
                 let file_off = 0;
 
                 // send fd

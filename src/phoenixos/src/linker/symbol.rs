@@ -230,7 +230,7 @@ impl SymbolLookupTable {
                             break;
                         }
                     }
-                    let start = info.dlpi_tls_data.expose_addr();
+                    let start = info.dlpi_tls_data.addr();
                     if addr >= start && addr < start + length {
                         input_output[1] = info.dlpi_tls_modid;
                         input_output[2] = addr - start;

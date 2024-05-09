@@ -1,7 +1,6 @@
 #![feature(int_roundings)]
 #![feature(strict_provenance)]
 #![feature(peer_credentials_unix_socket)]
-#![feature(local_key_cell_methods)]
 
 use std::alloc::LayoutError;
 

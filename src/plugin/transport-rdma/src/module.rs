@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::UCred;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

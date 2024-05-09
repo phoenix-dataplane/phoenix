@@ -10,7 +10,7 @@ use dashmap::DashMap;
 // use flurry::{HashMap as FlurryHashMap, HashMapRef as FlurryHashMapRef};
 use contrie::ConMap;
 use fnv::FnvBuildHasher;
-use sharded::Map as ShardedMap;
+// use sharded::Map as ShardedMap;
 
 use sharded_slab::Slab;
 
@@ -64,17 +64,17 @@ impl<K: Eq + Hash, V: Clone> KvAdapter<K, V> for ChtHashMap<K, V, FnvBuildHasher
     }
 }
 
-impl<K: Eq + Hash, V: Clone> KvAdapter<K, V> for ShardedMap<K, V> {
-    #[inline]
-    fn insert_kv(&self, key: K, val: V) {
-        self.insert(key, val);
-    }
-    #[inline]
-    fn get_kv(&self, key: &K) {
-        let (key, shard) = self.read(key);
-        let _val = shard.get(key);
-    }
-}
+// impl<K: Eq + Hash, V: Clone> KvAdapter<K, V> for ShardedMap<K, V> {
+//     #[inline]
+//     fn insert_kv(&self, key: K, val: V) {
+//         self.insert(key, val);
+//     }
+//     #[inline]
+//     fn get_kv(&self, key: &K) {
+//         let (key, shard) = self.read(key);
+//         let _val = shard.get(key);
+//     }
+// }
 
 impl<K: Eq + Hash, V, S: BuildHasher> KvAdapter<K, V> for ConMap<K, V, S> {
     #[inline]
@@ -189,8 +189,8 @@ fn bench_concurrent(max_concurrency: usize) {
         let map = CHashMap::<u32, u32>::default();
         bench(nthreads, "CHashMap", map);
 
-        let map = ShardedMap::<u32, u32>::default();
-        bench(nthreads, "sharded::Map", map);
+        // let map = ShardedMap::<u32, u32>::default();
+        // bench(nthreads, "sharded::Map", map);
 
         // let map = FlurryHashMap::<u32, u32, FnvBuildHasher>::default();
         // // let map = map.pin();

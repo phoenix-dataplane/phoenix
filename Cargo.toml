@@ -38,6 +38,8 @@ exclude = [
   "experimental/mrpc",
 ]
 
+resolver = "2"
+
 [workspace.dependencies]
 phoenix-api = { path = "src/phoenix-api" }
 mmap = { path = "src/mmap" }
@@ -114,7 +116,7 @@ libnuma-sys = "0.0.4"
 serde_json = "1.0.81"
 prettytable-rs = "0.9"
 
-bindgen = "0.59.1"
+bindgen = "0.69.4"
 cc = "1.0.70"
 
 [profile.release]
