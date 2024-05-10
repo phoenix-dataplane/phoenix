@@ -825,7 +825,7 @@ impl<'res> CmId<'res> {
         let id = self.0;
         let addr = buf.as_ptr();
         let length = buf.len();
-        let mr = unsafe { ffi::rdma_reg_msgs_real(id, addr as *mut _, length as u64) };
+        let mr = unsafe { ffi::rdma_reg_msgs_real(id, addr as *mut _, length as _) };
         if mr.is_null() {
             return Err(io::Error::last_os_error());
         }
@@ -866,7 +866,7 @@ impl<'res> CmId<'res> {
                 && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
         );
         let rc =
-            ffi::rdma_post_send_real(id, context, addr as *mut _, length as u64, mr, flags.0 as _);
+            ffi::rdma_post_send_real(id, context, addr as *mut _, length as _, mr, flags.0 as _);
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -947,7 +947,7 @@ impl<'res> CmId<'res> {
             (&*mr).addr as *const _ <= addr
                 && addr.add(length) <= (&*mr).addr.add((&*mr).length as usize) as *const _
         );
-        let rc = ffi::rdma_post_recv_real(id, context, addr as *mut _, length as u64, mr);
+        let rc = ffi::rdma_post_recv_real(id, context, addr as *mut _, length as _, mr);
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -984,7 +984,7 @@ impl<'res> CmId<'res> {
             id,
             context,
             addr as *mut _,
-            length as u64,
+            length as _,
             mr,
             flags.0 as _,
             remote_addr,
@@ -1026,7 +1026,7 @@ impl<'res> CmId<'res> {
             id,
             context,
             addr as *mut _,
-            length as u64,
+            length as _,
             mr,
             flags.0 as _,
             remote_addr,

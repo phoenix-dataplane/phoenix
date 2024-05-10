@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io;
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::UCred;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Weak;
 use std::task::{Context, Poll};
@@ -387,7 +387,7 @@ impl Runtime {
                     let mut group_guard = group.borrow_mut();
                     let group_engines_suspend = group_guard
                         .engines
-                        .drain_filter(|e| engine_ids.contains(&e.0));
+                        .extract_if(|e| engine_ids.contains(&e.0));
                     engines.extend(group_engines_suspend);
                 }
                 for (engine_id, mut engine) in engines {

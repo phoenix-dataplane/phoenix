@@ -18,6 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
+use ansi_term::Color;
 use anyhow::{bail, Context};
 use clap::Parser;
 use semver::{Version, VersionReq};
@@ -146,7 +147,7 @@ impl CompileDb {
         // Parse rustc commands
         let compile_log_file = fs::File::open(compile_log_path)?;
         let mut reader = BufReader::new(compile_log_file);
-        let rustc_commands = capture_rustc_commands(&mut reader, 0);
+        let (rustc_commands, _original_stderr) = capture_rustc_commands(&mut reader, 0);
 
         // Extract the prebuilt_dir from the last command
         // let last_cmd = rustc_commands
@@ -204,8 +205,10 @@ impl CompileDb {
         let req = VersionReq::parse(&desired.pkg_version.to_string()).unwrap();
         if !req.matches(&provided.pkg_version) {
             println!(
-                "version not compatible: desired {:?}, provided {:?}",
-                desired, provided
+                "{}: desired {}, provided {}",
+                Color::Red.paint("version not compatible"),
+                Color::Purple.paint(format!("{:?}", desired)),
+                Color::Purple.paint(format!("{:?}", provided)),
             );
             return false;
         }
@@ -213,8 +216,10 @@ impl CompileDb {
         let provided_features: BTreeSet<_> = provided.features.iter().cloned().collect();
         if !provided_features.is_superset(&desired_features) {
             println!(
-                "features not compatible: desired {:?}, provided {:?}",
-                desired, provided
+                "{}: desired {}, provided {}",
+                Color::Red.paint("features not compatible"),
+                Color::Purple.paint(format!("{:?}", desired)),
+                Color::Purple.paint(format!("{:?}", provided)),
             );
             return false;
         }
@@ -254,7 +259,8 @@ impl CompileDb {
             .map(|candidate_set| {
                 let mut cands = Vec::new();
                 for cand in candidate_set {
-                    println!("cand: {:?}", cand);
+                    let msg = Color::Blue.paint(format!("cand: {:?}", cand));
+                    println!("{}", msg);
                     if self.is_compatible(c, cand, 0) {
                         cands.push(cand.clone());
                     }
@@ -544,7 +550,8 @@ const PREFIX_END: usize = RMETA_RLIB_FILE_PREFIX.len();
 fn capture_rustc_commands<R: io::Read>(
     reader: &mut BufReader<R>,
     verbose_level: usize,
-) -> Vec<String> {
+) -> (Vec<String>, String) {
+    let mut original_stderr = String::new();
     let mut captured_commands = Vec::new();
 
     // Use regex to strip out the ANSI color codes emitted by the cargo command
@@ -563,6 +570,8 @@ fn capture_rustc_commands<R: io::Read>(
         .lines()
         .filter_map(|line| line.ok())
         .for_each(|original_line| {
+            original_stderr.push_str(&original_line);
+            original_stderr.push('\n');
             let replaced = ansi_escape_regex.replace_all(&original_line, "");
             let line_stripped = replaced.trim_start();
 
@@ -632,7 +641,6 @@ fn capture_rustc_commands<R: io::Read>(
                             || show_warnings
                     }
                     2.. => true, // print everything if verbose
-                    _ => panic!("negative verbose_level: {}", verbose_level),
                 }
             };
 
@@ -648,7 +656,8 @@ fn capture_rustc_commands<R: io::Read>(
             }
         });
 
-    captured_commands
+    // Return original_stderr for error handling
+    (captured_commands, original_stderr)
 }
 
 /// Runs the actual cargo build command.
@@ -742,7 +751,7 @@ fn run_initial_cargo<P: AsRef<Path>>(
         .take()
         .context("Could not capture stderr.")?;
     let mut stderr_reader = BufReader::new(stderr);
-    let stderr_logs = capture_rustc_commands(&mut stderr_reader, verbose_level);
+    let (stderr_logs, original_stderr) = capture_rustc_commands(&mut stderr_reader, verbose_level);
 
     let _stdout_logs = t.join().unwrap();
     let exit_status = child_process
@@ -750,8 +759,14 @@ fn run_initial_cargo<P: AsRef<Path>>(
         .context("Failed to wait for cargo process to finish")?;
     match exit_status.code() {
         Some(0) => {}
-        Some(code) => bail!("cargo command completed with failed exit code {}", code),
-        _ => bail!("cargo command was killed"),
+        Some(code) => {
+            println!("{}", original_stderr);
+            bail!("cargo command completed with failed exit code {}", code);
+        }
+        _ => {
+            println!("{}", original_stderr);
+            bail!("cargo command was killed");
+        }
     }
 
     Ok(stderr_logs)
@@ -764,7 +779,7 @@ fn ignore_arg(arg: &str) -> bool {
 
 fn parse_rustc_command(
     original_cmd: &str,
-) -> anyhow::Result<Option<(&str, &str, clap::ArgMatches)>> {
+) -> anyhow::Result<Option<(String, &str, clap::ArgMatches)>> {
     let command = if original_cmd.starts_with(COMMAND_START) && original_cmd.ends_with(COMMAND_END)
     {
         let end_index = original_cmd.len() - COMMAND_END.len();
@@ -795,6 +810,21 @@ fn parse_rustc_command(
     let rustc_env_vars = &command[..start_of_rustc_cmd];
     let command_without_env = &command[start_of_rustc_cmd..];
 
+    let mut vars = shlex::split(rustc_env_vars).unwrap();
+    // The rustc could have a path prefix, like
+    // /root/.rustup/toolchains/nightly-2024-05-01-x86_64-unknown-linux-gnu/bin/rustc --crate-name
+    // therefore, the last env_var needs to be stripped
+    while let Some(env) = vars.last() {
+        if !env.contains('=') {
+            vars.pop();
+        } else {
+            break;
+        }
+    }
+
+    // This is okay to unwrap because the only error can be returned is QuoteError::Nul.
+    let rustc_env_vars = shlex::try_join(vars.iter().map(|s| s.as_ref())).unwrap();
+
     // The arguments in the command that we care about are:
     //  *  "-L dependency=<dir>"
     //  *  "--extern <crate_name>=<crate_file>.rmeta"
@@ -822,10 +852,11 @@ fn parse_rustc_command(
 
 fn get_crate_from_rustc_command(original_cmd: &str) -> anyhow::Result<Option<Crate>> {
     let Some((rustc_env_vars, command_without_env, top_level_matches)) =
-                parse_rustc_command(original_cmd)? else {
-                // skip invocations of build scripts
-                return Ok(None);
-            };
+        parse_rustc_command(original_cmd)?
+    else {
+        // skip invocations of build scripts
+        return Ok(None);
+    };
 
     // crate-name
     // Clap will parse the args as such:
@@ -1008,7 +1039,8 @@ fn run_rustc_command(
 
     println!("\n\nLooking at original command:\n{}", original_cmd);
     let Some((rustc_env_vars, _command_without_env, top_level_matches)) =
-        parse_rustc_command(original_cmd)? else {
+        parse_rustc_command(original_cmd)?
+    else {
         // skip invocations of build scripts
         return Ok(None);
     };
@@ -1089,10 +1121,11 @@ fn run_rustc_command(
                                 value
                             )
                         })?;
-                    print!(
+                    let msg = Color::Green.paint(format!(
                         "Found --extern arg, {:?} --> {:?}",
                         extern_crate_name, crate_rmeta_path
-                    );
+                    ));
+                    print!("{}", msg);
                     let crate_rmeta_path = Path::new(crate_rmeta_path);
                     let crate_name_with_hash =
                         get_crate_name_with_hash_from_path(crate_rmeta_path)?
@@ -1127,12 +1160,14 @@ fn run_rustc_command(
                     }
                     if !candidates.is_empty() {
                         let prebuilt_crate = candidates.first().unwrap();
-                        println!(
-                            "#### Replacing crate {:?} with prebuilt crate at {} ({:?})",
-                            extern_crate_name,
+                        let msg = format!(
+                            "{} {} with prebuilt crate at {} ({:?})",
+                            Color::Yellow.paint("#### Replacing crate"),
+                            Color::Blue.paint(format!("{:?}", extern_crate_name)),
                             prebuilt_crate.path.display(),
                             prebuilt_crate,
                         );
+                        println!("{}", msg);
                         new_value =
                             format!("{}={}", extern_crate_name, prebuilt_crate.path.display())
                                 .into();
@@ -1191,8 +1226,11 @@ fn run_rustc_command(
         // We also need to add the directory of host dependencies, e.g., proc macro crates and such.
         // recreated_cmd.arg("-L").arg(host_deps_dir_path);
 
-        for env in shlex::split(rustc_env_vars).unwrap() {
-            let (k, v) = env.split_once('=').unwrap();
+        println!("rustc_env_vars: {}", rustc_env_vars);
+        for env in shlex::split(&rustc_env_vars).unwrap() {
+            let (k, v) = env
+                .split_once('=')
+                .unwrap_or_else(|| panic!("env: {}", env));
             recreated_cmd.env(k, v);
         }
         // println!("\n\n--------------- Inherited Environment Variables ----------------\n");

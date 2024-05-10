@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 use std::io::Write;
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::UCred;
 use std::pin::Pin;
 
 use phoenix_api_policy_logging::control_plane;

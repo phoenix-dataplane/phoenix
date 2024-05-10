@@ -44,7 +44,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
@@ -59,7 +59,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
@@ -74,7 +74,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
@@ -162,7 +162,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
@@ -182,7 +182,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }
@@ -202,7 +202,7 @@ impl<'a> GlobalPagePool<'a> {
         let buf = guard.deref_mut();
         let freed_pages = buf
             .used
-            .drain_filter(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
+            .extract_if(|(page, obj_per_page)| unsafe { page.as_mut().is_empty(*obj_per_page) });
         for (page, _) in freed_pages {
             buf.empty.push_back(page);
         }

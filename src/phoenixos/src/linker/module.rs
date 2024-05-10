@@ -73,8 +73,8 @@ impl LoadableModule {
             "Module {} (mod_id: {}) loaded at: [0x{:0x}, 0x{:0x})",
             path_rlib.display(),
             mod_id,
-            image_start.expose_addr(),
-            image_start.expose_addr() + image.len()
+            image_start.addr(),
+            image_start.addr() + image.len()
         );
 
         // The step to verify ELF is included in `parse`.

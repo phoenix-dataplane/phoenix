@@ -12,9 +12,9 @@ ipc = { workspace = true, features = ["all"] }
 
 futures-core = { workspace = true, features = ["default"] }
 crossbeam-utils = { version = "0.8.12", features = ["default"] }
-crossbeam-channel = { version = "0.5.6", features = ["default", "std", "crossbeam-utils"] }
+crossbeam-channel = { version = "0.5.9", features = ["default", "std", "crossbeam-utils"] }
 crossbeam-epoch = { version = "0.9.14", features = ["default"] }
-hashbrown = { version = "0.12.3", features = ["raw"] }
+hashbrown = { version = "0.14.5", features = ["raw"] }
 mio = { workspace = true, features = ["default", "net", "os-ext", "os-poll"] }
 log = { workspace = true, features = ["std"] }
 once_cell = { version = "1.17.1", features = ["default", "unstable"] }
@@ -22,3 +22,4 @@ getrandom = { version = "0.2.8", features = ["js", "rdrand", "std"] }
 ahash = { version = "0.7.6", features = ["default"] }
 tokio = { workspace = true, features = ["full"] }
 tracing-core = { workspace = true, features = ["default"] }
+semver = { version = "1.0.23", features = ["default", "std"] }

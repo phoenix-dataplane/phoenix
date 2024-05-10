@@ -17,14 +17,14 @@
 //!
 //! # Implementing GlobalAlloc
 //! See the [global alloc](https://github.com/gz/rust-slabmalloc/tree/master/examples/global_alloc.rs) example.
-#![allow(unused_features)]
-#![cfg_attr(feature = "unstable", feature(const_mut_refs, int_log))]
+#![allow(unused_features, internal_features)]
+#![cfg_attr(feature = "unstable", feature(const_mut_refs))]
 #![cfg_attr(test, feature(prelude_import, test, c_void_variant, core_intrinsics))]
 #![no_std]
 #![crate_name = "slabmalloc"]
 #![crate_type = "lib"]
 #![feature(ptr_internals)]
-#![feature(drain_filter)]
+#![feature(extract_if)]
 
 mod pages;
 mod pool;

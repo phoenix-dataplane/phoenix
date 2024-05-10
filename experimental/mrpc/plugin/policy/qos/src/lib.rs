@@ -1,6 +1,6 @@
 #![feature(peer_credentials_unix_socket)]
 #![feature(local_key_cell_methods)]
-#![feature(drain_filter)]
+#![feature(extract_if)]
 
 use thiserror::Error;
 

@@ -2,11 +2,11 @@
 //! for the ones in [`std`], [`alloc`], or [`core`].
 
 // boxed.rs & shmptr.rs
+#![allow(internal_features)]
 #![feature(strict_provenance)]
 #![feature(allocator_api)]
 #![feature(negative_impls)]
 #![feature(peer_credentials_unix_socket)]
-#![feature(nonnull_slice_from_raw_parts)]
 #![feature(min_specialization)]
 #![feature(exact_size_is_empty)]
 #![feature(ptr_internals)]
@@ -17,7 +17,6 @@
 #![feature(extend_one)]
 #![feature(rustc_attrs)]
 #![feature(slice_ptr_get)]
-#![feature(slice_ptr_len)]
 #![feature(const_trait_impl)]
 #![feature(unix_socket_ancillary_data)]
 #![feature(slice_index_methods)]
@@ -25,12 +24,10 @@
 #![feature(const_mut_refs)]
 #![feature(const_ptr_is_null)]
 #![feature(const_slice_from_raw_parts_mut)]
-#![feature(const_slice_ptr_len)]
 // string.rs
 #![feature(str_internals)]
 #![feature(pattern)]
 #![feature(slice_range)]
-#![feature(utf8_chunks)]
 #![allow(clippy::explicit_auto_deref)]
 #![allow(clippy::missing_safety_doc)]
 

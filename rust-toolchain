@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly-2022-10-01"
+channel = "nightly-2024-05-01"
 components = [
 	# development
 	"cargo", "clippy", "rust-docs", "rust-std", "rustc", "rustfmt", "rust-analyzer",

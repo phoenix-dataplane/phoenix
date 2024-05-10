@@ -1,8 +1,7 @@
 #![feature(peer_credentials_unix_socket)]
-#![feature(drain_filter)]
 #![feature(strict_provenance)]
 #![feature(int_roundings)]
-#![feature(local_key_cell_methods)]
+#![feature(extract_if)]
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};

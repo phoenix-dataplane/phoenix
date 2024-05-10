@@ -57,7 +57,6 @@ use core::ops::{self, Index, IndexMut, Range, RangeBounds};
 use core::ptr;
 use core::slice;
 use core::str::pattern::Pattern;
-use core::str::Utf8Chunks;
 #[cfg(not(no_global_oom_handling))]
 #[cfg(not(no_global_oom_handling))]
 use std::borrow::Cow; // TODO(cjr): Consider to ShmCow and ShmBorrow in the future?
@@ -550,7 +549,8 @@ impl<A: ShmAllocator + Default> String<A> {
     #[must_use]
     #[cfg(not(no_global_oom_handling))]
     pub fn from_utf8_lossy(v: &[u8]) -> Self {
-        let mut iter = Utf8Chunks::new(v);
+        // let mut iter = Utf8Chunks::new(v);
+        let mut iter = v.utf8_chunks();
 
         let first_valid = if let Some(chunk) = iter.next() {
             let valid = chunk.valid();

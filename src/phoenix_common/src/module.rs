@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::{os::unix::ucred::UCred, path::Path};
+use std::os::unix::net::UCred;
+use std::path;
 
 use dashmap::DashMap;
 use ipc::unix::DomainSocket;
@@ -37,7 +38,7 @@ pub struct ServiceInfo {
 pub enum NewEngineRequest<'a> {
     Service {
         sock: &'a DomainSocket,
-        client_path: &'a Path,
+        client_path: &'a path::Path,
         mode: SchedulingMode,
         cred: &'a UCred,
         config_string: Option<String>,

@@ -412,7 +412,7 @@ impl Linker {
 }
 
 fn get_runtime_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
-    let runtime_addr = (get_runtime_offset as *const ()).expose_addr();
+    let runtime_addr = (get_runtime_offset as *const ()).addr();
     log::info!(
         "Addr of get_runtime_offset: {:?}",
         get_runtime_offset as *const ()
