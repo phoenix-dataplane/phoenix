@@ -291,7 +291,7 @@ impl Engine for RpcAdapterEngine {
     fn handle_request(
         &mut self,
         request: Vec<u8>,
-        _cred: std::os::unix::ucred::UCred,
+        _cred: std::os::unix::net::UCred,
     ) -> Result<()> {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
@@ -464,7 +464,7 @@ impl RpcAdapterEngine {
                 .push_back(ReqContext { call_id, sg_len: 1 });
         }
 
-        let off = meta_buf_ptr.0.as_ptr().expose_addr();
+        let off = meta_buf_ptr.0.as_ptr().addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
 
         // TODO(cjr): impl Serialize for SgList
@@ -538,7 +538,7 @@ impl RpcAdapterEngine {
         let ctx = self.rpc_ctx.insert(RpcId::new(cmid.as_handle(), call_id));
 
         let meta_sge = SgE {
-            ptr: (meta_ref as *const MessageMeta).expose_addr(),
+            ptr: (meta_ref as *const MessageMeta).addr(),
             len: mem::size_of::<MessageMeta>(),
         };
 
@@ -665,7 +665,7 @@ impl RpcAdapterEngine {
         let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
         debug_assert!(_prefix.is_empty() && _suffix.is_empty());
 
-        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
+        let value_buf_base = meta_buf.value_buffer().as_ptr().addr();
         let mut value_offset = 0;
 
         #[allow(clippy::needless_range_loop)]
@@ -1047,7 +1047,7 @@ impl RpcAdapterEngine {
             cmd::Command::NewMappedAddrs(conn_handle, app_vaddrs) => {
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
                     let region = self.state.resource().recv_buffer_pool.find(mr_handle)?;
-                    let mr_local_addr = region.as_ptr().expose_addr();
+                    let mr_local_addr = region.as_ptr().addr();
                     let mr_remote_mapped = mrpc_marshal::ShmRecvMr {
                         ptr: *app_vaddr,
                         len: region.len(),

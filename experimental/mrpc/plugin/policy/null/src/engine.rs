@@ -1,4 +1,4 @@
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::UCred;
 use std::pin::Pin;
 
 use anyhow::{anyhow, Result};

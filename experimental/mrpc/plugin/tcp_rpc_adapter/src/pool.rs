@@ -36,7 +36,7 @@ impl AsHandle for RecvBuffer {
 impl RecvBuffer {
     #[inline]
     pub(crate) fn addr(&self) -> usize {
-        self.storage.as_ptr().expose_addr() + self.offset
+        self.storage.as_ptr().addr() + self.offset
     }
 
     #[inline]
