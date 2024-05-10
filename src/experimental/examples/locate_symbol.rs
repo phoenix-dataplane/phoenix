@@ -8,7 +8,7 @@ use object::{Object, ObjectSection, ObjectSymbol, Relocation};
 use rustc_demangle::demangle;
 
 fn get_relocation_offset(elf: &ElfFile<FileHeader64<LittleEndian>>) -> Option<isize> {
-    let runtime_addr = (main as *const ()).expose_addr();
+    let runtime_addr = (main as *const ()).addr();
     println!("addr of main: {:?}", main as *const ());
 
     let sym_main = format!("{}::main", module_path!());
