@@ -312,7 +312,7 @@ impl ClientStub {
                 let vaddrs = read_heap
                     .rbufs
                     .iter()
-                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().addr()))
                     .collect();
 
                 // return the mapped addr back
@@ -368,7 +368,7 @@ impl ClientStub {
                         let vaddrs = read_heap
                             .rbufs
                             .iter()
-                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                            .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().addr()))
                             .collect();
 
                         // return the mapped addr back

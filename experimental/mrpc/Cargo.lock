@@ -29,6 +29,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
+dependencies = [
+ "cfg-if 1.0.0",
+ "once_cell",
+ "version_check",
+ "zerocopy 0.7.34",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -36,6 +48,12 @@ checksum = "8e60d3430d3a69478ad0993f19238d2df97c507009a52b3c10addcd7f6bcb916"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "allocator-api2"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
 name = "android-tzdata"
@@ -315,24 +333,24 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.59.2"
+version = "0.69.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd2a9a458e8f4304c52c43ebb0cfbd520289f8379a52e329a38afda99bf8eb8"
+checksum = "a00dc851838a2120612785d195287475a3ac45514741da670b735818822129a0"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.5.0",
  "cexpr",
  "clang-sys",
- "clap",
- "env_logger",
+ "itertools",
  "lazy_static",
  "lazycell",
  "log",
- "peeking_take_while",
+ "prettyplease 0.2.20",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
  "shlex",
+ "syn 2.0.61",
  "which",
 ]
 
@@ -967,15 +985,16 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-dependencies = [
- "ahash",
-]
 
 [[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash 0.8.11",
+ "allocator-api2",
+]
 
 [[package]]
 name = "hdrhistogram"
@@ -1144,7 +1163,7 @@ dependencies = [
  "thiserror",
  "unique",
  "uuid",
- "zerocopy",
+ "zerocopy 0.3.2",
 ]
 
 [[package]]
@@ -1528,7 +1547,7 @@ name = "mrpc-build"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
- "prettyplease",
+ "prettyplease 0.1.25",
  "proc-macro2",
  "prost-build",
  "quote",
@@ -1703,12 +1722,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeking_take_while"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
-
-[[package]]
 name = "pest"
 version = "2.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1747,7 +1760,7 @@ dependencies = [
  "serde",
  "static_assertions",
  "thiserror",
- "zerocopy",
+ "zerocopy 0.3.2",
 ]
 
 [[package]]
@@ -1870,18 +1883,19 @@ dependencies = [
 name = "phoenix-common-workspace"
 version = "0.1.0"
 dependencies = [
- "ahash",
+ "ahash 0.7.8",
  "crossbeam-channel 0.5.9",
  "crossbeam-epoch",
  "crossbeam-utils 0.8.19",
  "futures-core",
  "getrandom 0.2.15",
- "hashbrown 0.12.3",
+ "hashbrown 0.14.5",
  "ipc",
  "log",
  "mio 0.8.11",
  "once_cell",
  "phoenix-api",
+ "semver 1.0.23",
  "tokio",
  "tracing-core",
 ]
@@ -2019,7 +2033,7 @@ dependencies = [
  "phoenix-api",
  "phoenix-api-mrpc",
  "phoenix_common",
- "prettyplease",
+ "prettyplease 0.1.25",
  "proc-macro2",
  "prost-build",
  "quote",
@@ -2051,7 +2065,7 @@ dependencies = [
  "phoenix-api",
  "phoenix-api-mrpc",
  "phoenix_common",
- "prettyplease",
+ "prettyplease 0.1.25",
  "proc-macro2",
  "prost-build",
  "quote",
@@ -2363,6 +2377,16 @@ checksum = "6c8646e95016a7a6c4adea95bafa8a16baab64b583356217f2c85db4a39d9a86"
 dependencies = [
  "proc-macro2",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "prettyplease"
+version = "0.2.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f12335488a2f3b0a83b14edad48dca9879ce89b2edd10e80237e4e852dd645e"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.61",
 ]
 
 [[package]]
@@ -2847,7 +2871,7 @@ dependencies = [
  "memfd",
  "memmap2 0.2.3",
  "thiserror",
- "zerocopy",
+ "zerocopy 0.3.2",
 ]
 
 [[package]]
@@ -3607,7 +3631,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da091bab2bd35db397c46f5b81748b56f28f8fda837087fab9b6b07b6d66e3f1"
 dependencies = [
  "byteorder",
- "zerocopy-derive",
+ "zerocopy-derive 0.2.0",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.7.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae87e3fcd617500e5d106f0380cf7b77f3c6092aae37191433159dda23cfb087"
+dependencies = [
+ "zerocopy-derive 0.7.34",
 ]
 
 [[package]]
@@ -3619,4 +3652,15 @@ dependencies = [
  "proc-macro2",
  "syn 1.0.109",
  "synstructure",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.7.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15e934569e47891f7d9411f1a451d947a60e000ab3bd24fbb970f000387d1b3b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.61",
 ]

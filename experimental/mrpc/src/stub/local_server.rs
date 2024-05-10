@@ -228,7 +228,7 @@ impl LocalServer {
                 let vaddrs = read_heap
                     .rbufs
                     .iter()
-                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().expose_addr()))
+                    .map(|rbuf| (rbuf.as_handle(), rbuf.as_ptr().addr()))
                     .collect();
 
                 // register connection to the reactor

@@ -1,6 +1,6 @@
 //! This engine can only be placed at the sender side for now.
 use std::num::NonZeroU32;
-use std::os::unix::ucred::UCred;
+use std::os::unix::net::UCred;
 use std::pin::Pin;
 use std::ptr::Unique;
 

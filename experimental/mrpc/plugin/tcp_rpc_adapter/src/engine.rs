@@ -252,11 +252,7 @@ impl Engine for TcpRpcAdapterEngine {
         ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 
-    fn handle_request(
-        &mut self,
-        request: Vec<u8>,
-        _cred: std::os::unix::ucred::UCred,
-    ) -> Result<()> {
+    fn handle_request(&mut self, request: Vec<u8>, _cred: std::os::unix::net::UCred) -> Result<()> {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         // TODO: send result to userland
@@ -378,7 +374,7 @@ impl TcpRpcAdapterEngine {
         // let ctx = RpcId::new(sock_handle, call_id, 0).encode_u64();
         let ctx = self.rpc_ctx.insert(RpcId::new(sock_handle, call_id));
 
-        let off = meta_buf_ptr.0.as_ptr().expose_addr();
+        let off = meta_buf_ptr.0.as_ptr().addr();
         let meta_buf = unsafe { meta_buf_ptr.0.as_mut() };
 
         // TODO(cjr): impl Serialize for SgList
@@ -432,7 +428,7 @@ impl TcpRpcAdapterEngine {
         let ctx = self.rpc_ctx.insert(RpcId::new(sock_handle, call_id));
 
         let meta_sge = SgE {
-            ptr: (meta_ref as *const MessageMeta).expose_addr(),
+            ptr: (meta_ref as *const MessageMeta).addr(),
             len: mem::size_of::<MessageMeta>(),
         };
         log::debug!("send_standard start! meta_sge: {:?}", meta_sge);
@@ -541,7 +537,7 @@ impl TcpRpcAdapterEngine {
         let (_prefix, lens, _suffix): (_, &[u32], _) = unsafe { meta_buf.lens_buffer().align_to() };
         debug_assert!(_prefix.is_empty() && _suffix.is_empty());
 
-        let value_buf_base = meta_buf.value_buffer().as_ptr().expose_addr();
+        let value_buf_base = meta_buf.value_buffer().as_ptr().addr();
         let mut value_offset = 0;
 
         for len in lens.iter().take(num_sge).map(|x| *x as usize) {
@@ -794,7 +790,7 @@ impl TcpRpcAdapterEngine {
             Command::NewMappedAddrs(sock_handle, app_vaddrs) => {
                 for (mr_handle, app_vaddr) in app_vaddrs.iter() {
                     let region = self.state.resource().recv_buffer_pool.find(mr_handle)?;
-                    let mr_local_addr = region.as_ptr().expose_addr();
+                    let mr_local_addr = region.as_ptr().addr();
                     let mr_remote_mapped = mrpc_marshal::ShmRecvMr {
                         ptr: *app_vaddr,
                         len: region.len(),
