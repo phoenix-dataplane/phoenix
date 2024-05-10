@@ -288,11 +288,7 @@ impl Engine for RpcAdapterEngine {
         ELS.with_borrow_mut(|els| *els = unsafe { Some(&*tls) });
     }
 
-    fn handle_request(
-        &mut self,
-        request: Vec<u8>,
-        _cred: std::os::unix::net::UCred,
-    ) -> Result<()> {
+    fn handle_request(&mut self, request: Vec<u8>, _cred: std::os::unix::net::UCred) -> Result<()> {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         // TODO: send result to userland

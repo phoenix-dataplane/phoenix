@@ -230,11 +230,7 @@ impl Engine for LoadBalancerEngine {
         &mut self.get_mut().indicator
     }
 
-    fn handle_request(
-        &mut self,
-        request: Vec<u8>,
-        _cred: std::os::unix::net::UCred,
-    ) -> Result<()> {
+    fn handle_request(&mut self, request: Vec<u8>, _cred: std::os::unix::net::UCred) -> Result<()> {
         let request: control_plane::Request = bincode::deserialize(&request[..])?;
 
         // TODO: send result to userland
