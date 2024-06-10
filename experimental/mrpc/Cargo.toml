@@ -106,10 +106,8 @@ phoenix-mrpc = { path = "plugin/mrpc" }
 phoenix-mrpclb = { path = "plugin/mrpclb" }
 
 phoenix-syscalls = { path = "../../src/phoenix-syscalls" }
-phoenix-api = { path = "../../src/phoenix-api" }
+# phoenix-api = { path = "../../src/phoenix-api" }
 ipc = { path = "../../src/ipc" }
-mmap = { path = "../../src/mmap" }
-rdma = { path = "../../src/rdma" }
 shm = { path = "../../src/shm" }
 shmalloc = { path = "../../src/shm/shmalloc" }
 phoenix_common = { path = "../../src/phoenix_common" }
@@ -117,6 +115,10 @@ transport-rdma = { path = "../../src/plugin/transport-rdma", package = "phoenix-
 transport-tcp = { path = "../../src/plugin/transport-tcp", package = "phoenix-transport-tcp" }
 phoenix-salloc = { path = "../../src/plugin/salloc", package = "phoenix-salloc" }
 utils = { path = "../../src/utils" }
+
+phoenix-api = { git = "https://github.com/phoenix-dataplane/phoenix-api", tag = "v0.1.0" }
+mmap = { git = "https://github.com/phoenix-dataplane/mmap-rs", tag = "v0.1.0" }
+rdma = { git = "https://github.com/phoenix-dataplane/rdma-rs", tag = "v0.1.0" }
 
 thiserror = "1.0.31"
 uuid = "0.8.2"

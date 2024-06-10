@@ -2,11 +2,11 @@
 members = [
   "src/experimental",
   # the API for user app
-  "src/phoenix-api",
+  # "src/phoenix-api",
   "src/phoenix-api/salloc",
   "src/phoenix-api/transport",
-  "src/mmap",
-  "src/rdma",
+  # "src/mmap",
+  # "src/rdma",
   "src/utils",
   "src/ipc",
   # shared memory data types
@@ -41,9 +41,7 @@ exclude = [
 resolver = "2"
 
 [workspace.dependencies]
-phoenix-api = { path = "src/phoenix-api" }
-mmap = { path = "src/mmap" }
-rdma = { path = "src/rdma" }
+# phoenix-api = { path = "src/phoenix-api" }
 utils = { path = "src/utils" }
 shm = { path = "src/shm" }
 ipc = { path = "src/ipc" }
@@ -52,6 +50,10 @@ phoenix-syscalls = { path = "src/phoenix-syscalls" }
 shmalloc = { path = "src/shm/shmalloc" }
 phoenix_common = { path = "src/phoenix_common" }
 phoenix-common-workspace = { path = "src/phoenix-common-workspace" }
+
+phoenix-api = { git = "https://github.com/phoenix-dataplane/phoenix-api", tag = "v0.1.0" }
+mmap = { git = "https://github.com/phoenix-dataplane/mmap-rs", tag = "v0.1.0" }
+rdma = { git = "https://github.com/phoenix-dataplane/rdma-rs", tag = "v0.1.0" }
 
 bitflags = "1.3.2"
 libc = "0.2.103"
