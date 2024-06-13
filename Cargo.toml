@@ -2,11 +2,6 @@
 members = [
   "src/experimental",
   # the API for user app
-  # "src/phoenix-api",
-  "src/phoenix-api/salloc",
-  "src/phoenix-api/transport",
-  # "src/mmap",
-  # "src/rdma",
   "src/utils",
   "src/ipc",
   # shared memory data types

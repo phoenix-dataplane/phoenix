@@ -106,7 +106,6 @@ phoenix-mrpc = { path = "plugin/mrpc" }
 phoenix-mrpclb = { path = "plugin/mrpclb" }
 
 phoenix-syscalls = { path = "../../src/phoenix-syscalls" }
-# phoenix-api = { path = "../../src/phoenix-api" }
 ipc = { path = "../../src/ipc" }
 shm = { path = "../../src/shm" }
 shmalloc = { path = "../../src/shm/shmalloc" }

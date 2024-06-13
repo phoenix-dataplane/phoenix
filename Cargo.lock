@@ -988,7 +988,7 @@ dependencies = [
  "object 0.30.4",
  "petgraph",
  "phoenix-api",
- "phoenix-api-salloc 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
+ "phoenix-api-salloc",
  "rand 0.8.5",
  "ringbuf",
  "rustc-demangle",
@@ -2032,21 +2032,9 @@ name = "phoenix-api"
 version = "0.1.0"
 source = "git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0#625145cf67500295eca95b8c2dcbfed0036ef34a"
 dependencies = [
- "phoenix-api-core 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
- "phoenix-api-salloc 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
- "phoenix-api-transport 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
-]
-
-[[package]]
-name = "phoenix-api-core"
-version = "0.1.0"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
- "serde",
- "static_assertions",
- "thiserror",
- "zerocopy 0.3.2",
+ "phoenix-api-core",
+ "phoenix-api-salloc",
+ "phoenix-api-transport",
 ]
 
 [[package]]
@@ -2098,27 +2086,9 @@ dependencies = [
 [[package]]
 name = "phoenix-api-salloc"
 version = "0.1.0"
-dependencies = [
- "phoenix-api-core 0.1.0",
- "serde",
- "static_assertions",
-]
-
-[[package]]
-name = "phoenix-api-salloc"
-version = "0.1.0"
 source = "git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0#625145cf67500295eca95b8c2dcbfed0036ef34a"
 dependencies = [
- "phoenix-api-core 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
- "serde",
- "static_assertions",
-]
-
-[[package]]
-name = "phoenix-api-transport"
-version = "0.1.0"
-dependencies = [
- "phoenix-api-core 0.1.0",
+ "phoenix-api-core",
  "serde",
  "static_assertions",
 ]
@@ -2128,7 +2098,7 @@ name = "phoenix-api-transport"
 version = "0.1.0"
 source = "git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0#625145cf67500295eca95b8c2dcbfed0036ef34a"
 dependencies = [
- "phoenix-api-core 0.1.0 (git+https://github.com/phoenix-dataplane/phoenix-api?tag=v0.1.0)",
+ "phoenix-api-core",
  "serde",
  "static_assertions",
 ]
