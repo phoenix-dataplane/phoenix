@@ -6,9 +6,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-phoenix-api = { path = "../phoenix-api" }
+phoenix-api.workspace = true
 slabmalloc = { path = "../slabmalloc" }
-phoenix-api-salloc = { path = "../phoenix-api/salloc" }
+phoenix-api-salloc = { git = "https://github.com/phoenix-dataplane/phoenix-api", tag = "v0.1.0"}
 ipc = { path = "../ipc" }
 
 structopt = "0.3.21"
